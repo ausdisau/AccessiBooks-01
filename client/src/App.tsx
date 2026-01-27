@@ -11,6 +11,8 @@ import { Player } from "@/pages/player";
 import { Book } from "@shared/schema";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
+import { useContentAccess } from "@/hooks/use-content-access";
+import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -824,8 +826,19 @@ function MainApp() {
   const [selectedAuthor, setSelectedAuthor] = useState<string>("");
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, skip, changeSpeed } = useAudioContext();
+  const { 
+    checkAccess, 
+    showUpgradeModal, 
+    blockedContent, 
+    dismissUpgradeModal, 
+    handleUpgrade, 
+    isUpgrading 
+  } = useContentAccess();
 
   const handleSelectBook = (book: Book) => {
+    if (!checkAccess(book)) {
+      return;
+    }
     setSelectedBook(book);
     playBook(book);
     setCurrentView("player");
@@ -1015,6 +1028,15 @@ function MainApp() {
       
       {/* Persistent mini player */}
       <MiniPlayer onExpand={handleExpandPlayer} />
+
+      {/* Premium upgrade modal */}
+      <PremiumUpgradeModal
+        open={showUpgradeModal}
+        onOpenChange={dismissUpgradeModal}
+        book={blockedContent}
+        onUpgrade={handleUpgrade}
+        isUpgrading={isUpgrading}
+      />
     </div>
   );
 }
