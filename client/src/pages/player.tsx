@@ -1,8 +1,11 @@
+import { useEffect } from "react";
 import { Book } from "@shared/schema";
 import { AudioPlayer } from "@/components/audio-player";
 import { BookReviews } from "@/components/book-reviews";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, User } from "lucide-react";
+import { AudioAdInterstitial, useAudioAds } from "@/components/audio-ad-interstitial";
+import { useAudioContext } from "@/contexts/AudioContext";
 
 interface PlayerProps {
   book: Book | null;
@@ -11,6 +14,16 @@ interface PlayerProps {
 }
 
 export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
+  const { booksPlayed, incrementBooksPlayed, onAdComplete } = useAudioAds();
+  const { onTrackEndCallback } = useAudioContext();
+
+  useEffect(() => {
+    onTrackEndCallback.current = incrementBooksPlayed;
+    return () => {
+      onTrackEndCallback.current = null;
+    };
+  }, [incrementBooksPlayed, onTrackEndCallback]);
+
   if (!book) {
     return (
       <div className="text-center py-12">
@@ -27,6 +40,12 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
 
   return (
     <div className="space-y-8">
+      <AudioAdInterstitial 
+        booksPlayed={booksPlayed}
+        onAdComplete={onAdComplete}
+        onSkip={onAdComplete}
+      />
+      
       <div className="flex items-center justify-between">
         <Button 
           variant="outline" 

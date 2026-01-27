@@ -23,6 +23,7 @@ interface AudioContextType {
   playBook: (book: Book) => void;
   setSleepTimer: (minutes: number | null) => void;
   cancelSleepTimer: () => void;
+  onTrackEndCallback: React.MutableRefObject<(() => void) | null>;
 }
 
 const AudioContext = createContext<AudioContextType | null>(null);
@@ -47,6 +48,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [sleepTimer, setSleepTimerState] = useState<number | null>(null);
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
   const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const onTrackEndCallback = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (currentBook) {
@@ -99,7 +101,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const handleCanPlay = () => setIsLoading(false);
     const handleLoadedMetadata = () => setDuration(audio.duration);
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const handleEnded = () => setIsPlaying(false);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      if (onTrackEndCallback.current) {
+        onTrackEndCallback.current();
+      }
+    };
     const handleError = (e: Event) => {
       setIsLoading(false);
       const error = (e.target as HTMLAudioElement)?.error;
@@ -284,6 +291,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         playBook,
         setSleepTimer,
         cancelSleepTimer,
+        onTrackEndCallback,
       }}
     >
       <audio ref={audioRef} preload="metadata" />
