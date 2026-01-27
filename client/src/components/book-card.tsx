@@ -1,7 +1,8 @@
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Play } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Play, BookOpen, Headphones, Newspaper, Lock, BookOpenIcon } from "lucide-react";
 
 interface BookCardProps {
   book: Book;
@@ -9,12 +10,24 @@ interface BookCardProps {
   compact?: boolean;
 }
 
+const contentTypeConfig = {
+  audiobook: { icon: Headphones, label: "Audiobook", color: "bg-blue-500" },
+  ebook: { icon: BookOpen, label: "Ebook", color: "bg-green-500" },
+  magazine: { icon: Newspaper, label: "Magazine", color: "bg-purple-500" },
+};
+
 export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     return `${hours}h ${minutes}m`;
   };
+
+  const contentType = (book.contentType as keyof typeof contentTypeConfig) || "audiobook";
+  const typeConfig = contentTypeConfig[contentType] || contentTypeConfig.audiobook;
+  const TypeIcon = typeConfig.icon;
+  const isPremium = book.isPremium ?? false;
+  const isEbookOrMagazine = contentType === "ebook" || contentType === "magazine";
 
   if (compact) {
     return (
@@ -34,12 +47,35 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
               />
             ) : (
               <div className="w-full h-32 bg-muted rounded-md mb-2 flex items-center justify-center">
-                <Play className="h-8 w-8 text-muted-foreground" />
+                <TypeIcon className="h-8 w-8 text-muted-foreground" />
               </div>
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
-              <Play className="h-10 w-10 text-white fill-white" />
+              {isEbookOrMagazine ? (
+                <BookOpenIcon className="h-10 w-10 text-white" />
+              ) : (
+                <Play className="h-10 w-10 text-white fill-white" />
+              )}
             </div>
+            
+            {/* Content type badge */}
+            <Badge 
+              className={`absolute top-2 left-2 text-xs px-1.5 py-0.5 ${typeConfig.color} text-white`}
+              aria-label={typeConfig.label}
+            >
+              <TypeIcon className="h-3 w-3 mr-1" aria-hidden="true" />
+              {typeConfig.label}
+            </Badge>
+            
+            {/* Premium lock */}
+            {isPremium && (
+              <div 
+                className="absolute top-2 right-2 bg-yellow-500 rounded-full p-1"
+                aria-label="Premium content"
+              >
+                <Lock className="h-3 w-3 text-white" aria-hidden="true" />
+              </div>
+            )}
           </div>
           
           <h3 className="text-sm font-medium line-clamp-2" data-testid={`text-title-${book.id}`}>
@@ -56,14 +92,39 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
   return (
     <Card className="hover:shadow-lg transition-shadow focus-within:ring-2 focus-within:ring-ring" data-testid={`card-book-${book.id}`}>
       <CardContent className="p-6">
-        {book.coverImage && (
-          <img
-            src={book.coverImage}
-            alt={`${book.title} book cover`}
-            className="w-full h-48 object-cover rounded-md mb-4"
-            data-testid={`img-cover-${book.id}`}
-          />
-        )}
+        <div className="relative mb-4">
+          {book.coverImage ? (
+            <img
+              src={book.coverImage}
+              alt={`${book.title} book cover`}
+              className="w-full h-48 object-cover rounded-md"
+              data-testid={`img-cover-${book.id}`}
+            />
+          ) : (
+            <div className="w-full h-48 bg-muted rounded-md flex items-center justify-center">
+              <TypeIcon className="h-12 w-12 text-muted-foreground" />
+            </div>
+          )}
+          
+          {/* Content type badge */}
+          <Badge 
+            className={`absolute top-2 left-2 ${typeConfig.color} text-white`}
+            aria-label={typeConfig.label}
+          >
+            <TypeIcon className="h-3 w-3 mr-1" aria-hidden="true" />
+            {typeConfig.label}
+          </Badge>
+          
+          {/* Premium lock */}
+          {isPremium && (
+            <div 
+              className="absolute top-2 right-2 bg-yellow-500 rounded-full p-1.5"
+              aria-label="Premium content - subscription required"
+            >
+              <Lock className="h-4 w-4 text-white" aria-hidden="true" />
+            </div>
+          )}
+        </div>
         
         <h3 className="text-lg font-semibold mb-2" data-testid={`text-title-${book.id}`}>
           {book.title}
@@ -72,7 +133,10 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
           by {book.author}
         </p>
         <p className="text-sm text-muted-foreground mb-4" data-testid={`text-duration-${book.id}`}>
-          {formatDuration(book.duration)}
+          {isEbookOrMagazine 
+            ? (book.pageCount ? `${book.pageCount} pages` : typeConfig.label)
+            : formatDuration(book.duration)
+          }
         </p>
         
         <Button
@@ -80,8 +144,17 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
           onClick={() => onPlayBook(book)}
           data-testid={`button-play-${book.id}`}
         >
-          <Play className="h-4 w-4 mr-2" aria-hidden="true" />
-          Play Book
+          {isEbookOrMagazine ? (
+            <>
+              <BookOpenIcon className="h-4 w-4 mr-2" aria-hidden="true" />
+              {isPremium ? "Unlock to Read" : "Read Now"}
+            </>
+          ) : (
+            <>
+              <Play className="h-4 w-4 mr-2" aria-hidden="true" />
+              {isPremium ? "Unlock to Listen" : "Play Book"}
+            </>
+          )}
         </Button>
       </CardContent>
     </Card>
