@@ -80,6 +80,31 @@ Preferred communication style: Simple, everyday language.
 - **Advertising Platforms**:
     - **Google AdSense**: Simple ad integration.
     - **Google Ad Manager (DFP)**: Advanced ad serving.
+
+## Audio Ad System
+
+### Components
+- **AudioAdInterstitial**: Full-screen interstitial ad shown between tracks for free users
+- **AdBanner**: Banner ads displayed in library for free users
+- **ResponsiveAd**: Multi-size responsive ad component
+- **GoogleAd**: Base component for AdSense/DFP integration
+
+### Implementation
+- **Track End Callback**: AudioContext fires onTrackEndCallback when audio finishes
+- **Books Played Counter**: Player increments booksPlayed count on track completion
+- **Backend Logic**: /api/monetization/should-show-ad determines ad display (every 3 books)
+- **Premium Exclusion**: All ads automatically hidden for premium subscribers
+
+### Hooks
+- **useAudioAds**: Manages booksPlayed state and increment/dismiss callbacks
+- **useShouldShowAd**: Queries backend to determine if ad should display
+- **useShouldShowBannerAd**: Controls banner ad visibility
+
+### Environment Variables (optional)
+- VITE_ADSENSE_CLIENT: Google AdSense publisher ID
+- VITE_ADSENSE_SLOT_BANNER: AdSense slot ID for banner ads
+- VITE_ADSENSE_SLOT_INTERSTITIAL: AdSense slot ID for interstitial ads
+- VITE_GPT_NETWORK_CODE: Google Ad Manager network code
 ## Social Review System
 
 ### Database Schema
