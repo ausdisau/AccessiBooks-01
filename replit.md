@@ -178,3 +178,43 @@ Preferred communication style: Simple, everyday language.
 - **EbookReader**: Full-featured text reader component
 - **PremiumUpgradeModal**: Subscription upsell modal
 - **useContentAccess hook**: Content access gating logic
+
+## Chapter Navigation System
+
+### Database Schema
+- **chapters**: Stores chapter metadata with support for both audiobooks and ebooks
+  - id: Primary key (UUID)
+  - bookId: Foreign key to books
+  - title: Chapter title
+  - chapterNumber: Sequential chapter number
+  - startTime/endTime: Time-based markers for audiobooks (seconds)
+  - duration: Chapter duration for audiobooks
+  - pageStart/pageEnd: Page-based markers for ebooks
+  - created_at: Timestamp
+
+### Chapter Data Sources
+- **Database-first**: Chapters stored in PostgreSQL
+- **LibriVox API fallback**: Auto-fetches chapter metadata for LibriVox audiobooks if not in database
+
+### AudioContext Chapter Features
+- **chapters**: Array of chapter objects for current book
+- **currentChapter**: Currently playing chapter
+- **currentChapterIndex**: Index of current chapter
+- **nextChapter()**: Skip to next chapter
+- **prevChapter()**: Go to previous chapter
+- **seekToChapter(index)**: Jump to specific chapter
+- **onChapterEndCallback**: Fires on natural chapter progression (for inter-chapter ads)
+
+### Chapter Tracking Logic
+- Automatic detection based on currentTime vs chapter start/end times
+- Only tracks time-based chapters (audiobooks, not ebooks)
+- Guards against false triggering on seeks (only fires on sequential progression)
+- Resets chapter state on book change
+
+### API Endpoints
+- GET /api/books/:bookId/chapters - Get all chapters for a book
+
+### UI Components
+- **ChapterList**: Displays all chapters with highlighting for current chapter
+- **Chapter navigation buttons**: Prev/Next chapter controls in audio player
+- **Chapter indicator**: Shows current chapter number and title
