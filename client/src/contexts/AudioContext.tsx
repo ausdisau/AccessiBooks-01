@@ -168,16 +168,22 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           console.error("Failed to fetch chapters:", err);
           setChapters([]);
           setCurrentChapterIndex(-1);
+          lastChapterIndex.current = -1;
         });
     } else {
       setChapters([]);
       setCurrentChapterIndex(-1);
+      lastChapterIndex.current = -1;
     }
   }, [currentBook?.id]);
 
-  // Track current chapter based on playback time
+  // Track current chapter based on playback time (only for audio chapters with time data)
   useEffect(() => {
-    if (chapters.length === 0) return;
+    if (chapters.length === 0 || duration <= 0) return;
+    
+    // Only track chapters that have time-based data (audiobooks)
+    const hasTimeBasedChapters = chapters.some(ch => ch.startTime !== null);
+    if (!hasTimeBasedChapters) return;
     
     const newIndex = chapters.findIndex((ch, i) => {
       const start = ch.startTime ?? 0;
@@ -186,8 +192,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     });
     
     if (newIndex !== -1 && newIndex !== currentChapterIndex) {
-      // Chapter changed - check if we completed a chapter
-      if (lastChapterIndex.current !== -1 && newIndex > lastChapterIndex.current) {
+      // Chapter changed - only fire callback on natural playback progression (next chapter)
+      // Avoid firing on large seeks or backward seeks
+      if (lastChapterIndex.current !== -1 && newIndex === lastChapterIndex.current + 1) {
         if (onChapterEndCallback.current) {
           onChapterEndCallback.current();
         }
@@ -248,6 +255,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audioRef.current.currentTime = startTime;
       setCurrentTime(startTime);
       setCurrentChapterIndex(chapterIndex);
+      lastChapterIndex.current = chapterIndex;
     }
   }, [chapters]);
 
