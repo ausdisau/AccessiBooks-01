@@ -10,7 +10,9 @@ import { BookmarkList } from "./bookmark-list";
 import { SleepTimer } from "./sleep-timer";
 import { ChapterList } from "./chapter-list";
 import { AddToCollectionButton } from "./library-collections";
+import { AddToPlaylistDialog } from "./add-to-playlist-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -82,7 +84,9 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const [currentChapterId, setCurrentChapterId] = useState<string | undefined>();
   const [carMode, setCarMode] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
+  const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     startSession(book.id);
@@ -479,10 +483,28 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 Bookmark
               </Button>
               <AddToCollectionButton bookId={book.id} />
+              {user && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPlaylistDialog(true)}
+                  aria-label="Add to playlist"
+                  data-testid="button-add-to-playlist"
+                >
+                  <ListMusic className="h-4 w-4 mr-1" aria-hidden="true" />
+                  Playlist
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
+
+      <AddToPlaylistDialog
+        book={book}
+        open={showPlaylistDialog}
+        onOpenChange={setShowPlaylistDialog}
+      />
 
       {!isPremium && (skipStatus || audioQuality) && (
         <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30">

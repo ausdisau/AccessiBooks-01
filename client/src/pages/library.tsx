@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Book } from "@shared/schema";
+import { Book, PlaylistWithCount } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BookCard } from "@/components/book-card";
@@ -11,6 +11,9 @@ import { ForYouSection } from "@/components/for-you-section";
 import { ListeningStatsCard } from "@/components/listening-stats";
 import { LibraryCollections } from "@/components/library-collections";
 import { BookCarousel } from "@/components/book-carousel";
+import { DJSection } from "@/components/dj-section";
+import { PlaylistSection } from "@/components/playlist-section";
+import { PlaylistDetail } from "@/components/playlist-detail";
 import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -22,6 +25,7 @@ export function Library({ onSelectBook }: LibraryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("title");
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
   const { user } = useAuth();
 
   const { data: books = [], isLoading, error } = useQuery<Book[]>({
@@ -78,7 +82,22 @@ export function Library({ onSelectBook }: LibraryProps) {
     );
   }
 
-  const showPersonalizedSections = user && !searchQuery && !isLoading;
+  const showPersonalizedSections = user && !searchQuery && !isLoading && !selectedPlaylist;
+
+  // If a playlist is selected, show the detail view
+  if (selectedPlaylist) {
+    return (
+      <div className="space-y-8">
+        <PlaylistDetail
+          playlistId={selectedPlaylist.id}
+          onBack={() => setSelectedPlaylist(null)}
+          onPlayBook={onSelectBook}
+          allBooks={books}
+          isOwner={selectedPlaylist.userId === user?.id}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -90,6 +109,19 @@ export function Library({ onSelectBook }: LibraryProps) {
       {/* Continue Listening - only show when logged in and not searching */}
       {showPersonalizedSections && (
         <ContinueListening onSelectBook={onSelectBook} books={books} />
+      )}
+
+      {/* DJ Section - Personalized recommendations */}
+      {showPersonalizedSections && (
+        <DJSection onPlayBook={onSelectBook} />
+      )}
+
+      {/* Playlists Section */}
+      {!searchQuery && !isLoading && (
+        <PlaylistSection 
+          onSelectPlaylist={setSelectedPlaylist}
+          isAuthenticated={!!user}
+        />
       )}
 
       {/* My Collections - only show when logged in */}
