@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { AuthorPage } from "@/components/author-page";
 import { SocialFeed } from "@/components/social-feed";
 import { LandingCarousel } from "@/components/book-carousel";
+import { SearchAutocomplete } from "@/components/search-autocomplete";
 
 type View = "library" | "player" | "author" | "feed";
 
@@ -489,17 +490,9 @@ function LandingPage() {
         <div className="w-full px-4 md:px-8 py-4 flex justify-between items-center">
           <AccessiBooksLogo onClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
           
-          {/* Search Field */}
+          {/* Search Field with Autocomplete */}
           <div className="hidden md:flex flex-1 max-w-md mx-8">
-            <div className="relative w-full">
-              <Input
-                type="search"
-                placeholder="Search audiobooks..."
-                className="w-full rounded-full pl-10 pr-4 bg-muted/50 border-muted-foreground/20 focus:bg-background"
-                aria-label="Search audiobooks"
-              />
-              <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            </div>
+            <SearchAutocomplete onSelectBook={() => openRegister()} />
           </div>
           
           {/* Desktop Navigation */}
