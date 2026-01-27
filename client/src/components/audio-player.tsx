@@ -377,9 +377,29 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2">
+              {/* Speed Preset Buttons */}
+              <div className="hidden sm:flex items-center gap-1 bg-muted/50 rounded-full p-1" role="group" aria-label="Playback speed">
+                {[0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                  <Button
+                    key={speed}
+                    variant={playbackRate === speed ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setSpeed(speed)}
+                    className={`h-7 px-2.5 rounded-full text-xs font-medium ${
+                      playbackRate === speed ? "shadow-sm" : "hover:bg-muted"
+                    }`}
+                    aria-pressed={playbackRate === speed}
+                    data-testid={`button-speed-${speed}x`}
+                  >
+                    {speed}x
+                  </Button>
+                ))}
+              </div>
+              
+              {/* Speed Dropdown (mobile fallback) */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1" data-testid="button-speed-selector">
+                  <Button variant="outline" size="sm" className="gap-1 sm:hidden" data-testid="button-speed-selector">
                     <Gauge className="h-4 w-4" />
                     {playbackRate}x
                     <ChevronDown className="h-3 w-3" />
