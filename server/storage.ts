@@ -1,9 +1,9 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql, count, asc } from "drizzle-orm";
 
 const MemoryStore = createMemoryStore(session);
 
@@ -57,6 +57,20 @@ export interface IStorage {
   
   // Security
   validateAudioUrl(url: string): boolean;
+  
+  // Playlists (Reading Lists)
+  getPlaylists(userId?: string): Promise<PlaylistWithCount[]>;
+  getPlaylist(id: string): Promise<PlaylistWithCount | undefined>;
+  createPlaylist(playlist: InsertPlaylist): Promise<Playlist>;
+  updatePlaylist(id: string, updates: Partial<InsertPlaylist>): Promise<Playlist | undefined>;
+  deletePlaylist(id: string): Promise<boolean>;
+  addToPlaylist(playlistId: string, book: { bookId: string; bookTitle: string; bookAuthor?: string; bookCover?: string }): Promise<PlaylistItem>;
+  removeFromPlaylist(playlistId: string, bookId: string): Promise<boolean>;
+  getPlaylistItems(playlistId: string): Promise<PlaylistItem[]>;
+  getCuratedPlaylists(): Promise<PlaylistWithCount[]>;
+  
+  // DJ Recommendations
+  getDJRecommendations(userId?: string): Promise<DJRecommendation[]>;
   
   sessionStore: session.Store;
 }
@@ -1821,6 +1835,296 @@ export class ExternalAPIStorage implements IStorage {
       console.error(`Error fetching chapters for book ${bookId}:`, error);
       return [];
     }
+  }
+
+  // Playlist Methods
+  async getPlaylists(userId?: string): Promise<PlaylistWithCount[]> {
+    try {
+      const result = await db
+        .select({
+          playlist: playlists,
+          itemCount: count(playlistItems.id),
+        })
+        .from(playlists)
+        .leftJoin(playlistItems, eq(playlists.id, playlistItems.playlistId))
+        .where(userId ? eq(playlists.userId, userId) : undefined)
+        .groupBy(playlists.id)
+        .orderBy(desc(playlists.updatedAt));
+
+      return result.map(r => ({
+        ...r.playlist,
+        itemCount: Number(r.itemCount),
+      }));
+    } catch (error) {
+      console.error("Error getting playlists:", error);
+      return [];
+    }
+  }
+
+  async getPlaylist(id: string): Promise<PlaylistWithCount | undefined> {
+    try {
+      const result = await db
+        .select({
+          playlist: playlists,
+          itemCount: count(playlistItems.id),
+        })
+        .from(playlists)
+        .leftJoin(playlistItems, eq(playlists.id, playlistItems.playlistId))
+        .where(eq(playlists.id, id))
+        .groupBy(playlists.id);
+
+      if (result.length === 0) return undefined;
+
+      const items = await this.getPlaylistItems(id);
+      
+      return {
+        ...result[0].playlist,
+        itemCount: Number(result[0].itemCount),
+        items,
+      };
+    } catch (error) {
+      console.error("Error getting playlist:", error);
+      return undefined;
+    }
+  }
+
+  async createPlaylist(playlist: InsertPlaylist): Promise<Playlist> {
+    const [created] = await db
+      .insert(playlists)
+      .values(playlist)
+      .returning();
+    return created;
+  }
+
+  async updatePlaylist(id: string, updates: Partial<InsertPlaylist>): Promise<Playlist | undefined> {
+    try {
+      const [updated] = await db
+        .update(playlists)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(playlists.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error("Error updating playlist:", error);
+      return undefined;
+    }
+  }
+
+  async deletePlaylist(id: string): Promise<boolean> {
+    try {
+      await db.delete(playlists).where(eq(playlists.id, id));
+      return true;
+    } catch (error) {
+      console.error("Error deleting playlist:", error);
+      return false;
+    }
+  }
+
+  async addToPlaylist(playlistId: string, book: { bookId: string; bookTitle: string; bookAuthor?: string; bookCover?: string }): Promise<PlaylistItem> {
+    // Get current max position
+    const items = await this.getPlaylistItems(playlistId);
+    const maxPosition = items.reduce((max, item) => Math.max(max, item.position), -1);
+
+    const [created] = await db
+      .insert(playlistItems)
+      .values({
+        playlistId,
+        bookId: book.bookId,
+        bookTitle: book.bookTitle,
+        bookAuthor: book.bookAuthor,
+        bookCover: book.bookCover,
+        position: maxPosition + 1,
+      })
+      .returning();
+    
+    // Update playlist's updatedAt
+    await db.update(playlists).set({ updatedAt: new Date() }).where(eq(playlists.id, playlistId));
+    
+    return created;
+  }
+
+  async removeFromPlaylist(playlistId: string, bookId: string): Promise<boolean> {
+    try {
+      await db
+        .delete(playlistItems)
+        .where(and(eq(playlistItems.playlistId, playlistId), eq(playlistItems.bookId, bookId)));
+      
+      // Update playlist's updatedAt
+      await db.update(playlists).set({ updatedAt: new Date() }).where(eq(playlists.id, playlistId));
+      
+      return true;
+    } catch (error) {
+      console.error("Error removing from playlist:", error);
+      return false;
+    }
+  }
+
+  async getPlaylistItems(playlistId: string): Promise<PlaylistItem[]> {
+    try {
+      return await db
+        .select()
+        .from(playlistItems)
+        .where(eq(playlistItems.playlistId, playlistId))
+        .orderBy(asc(playlistItems.position));
+    } catch (error) {
+      console.error("Error getting playlist items:", error);
+      return [];
+    }
+  }
+
+  async getCuratedPlaylists(): Promise<PlaylistWithCount[]> {
+    try {
+      const result = await db
+        .select({
+          playlist: playlists,
+          itemCount: count(playlistItems.id),
+        })
+        .from(playlists)
+        .leftJoin(playlistItems, eq(playlists.id, playlistItems.playlistId))
+        .where(eq(playlists.isCurated, 1))
+        .groupBy(playlists.id)
+        .orderBy(playlists.category);
+
+      return result.map(r => ({
+        ...r.playlist,
+        itemCount: Number(r.itemCount),
+      }));
+    } catch (error) {
+      console.error("Error getting curated playlists:", error);
+      return [];
+    }
+  }
+
+  async getDJRecommendations(userId?: string): Promise<DJRecommendation[]> {
+    const recommendations: DJRecommendation[] = [];
+    const allBooks = await this.getBooks();
+    
+    // 1. Time-based recommendations
+    const hour = new Date().getHours();
+    let timeRecommendation: DJRecommendation;
+    
+    if (hour >= 22 || hour < 6) {
+      // Night time - sleep stories
+      const sleepBooks = allBooks.filter(b => 
+        b.genre?.toLowerCase().includes("fiction") || 
+        b.genre?.toLowerCase().includes("classic") ||
+        b.title.toLowerCase().includes("story") ||
+        b.title.toLowerCase().includes("tale")
+      ).slice(0, 6);
+      
+      timeRecommendation = {
+        id: "time-sleep",
+        type: "time-based",
+        title: "Wind Down Tonight",
+        description: "Relaxing audiobooks perfect for bedtime",
+        books: sleepBooks.length > 0 ? sleepBooks : allBooks.slice(0, 6),
+      };
+    } else if (hour >= 6 && hour < 12) {
+      // Morning - motivational
+      const morningBooks = allBooks.filter(b => 
+        b.genre?.toLowerCase().includes("self") ||
+        b.genre?.toLowerCase().includes("biography") ||
+        b.genre?.toLowerCase().includes("history")
+      ).slice(0, 6);
+      
+      timeRecommendation = {
+        id: "time-morning",
+        type: "time-based",
+        title: "Start Your Day Right",
+        description: "Inspiring audiobooks to energize your morning",
+        books: morningBooks.length > 0 ? morningBooks : allBooks.slice(0, 6),
+      };
+    } else {
+      // Afternoon/Evening - adventure and entertainment
+      const afternoonBooks = allBooks.filter(b => 
+        b.genre?.toLowerCase().includes("adventure") ||
+        b.genre?.toLowerCase().includes("mystery") ||
+        b.genre?.toLowerCase().includes("fiction")
+      ).slice(0, 6);
+      
+      timeRecommendation = {
+        id: "time-afternoon",
+        type: "time-based",
+        title: "Afternoon Adventures",
+        description: "Engaging stories for your afternoon",
+        books: afternoonBooks.length > 0 ? afternoonBooks : allBooks.slice(0, 6),
+      };
+    }
+    recommendations.push(timeRecommendation);
+
+    // 2. If logged in, add personalized recommendations
+    if (userId) {
+      const history = await this.getListeningHistory(userId, 20);
+      
+      if (history.length > 0) {
+        // Continue listening
+        const continueBooks = await this.getContinueListening(userId, 6);
+        if (continueBooks.length > 0) {
+          const bookIds = continueBooks.map(h => h.bookId);
+          const books = allBooks.filter(b => bookIds.includes(b.id));
+          if (books.length > 0) {
+            recommendations.unshift({
+              id: "continue",
+              type: "continue",
+              title: "Continue Listening",
+              description: "Pick up where you left off",
+              books,
+            });
+          }
+        }
+
+        // Similar to what you've listened to
+        const listenedGenres = history
+          .map(h => allBooks.find(b => b.id === h.bookId)?.genre)
+          .filter(Boolean) as string[];
+        
+        if (listenedGenres.length > 0) {
+          const topGenre = listenedGenres[0];
+          const similarBooks = allBooks
+            .filter(b => b.genre === topGenre && !history.some(h => h.bookId === b.id))
+            .slice(0, 6);
+          
+          if (similarBooks.length > 0) {
+            recommendations.push({
+              id: "similar",
+              type: "similar",
+              title: `More ${topGenre}`,
+              description: `Because you've been listening to ${topGenre}`,
+              books: similarBooks,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Genre-based recommendations
+    const genres = Array.from(new Set(allBooks.map(b => b.genre).filter(Boolean)));
+    if (genres.length > 0) {
+      const randomGenre = genres[Math.floor(Math.random() * genres.length)];
+      const genreBooks = allBooks.filter(b => b.genre === randomGenre).slice(0, 6);
+      
+      if (genreBooks.length > 0) {
+        recommendations.push({
+          id: `genre-${randomGenre}`,
+          type: "genre",
+          title: `Explore ${randomGenre}`,
+          description: `Discover great ${randomGenre} audiobooks`,
+          books: genreBooks,
+        });
+      }
+    }
+
+    // 4. Mood-based (random selection for variety)
+    const shuffled = [...allBooks].sort(() => Math.random() - 0.5).slice(0, 6);
+    recommendations.push({
+      id: "mood-discover",
+      type: "mood",
+      title: "Discover Something New",
+      description: "Handpicked audiobooks just for you",
+      books: shuffled,
+    });
+
+    return recommendations;
   }
 }
 

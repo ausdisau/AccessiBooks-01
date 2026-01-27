@@ -234,3 +234,68 @@ export interface AggregatedRatings {
     reviewCount: number;
   }[];
 }
+
+// Playlists (Reading Lists) - Spotify-inspired feature
+export const playlists = pgTable("playlists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }), // null for curated playlists
+  name: text("name").notNull(),
+  description: text("description"),
+  coverImage: text("cover_image"),
+  isPublic: integer("is_public").notNull().default(1), // 1 = public, 0 = private
+  isCurated: integer("is_curated").notNull().default(0), // 1 = staff-curated, 0 = user-created
+  category: varchar("category"), // For curated: "classics", "mystery", "sleep", "motivation", etc.
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_playlists_user").on(table.userId),
+  index("idx_playlists_curated").on(table.isCurated),
+  index("idx_playlists_category").on(table.category),
+]);
+
+export const insertPlaylistSchema = createInsertSchema(playlists).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPlaylist = z.infer<typeof insertPlaylistSchema>;
+export type Playlist = typeof playlists.$inferSelect;
+
+// Playlist items (books in a playlist)
+export const playlistItems = pgTable("playlist_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  playlistId: varchar("playlist_id").notNull().references(() => playlists.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull(),
+  bookTitle: text("book_title").notNull(),
+  bookAuthor: text("book_author"),
+  bookCover: text("book_cover"),
+  position: integer("position").notNull().default(0), // Order in playlist
+  addedAt: timestamp("added_at").defaultNow(),
+}, (table) => [
+  index("idx_playlist_items_playlist").on(table.playlistId),
+  index("idx_playlist_items_position").on(table.position),
+]);
+
+export const insertPlaylistItemSchema = createInsertSchema(playlistItems).omit({
+  id: true,
+  addedAt: true,
+});
+
+export type InsertPlaylistItem = z.infer<typeof insertPlaylistItemSchema>;
+export type PlaylistItem = typeof playlistItems.$inferSelect;
+
+// Playlist with items count for display
+export interface PlaylistWithCount extends Playlist {
+  itemCount: number;
+  items?: PlaylistItem[];
+}
+
+// DJ recommendation types
+export interface DJRecommendation {
+  id: string;
+  type: "continue" | "similar" | "genre" | "mood" | "time-based";
+  title: string;
+  description: string;
+  books: Book[];
+}

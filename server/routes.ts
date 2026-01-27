@@ -1515,6 +1515,208 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // PLAYLIST (READING LIST) ROUTES
+  // ============================================
+
+  // GET /api/playlists - Get user's playlists (requires authentication)
+  app.get("/api/playlists", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      // Only return this user's playlists
+      const playlists = await storage.getPlaylists(userId);
+      res.json(playlists);
+    } catch (error) {
+      console.error("Error fetching playlists:", error);
+      res.status(500).json({ message: "Failed to fetch playlists" });
+    }
+  });
+
+  // GET /api/playlists/curated - Get staff-curated playlists (public, no auth required)
+  app.get("/api/playlists/curated", async (req: any, res) => {
+    try {
+      const playlists = await storage.getCuratedPlaylists();
+      res.json(playlists);
+    } catch (error) {
+      console.error("Error fetching curated playlists:", error);
+      res.status(500).json({ message: "Failed to fetch curated playlists" });
+    }
+  });
+
+  // GET /api/playlists/:id - Get specific playlist with items
+  // Only accessible if: user owns it, it's public, or it's curated
+  app.get("/api/playlists/:id", async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+      const playlist = await storage.getPlaylist(id);
+      
+      if (!playlist) {
+        return res.status(404).json({ message: "Playlist not found" });
+      }
+      
+      // Check access: owner, public, or curated
+      const isOwner = userId && playlist.userId === userId;
+      const isPublicOrCurated = playlist.isPublic === 1 || playlist.isCurated === 1;
+      
+      if (!isOwner && !isPublicOrCurated) {
+        return res.status(403).json({ message: "Access denied to this playlist" });
+      }
+      
+      res.json(playlist);
+    } catch (error) {
+      console.error("Error fetching playlist:", error);
+      res.status(500).json({ message: "Failed to fetch playlist" });
+    }
+  });
+
+  // POST /api/playlists - Create a new playlist
+  app.post("/api/playlists", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { name, description, isPublic = 1 } = req.body;
+      if (!name) {
+        return res.status(400).json({ message: "Playlist name is required" });
+      }
+
+      const playlist = await storage.createPlaylist({
+        userId,
+        name,
+        description,
+        isPublic: isPublic ? 1 : 0,
+        isCurated: 0,
+      });
+
+      res.status(201).json(playlist);
+    } catch (error) {
+      console.error("Error creating playlist:", error);
+      res.status(500).json({ message: "Failed to create playlist" });
+    }
+  });
+
+  // PUT /api/playlists/:id - Update a playlist
+  app.put("/api/playlists/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { id } = req.params;
+
+      const existing = await storage.getPlaylist(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Playlist not found" });
+      }
+      if (existing.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to edit this playlist" });
+      }
+
+      const { name, description, isPublic, coverImage } = req.body;
+      const playlist = await storage.updatePlaylist(id, {
+        name,
+        description,
+        isPublic: isPublic !== undefined ? (isPublic ? 1 : 0) : undefined,
+        coverImage,
+      });
+
+      res.json(playlist);
+    } catch (error) {
+      console.error("Error updating playlist:", error);
+      res.status(500).json({ message: "Failed to update playlist" });
+    }
+  });
+
+  // DELETE /api/playlists/:id - Delete a playlist
+  app.delete("/api/playlists/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { id } = req.params;
+
+      const existing = await storage.getPlaylist(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Playlist not found" });
+      }
+      if (existing.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this playlist" });
+      }
+
+      await storage.deletePlaylist(id);
+      res.json({ message: "Playlist deleted" });
+    } catch (error) {
+      console.error("Error deleting playlist:", error);
+      res.status(500).json({ message: "Failed to delete playlist" });
+    }
+  });
+
+  // POST /api/playlists/:id/items - Add book to playlist
+  app.post("/api/playlists/:id/items", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { id } = req.params;
+
+      const existing = await storage.getPlaylist(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Playlist not found" });
+      }
+      if (existing.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to modify this playlist" });
+      }
+
+      const { bookId, bookTitle, bookAuthor, bookCover } = req.body;
+      if (!bookId || !bookTitle) {
+        return res.status(400).json({ message: "bookId and bookTitle are required" });
+      }
+
+      const item = await storage.addToPlaylist(id, { bookId, bookTitle, bookAuthor, bookCover });
+      res.status(201).json(item);
+    } catch (error) {
+      console.error("Error adding to playlist:", error);
+      res.status(500).json({ message: "Failed to add to playlist" });
+    }
+  });
+
+  // DELETE /api/playlists/:id/items/:bookId - Remove book from playlist
+  app.delete("/api/playlists/:id/items/:bookId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { id, bookId } = req.params;
+
+      const existing = await storage.getPlaylist(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Playlist not found" });
+      }
+      if (existing.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized to modify this playlist" });
+      }
+
+      await storage.removeFromPlaylist(id, bookId);
+      res.json({ message: "Book removed from playlist" });
+    } catch (error) {
+      console.error("Error removing from playlist:", error);
+      res.status(500).json({ message: "Failed to remove from playlist" });
+    }
+  });
+
+  // ============================================
+  // DJ RECOMMENDATIONS ROUTES
+  // ============================================
+
+  // GET /api/dj/recommendations - Get personalized DJ recommendations
+  app.get("/api/dj/recommendations", async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const recommendations = await storage.getDJRecommendations(userId);
+      res.json(recommendations);
+    } catch (error) {
+      console.error("Error fetching DJ recommendations:", error);
+      res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

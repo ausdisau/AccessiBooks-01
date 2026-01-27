@@ -30,6 +30,8 @@ import { AuthorPage } from "@/components/author-page";
 import { SocialFeed } from "@/components/social-feed";
 import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
+import { useCuratedPlaylists } from "@/hooks/use-playlists";
+import { Music2, BookOpen as BookOpenIcon } from "lucide-react";
 
 type View = "library" | "player" | "author" | "feed";
 
@@ -428,6 +430,62 @@ function LoginModal({
   );
 }
 
+const CATEGORY_ICONS: Record<string, string> = {
+  classics: "📚",
+  mystery: "🔍",
+  sleep: "🌙",
+  motivation: "💪",
+  adventure: "🗺️",
+  romance: "💕",
+  scifi: "🚀",
+  history: "📜",
+};
+
+function CuratedCollectionsPreview() {
+  const { data: playlists, isLoading } = useCuratedPlaylists();
+  
+  if (isLoading || !playlists || playlists.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="w-full px-4 md:px-8 lg:px-16 py-12" aria-labelledby="curated-collections-heading">
+      <div className="text-center mb-8">
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <Music2 className="h-6 w-6 text-primary" aria-hidden="true" />
+          <h2 id="curated-collections-heading" className="text-2xl font-bold">Curated Collections</h2>
+        </div>
+        <p className="text-muted-foreground">Hand-picked audiobook collections for every mood and interest</p>
+      </div>
+      
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-6xl mx-auto">
+        {playlists.slice(0, 6).map((playlist) => {
+          const emoji = playlist.category ? CATEGORY_ICONS[playlist.category] || "📖" : "📖";
+          return (
+            <Card 
+              key={playlist.id}
+              className="hover:shadow-lg transition-shadow cursor-pointer group"
+              role="article"
+              aria-label={`${playlist.name} - ${playlist.description || 'Curated collection'}`}
+            >
+              <CardContent className="p-4 text-center">
+                <div className="w-full h-20 bg-gradient-to-br from-primary/20 via-primary/30 to-primary/50 rounded-lg mb-3 flex items-center justify-center">
+                  <span className="text-3xl" role="img" aria-hidden="true">{emoji}</span>
+                </div>
+                <h3 className="font-semibold text-sm line-clamp-1">{playlist.name}</h3>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
+                  <BookOpenIcon className="h-3 w-3" aria-hidden="true" />
+                  {playlist.itemCount} {playlist.itemCount === 1 ? 'book' : 'books'}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // Landing page for logged-out users
 function LandingPage() {
   const { toggleHighContrast } = useAccessibility();
@@ -600,6 +658,9 @@ function LandingPage() {
       
       {/* Book Carousel */}
       <LandingCarousel />
+      
+      {/* Curated Collections */}
+      <CuratedCollectionsPreview />
       
       {/* Features Grid */}
       <section className="w-full px-4 md:px-8 lg:px-16 py-16">
