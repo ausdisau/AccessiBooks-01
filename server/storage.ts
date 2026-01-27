@@ -145,6 +145,11 @@ interface GoogleBooksVolume {
     saleability?: string;
     isEbook?: boolean;
   };
+  accessInfo?: {
+    viewability?: string;
+    webReaderLink?: string;
+    embeddable?: boolean;
+  };
 }
 
 interface GoogleBooksSearchResponse {
@@ -219,6 +224,31 @@ interface InternetArchiveSearchResponse {
   responseHeader: {
     status: number;
   };
+}
+
+// Project Gutenberg API interfaces (via Gutendex)
+interface GutenbergBook {
+  id: number;
+  title: string;
+  authors: Array<{
+    name: string;
+    birth_year?: number;
+    death_year?: number;
+  }>;
+  subjects: string[];
+  bookshelves: string[];
+  languages: string[];
+  copyright: boolean;
+  media_type: string;
+  formats: Record<string, string>;
+  download_count: number;
+}
+
+interface GutenbergSearchResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: GutenbergBook[];
 }
 
 // LibriVox API interfaces
@@ -306,12 +336,16 @@ function transformExternalBook(externalBook: ExternalBook): Book {
     duration: Math.floor(Math.random() * 30000) + 18000, // Random duration between 5-13 hours
     coverImage: externalBook.coverImage || null,
     audioUrl: `${EXTERNAL_API_BASE}/stream/${externalBook._id}`, // Mock audio URL
+    contentUrl: null,
     genre: externalBook.genre || null,
     publishedYear: externalBook.publishedYear || null,
     source: "library-api",
     sourceId: externalBook._id,
     totalTime: null,
     language: "English",
+    contentType: "audiobook",
+    isPremium: false,
+    pageCount: null,
   };
 }
 
@@ -334,12 +368,16 @@ function transformOpenLibraryBook(openLibraryBook: OpenLibraryBook): Book {
     duration: 0, // Open Library is for ebooks, not audiobooks
     coverImage: coverImage,
     audioUrl: "", // Open Library doesn't provide audio files
+    contentUrl: `https://openlibrary.org${openLibraryBook.key}`,
     genre: openLibraryBook.subject ? openLibraryBook.subject[0] : null,
     publishedYear: openLibraryBook.first_publish_year || null,
     source: "open-library",
     sourceId: olid,
     totalTime: "0:00:00",
     language: openLibraryBook.language ? openLibraryBook.language[0] : "English",
+    contentType: "ebook",
+    isPremium: false,
+    pageCount: null,
   };
 }
 
@@ -363,6 +401,10 @@ function transformGoogleBooksVolume(volume: GoogleBooksVolume): Book {
     ? parseInt(volumeInfo.publishedDate.split('-')[0]) 
     : null;
   
+  // Check if this is a commercial/paid book
+  const isPremium = volume.saleInfo?.saleability === "FOR_SALE" || 
+                    volume.accessInfo?.viewability === "NO_PAGES";
+  
   return {
     id: `googlebooks-${volume.id}`,
     title: volumeInfo.title,
@@ -372,12 +414,16 @@ function transformGoogleBooksVolume(volume: GoogleBooksVolume): Book {
     duration: 0, // Google Books is for ebooks, not audiobooks
     coverImage: coverImage,
     audioUrl: "", // Google Books doesn't provide audio files
+    contentUrl: volume.accessInfo?.webReaderLink || `https://books.google.com/books?id=${volume.id}`,
     genre: volumeInfo.categories ? volumeInfo.categories[0] : null,
     publishedYear: publishedYear,
     source: "google-books",
     sourceId: volume.id,
     totalTime: "0:00:00",
     language: volumeInfo.language || "en",
+    contentType: "ebook",
+    isPremium: isPremium,
+    pageCount: volumeInfo.pageCount || null,
   };
 }
 
@@ -405,6 +451,7 @@ function transformiTunesAudiobook(itunes: iTunesAudiobook): Book {
   // Use description fields (prefer longDescription > description > shortDescription)
   const description = itunes.longDescription || itunes.description || itunes.shortDescription || null;
   
+  // iTunes audiobooks are commercial/premium content
   return {
     id: `itunes-${itunes.collectionId}`,
     title: itunes.collectionName,
@@ -414,12 +461,16 @@ function transformiTunesAudiobook(itunes: iTunesAudiobook): Book {
     duration: duration,
     coverImage: coverImage,
     audioUrl: itunes.previewUrl || "", // iTunes provides preview URLs
+    contentUrl: itunes.collectionViewUrl || null,
     genre: itunes.primaryGenreName || null,
     publishedYear: publishedYear,
     source: "itunes",
     sourceId: itunes.collectionId.toString(),
     totalTime: totalTime,
     language: "en", // iTunes API doesn't always provide language info
+    contentType: "audiobook",
+    isPremium: true, // iTunes audiobooks are commercial
+    pageCount: null,
   };
 }
 
@@ -446,6 +497,15 @@ function transformInternetArchiveDoc(doc: InternetArchiveDoc): Book {
   // (We already get audiobooks from LibriVox which uses Internet Archive for hosting)
   const isAudiobook = false;
   
+  // Determine content type based on media type
+  const mediaType = doc.mediatype || "texts";
+  let contentType: "audiobook" | "ebook" | "magazine" = "ebook";
+  if (mediaType === "audio") {
+    contentType = "audiobook";
+  } else if (doc.collection?.includes("magazine") || doc.collection?.includes("periodical")) {
+    contentType = "magazine";
+  }
+  
   return {
     id: `internetarchive-${doc.identifier}`,
     title: doc.title,
@@ -455,12 +515,16 @@ function transformInternetArchiveDoc(doc: InternetArchiveDoc): Book {
     duration: 0, // Ebooks don't have duration
     coverImage: coverImage,
     audioUrl: "", // These are ebook texts, not audiobooks
+    contentUrl: `https://archive.org/details/${doc.identifier}`,
     genre: subject || null,
     publishedYear: doc.year || (doc.date ? parseInt(doc.date.split('-')[0]) : null),
     source: "internet-archive",
     sourceId: doc.identifier,
     totalTime: "0:00:00",
     language: language,
+    contentType: contentType,
+    isPremium: false, // Internet Archive content is free
+    pageCount: null,
   };
 }
 
@@ -489,12 +553,71 @@ function transformLibriVoxBook(libriVoxBook: LibriVoxBook): Book {
     duration: duration,
     coverImage: `https://archive.org/services/img/${libriVoxBook.id}`, // LibriVox cover images
     audioUrl: audioUrl,
+    contentUrl: null,
     genre: libriVoxBook.genres ? libriVoxBook.genres.join(", ") : "Classic Literature",
     publishedYear: libriVoxBook.copyright_year ? parseInt(libriVoxBook.copyright_year) : null,
     source: "librivox",
     sourceId: libriVoxBook.id,
     totalTime: libriVoxBook.totaltime,
     language: libriVoxBook.language || "English",
+    contentType: "audiobook",
+    isPremium: false, // LibriVox is free public domain
+    pageCount: null,
+  };
+}
+
+// Project Gutenberg API base URL
+const GUTENBERG_API_BASE = "https://gutendex.com";
+
+// Function to transform Project Gutenberg book to our format
+function transformGutenbergBook(gutenberg: GutenbergBook): Book {
+  const author = gutenberg.authors.length > 0 
+    ? gutenberg.authors.map(a => a.name).join(", ") 
+    : "Unknown Author";
+  
+  // Get cover image - Gutenberg provides cover images via their formats
+  const coverImage = gutenberg.formats["image/jpeg"] || 
+                     Object.keys(gutenberg.formats).find(k => k.startsWith("image/"))
+                       ? gutenberg.formats[Object.keys(gutenberg.formats).find(k => k.startsWith("image/"))!]
+                       : `https://www.gutenberg.org/cache/epub/${gutenberg.id}/pg${gutenberg.id}.cover.medium.jpg`;
+  
+  // Get reading URL - prefer HTML or plain text
+  const contentUrl = gutenberg.formats["text/html; charset=utf-8"] ||
+                     gutenberg.formats["text/html"] ||
+                     gutenberg.formats["text/plain; charset=utf-8"] ||
+                     gutenberg.formats["text/plain"] ||
+                     `https://www.gutenberg.org/ebooks/${gutenberg.id}`;
+  
+  // Extract genre from subjects
+  const genre = gutenberg.subjects.length > 0 ? gutenberg.subjects[0] : "Classic Literature";
+  
+  // Language mapping
+  const languageMap: Record<string, string> = { "en": "English", "fr": "French", "de": "German", "es": "Spanish" };
+  const language = gutenberg.languages.length > 0 
+    ? languageMap[gutenberg.languages[0]] || gutenberg.languages[0]
+    : "English";
+  
+  return {
+    id: `gutenberg-${gutenberg.id}`,
+    title: gutenberg.title,
+    author: author,
+    narrator: null, // Ebooks don't have narrators
+    description: `A classic from Project Gutenberg. ${gutenberg.subjects.slice(0, 3).join(", ")}`,
+    duration: 0, // Ebooks don't have duration
+    coverImage: coverImage,
+    audioUrl: "", // Ebooks don't have audio
+    contentUrl: contentUrl,
+    genre: genre,
+    publishedYear: gutenberg.authors[0]?.death_year 
+      ? gutenberg.authors[0].death_year - 20 // Estimate publication date
+      : null,
+    source: "gutenberg",
+    sourceId: gutenberg.id.toString(),
+    totalTime: "0:00:00",
+    language: language,
+    contentType: "ebook",
+    isPremium: false, // Gutenberg is free public domain
+    pageCount: null,
   };
 }
 
@@ -633,90 +756,114 @@ export class ExternalAPIStorage implements IStorage {
         author: "F. Scott Fitzgerald",
         narrator: "Jake Gyllenhaal",
         description: "The Great Gatsby, F. Scott Fitzgerald's third book, stands as the supreme achievement of his career. This exemplary novel of the Jazz Age has been acclaimed by generations of readers.",
-        duration: 19992, // 5h 33m 12s
+        duration: 19992,
         coverImage: "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=600",
-        audioUrl: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav", // Sample audio for demo
+        audioUrl: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+        contentUrl: null,
         genre: "Classic Literature",
         publishedYear: 1925,
         source: "local",
         sourceId: null,
         totalTime: "5:33:12",
         language: "English",
+        contentType: "audiobook",
+        isPremium: false,
+        pageCount: null,
       },
       {
         title: "Dune",
         author: "Frank Herbert",
         narrator: "Scott Brick",
         description: "Set on the desert planet Arrakis, Dune is the story of the boy Paul Atreides, heir to a noble family tasked with ruling an inhospitable world.",
-        duration: 75720, // 21h 2m
+        duration: 75720,
         coverImage: "https://images.unsplash.com/photo-1589829085413-56de8ae18c73?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=600",
         audioUrl: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+        contentUrl: null,
         genre: "Science Fiction",
         publishedYear: 1965,
         source: "local",
         sourceId: null,
         totalTime: "21:02:00",
         language: "English",
+        contentType: "audiobook",
+        isPremium: false,
+        pageCount: null,
       },
       {
         title: "The Girl with the Dragon Tattoo",
         author: "Stieg Larsson",
         narrator: "Simon Vance",
         description: "Harriet Vanger, a scion of one of Sweden's wealthiest families disappeared over forty years ago. All these years later, her aged uncle continues to seek the truth.",
-        duration: 65640, // 18h 14m
+        duration: 65640,
         coverImage: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=600",
         audioUrl: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+        contentUrl: null,
         genre: "Mystery/Thriller",
         publishedYear: 2005,
         source: "local",
         sourceId: null,
         totalTime: "18:14:00",
         language: "English",
+        contentType: "audiobook",
+        isPremium: false,
+        pageCount: null,
       },
       {
         title: "Atomic Habits",
         author: "James Clear",
         narrator: "James Clear",
         description: "No matter your goals, Atomic Habits offers a proven framework for improving--every day. James Clear reveals practical strategies that will teach you exactly how to form good habits.",
-        duration: 20100, // 5h 35m
+        duration: 20100,
         coverImage: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=600",
         audioUrl: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+        contentUrl: null,
         genre: "Self-Help",
         publishedYear: 2018,
         source: "local",
         sourceId: null,
         totalTime: "5:35:00",
         language: "English",
+        contentType: "audiobook",
+        isPremium: false,
+        pageCount: null,
       },
       {
         title: "The Book Thief",
         author: "Markus Zusak",
         narrator: "Allan Corduner",
         description: "It is 1939. Nazi Germany. The country is holding its breath. Death has never been busier, and will become busier still.",
-        duration: 50160, // 13h 56m
+        duration: 50160,
         coverImage: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=600",
         audioUrl: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+        contentUrl: null,
         genre: "Historical Fiction",
         publishedYear: 2005,
         source: "local",
         sourceId: null,
         totalTime: "13:56:00",
         language: "English",
+        contentType: "audiobook",
+        isPremium: false,
+        pageCount: null,
       },
       {
         title: "Where the Crawdads Sing",
         author: "Delia Owens",
         narrator: "Cassandra Campbell",
         description: "For years, rumors of the 'Marsh Girl' have haunted Barkley Cove, a quiet town on the North Carolina coast.",
-        duration: 43920, // 12h 12m
+        duration: 43920,
         coverImage: "https://images.unsplash.com/photo-1532012197267-da84d127e765?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=600",
         audioUrl: "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+        contentUrl: null,
         genre: "Fiction",
         publishedYear: 2018,
         source: "local",
         sourceId: null,
         totalTime: "12:12:00",
         language: "English",
+        contentType: "audiobook",
+        isPremium: false,
+        pageCount: null,
       },
     ];
 
@@ -781,6 +928,16 @@ export class ExternalAPIStorage implements IStorage {
       // External API books
       this.fetchExternalAPIBooks().catch(error => {
         console.warn('External API fetch failed:', error instanceof Error ? error.message : 'Unknown error');
+        return [];
+      }),
+      
+      // Project Gutenberg ebooks
+      this.fetchGutenbergBooks(20).then(ebooks => {
+        const transformed = ebooks.map(transformGutenbergBook);
+        console.log(`Fetched ${transformed.length} ebooks from Project Gutenberg`);
+        return transformed;
+      }).catch(error => {
+        console.warn('Gutenberg fetch failed:', error instanceof Error ? error.message : 'Unknown error');
         return [];
       })
     ];
@@ -932,12 +1089,16 @@ export class ExternalAPIStorage implements IStorage {
       narrator: insertBook.narrator ?? null,
       description: insertBook.description ?? null,
       coverImage: insertBook.coverImage ?? null,
+      contentUrl: insertBook.contentUrl ?? null,
       genre: insertBook.genre ?? null,
       publishedYear: insertBook.publishedYear ?? null,
       source: insertBook.source ?? "local",
       sourceId: insertBook.sourceId ?? null,
       totalTime: insertBook.totalTime ?? null,
       language: insertBook.language ?? "English",
+      contentType: insertBook.contentType ?? "audiobook",
+      isPremium: insertBook.isPremium ?? false,
+      pageCount: insertBook.pageCount ?? null,
     };
     this.fallbackBooks.set(id, book);
     return book;
@@ -976,6 +1137,12 @@ export class ExternalAPIStorage implements IStorage {
       // External API search
       this.searchExternalAPI(query).catch(error => {
         console.warn('External API search failed:', error);
+        return [];
+      }),
+      
+      // Project Gutenberg search
+      this.searchGutenbergBooks(query, 10).then(ebooks => ebooks.map(transformGutenbergBook)).catch(error => {
+        console.warn('Gutenberg search failed:', error);
         return [];
       })
     );
@@ -1651,6 +1818,67 @@ export class ExternalAPIStorage implements IStorage {
       return null;
     } catch (error) {
       console.warn(`Failed to fetch LibriVox book ${id}:`, error);
+      return null;
+    }
+  }
+
+  // Project Gutenberg API integration methods
+  private async fetchGutenbergBooks(limit = 32, page = 1): Promise<GutenbergBook[]> {
+    try {
+      console.log(`Fetching Gutenberg ebooks (page: ${page}, limit: ${limit})...`);
+      const url = `${GUTENBERG_API_BASE}/books?page=${page}&languages=en`;
+      
+      const response = await fetchWithTimeout(url, 10000);
+      
+      if (response.ok) {
+        const data = await response.json() as GutenbergSearchResponse;
+        console.log(`Gutenberg API response: ${data.results?.length || 0} ebooks`);
+        return data.results?.slice(0, limit) || [];
+      } else {
+        console.warn('Gutenberg API returned error:', response.status);
+        return [];
+      }
+    } catch (error) {
+      console.warn('Failed to fetch from Gutenberg API:', error);
+      return [];
+    }
+  }
+
+  private async searchGutenbergBooks(query: string, limit = 20): Promise<GutenbergBook[]> {
+    try {
+      console.log(`Searching Gutenberg for: "${query}"`);
+      const url = `${GUTENBERG_API_BASE}/books?search=${encodeURIComponent(query)}&languages=en`;
+      
+      const response = await fetchWithTimeout(url, 10000);
+      
+      if (response.ok) {
+        const data = await response.json() as GutenbergSearchResponse;
+        console.log(`Gutenberg search returned: ${data.results?.length || 0} ebooks`);
+        return data.results?.slice(0, limit) || [];
+      }
+      return [];
+    } catch (error) {
+      console.warn('Failed to search Gutenberg API:', error);
+      return [];
+    }
+  }
+
+  private async getGutenbergBook(id: string): Promise<GutenbergBook | null> {
+    try {
+      const gutenbergId = id.startsWith('gutenberg-') ? id.replace('gutenberg-', '') : id;
+      console.log(`Fetching Gutenberg ebook: ${gutenbergId}`);
+      
+      const url = `${GUTENBERG_API_BASE}/books/${gutenbergId}`;
+      
+      const response = await fetchWithTimeout(url, 10000);
+      
+      if (response.ok) {
+        const data = await response.json() as GutenbergBook;
+        return data;
+      }
+      return null;
+    } catch (error) {
+      console.warn(`Failed to fetch Gutenberg book ${id}:`, error);
       return null;
     }
   }

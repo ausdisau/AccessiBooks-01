@@ -1,5 +1,9 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, jsonb, index, boolean } from "drizzle-orm/pg-core";
+
+// Content type enum values
+export const CONTENT_TYPES = ["audiobook", "ebook", "magazine"] as const;
+export type ContentType = typeof CONTENT_TYPES[number];
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -12,12 +16,16 @@ export const books = pgTable("books", {
   duration: integer("duration").notNull(), // duration in seconds
   coverImage: text("cover_image"),
   audioUrl: text("audio_url").notNull(),
+  contentUrl: text("content_url"), // URL for ebook/magazine content (PDF, EPUB, etc.)
   genre: text("genre"),
   publishedYear: integer("published_year"),
   source: text("source").notNull().default("local"), // Track which API/source this book came from
   sourceId: text("source_id"), // Original ID from the source API
   totalTime: text("total_time"), // Human readable duration (e.g., "11:35:00")
   language: text("language").default("English"),
+  contentType: text("content_type").notNull().default("audiobook"), // audiobook, ebook, or magazine
+  isPremium: boolean("is_premium").notNull().default(false), // Whether content requires premium subscription
+  pageCount: integer("page_count"), // For ebooks and magazines
 });
 
 export const insertBookSchema = createInsertSchema(books).omit({
