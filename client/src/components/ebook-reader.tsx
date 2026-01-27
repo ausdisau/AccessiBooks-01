@@ -24,6 +24,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { localStorageService } from "@/lib/storage";
+import { PdfViewer } from "./pdf-viewer";
+import { EpubViewer } from "./epub-viewer";
 
 interface EbookReaderProps {
   book: Book;
@@ -44,7 +46,84 @@ const defaultSettings: ReadingSettings = {
   lineHeight: 1.8,
 };
 
+type ContentFormat = "text" | "pdf" | "epub" | "unknown";
+
+function detectContentFormat(book: Book): ContentFormat {
+  const url = book.contentUrl?.toLowerCase() || "";
+  
+  if (url.endsWith(".pdf")) return "pdf";
+  if (url.endsWith(".epub")) return "epub";
+  if (url.endsWith(".txt") || url.endsWith(".html") || url.endsWith(".htm")) return "text";
+  
+  if (url.includes("gutenberg.org") && url.includes(".txt")) return "text";
+  if (url.includes("archive.org") && url.includes("_djvu.txt")) return "text";
+  
+  return "text";
+}
+
 export function EbookReader({ book, onBack }: EbookReaderProps) {
+  const [detectedFormat, setDetectedFormat] = useState<ContentFormat>("unknown");
+  const [isDetecting, setIsDetecting] = useState(true);
+
+  useEffect(() => {
+    detectFormat();
+  }, [book.id]);
+
+  const detectFormat = async () => {
+    setIsDetecting(true);
+    
+    const urlFormat = detectContentFormat(book);
+    if (urlFormat !== "text") {
+      setDetectedFormat(urlFormat);
+      setIsDetecting(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/ebook/${book.id}/content`, {
+        method: "HEAD",
+      });
+      
+      const contentType = response.headers.get("content-type") || "";
+      
+      if (contentType.includes("application/pdf")) {
+        setDetectedFormat("pdf");
+      } else if (contentType.includes("application/epub") || contentType.includes("application/zip")) {
+        setDetectedFormat("epub");
+      } else {
+        setDetectedFormat("text");
+      }
+    } catch (err) {
+      console.error("Error detecting content type:", err);
+      setDetectedFormat("text");
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  if (isDetecting) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <BookOpen className="h-12 w-12 animate-pulse text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Preparing reader...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (detectedFormat === "pdf") {
+    return <PdfViewer book={book} onBack={onBack} />;
+  }
+  
+  if (detectedFormat === "epub") {
+    return <EpubViewer book={book} onBack={onBack} />;
+  }
+  
+  return <TextReader book={book} onBack={onBack} />;
+}
+
+function TextReader({ book, onBack }: EbookReaderProps) {
   const [content, setContent] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,11 +144,11 @@ export function EbookReader({ book, onBack }: EbookReaderProps) {
     setError(null);
     
     try {
-      // Use backend proxy to handle CORS and format conversion
       const response = await fetch(`/api/ebook/${book.id}/content`);
       if (!response.ok) {
         throw new Error("Failed to load ebook content");
       }
+      
       const text = await response.text();
       setContent(text);
       
