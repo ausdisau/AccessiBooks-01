@@ -181,21 +181,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/books/:id/chapters - Get chapters for a book (LibriVox only)
+  // GET /api/books/:id/chapters - Get chapters for a book
   app.get("/api/books/:id/chapters", async (req, res) => {
     try {
       const { id } = req.params;
-      
-      // Only LibriVox books have chapters
-      if (!id.startsWith("librivox-")) {
-        return res.json([]);
-      }
-      
       const chapters = await storage.getBookChapters(id);
       res.json(chapters);
     } catch (error) {
       console.error("Error fetching chapters:", error);
       res.status(500).json({ message: "Failed to fetch chapters" });
+    }
+  });
+
+  // POST /api/books/:id/chapters - Create chapters for a book (admin)
+  app.post("/api/books/:id/chapters", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: bookId } = req.params;
+      const { chapters: chapterList } = req.body;
+      
+      if (!Array.isArray(chapterList)) {
+        return res.status(400).json({ message: "chapters must be an array" });
+      }
+      
+      const chaptersToCreate = chapterList.map((ch: any, index: number) => ({
+        bookId,
+        title: ch.title || `Chapter ${index + 1}`,
+        chapterNumber: ch.chapterNumber ?? index + 1,
+        startTime: ch.startTime ?? null,
+        endTime: ch.endTime ?? null,
+        pageStart: ch.pageStart ?? null,
+        pageEnd: ch.pageEnd ?? null,
+        duration: ch.duration ?? null,
+      }));
+      
+      const created = await storage.createChapters(chaptersToCreate);
+      res.json(created);
+    } catch (error) {
+      console.error("Error creating chapters:", error);
+      res.status(500).json({ message: "Failed to create chapters" });
+    }
+  });
+
+  // DELETE /api/books/:id/chapters - Delete all chapters for a book (admin)
+  app.delete("/api/books/:id/chapters", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id: bookId } = req.params;
+      const deleted = await storage.deleteBookChapters(bookId);
+      res.json({ success: deleted });
+    } catch (error) {
+      console.error("Error deleting chapters:", error);
+      res.status(500).json({ message: "Failed to delete chapters" });
     }
   });
 
