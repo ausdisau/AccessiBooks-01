@@ -235,6 +235,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // HEAD /api/ebook/:id/content - Check content type without downloading
+  app.head("/api/ebook/:id/content", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const book = await storage.getBook(id);
+      
+      if (!book) {
+        return res.status(404).end();
+      }
+
+      if (book.contentType !== "ebook" && book.contentType !== "magazine") {
+        return res.status(400).end();
+      }
+
+      if (!book.contentUrl) {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        return res.end();
+      }
+
+      const urlLower = book.contentUrl.toLowerCase();
+      if (urlLower.endsWith(".pdf")) {
+        res.setHeader("Content-Type", "application/pdf");
+      } else if (urlLower.endsWith(".epub")) {
+        res.setHeader("Content-Type", "application/epub+zip");
+      } else {
+        try {
+          const response = await fetch(book.contentUrl, { method: "HEAD" });
+          const contentType = response.headers.get("content-type") || "text/plain";
+          res.setHeader("Content-Type", contentType);
+        } catch {
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        }
+      }
+      
+      res.end();
+    } catch (error) {
+      console.error("HEAD ebook content error:", error);
+      res.status(500).end();
+    }
+  });
+
   // GET /api/ebook/:id/content - Fetch and proxy ebook content
   // Handles CORS issues and format conversion for client-side reader
   app.get("/api/ebook/:id/content", async (req, res) => {
@@ -289,10 +330,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const text = await response.text();
           res.setHeader("Content-Type", "text/plain; charset=utf-8");
           res.send(text);
+        } else if (contentType.includes("application/pdf")) {
+          // Stream PDF content
+          const buffer = await response.arrayBuffer();
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Length", buffer.byteLength.toString());
+          res.send(Buffer.from(buffer));
+        } else if (contentType.includes("application/epub") || book.contentUrl.endsWith(".epub")) {
+          // Stream EPUB content
+          const buffer = await response.arrayBuffer();
+          res.setHeader("Content-Type", "application/epub+zip");
+          res.setHeader("Content-Length", buffer.byteLength.toString());
+          res.send(Buffer.from(buffer));
         } else {
-          // For other formats (PDF, EPUB), return a message
-          res.setHeader("Content-Type", "text/plain; charset=utf-8");
-          res.send(`This ebook is in ${contentType} format. Full reader support coming soon.\n\nTitle: ${book.title}\nAuthor: ${book.author}`);
+          // Try to determine format from URL extension
+          const urlLower = book.contentUrl.toLowerCase();
+          if (urlLower.endsWith(".pdf")) {
+            const buffer = await response.arrayBuffer();
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Length", buffer.byteLength.toString());
+            res.send(Buffer.from(buffer));
+          } else if (urlLower.endsWith(".epub")) {
+            const buffer = await response.arrayBuffer();
+            res.setHeader("Content-Type", "application/epub+zip");
+            res.setHeader("Content-Length", buffer.byteLength.toString());
+            res.send(Buffer.from(buffer));
+          } else {
+            // Unknown format, return as text
+            const text = await response.text();
+            res.setHeader("Content-Type", "text/plain; charset=utf-8");
+            res.send(text);
+          }
         }
       } catch (fetchError) {
         console.error("Error fetching ebook content:", fetchError);
