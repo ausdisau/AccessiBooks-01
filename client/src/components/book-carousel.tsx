@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Play, BookOpen } from "lucide-react";
@@ -169,5 +170,110 @@ export function GenreCarousel({ genres, onGenreSelect, selectedGenre }: GenreCar
         ))}
       </div>
     </div>
+  );
+}
+
+export function LandingCarousel() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  
+  const { data: books = [] } = useQuery<Book[]>({
+    queryKey: ["/api/books"],
+  });
+
+  const displayBooks = books.slice(0, 20);
+  const duplicatedBooks = [...displayBooks, ...displayBooks];
+
+  useEffect(() => {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer || displayBooks.length === 0) return;
+
+    let animationId: number;
+    let scrollPosition = 0;
+    const scrollSpeed = 0.5;
+
+    const animate = () => {
+      if (!isPaused && scrollContainer) {
+        scrollPosition += scrollSpeed;
+        
+        const singleSetWidth = scrollContainer.scrollWidth / 2;
+        if (scrollPosition >= singleSetWidth) {
+          scrollPosition = 0;
+        }
+        
+        scrollContainer.scrollLeft = scrollPosition;
+      }
+      animationId = requestAnimationFrame(animate);
+    };
+
+    animationId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
+  }, [displayBooks.length, isPaused]);
+
+  if (displayBooks.length === 0) {
+    return (
+      <section className="py-12 overflow-hidden">
+        <div className="flex gap-4 justify-center">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="w-32 md:w-40 aspect-[2/3] rounded-lg bg-secondary/50 animate-pulse" />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="py-12 overflow-hidden" aria-label="Featured audiobooks">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold mb-2">Discover Great Audiobooks</h2>
+        <p className="text-muted-foreground">Thousands of titles waiting for you</p>
+      </div>
+      
+      <div
+        ref={scrollRef}
+        className="flex gap-4 overflow-x-hidden cursor-pointer"
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        onFocus={() => setIsPaused(true)}
+        onBlur={() => setIsPaused(false)}
+        role="region"
+        aria-label="Scrolling book covers"
+      >
+        {duplicatedBooks.map((book, index) => (
+          <div
+            key={`${book.id}-${index}`}
+            className="flex-shrink-0 w-32 md:w-40 transition-transform duration-300 hover:scale-105"
+          >
+            <div className="relative aspect-[2/3] rounded-lg overflow-hidden shadow-lg bg-gradient-to-br from-primary/20 to-secondary/20">
+              {book.coverImage ? (
+                <img
+                  src={book.coverImage}
+                  alt={`${book.title} by ${book.author}`}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center p-2 text-center bg-secondary">
+                  <BookOpen className="h-12 w-12 text-muted-foreground" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity">
+                <div className="absolute bottom-0 left-0 right-0 p-2">
+                  <p className="text-white text-xs font-medium line-clamp-2">{book.title}</p>
+                  <p className="text-white/80 text-xs line-clamp-1">{book.author}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <p className="text-center text-sm text-muted-foreground mt-4">
+        Hover to pause • Sign up to start listening
+      </p>
+    </section>
   );
 }
