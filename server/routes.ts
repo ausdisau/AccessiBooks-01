@@ -5,6 +5,16 @@ import { z } from "zod";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
+import { 
+  ensureCoversDir, 
+  getGeneratedCoverUrl, 
+  hasGeneratedCover, 
+  buildCoverPrompt, 
+  queueCoverGeneration, 
+  getPendingCovers,
+  markCoverGenerated,
+  listGeneratedCovers
+} from "./coverGenerator";
 import { stripe, PREMIUM_PRICE_MONTHLY, SUBSCRIPTION_CONFIG, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature } from "./stripe";
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
@@ -231,6 +241,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting chapters:", error);
       res.status(500).json({ message: "Failed to delete chapters" });
+    }
+  });
+
+  // Ensure generated covers directory exists
+  ensureCoversDir();
+
+  // GET /api/books/:id/cover - Get or check for generated cover
+  app.get("/api/books/:id/cover", async (req, res) => {
+    try {
+      const { id: bookId } = req.params;
+      const generatedUrl = getGeneratedCoverUrl(bookId);
+      
+      if (generatedUrl) {
+        return res.json({ hasGeneratedCover: true, coverUrl: generatedUrl });
+      }
+      
+      res.json({ hasGeneratedCover: false, coverUrl: null });
+    } catch (error) {
+      console.error("Error checking cover:", error);
+      res.status(500).json({ message: "Failed to check cover" });
+    }
+  });
+
+  // POST /api/books/:id/cover/request - Request cover generation for a book
+  app.post("/api/books/:id/cover/request", async (req, res) => {
+    try {
+      const { id: bookId } = req.params;
+      
+      // Check if already generated
+      if (hasGeneratedCover(bookId)) {
+        return res.json({ 
+          status: "exists", 
+          coverUrl: getGeneratedCoverUrl(bookId) 
+        });
+      }
+      
+      // Get book details
+      const book = await storage.getBook(bookId);
+      if (!book) {
+        return res.status(404).json({ message: "Book not found" });
+      }
+      
+      // Queue for generation
+      const pending = queueCoverGeneration(
+        bookId,
+        book.title,
+        book.author,
+        book.genre || undefined,
+        book.contentType || 'audiobook'
+      );
+      
+      if (pending) {
+        res.json({ 
+          status: "queued", 
+          prompt: pending.prompt,
+          outputPath: pending.outputPath,
+          bookId: pending.bookId,
+          title: pending.title,
+          author: pending.author
+        });
+      } else {
+        res.json({ 
+          status: "exists", 
+          coverUrl: getGeneratedCoverUrl(bookId) 
+        });
+      }
+    } catch (error) {
+      console.error("Error requesting cover generation:", error);
+      res.status(500).json({ message: "Failed to request cover generation" });
+    }
+  });
+
+  // GET /api/covers/pending - Get list of books needing covers
+  app.get("/api/covers/pending", async (req, res) => {
+    try {
+      const pending = getPendingCovers();
+      res.json(pending);
+    } catch (error) {
+      console.error("Error getting pending covers:", error);
+      res.status(500).json({ message: "Failed to get pending covers" });
+    }
+  });
+
+  // GET /api/covers/generated - List all generated covers
+  app.get("/api/covers/generated", async (req, res) => {
+    try {
+      const covers = listGeneratedCovers();
+      res.json(covers);
+    } catch (error) {
+      console.error("Error listing generated covers:", error);
+      res.status(500).json({ message: "Failed to list generated covers" });
+    }
+  });
+
+  // POST /api/covers/:id/complete - Mark a cover as generated (called after AI generation)
+  app.post("/api/covers/:id/complete", async (req, res) => {
+    try {
+      const { id: bookId } = req.params;
+      markCoverGenerated(bookId);
+      res.json({ success: true, coverUrl: getGeneratedCoverUrl(bookId) });
+    } catch (error) {
+      console.error("Error marking cover complete:", error);
+      res.status(500).json({ message: "Failed to mark cover complete" });
     }
   });
 
