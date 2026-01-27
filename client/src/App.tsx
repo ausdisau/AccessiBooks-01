@@ -28,6 +28,7 @@ import { AccessibilityWidget } from "@/components/accessibility-widget";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { AuthorPage } from "@/components/author-page";
 import { SocialFeed } from "@/components/social-feed";
+import { LandingCarousel } from "@/components/book-carousel";
 
 type View = "library" | "player" | "author" | "feed";
 
@@ -590,6 +591,9 @@ function LandingPage() {
           </p>
         </div>
       </section>
+      
+      {/* Book Carousel */}
+      <LandingCarousel />
       
       {/* Features Grid */}
       <section className="w-full px-4 md:px-8 lg:px-16 py-16">
