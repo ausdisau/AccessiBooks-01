@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useRef, useEffect, ReactNode } from "react";
-import { Book, Progress } from "@shared/schema";
+import { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from "react";
+import { Book, Progress, Chapter } from "@shared/schema";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,6 +14,9 @@ interface AudioContextType {
   isLoading: boolean;
   sleepTimer: number | null;
   sleepTimerRemaining: number | null;
+  chapters: Chapter[];
+  currentChapter: Chapter | null;
+  currentChapterIndex: number;
   setCurrentBook: (book: Book | null) => void;
   togglePlayPause: () => Promise<void>;
   skip: (seconds: number) => void;
@@ -24,6 +27,10 @@ interface AudioContextType {
   setSleepTimer: (minutes: number | null) => void;
   cancelSleepTimer: () => void;
   onTrackEndCallback: React.MutableRefObject<(() => void) | null>;
+  onChapterEndCallback: React.MutableRefObject<(() => void) | null>;
+  nextChapter: () => void;
+  prevChapter: () => void;
+  seekToChapter: (chapterIndex: number) => void;
 }
 
 const AudioContext = createContext<AudioContextType | null>(null);
@@ -49,6 +56,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
   const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
   const onTrackEndCallback = useRef<(() => void) | null>(null);
+  const onChapterEndCallback = useRef<(() => void) | null>(null);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(-1);
+  const lastChapterIndex = useRef(-1);
 
   useEffect(() => {
     if (currentBook) {
@@ -143,6 +154,49 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [currentBook?.id]);
 
+  // Fetch chapters when book changes
+  useEffect(() => {
+    if (currentBook) {
+      fetch(`/api/books/${currentBook.id}/chapters`)
+        .then(res => res.json())
+        .then((fetchedChapters: Chapter[]) => {
+          setChapters(fetchedChapters);
+          setCurrentChapterIndex(fetchedChapters.length > 0 ? 0 : -1);
+          lastChapterIndex.current = -1;
+        })
+        .catch(err => {
+          console.error("Failed to fetch chapters:", err);
+          setChapters([]);
+          setCurrentChapterIndex(-1);
+        });
+    } else {
+      setChapters([]);
+      setCurrentChapterIndex(-1);
+    }
+  }, [currentBook?.id]);
+
+  // Track current chapter based on playback time
+  useEffect(() => {
+    if (chapters.length === 0) return;
+    
+    const newIndex = chapters.findIndex((ch, i) => {
+      const start = ch.startTime ?? 0;
+      const end = ch.endTime ?? (chapters[i + 1]?.startTime ?? duration);
+      return currentTime >= start && currentTime < end;
+    });
+    
+    if (newIndex !== -1 && newIndex !== currentChapterIndex) {
+      // Chapter changed - check if we completed a chapter
+      if (lastChapterIndex.current !== -1 && newIndex > lastChapterIndex.current) {
+        if (onChapterEndCallback.current) {
+          onChapterEndCallback.current();
+        }
+      }
+      setCurrentChapterIndex(newIndex);
+      lastChapterIndex.current = newIndex;
+    }
+  }, [currentTime, chapters, duration, currentChapterIndex]);
+
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.playbackRate = playbackRate;
@@ -183,6 +237,34 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     audio.currentTime = clampedTime;
     setCurrentTime(clampedTime);
   };
+
+  const seekToChapter = useCallback((chapterIndex: number) => {
+    if (chapterIndex < 0 || chapterIndex >= chapters.length) return;
+    
+    const chapter = chapters[chapterIndex];
+    const startTime = chapter.startTime ?? 0;
+    
+    if (audioRef.current) {
+      audioRef.current.currentTime = startTime;
+      setCurrentTime(startTime);
+      setCurrentChapterIndex(chapterIndex);
+    }
+  }, [chapters]);
+
+  const nextChapter = useCallback(() => {
+    if (currentChapterIndex < chapters.length - 1) {
+      seekToChapter(currentChapterIndex + 1);
+    }
+  }, [currentChapterIndex, chapters.length, seekToChapter]);
+
+  const prevChapter = useCallback(() => {
+    if (currentChapterIndex > 0) {
+      seekToChapter(currentChapterIndex - 1);
+    } else if (currentChapterIndex === 0 && chapters.length > 0) {
+      // If at first chapter, seek to beginning
+      seekToChapter(0);
+    }
+  }, [currentChapterIndex, chapters.length, seekToChapter]);
 
   const changeSpeed = (delta: number) => {
     const newRate = Math.max(0.6, Math.min(3.0, playbackRate + delta));
@@ -282,6 +364,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         isLoading,
         sleepTimer,
         sleepTimerRemaining,
+        chapters,
+        currentChapter: chapters[currentChapterIndex] ?? null,
+        currentChapterIndex,
         setCurrentBook,
         togglePlayPause,
         skip,
@@ -292,6 +377,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         setSleepTimer,
         cancelSleepTimer,
         onTrackEndCallback,
+        onChapterEndCallback,
+        nextChapter,
+        prevChapter,
+        seekToChapter,
       }}
     >
       <audio ref={audioRef} preload="metadata" />

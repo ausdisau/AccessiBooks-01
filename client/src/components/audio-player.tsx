@@ -31,8 +31,12 @@ import {
   ListMusic,
   ChevronDown,
   Crown,
-  SkipForward
+  SkipForward,
+  SkipBack,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
+import { useAudioContext } from "@/contexts/AudioContext";
 
 interface AudioPlayerProps {
   book: Book;
@@ -79,14 +83,26 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     isPremium,
   } = useMonetization();
   
+  const { 
+    chapters, 
+    currentChapter, 
+    currentChapterIndex,
+    nextChapter,
+    prevChapter,
+    seekToChapter,
+  } = useAudioContext();
+  
   const [bookmarkName, setBookmarkName] = useState("");
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
-  const [currentChapterId, setCurrentChapterId] = useState<string | undefined>();
   const [carMode, setCarMode] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+
+  const hasChapters = chapters.length > 0;
+  const canGoPrev = currentChapterIndex > 0;
+  const canGoNext = currentChapterIndex < chapters.length - 1;
 
   useEffect(() => {
     startSession(book.id);
@@ -130,18 +146,35 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     skip(-30);
   };
 
-  const handleChapterSelect = (chapter: { id: string; title: string; audioUrl: string }) => {
-    setCurrentChapterId(chapter.id);
-    if (audioRef.current) {
-      audioRef.current.src = chapter.audioUrl;
-      audioRef.current.load();
-      audioRef.current.play().catch(console.error);
+  const handleChapterSelect = (chapter: { id: string; title: string; audioUrl?: string }, index?: number) => {
+    if (index !== undefined) {
+      seekToChapter(index);
     }
     toast({
       title: "Now playing",
       description: chapter.title,
     });
     setShowChapters(false);
+  };
+
+  const handlePrevChapter = () => {
+    if (canGoPrev) {
+      prevChapter();
+      toast({
+        title: "Previous chapter",
+        description: chapters[currentChapterIndex - 1]?.title || "Previous chapter",
+      });
+    }
+  };
+
+  const handleNextChapter = () => {
+    if (canGoNext) {
+      nextChapter();
+      toast({
+        title: "Next chapter",
+        description: chapters[currentChapterIndex + 1]?.title || "Next chapter",
+      });
+    }
   };
 
   const handleAddBookmark = () => {
@@ -330,7 +363,34 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             />
           </div>
 
+          {/* Chapter indicator */}
+          {hasChapters && currentChapter && (
+            <div className="text-center mb-3">
+              <span className="text-sm text-muted-foreground">
+                Chapter {currentChapterIndex + 1} of {chapters.length}
+              </span>
+              <p className="text-sm font-medium truncate max-w-xs mx-auto">
+                {currentChapter.title}
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-center gap-4 mb-6">
+            {/* Previous chapter button */}
+            {hasChapters && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handlePrevChapter}
+                disabled={!canGoPrev}
+                className="h-10 w-10 rounded-full"
+                aria-label="Previous chapter"
+                data-testid="button-prev-chapter"
+              >
+                <SkipBack className="h-5 w-5" aria-hidden="true" />
+              </Button>
+            )}
+
             <Button
               size="lg"
               variant="ghost"
@@ -377,6 +437,21 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 </span>
               )}
             </Button>
+
+            {/* Next chapter button */}
+            {hasChapters && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleNextChapter}
+                disabled={!canGoNext}
+                className="h-10 w-10 rounded-full"
+                aria-label="Next chapter"
+                data-testid="button-next-chapter"
+              >
+                <SkipForward className="h-5 w-5" aria-hidden="true" />
+              </Button>
+            )}
           </div>
 
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -550,11 +625,10 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
         speed {playbackRate.toFixed(1)}x
       </div>
 
-      {showChapters && book.id.startsWith("librivox-") && (
+      {showChapters && hasChapters && (
         <ChapterList
           bookId={book.id}
           onChapterSelect={handleChapterSelect}
-          currentChapterId={currentChapterId}
         />
       )}
 
