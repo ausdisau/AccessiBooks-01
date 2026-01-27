@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Play, BookOpen, Headphones, Newspaper, Lock, BookOpenIcon } from "lucide-react";
+import { BookCover } from "@/components/book-cover";
 
 interface BookCardProps {
   book: Book;
@@ -38,18 +39,14 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
       >
         <CardContent className="p-3">
           <div className="relative">
-            {book.coverImage ? (
-              <img
-                src={book.coverImage}
-                alt={`${book.title} book cover`}
-                className="w-full h-32 object-cover rounded-md mb-2"
-                data-testid={`img-cover-${book.id}`}
-              />
-            ) : (
-              <div className="w-full h-32 bg-muted rounded-md mb-2 flex items-center justify-center">
-                <TypeIcon className="h-8 w-8 text-muted-foreground" />
-              </div>
-            )}
+            <BookCover
+              bookId={book.id}
+              coverImage={book.coverImage}
+              title={book.title}
+              contentType={contentType}
+              className="w-full h-32 object-cover rounded-md mb-2"
+              iconSize="h-8 w-8"
+            />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
               {isEbookOrMagazine ? (
                 <BookOpenIcon className="h-10 w-10 text-white" />
@@ -93,18 +90,14 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
     <Card className="hover:shadow-lg transition-shadow focus-within:ring-2 focus-within:ring-ring" data-testid={`card-book-${book.id}`}>
       <CardContent className="p-6">
         <div className="relative mb-4">
-          {book.coverImage ? (
-            <img
-              src={book.coverImage}
-              alt={`${book.title} book cover`}
-              className="w-full h-48 object-cover rounded-md"
-              data-testid={`img-cover-${book.id}`}
-            />
-          ) : (
-            <div className="w-full h-48 bg-muted rounded-md flex items-center justify-center">
-              <TypeIcon className="h-12 w-12 text-muted-foreground" />
-            </div>
-          )}
+          <BookCover
+            bookId={book.id}
+            coverImage={book.coverImage}
+            title={book.title}
+            contentType={contentType}
+            className="w-full h-48 object-cover rounded-md"
+            iconSize="h-12 w-12"
+          />
           
           {/* Content type badge */}
           <Badge 
