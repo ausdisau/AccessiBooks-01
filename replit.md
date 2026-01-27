@@ -218,3 +218,32 @@ Preferred communication style: Simple, everyday language.
 - **ChapterList**: Displays all chapters with highlighting for current chapter
 - **Chapter navigation buttons**: Prev/Next chapter controls in audio player
 - **Chapter indicator**: Shows current chapter number and title
+
+## AI-Generated Book Covers
+
+### Overview
+When books don't have cover images from their sources, the system can generate AI covers based on book metadata.
+
+### Cover Generation Service (server/coverGenerator.ts)
+- **buildCoverPrompt**: Creates AI prompts based on title, author, genre, and content type
+- **Genre-based styling**: Different visual styles for fiction, mystery, romance, sci-fi, fantasy, etc.
+- **File management**: Covers saved to `client/public/generated-covers/`
+
+### API Endpoints
+- GET /api/books/:id/cover - Check if generated cover exists
+- POST /api/books/:id/cover/request - Request cover generation, returns prompt for AI
+- GET /api/covers/pending - List books queued for cover generation
+- GET /api/covers/generated - List all generated cover IDs
+- POST /api/covers/:id/complete - Mark cover as generated
+
+### Frontend Components
+- **BookCover**: Smart cover component with fallback chain:
+  1. Original cover from source API
+  2. Generated cover from /generated-covers/
+  3. Placeholder icon based on content type
+- **BookCard**: Uses BookCover for consistent cover display
+
+### Cover Storage
+- Path: `client/public/generated-covers/`
+- Naming: `{sanitized-book-id}.png`
+- Served statically via Vite public folder
