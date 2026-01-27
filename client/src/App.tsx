@@ -599,7 +599,7 @@ function LandingPage() {
       <section className="w-full px-4 md:px-8 lg:px-16 py-16">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold mb-4">Why AccessiBooks?</h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             We believe everyone deserves access to great literature. Our platform is built from the ground up with accessibility in mind.
           </p>
         </div>
