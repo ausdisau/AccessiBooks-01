@@ -1,4 +1,4 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -54,6 +54,9 @@ export interface IStorage {
   
   // Chapters
   getBookChapters(bookId: string): Promise<Chapter[]>;
+  createChapter(chapter: InsertChapter): Promise<Chapter>;
+  createChapters(chapters: InsertChapter[]): Promise<Chapter[]>;
+  deleteBookChapters(bookId: string): Promise<boolean>;
   
   // Security
   validateAudioUrl(url: string): boolean;
@@ -268,13 +271,7 @@ interface LibriVoxSection {
   section_number: string;
 }
 
-export interface Chapter {
-  id: string;
-  title: string;
-  audioUrl: string;
-  duration: string;
-  chapterNumber: number;
-}
+// Chapter type now imported from @shared/schema
 
 interface LibriVoxBook {
   id: string;
@@ -1086,9 +1083,11 @@ export class ExternalAPIStorage implements IStorage {
     const book: Book = { 
       ...insertBook, 
       id,
+      duration: insertBook.duration ?? 0,
       narrator: insertBook.narrator ?? null,
       description: insertBook.description ?? null,
       coverImage: insertBook.coverImage ?? null,
+      audioUrl: insertBook.audioUrl ?? null,
       contentUrl: insertBook.contentUrl ?? null,
       genre: insertBook.genre ?? null,
       publishedYear: insertBook.publishedYear ?? null,
@@ -2029,31 +2028,51 @@ export class ExternalAPIStorage implements IStorage {
 
   async getBookChapters(bookId: string): Promise<Chapter[]> {
     try {
-      // Only LibriVox books have chapters
-      if (!bookId.startsWith("librivox-")) {
-        return [];
+      // First check database for chapters
+      const dbChapters = await db
+        .select()
+        .from(chapters)
+        .where(eq(chapters.bookId, bookId))
+        .orderBy(asc(chapters.chapterNumber));
+      
+      if (dbChapters.length > 0) {
+        return dbChapters;
       }
 
-      const librivoxId = bookId.replace("librivox-", "");
-      console.log(`Fetching chapters for LibriVox book: ${librivoxId}`);
+      // Fallback: LibriVox books have chapters from API
+      if (bookId.startsWith("librivox-")) {
+        const librivoxId = bookId.replace("librivox-", "");
+        console.log(`Fetching chapters for LibriVox book: ${librivoxId}`);
 
-      const url = `${LIBRIVOX_API_BASE}?id=${librivoxId}&format=json&extended=1`;
-      const response = await fetchWithTimeout(url, 10000);
+        const url = `${LIBRIVOX_API_BASE}?id=${librivoxId}&format=json&extended=1`;
+        const response = await fetchWithTimeout(url, 10000);
 
-      if (response.ok) {
-        const responseData = await response.json();
-        
-        if (responseData.books && Array.isArray(responseData.books) && responseData.books.length > 0) {
-          const book = responseData.books[0] as LibriVoxBook;
+        if (response.ok) {
+          const responseData = await response.json();
           
-          if (book.sections && Array.isArray(book.sections)) {
-            return book.sections.map((section: LibriVoxSection) => ({
-              id: section.id,
-              title: section.title || `Chapter ${section.section_number}`,
-              audioUrl: section.listen_url,
-              duration: section.playtime,
-              chapterNumber: parseInt(section.section_number, 10) || 0,
-            }));
+          if (responseData.books && Array.isArray(responseData.books) && responseData.books.length > 0) {
+            const book = responseData.books[0] as LibriVoxBook;
+            
+            if (book.sections && Array.isArray(book.sections)) {
+              let cumulativeTime = 0;
+              return book.sections.map((section: LibriVoxSection) => {
+                const sectionDuration = section.playtime ? parseInt(section.playtime, 10) : 0;
+                const startTime = cumulativeTime;
+                cumulativeTime += sectionDuration;
+                
+                return {
+                  id: section.id,
+                  bookId: bookId,
+                  title: section.title || `Chapter ${section.section_number}`,
+                  chapterNumber: parseInt(section.section_number, 10) || 0,
+                  startTime: startTime,
+                  endTime: cumulativeTime,
+                  duration: sectionDuration,
+                  pageStart: null,
+                  pageEnd: null,
+                };
+              });
+            }
           }
         }
       }
@@ -2062,6 +2081,33 @@ export class ExternalAPIStorage implements IStorage {
     } catch (error) {
       console.error(`Error fetching chapters for book ${bookId}:`, error);
       return [];
+    }
+  }
+
+  async createChapter(chapter: InsertChapter): Promise<Chapter> {
+    const [created] = await db
+      .insert(chapters)
+      .values(chapter)
+      .returning();
+    return created;
+  }
+
+  async createChapters(chapterList: InsertChapter[]): Promise<Chapter[]> {
+    if (chapterList.length === 0) return [];
+    const created = await db
+      .insert(chapters)
+      .values(chapterList)
+      .returning();
+    return created;
+  }
+
+  async deleteBookChapters(bookId: string): Promise<boolean> {
+    try {
+      await db.delete(chapters).where(eq(chapters.bookId, bookId));
+      return true;
+    } catch (error) {
+      console.error(`Error deleting chapters for book ${bookId}:`, error);
+      return false;
     }
   }
 

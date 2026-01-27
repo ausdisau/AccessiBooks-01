@@ -35,6 +35,28 @@ export const insertBookSchema = createInsertSchema(books).omit({
 export type InsertBook = z.infer<typeof insertBookSchema>;
 export type Book = typeof books.$inferSelect;
 
+export const chapters = pgTable("chapters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  chapterNumber: integer("chapter_number").notNull(),
+  startTime: integer("start_time"), // Start time in seconds (for audiobooks)
+  endTime: integer("end_time"), // End time in seconds (for audiobooks)
+  pageStart: integer("page_start"), // Start page (for ebooks/magazines)
+  pageEnd: integer("page_end"), // End page (for ebooks/magazines)
+  duration: integer("duration"), // Duration in seconds (for audiobooks)
+}, (table) => [
+  index("idx_chapters_book_id").on(table.bookId),
+  index("idx_chapters_order").on(table.bookId, table.chapterNumber),
+]);
+
+export const insertChapterSchema = createInsertSchema(chapters).omit({
+  id: true,
+});
+
+export type InsertChapter = z.infer<typeof insertChapterSchema>;
+export type Chapter = typeof chapters.$inferSelect;
+
 // Session storage table for Replit Auth
 export const sessions = pgTable(
   "sessions",
