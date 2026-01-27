@@ -13,6 +13,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
 import { useContentAccess } from "@/hooks/use-content-access";
 import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
+import { EbookReader } from "@/components/ebook-reader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +36,7 @@ import { SearchAutocomplete } from "@/components/search-autocomplete";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { Music2, BookOpen as BookOpenIcon } from "lucide-react";
 
-type View = "library" | "player" | "author" | "feed";
+type View = "library" | "player" | "reader" | "author" | "feed";
 
 // Header component with user management
 function AppHeader() {
@@ -840,8 +841,14 @@ function MainApp() {
       return;
     }
     setSelectedBook(book);
-    playBook(book);
-    setCurrentView("player");
+    
+    const contentType = book.contentType || "audiobook";
+    if (contentType === "ebook" || contentType === "magazine") {
+      setCurrentView("reader");
+    } else {
+      playBook(book);
+      setCurrentView("player");
+    }
   };
 
   const handleBackToLibrary = () => {
@@ -914,7 +921,7 @@ function MainApp() {
                 Library
               </button>
             </li>
-            {currentView === "player" && selectedBook && (
+            {(currentView === "player" || currentView === "reader") && selectedBook && (
               <>
                 <li className="flex items-center">
                   <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -1012,6 +1019,16 @@ function MainApp() {
             data-testid="panel-player"
           >
             <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
+          </div>
+        )}
+        {currentView === "reader" && selectedBook && (
+          <div
+            id="reader-panel"
+            role="tabpanel"
+            aria-labelledby="reader-tab"
+            data-testid="panel-reader"
+          >
+            <EbookReader book={selectedBook} onBack={handleBackToLibrary} />
           </div>
         )}
         {currentView === "author" && selectedAuthor && (

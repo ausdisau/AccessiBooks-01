@@ -71,10 +71,12 @@ Preferred communication style: Simple, everyday language.
     - **PayPal**: Alternative payment method for subscriptions and donations.
     - **Coinbase Commerce**: For cryptocurrency payments (Bitcoin, Ethereum, USDC, etc.).
 - **Content APIs**:
-    - **iTunes Search API**: Commercial audiobooks.
+    - **iTunes Search API**: Commercial audiobooks (premium).
     - **LibriVox API**: Free public domain audiobooks.
     - **Open Library API**: Comprehensive book metadata.
     - **Google Books API**: Enhanced search and discovery.
+    - **Project Gutenberg API (Gutendex)**: Free public domain ebooks.
+    - **Internet Archive API**: Free audiobooks, ebooks, and magazines.
 - **Advertising Platforms**:
     - **Google AdSense**: Simple ad integration.
     - **Google Ad Manager (DFP)**: Advanced ad serving.
@@ -118,3 +120,36 @@ Preferred communication style: Simple, everyday language.
 - **SocialFeed**: Reviews from followed users
 - **StarRating**: Reusable star rating component
 - **useReviews hook**: React hooks for review operations
+
+## Multi-Format Content System
+
+### Content Types
+- **Audiobooks**: Audio-based content with playback controls
+- **Ebooks**: Text-based content with dedicated reader
+- **Magazines**: Periodical content (in progress)
+
+### Database Schema Updates
+- `contentType`: Enum field (audiobook/ebook/magazine)
+- `isPremium`: Boolean flag for premium content gating
+- `contentUrl`: URL to text content for ebooks
+- `pageCount`: Number of pages for ebooks/magazines
+
+### Premium Content Gating
+- Free content: LibriVox, Project Gutenberg, Internet Archive
+- Premium content: iTunes audiobooks, commercial Google Books
+- Premium upgrade modal with Stripe integration
+- Content access hook for consistent gating across app
+
+### Ebook Reader Features
+- Variable font size (12-32px)
+- Light/dark theme toggle
+- Font family selection (serif, sans-serif, mono)
+- Page navigation with progress tracking
+- Bookmarks saved to localStorage
+- Reading progress persistence
+
+### UI Components
+- **BookCard**: Content type badges and premium lock icons
+- **EbookReader**: Full-featured text reader component
+- **PremiumUpgradeModal**: Subscription upsell modal
+- **useContentAccess hook**: Content access gating logic

@@ -13,9 +13,9 @@ export const books = pgTable("books", {
   author: text("author").notNull(),
   narrator: text("narrator"),
   description: text("description"),
-  duration: integer("duration").notNull(), // duration in seconds
+  duration: integer("duration").notNull().default(0), // duration in seconds (0 for ebooks)
   coverImage: text("cover_image"),
-  audioUrl: text("audio_url").notNull(),
+  audioUrl: text("audio_url"), // Nullable for ebooks/magazines that don't have audio
   contentUrl: text("content_url"), // URL for ebook/magazine content (PDF, EPUB, etc.)
   genre: text("genre"),
   publishedYear: integer("published_year"),
