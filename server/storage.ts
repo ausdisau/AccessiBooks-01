@@ -498,6 +498,83 @@ async function fetchWithTimeout(url: string, timeout = 5000): Promise<Response> 
   }
 }
 
+// Cover enrichment: Try to find covers for books missing them
+async function findCoverByTitle(title: string, author: string): Promise<string | null> {
+  const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
+  
+  // Try Open Library first (has the most covers)
+  try {
+    const olResponse = await fetchWithTimeout(
+      `${OPEN_LIBRARY_API_BASE}/search.json?q=${searchQuery}&limit=1&fields=cover_i,title,author_name`,
+      3000
+    );
+    if (olResponse.ok) {
+      const data = await olResponse.json() as OpenLibrarySearchResponse;
+      if (data.docs?.[0]?.cover_i) {
+        return `${OPEN_LIBRARY_COVERS_BASE}/b/id/${data.docs[0].cover_i}-M.jpg`;
+      }
+    }
+  } catch (error) {
+    // Silently continue to next source
+  }
+  
+  // Try Google Books as fallback
+  if (GOOGLE_BOOKS_API_KEY) {
+    try {
+      const gbResponse = await fetchWithTimeout(
+        `${GOOGLE_BOOKS_API_BASE}/volumes?q=${searchQuery}&maxResults=1&key=${GOOGLE_BOOKS_API_KEY}`,
+        3000
+      );
+      if (gbResponse.ok) {
+        const data = await gbResponse.json() as GoogleBooksSearchResponse;
+        if (data.items?.[0]?.volumeInfo?.imageLinks?.thumbnail) {
+          return data.items[0].volumeInfo.imageLinks.thumbnail.replace('http://', 'https://');
+        }
+      }
+    } catch (error) {
+      // Silently continue
+    }
+  }
+  
+  return null;
+}
+
+// Enrich books with missing covers (batch processing with concurrency limit)
+async function enrichBooksWithCovers(books: Book[], maxConcurrent = 5): Promise<Book[]> {
+  const booksNeedingCovers = books.filter(book => !book.coverImage);
+  
+  if (booksNeedingCovers.length === 0) {
+    return books;
+  }
+  
+  console.log(`Enriching covers for ${booksNeedingCovers.length} books without covers...`);
+  
+  // Process in batches to avoid overwhelming APIs
+  const coverPromises: Promise<{ bookId: string; coverUrl: string | null }>[] = [];
+  
+  for (const book of booksNeedingCovers.slice(0, maxConcurrent * 2)) {
+    coverPromises.push(
+      findCoverByTitle(book.title, book.author).then(coverUrl => ({
+        bookId: book.id,
+        coverUrl
+      }))
+    );
+  }
+  
+  const coverResults = await Promise.all(coverPromises);
+  const coverMap = new Map(coverResults.filter(r => r.coverUrl).map(r => [r.bookId, r.coverUrl]));
+  
+  console.log(`Found ${coverMap.size} additional covers via enrichment`);
+  
+  // Apply found covers to books
+  return books.map(book => {
+    if (!book.coverImage && coverMap.has(book.id)) {
+      return { ...book, coverImage: coverMap.get(book.id)! };
+    }
+    return book;
+  });
+}
+
 // Simple in-memory cache with TTL
 interface CacheEntry<T> {
   data: T;
@@ -707,11 +784,14 @@ export class ExternalAPIStorage implements IStorage {
       console.log(`Added ${fallbackBooks.length} fallback books`);
     }
     
-    // Cache the result
-    this.setCached('all_books', allBooks);
+    // Enrich books with missing covers
+    const enrichedBooks = await enrichBooksWithCovers(allBooks);
     
-    console.log(`Total books available: ${allBooks.length}`);
-    return allBooks;
+    // Cache the result
+    this.setCached('all_books', enrichedBooks);
+    
+    console.log(`Total books available: ${enrichedBooks.length}`);
+    return enrichedBooks;
   }
   
   private async fetchExternalAPIBooks(): Promise<Book[]> {
