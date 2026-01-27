@@ -15,14 +15,16 @@ interface PlayerProps {
 
 export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
   const { booksPlayed, incrementBooksPlayed, onAdComplete } = useAudioAds();
-  const { onTrackEndCallback } = useAudioContext();
+  const { onTrackEndCallback, onChapterEndCallback } = useAudioContext();
 
   useEffect(() => {
     onTrackEndCallback.current = incrementBooksPlayed;
+    onChapterEndCallback.current = incrementBooksPlayed;
     return () => {
       onTrackEndCallback.current = null;
+      onChapterEndCallback.current = null;
     };
-  }, [incrementBooksPlayed, onTrackEndCallback]);
+  }, [incrementBooksPlayed, onTrackEndCallback, onChapterEndCallback]);
 
   if (!book) {
     return (
