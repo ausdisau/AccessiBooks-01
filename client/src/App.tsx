@@ -26,8 +26,10 @@ import { PremiumBadge } from "@/components/premium-badge";
 import { SubscriptionCard } from "@/components/subscription-card";
 import { AccessibilityWidget } from "@/components/accessibility-widget";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { AuthorPage } from "@/components/author-page";
+import { SocialFeed } from "@/components/social-feed";
 
-type View = "library" | "player";
+type View = "library" | "player" | "author" | "feed";
 
 // Header component with user management
 function AppHeader() {
@@ -748,6 +750,7 @@ function LandingPage() {
 function MainApp() {
   const [currentView, setCurrentView] = useState<View>("library");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [selectedAuthor, setSelectedAuthor] = useState<string>("");
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, skip, changeSpeed } = useAudioContext();
 
@@ -766,6 +769,15 @@ function MainApp() {
       setSelectedBook(currentBook);
       setCurrentView("player");
     }
+  };
+
+  const handleViewAuthor = (authorName: string) => {
+    setSelectedAuthor(authorName);
+    setCurrentView("author");
+  };
+
+  const handleViewFeed = () => {
+    setCurrentView("feed");
   };
 
   // Global keyboard shortcuts
@@ -872,6 +884,23 @@ function MainApp() {
               <Play className="h-4 w-4 mr-2" aria-hidden="true" />
               Player
             </Button>
+
+            <Button
+              variant="ghost"
+              className={`py-4 px-1 border-b-2 font-medium ${
+                currentView === "feed"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={handleViewFeed}
+              role="tab"
+              aria-selected={currentView === "feed"}
+              aria-controls="feed-panel"
+              data-testid="tab-feed"
+            >
+              <Star className="h-4 w-4 mr-2" aria-hidden="true" />
+              Feed
+            </Button>
           </div>
         </div>
       </nav>
@@ -881,7 +910,7 @@ function MainApp() {
         id="main-content" 
         className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${hasMiniPlayer ? "pb-24" : ""}`}
       >
-        {currentView === "library" ? (
+        {currentView === "library" && (
           <div
             id="library-panel"
             role="tabpanel"
@@ -890,14 +919,25 @@ function MainApp() {
           >
             <Library onSelectBook={handleSelectBook} />
           </div>
-        ) : (
+        )}
+        {currentView === "player" && (
           <div
             id="player-panel"
             role="tabpanel"
             aria-labelledby="player-tab"
             data-testid="panel-player"
           >
-            <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} />
+            <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
+          </div>
+        )}
+        {currentView === "author" && selectedAuthor && (
+          <div id="author-panel" role="tabpanel" data-testid="panel-author">
+            <AuthorPage authorName={selectedAuthor} onBack={handleBackToLibrary} />
+          </div>
+        )}
+        {currentView === "feed" && (
+          <div id="feed-panel" role="tabpanel" data-testid="panel-feed">
+            <SocialFeed />
           </div>
         )}
       </main>

@@ -243,9 +243,10 @@ interface BookReviewsProps {
   bookId: string;
   title: string;
   author: string;
+  onViewAuthor?: (authorName: string) => void;
 }
 
-export function BookReviews({ bookId, title, author }: BookReviewsProps) {
+export function BookReviews({ bookId, title, author, onViewAuthor }: BookReviewsProps) {
   const { user } = useAuth();
   const { data: reviews, isLoading } = useBookReviews(bookId);
   const [showForm, setShowForm] = useState(false);
@@ -317,14 +318,12 @@ export function BookReviews({ bookId, title, author }: BookReviewsProps) {
       </Card>
 
       <div className="text-center">
-        <Link href={`/author/${encodeURIComponent(author)}`}>
-          <Button variant="outline">
-            View more by {author}
-          </Button>
-        </Link>
+        <Button variant="outline" onClick={() => onViewAuthor?.(author)}>
+          View more by {author}
+        </Button>
       </div>
     </div>
   );
 }
 
-export { StarRating, AggregatedRatingsDisplay };
+export { StarRating, AggregatedRatingsDisplay, ReviewCard };

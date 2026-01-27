@@ -78,3 +78,43 @@ Preferred communication style: Simple, everyday language.
 - **Advertising Platforms**:
     - **Google AdSense**: Simple ad integration.
     - **Google Ad Manager (DFP)**: Advanced ad serving.
+## Social Review System
+
+### Database Schema
+- **reviews**: User reviews with ratings (1-5), title, content, timestamps
+- **review_likes**: Helpful votes on reviews
+- **user_follows**: Social following relationships
+- **external_ratings**: Cached ratings from external sources
+- **authors**: Cached author metadata from Open Library
+
+### External Ratings Aggregation
+- **Google Books API**: Ratings and review counts
+- **iTunes Search API**: Audiobook ratings from Apple
+- **Weighted Average**: Combines all sources based on review count
+
+### Author Data (Open Library)
+- Biography and personal info
+- Birth/death dates
+- Author photos
+- Complete bibliography/works
+- Wikipedia links
+
+### API Endpoints
+- GET /api/books/:bookId/reviews - Get reviews for a book
+- GET /api/books/:bookId/ratings - Get aggregated ratings
+- POST /api/reviews - Create a review (auth required)
+- PUT /api/reviews/:id - Update a review (auth required)
+- DELETE /api/reviews/:id - Delete a review (auth required)
+- POST /api/reviews/:id/like - Toggle helpful vote
+- POST /api/users/:userId/follow - Follow a user
+- DELETE /api/users/:userId/follow - Unfollow a user
+- GET /api/feed - Get reviews from followed users
+- GET /api/authors/:name - Get author details
+- GET /api/authors/:name/works - Get author's bibliography
+
+### Frontend Components
+- **BookReviews**: Full review section with ratings and user reviews
+- **AuthorPage**: Author bio, photo, and complete works
+- **SocialFeed**: Reviews from followed users
+- **StarRating**: Reusable star rating component
+- **useReviews hook**: React hooks for review operations

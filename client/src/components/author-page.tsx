@@ -1,4 +1,4 @@
-import { BookOpen, Calendar, ExternalLink, User } from "lucide-react";
+import { BookOpen, Calendar, ExternalLink, User, ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,6 +7,7 @@ import { useAuthor, useAuthorWorks } from "@/hooks/use-reviews";
 
 interface AuthorPageProps {
   authorName: string;
+  onBack?: () => void;
 }
 
 function AuthorBio({ authorName }: { authorName: string }) {
@@ -171,9 +172,15 @@ function AuthorWorks({ authorName }: { authorName: string }) {
   );
 }
 
-export function AuthorPage({ authorName }: AuthorPageProps) {
+export function AuthorPage({ authorName, onBack }: AuthorPageProps) {
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl space-y-6">
+      {onBack && (
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+      )}
       <AuthorBio authorName={authorName} />
       <AuthorWorks authorName={authorName} />
     </div>
