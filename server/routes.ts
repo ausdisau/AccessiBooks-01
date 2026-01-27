@@ -210,6 +210,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Book not found" });
       }
       
+      // Check if audio URL exists (ebooks/magazines may not have audio)
+      if (!book.audioUrl) {
+        return res.status(400).json({ 
+          message: "This content does not have audio",
+          error: "NO_AUDIO_AVAILABLE"
+        });
+      }
+      
       // Security: Validate audio URL against allowed domains to prevent SSRF
       if (!storage.validateAudioUrl(book.audioUrl)) {
         console.warn(`Blocked potentially unsafe audio URL for book ${id}: ${book.audioUrl}`);
@@ -226,6 +234,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to stream book" });
     }
   });
+
+  // GET /api/ebook/:id/content - Fetch and proxy ebook content
+  // Handles CORS issues and format conversion for client-side reader
+  app.get("/api/ebook/:id/content", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const book = await storage.getBook(id);
+      
+      if (!book) {
+        return res.status(404).json({ message: "Book not found" });
+      }
+
+      // Check if this is an ebook or magazine
+      if (book.contentType !== "ebook" && book.contentType !== "magazine") {
+        return res.status(400).json({ message: "This is not an ebook or magazine" });
+      }
+
+      // If no content URL, return sample content
+      if (!book.contentUrl) {
+        const sampleContent = generateSampleEbookContent(book);
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        return res.send(sampleContent);
+      }
+
+      // Validate content URL against allowed domains
+      const allowedDomains = [
+        "gutenberg.org",
+        "archive.org",
+        "gutendex.com",
+        "standardebooks.org",
+        "manybooks.net",
+      ];
+
+      try {
+        const url = new URL(book.contentUrl);
+        const isAllowed = allowedDomains.some(domain => url.hostname.includes(domain));
+        
+        if (!isAllowed) {
+          console.warn(`Blocked content fetch from unallowed domain: ${url.hostname}`);
+          return res.status(403).json({ message: "Content source not allowed" });
+        }
+
+        // Fetch the content from the source
+        const response = await fetch(book.contentUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch content: ${response.status}`);
+        }
+
+        const contentType = response.headers.get("content-type") || "text/plain";
+        
+        // Handle different content types
+        if (contentType.includes("text/plain") || contentType.includes("text/html")) {
+          const text = await response.text();
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.send(text);
+        } else {
+          // For other formats (PDF, EPUB), return a message
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.send(`This ebook is in ${contentType} format. Full reader support coming soon.\n\nTitle: ${book.title}\nAuthor: ${book.author}`);
+        }
+      } catch (fetchError) {
+        console.error("Error fetching ebook content:", fetchError);
+        // Fall back to sample content
+        const sampleContent = generateSampleEbookContent(book);
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.send(sampleContent);
+      }
+    } catch (error) {
+      console.error("Ebook content error:", error);
+      res.status(500).json({ message: "Failed to fetch ebook content" });
+    }
+  });
+
+  // Helper function to generate sample ebook content
+  function generateSampleEbookContent(book: any): string {
+    const intro = `${book.title}\nby ${book.author}\n\n`;
+    const lorem = `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\n`;
+    
+    let content = intro;
+    for (let i = 0; i < 30; i++) {
+      content += `Chapter ${i + 1}\n\n` + lorem.repeat(3);
+    }
+    return content;
+  }
 
   // Spotify connection status
   app.get("/api/spotify/status", async (req, res) => {
