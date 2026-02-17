@@ -330,4 +330,147 @@ export interface DJRecommendation {
   books: Book[];
 }
 
+// === GAMIFICATION SYSTEM ===
+
+// User streaks - track consecutive days of listening
+export const userStreaks = pgTable("user_streaks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  currentStreak: integer("current_streak").notNull().default(0),
+  longestStreak: integer("longest_streak").notNull().default(0),
+  lastListenedDate: text("last_listened_date"), // YYYY-MM-DD format
+  streakStartDate: text("streak_start_date"), // YYYY-MM-DD format
+}, (table) => [
+  index("idx_user_streaks_user").on(table.userId),
+]);
+
+export type UserStreak = typeof userStreaks.$inferSelect;
+
+// User XP and levels
+export const userXp = pgTable("user_xp", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  totalXp: integer("total_xp").notNull().default(0),
+  level: integer("level").notNull().default(1),
+  totalListeningMinutes: integer("total_listening_minutes").notNull().default(0),
+  booksCompleted: integer("books_completed").notNull().default(0),
+  reviewsWritten: integer("reviews_written").notNull().default(0),
+}, (table) => [
+  index("idx_user_xp_user").on(table.userId),
+  index("idx_user_xp_total").on(table.totalXp),
+]);
+
+export type UserXp = typeof userXp.$inferSelect;
+
+// Achievement definitions
+export const ACHIEVEMENT_TYPES = [
+  "first_listen", "first_complete", "streak_3", "streak_7", "streak_30",
+  "speed_demon", "night_owl", "early_bird", "genre_explorer",
+  "bookworm_5", "bookworm_10", "bookworm_25", "bookworm_50",
+  "social_butterfly", "critic", "marathon_listener",
+  "level_5", "level_10", "level_25",
+] as const;
+export type AchievementType = typeof ACHIEVEMENT_TYPES[number];
+
+// User achievements/badges
+export const userAchievements = pgTable("user_achievements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  achievementType: varchar("achievement_type").notNull(),
+  unlockedAt: timestamp("unlocked_at").defaultNow(),
+}, (table) => [
+  index("idx_user_achievements_user").on(table.userId),
+]);
+
+export type UserAchievement = typeof userAchievements.$inferSelect;
+
+// Daily listening log for streak tracking and goals
+export const dailyListeningLog = pgTable("daily_listening_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  date: text("date").notNull(), // YYYY-MM-DD
+  minutesListened: integer("minutes_listened").notNull().default(0),
+  booksStarted: integer("books_started").notNull().default(0),
+  booksCompleted: integer("books_completed").notNull().default(0),
+}, (table) => [
+  index("idx_daily_log_user_date").on(table.userId, table.date),
+]);
+
+export type DailyListeningLog = typeof dailyListeningLog.$inferSelect;
+
+// User daily goals
+export const userGoals = pgTable("user_goals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  dailyMinutesGoal: integer("daily_minutes_goal").notNull().default(30),
+}, (table) => [
+  index("idx_user_goals_user").on(table.userId),
+]);
+
+export type UserGoal = typeof userGoals.$inferSelect;
+
+// Reading challenges
+export const readingChallenges = pgTable("reading_challenges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  targetBooks: integer("target_books").notNull(),
+  startDate: text("start_date").notNull(), // YYYY-MM-DD
+  endDate: text("end_date").notNull(), // YYYY-MM-DD
+  badgeIcon: text("badge_icon"), // emoji or icon name
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export type ReadingChallenge = typeof readingChallenges.$inferSelect;
+
+// User challenge progress
+export const userChallengeProgress = pgTable("user_challenge_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  challengeId: varchar("challenge_id").notNull().references(() => readingChallenges.id, { onDelete: "cascade" }),
+  booksCompleted: integer("books_completed").notNull().default(0),
+  completedAt: timestamp("completed_at"),
+  joinedAt: timestamp("joined_at").defaultNow(),
+}, (table) => [
+  index("idx_user_challenge_user").on(table.userId),
+  index("idx_user_challenge_challenge").on(table.challengeId),
+]);
+
+export type UserChallengeProgress = typeof userChallengeProgress.$inferSelect;
+
+// Achievement metadata for frontend display
+export interface AchievementMeta {
+  type: AchievementType;
+  name: string;
+  description: string;
+  icon: string;
+  xpReward: number;
+}
+
+// Gamification profile combining all user stats
+export interface GamificationProfile {
+  streak: UserStreak;
+  xp: UserXp;
+  achievements: UserAchievement[];
+  dailyLog: DailyListeningLog | null;
+  goal: UserGoal;
+  level: number;
+  xpToNextLevel: number;
+  xpForCurrentLevel: number;
+}
+
+// Leaderboard entry
+export interface LeaderboardEntry {
+  userId: string;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  totalXp: number;
+  level: number;
+  booksCompleted: number;
+  totalListeningMinutes: number;
+  currentStreak: number;
+  rank: number;
+}
+
 export * from "./models/chat";
