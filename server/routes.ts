@@ -1,7 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
 import { z } from "zod";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books } from "@shared/schema";
+import { eq, desc, sql, count, sum } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
@@ -141,6 +144,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(books);
     } catch (error) {
       res.status(500).json({ message: "Failed to search books" });
+    }
+  });
+
+  // GET /api/books/featured - Book of the Day (deterministic by date)
+  app.get("/api/books/featured", async (_req, res) => {
+    try {
+      const allBooks = await storage.getBooks();
+      if (allBooks.length === 0) {
+        return res.status(404).json({ message: "No books available" });
+      }
+      const today = new Date();
+      const daysSinceEpoch = Math.floor(today.getTime() / (1000 * 60 * 60 * 24));
+      const index = daysSinceEpoch % allBooks.length;
+      res.json(allBooks[index]);
+    } catch (error) {
+      console.error("Error fetching featured book:", error);
+      res.status(500).json({ message: "Failed to fetch featured book" });
+    }
+  });
+
+  // GET /api/books/trending - Top 10 most-listened books
+  app.get("/api/books/trending", async (_req, res) => {
+    try {
+      const trending = await db
+        .select({
+          bookId: listeningHistory.bookId,
+          playCount: sql<number>`cast(sum(${listeningHistory.playCount}) as int)`,
+        })
+        .from(listeningHistory)
+        .groupBy(listeningHistory.bookId)
+        .orderBy(desc(sql`sum(${listeningHistory.playCount})`))
+        .limit(10);
+
+      if (trending.length > 0) {
+        const trendingBooks = [];
+        for (const item of trending) {
+          const book = await storage.getBook(item.bookId);
+          if (book) trendingBooks.push(book);
+        }
+        if (trendingBooks.length > 0) {
+          return res.json(trendingBooks);
+        }
+      }
+
+      const allBooks = await storage.getBooks();
+      const shuffled = allBooks.sort(() => 0.5 - Math.random()).slice(0, 10);
+      res.json(shuffled);
+    } catch (error) {
+      console.error("Error fetching trending books:", error);
+      res.status(500).json({ message: "Failed to fetch trending books" });
     }
   });
 
@@ -2221,6 +2274,476 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user challenges:", error);
       res.status(500).json({ message: "Failed to fetch challenges" });
+    }
+  });
+
+  // === USER ACQUISITION ROUTES ===
+
+  // GET /api/platform/stats - Public platform statistics
+  app.get("/api/platform/stats", async (_req, res) => {
+    try {
+      const allBooks = await storage.getBooks();
+      const totalBooks = allBooks.length;
+
+      const [userCount] = await db.select({ count: count() }).from(users);
+      const totalUsers = userCount?.count ?? 0;
+
+      const [xpSum] = await db.select({ total: sql<number>`coalesce(sum(${userXp.totalListeningMinutes}), 0)` }).from(userXp);
+      const totalListeningMinutes = Number(xpSum?.total ?? 0);
+
+      res.json({ totalBooks, totalUsers, totalListeningMinutes });
+    } catch (error) {
+      console.error("Error fetching platform stats:", error);
+      res.status(500).json({ message: "Failed to fetch platform stats" });
+    }
+  });
+
+  // POST /api/user/welcome-bonus - Grant welcome bonus to new users
+  app.post("/api/user/welcome-bonus", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const [existing] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+      if (existing?.welcomeBonusGranted) {
+        return res.json({ granted: false, message: "Welcome bonus already claimed" });
+      }
+
+      const premiumTrialEnd = new Date();
+      premiumTrialEnd.setDate(premiumTrialEnd.getDate() + 7);
+
+      if (existing) {
+        await db.update(userPreferences)
+          .set({ welcomeBonusGranted: true, premiumTrialEndDate: premiumTrialEnd })
+          .where(eq(userPreferences.userId, userId));
+      } else {
+        await db.insert(userPreferences).values({
+          userId,
+          welcomeBonusGranted: true,
+          premiumTrialEndDate: premiumTrialEnd,
+          favoriteGenres: [],
+          onboardingCompleted: false,
+        });
+      }
+
+      const [existingXp] = await db.select().from(userXp).where(eq(userXp.userId, userId));
+      if (existingXp) {
+        await db.update(userXp)
+          .set({ totalXp: sql`${userXp.totalXp} + 250` })
+          .where(eq(userXp.userId, userId));
+      } else {
+        await db.insert(userXp).values({
+          userId,
+          totalXp: 250,
+          level: 1,
+          totalListeningMinutes: 0,
+          booksCompleted: 0,
+          reviewsWritten: 0,
+        });
+      }
+
+      const [existingAchievement] = await db.select().from(userAchievements)
+        .where(sql`${userAchievements.userId} = ${userId} AND ${userAchievements.achievementType} = 'welcome'`);
+      if (!existingAchievement) {
+        await db.insert(userAchievements).values({
+          userId,
+          achievementType: "welcome",
+        });
+      }
+
+      res.json({ granted: true, xpAwarded: 250, premiumTrialDays: 7 });
+    } catch (error) {
+      console.error("Error granting welcome bonus:", error);
+      res.status(500).json({ message: "Failed to grant welcome bonus" });
+    }
+  });
+
+  // POST /api/referrals/generate - Generate a referral code
+  app.post("/api/referrals/generate", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const [existing] = await db.select().from(referrals).where(eq(referrals.referrerId, userId));
+      if (existing) {
+        return res.json({
+          code: existing.referralCode,
+          shareUrl: `${req.protocol}://${req.get("host")}/referral/${existing.referralCode}`,
+        });
+      }
+
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+      let code = "";
+      for (let i = 0; i < 8; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      const [newReferral] = await db.insert(referrals).values({
+        referrerId: userId,
+        referralCode: code,
+        status: "pending",
+        rewardGranted: false,
+      }).returning();
+
+      res.json({
+        code: newReferral.referralCode,
+        shareUrl: `${req.protocol}://${req.get("host")}/referral/${newReferral.referralCode}`,
+      });
+    } catch (error) {
+      console.error("Error generating referral code:", error);
+      res.status(500).json({ message: "Failed to generate referral code" });
+    }
+  });
+
+  // GET /api/referrals/stats - Get referral statistics
+  app.get("/api/referrals/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const userReferrals = await db.select().from(referrals).where(eq(referrals.referrerId, userId));
+      if (userReferrals.length === 0) {
+        return res.json({ referralCode: null, totalReferred: 0, convertedCount: 0, pendingCount: 0 });
+      }
+
+      const referralCode = userReferrals[0].referralCode;
+      const totalReferred = userReferrals.filter(r => r.referredUserId).length;
+      const convertedCount = userReferrals.filter(r => r.status === "converted").length;
+      const pendingCount = userReferrals.filter(r => r.status === "pending").length;
+
+      res.json({ referralCode, totalReferred, convertedCount, pendingCount });
+    } catch (error) {
+      console.error("Error fetching referral stats:", error);
+      res.status(500).json({ message: "Failed to fetch referral stats" });
+    }
+  });
+
+  // POST /api/referrals/redeem - Redeem a referral code
+  app.post("/api/referrals/redeem", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { code } = req.body;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ message: "Referral code is required" });
+      }
+
+      const [referral] = await db.select().from(referrals).where(eq(referrals.referralCode, code));
+      if (!referral) {
+        return res.status(404).json({ message: "Invalid referral code" });
+      }
+
+      if (referral.referrerId === userId) {
+        return res.status(400).json({ message: "Cannot redeem your own referral code" });
+      }
+
+      if (referral.status === "converted") {
+        return res.status(400).json({ message: "Referral code already redeemed" });
+      }
+
+      await db.update(referrals)
+        .set({
+          status: "converted",
+          referredUserId: userId,
+          convertedAt: new Date(),
+          rewardGranted: true,
+        })
+        .where(eq(referrals.id, referral.id));
+
+      const [existingXp] = await db.select().from(userXp).where(eq(userXp.userId, referral.referrerId));
+      if (existingXp) {
+        await db.update(userXp)
+          .set({ totalXp: sql`${userXp.totalXp} + 500` })
+          .where(eq(userXp.userId, referral.referrerId));
+      } else {
+        await db.insert(userXp).values({
+          userId: referral.referrerId,
+          totalXp: 500,
+          level: 1,
+          totalListeningMinutes: 0,
+          booksCompleted: 0,
+          reviewsWritten: 0,
+        });
+      }
+
+      const [referrerPrefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, referral.referrerId));
+      const newTrialEnd = new Date();
+      if (referrerPrefs?.premiumTrialEndDate && referrerPrefs.premiumTrialEndDate > new Date()) {
+        newTrialEnd.setTime(referrerPrefs.premiumTrialEndDate.getTime());
+      }
+      newTrialEnd.setDate(newTrialEnd.getDate() + 7);
+
+      if (referrerPrefs) {
+        await db.update(userPreferences)
+          .set({ premiumTrialEndDate: newTrialEnd })
+          .where(eq(userPreferences.userId, referral.referrerId));
+      } else {
+        await db.insert(userPreferences).values({
+          userId: referral.referrerId,
+          premiumTrialEndDate: newTrialEnd,
+          favoriteGenres: [],
+          onboardingCompleted: false,
+          welcomeBonusGranted: false,
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error redeeming referral:", error);
+      res.status(500).json({ message: "Failed to redeem referral code" });
+    }
+  });
+
+  // PUT /api/user/preferences - Update user preferences
+  app.put("/api/user/preferences", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { favoriteGenres, onboardingCompleted } = req.body;
+
+      const [existing] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+      if (existing) {
+        const updates: any = {};
+        if (favoriteGenres !== undefined) updates.favoriteGenres = favoriteGenres;
+        if (onboardingCompleted !== undefined) updates.onboardingCompleted = onboardingCompleted;
+        const [updated] = await db.update(userPreferences)
+          .set(updates)
+          .where(eq(userPreferences.userId, userId))
+          .returning();
+        res.json(updated);
+      } else {
+        const [created] = await db.insert(userPreferences).values({
+          userId,
+          favoriteGenres: favoriteGenres || [],
+          onboardingCompleted: onboardingCompleted || false,
+          welcomeBonusGranted: false,
+        }).returning();
+        res.json(created);
+      }
+    } catch (error) {
+      console.error("Error updating preferences:", error);
+      res.status(500).json({ message: "Failed to update preferences" });
+    }
+  });
+
+  // GET /api/user/preferences - Get user preferences
+  app.get("/api/user/preferences", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const [prefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+      if (!prefs) {
+        return res.json({
+          userId,
+          favoriteGenres: [],
+          onboardingCompleted: false,
+          welcomeBonusGranted: false,
+          premiumTrialEndDate: null,
+        });
+      }
+      res.json(prefs);
+    } catch (error) {
+      console.error("Error fetching preferences:", error);
+      res.status(500).json({ message: "Failed to fetch preferences" });
+    }
+  });
+
+  // GET /api/reviews/public - Public reviews feed
+  app.get("/api/reviews/public", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+
+      const publicReviews = await db
+        .select({
+          id: reviews.id,
+          rating: reviews.rating,
+          title: reviews.title,
+          content: reviews.content,
+          createdAt: reviews.createdAt,
+          bookId: reviews.bookId,
+          userName: sql<string>`coalesce(${users.firstName} || ' ' || ${users.lastName}, ${users.email}, 'Anonymous')`,
+          userImage: users.profileImageUrl,
+        })
+        .from(reviews)
+        .innerJoin(users, eq(reviews.userId, users.id))
+        .orderBy(desc(reviews.createdAt))
+        .limit(limit);
+
+      const reviewsWithBooks = await Promise.all(
+        publicReviews.map(async (review) => {
+          const book = await storage.getBook(review.bookId);
+          return {
+            ...review,
+            bookTitle: book?.title || "Unknown Book",
+            bookAuthor: book?.author || "Unknown Author",
+            bookCover: book?.coverImage || null,
+          };
+        })
+      );
+
+      res.json(reviewsWithBooks);
+    } catch (error) {
+      console.error("Error fetching public reviews:", error);
+      res.status(500).json({ message: "Failed to fetch public reviews" });
+    }
+  });
+
+  // === SEO Routes (must be before Vite middleware) ===
+
+  function escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function truncate(str: string, len: number): string {
+    if (str.length <= len) return str;
+    return str.slice(0, len - 3) + "...";
+  }
+
+  // GET /book/:id - SEO meta tag page for book detail
+  app.get("/book/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const book = await storage.getBook(id);
+
+      if (!book) {
+        return res.status(404).send("Book not found");
+      }
+
+      const title = escapeHtml(book.title);
+      const author = escapeHtml(book.author);
+      const description = escapeHtml(truncate(book.description || `Listen to ${book.title} by ${book.author} on AccessiBooks.`, 160));
+      const coverImage = escapeHtml(book.coverImage || "");
+      const genre = escapeHtml(book.genre || "");
+      const host = req.headers.host || "localhost";
+      const url = escapeHtml(`https://${host}/book/${id}`);
+      const rawDescription = book.description || `Listen to ${book.title} by ${book.author} on AccessiBooks.`;
+
+      const jsonLd = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Audiobook",
+        "name": book.title,
+        "author": { "@type": "Person", "name": book.author },
+        "description": rawDescription,
+        "image": book.coverImage || "",
+        "genre": book.genre || "",
+      });
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} by ${author} | AccessiBooks</title>
+  <meta name="description" content="${description}">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:image" content="${coverImage}">
+  <meta property="og:type" content="book">
+  <meta property="og:url" content="${url}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  <script type="application/ld+json">${jsonLd}</script>
+  <meta http-equiv="refresh" content="0;url=/?book=${encodeURIComponent(id)}">
+</head>
+<body>
+  <p>Redirecting to <a href="/?book=${encodeURIComponent(id)}">${title} by ${author}</a>...</p>
+</body>
+</html>`;
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(html);
+    } catch (error) {
+      console.error("Error serving book SEO page:", error);
+      res.status(500).send("Internal server error");
+    }
+  });
+
+  // GET /author/:name - SEO meta tag page for author
+  app.get("/author/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+      const decodedName = decodeURIComponent(name);
+      const escapedName = escapeHtml(decodedName);
+      const host = req.headers.host || "localhost";
+      const url = escapeHtml(`https://${host}/author/${encodeURIComponent(decodedName)}`);
+      const description = escapeHtml(truncate(`Browse audiobooks and ebooks by ${decodedName} on AccessiBooks. Discover their complete collection.`, 160));
+
+      const jsonLd = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": decodedName,
+        "url": `https://${host}/author/${encodeURIComponent(decodedName)}`,
+      });
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapedName} - Author | AccessiBooks</title>
+  <meta name="description" content="${description}">
+  <meta property="og:title" content="${escapedName} - Author">
+  <meta property="og:description" content="${description}">
+  <meta property="og:type" content="profile">
+  <meta property="og:url" content="${url}">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${escapedName} - Author">
+  <meta name="twitter:description" content="${description}">
+  <script type="application/ld+json">${jsonLd}</script>
+  <meta http-equiv="refresh" content="0;url=/?author=${encodeURIComponent(decodedName)}">
+</head>
+<body>
+  <p>Redirecting to <a href="/?author=${encodeURIComponent(decodedName)}">${escapedName}</a> on AccessiBooks...</p>
+</body>
+</html>`;
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(html);
+    } catch (error) {
+      console.error("Error serving author SEO page:", error);
+      res.status(500).send("Internal server error");
+    }
+  });
+
+  // GET /sitemap.xml - XML sitemap for search engines
+  app.get("/sitemap.xml", async (req, res) => {
+    try {
+      const host = req.headers.host || "localhost";
+      const baseUrl = `https://${host}`;
+      const allBooks = await storage.getBooks();
+
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${escapeHtml(baseUrl)}/</loc>
+    <priority>1.0</priority>
+  </url>`;
+
+      for (const book of allBooks) {
+        xml += `
+  <url>
+    <loc>${escapeHtml(baseUrl)}/book/${encodeURIComponent(book.id)}</loc>
+    <priority>0.8</priority>
+  </url>`;
+      }
+
+      xml += `
+</urlset>`;
+
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.send(xml);
+    } catch (error) {
+      console.error("Error generating sitemap:", error);
+      res.status(500).send("Internal server error");
     }
   });
 

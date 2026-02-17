@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Book } from "@shared/schema";
 import { AudioPlayer } from "@/components/audio-player";
 import { BookReviews } from "@/components/book-reviews";
+import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, User } from "lucide-react";
 import { AudioAdInterstitial, useAudioAds } from "@/components/audio-ad-interstitial";
@@ -58,16 +59,19 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
           Back to Library
         </Button>
         
-        {book.author && onViewAuthor && (
-          <Button 
-            variant="ghost"
-            onClick={() => onViewAuthor(book.author)}
-            data-testid="button-view-author"
-          >
-            <User className="h-4 w-4 mr-2" aria-hidden="true" />
-            About {book.author}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {book.author && onViewAuthor && (
+            <Button 
+              variant="ghost"
+              onClick={() => onViewAuthor(book.author)}
+              data-testid="button-view-author"
+            >
+              <User className="h-4 w-4 mr-2" aria-hidden="true" />
+              About {book.author}
+            </Button>
+          )}
+          <ShareButton book={book} variant="button" />
+        </div>
       </div>
       
       <AudioPlayer book={book} />

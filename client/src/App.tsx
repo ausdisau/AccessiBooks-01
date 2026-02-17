@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QueryClientProvider, useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -17,7 +17,7 @@ import { EbookReader } from "@/components/ebook-reader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,6 +34,11 @@ import { SocialFeed } from "@/components/social-feed";
 import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
 import { GamificationDashboard } from "@/components/gamification-dashboard";
+import { SignUpPrompt } from "@/components/sign-up-prompt";
+import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
+import { OnboardingFlow } from "@/components/onboarding-flow";
+import { ShareButton } from "@/components/share-button";
+import { ReferralSection } from "@/components/referral-section";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { Music2, BookOpen as BookOpenIcon, Trophy } from "lucide-react";
 
@@ -502,12 +507,111 @@ function CuratedCollectionsPreview() {
   );
 }
 
+function PublicCommunitySection({ onJoin }: { onJoin: () => void }) {
+  const { data: challenges = [], isLoading: challengesLoading } = useQuery<any[]>({
+    queryKey: ["/api/gamification/challenges"],
+  });
+
+  const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery<any[]>({
+    queryKey: ["/api/gamification/leaderboard?period=alltime"],
+  });
+
+  const isLoading = challengesLoading || leaderboardLoading;
+  if (isLoading) return null;
+  if (challenges.length === 0 && leaderboard.length === 0) return null;
+
+  return (
+    <section className="w-full px-4 md:px-8 lg:px-16 py-12">
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-3xl font-bold mb-2 text-center">Join Our Community</h2>
+        <p className="text-muted-foreground text-center mb-8">Compete with readers worldwide and earn achievements</p>
+        
+        <div className="grid md:grid-cols-2 gap-8">
+          {challenges.length > 0 && (
+            <div>
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-primary" />
+                Active Challenges
+              </h3>
+              <div className="space-y-3">
+                {challenges.slice(0, 3).map((challenge: any) => (
+                  <Card key={challenge.id} className="hover:border-primary/50 transition-colors">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{challenge.badgeIcon}</span>
+                        <div>
+                          <p className="font-medium text-sm">{challenge.title}</p>
+                          <p className="text-xs text-muted-foreground">{challenge.description}</p>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={onJoin}>Join</Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {leaderboard.length > 0 && (
+            <div>
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Crown className="h-5 w-5 text-yellow-500" />
+                Top Readers
+              </h3>
+              <Card>
+                <CardContent className="p-0">
+                  {leaderboard.slice(0, 5).map((entry: any, idx: number) => (
+                    <div key={entry.userId} className={`flex items-center justify-between p-3 ${idx < leaderboard.length - 1 ? "border-b" : ""}`}>
+                      <div className="flex items-center gap-3">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                          idx === 0 ? "bg-yellow-500 text-white" :
+                          idx === 1 ? "bg-gray-300 text-gray-700" :
+                          idx === 2 ? "bg-amber-600 text-white" :
+                          "bg-muted text-muted-foreground"
+                        }`}>{idx + 1}</span>
+                        <div>
+                          <p className="font-medium text-sm">{entry.firstName || "Reader"} {entry.lastName ? entry.lastName[0] + "." : ""}</p>
+                          <p className="text-xs text-muted-foreground">Level {entry.level} - {entry.totalXp} XP</p>
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{entry.booksCompleted} books</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <Button variant="link" className="mt-2 w-full" onClick={onJoin}>
+                Sign up to join the leaderboard
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // Landing page for logged-out users
-function LandingPage() {
+function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
   const { toggleHighContrast } = useAccessibility();
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   
+  const { data: platformStats } = useQuery<{ totalBooks: number; totalUsers: number; totalListeningMinutes: number }>({
+    queryKey: ["/api/platform/stats"],
+  });
+
+  const { data: featuredBook } = useQuery<Book>({
+    queryKey: ["/api/books/featured"],
+  });
+
+  const { data: trendingBooks = [] } = useQuery<Book[]>({
+    queryKey: ["/api/books/trending"],
+  });
+
+  const { data: publicReviews = [] } = useQuery<any[]>({
+    queryKey: ["/api/reviews/public"],
+  });
+
   const openLogin = () => {
     setIsRegistering(false);
     setLoginOpen(true);
@@ -566,7 +670,7 @@ function LandingPage() {
           
           {/* Search Field with Autocomplete */}
           <div className="hidden md:flex flex-1 max-w-md mx-8">
-            <SearchAutocomplete onSelectBook={() => openRegister()} />
+            <SearchAutocomplete onSelectBook={() => onBrowseAsGuest ? onBrowseAsGuest() : openRegister()} />
           </div>
           
           {/* Desktop Navigation */}
@@ -666,17 +770,156 @@ function LandingPage() {
               Sign In
             </Button>
           </div>
+          {onBrowseAsGuest && (
+            <button 
+              onClick={onBrowseAsGuest}
+              className="text-sm text-primary hover:underline cursor-pointer"
+              data-testid="browse-as-guest"
+            >
+              or browse the library without an account
+            </button>
+          )}
           <p className="text-sm text-muted-foreground">
-            No credit card required. Access 90+ free audiobooks instantly.
+            No credit card required. Access {platformStats?.totalBooks || "90"}+ free audiobooks instantly.
           </p>
         </div>
       </section>
+
+      {/* Social Proof Stats */}
+      {platformStats && (
+        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
+          <div className="max-w-4xl mx-auto">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="p-4">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                  <span className="text-2xl md:text-3xl font-bold">{platformStats.totalBooks.toLocaleString()}+</span>
+                </div>
+                <p className="text-sm text-muted-foreground">Books Available</p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <Users className="h-5 w-5 text-primary" />
+                  <span className="text-2xl md:text-3xl font-bold">{platformStats.totalUsers.toLocaleString()}</span>
+                </div>
+                <p className="text-sm text-muted-foreground">Active Readers</p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <Clock className="h-5 w-5 text-primary" />
+                  <span className="text-2xl md:text-3xl font-bold">{Math.round(platformStats.totalListeningMinutes / 60).toLocaleString()}</span>
+                </div>
+                <p className="text-sm text-muted-foreground">Hours Listened</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Book of the Day */}
+      {featuredBook && (
+        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <Star className="h-6 w-6 text-yellow-500" />
+              Book of the Day
+            </h2>
+            <Card className="overflow-hidden hover:border-primary/50 transition-colors cursor-pointer" onClick={onBrowseAsGuest}>
+              <CardContent className="p-6 flex gap-6">
+                {featuredBook.coverImage ? (
+                  <img src={featuredBook.coverImage} alt="" className="w-24 h-36 object-cover rounded-lg flex-shrink-0" />
+                ) : (
+                  <div className="w-24 h-36 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
+                    <BookOpen className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-xl font-semibold line-clamp-1">{featuredBook.title}</h3>
+                  <p className="text-muted-foreground mb-2">by {featuredBook.author}</p>
+                  {featuredBook.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-3">{featuredBook.description}</p>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                      <Headphones className="h-3 w-3" />
+                      {featuredBook.contentType || "Audiobook"}
+                    </span>
+                    {featuredBook.genre && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                        {featuredBook.genre}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+
+      {/* Trending Books */}
+      {trendingBooks.length > 0 && (
+        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
+          <div className="max-w-6xl mx-auto">
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <TrendingUp className="h-6 w-6 text-primary" />
+              Trending Now
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {trendingBooks.slice(0, 5).map((book) => (
+                <div key={book.id} className="group cursor-pointer" onClick={onBrowseAsGuest}>
+                  <div className="aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-muted">
+                    {book.coverImage ? (
+                      <img src={book.coverImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <BookOpen className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="font-medium text-sm line-clamp-1">{book.title}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-1">{book.author}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
       
       {/* Book Carousel */}
       <LandingCarousel />
       
       {/* Curated Collections */}
       <CuratedCollectionsPreview />
+
+      {/* User Testimonials / Recent Reviews */}
+      {publicReviews.length > 0 && (
+        <section className="w-full px-4 md:px-8 lg:px-16 py-12">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6 text-center">What Our Readers Say</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              {publicReviews.slice(0, 4).map((review: any, idx: number) => (
+                <Card key={idx} className="border">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex text-yellow-500">
+                        {[...Array(review.rating || 5)].map((_, i) => (
+                          <Star key={i} className="h-4 w-4 fill-current" />
+                        ))}
+                      </div>
+                    </div>
+                    {review.title && <p className="font-medium text-sm mb-1">{review.title}</p>}
+                    <p className="text-sm text-muted-foreground line-clamp-3">{review.content}</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      - {review.userName || "A Reader"}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
       
       {/* Features Grid */}
       <section className="w-full px-4 md:px-8 lg:px-16 py-16">
@@ -706,6 +949,9 @@ function LandingPage() {
         </div>
       </section>
       
+      {/* Community Section - Public Challenges & Leaderboard */}
+      <PublicCommunitySection onJoin={openRegister} />
+      
       {/* CTA Section */}
       <section className="w-full px-4 md:px-8 lg:px-16 py-16">
         <Card className="max-w-4xl mx-auto bg-primary text-primary-foreground">
@@ -714,15 +960,19 @@ function LandingPage() {
             <p className="text-lg opacity-90 mb-6 max-w-xl mx-auto">
               Join our community of audiobook lovers and discover your next favorite story.
             </p>
-            <Button 
-              size="lg" 
-              variant="secondary" 
-              className="text-lg px-8"
-              onClick={openRegister}
-              data-testid="cta-get-started"
-            >
-              Create Free Account
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button 
+                size="lg" 
+                variant="secondary" 
+                className="text-lg px-8"
+                onClick={openRegister}
+                data-testid="cta-get-started"
+              >
+                <Gift className="mr-2 h-5 w-5" />
+                Create Free Account
+              </Button>
+            </div>
+            <p className="text-sm opacity-75 mt-4">Get 250 XP welcome bonus + 7-day premium trial</p>
           </CardContent>
         </Card>
       </section>
@@ -1072,8 +1322,9 @@ function MainApp() {
           </div>
         )}
         {currentView === "stats" && (
-          <div id="stats-panel" role="tabpanel" data-testid="panel-stats">
+          <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
             <GamificationDashboard />
+            <ReferralSection />
           </div>
         )}
       </main>
@@ -1093,8 +1344,128 @@ function MainApp() {
   );
 }
 
+function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
+  const [signUpPromptOpen, setSignUpPromptOpen] = useState(false);
+  const [signUpAction, setSignUpAction] = useState("");
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const { toggleHighContrast } = useAccessibility();
+
+  useKeyboardShortcuts({
+    onHighContrast: toggleHighContrast,
+  });
+
+  const promptSignUp = (action: string) => {
+    setSignUpAction(action);
+    setSignUpPromptOpen(true);
+  };
+
+  const handleGuestSelectBook = (book: Book) => {
+    promptSignUp("listen to books and save your progress");
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="bg-card border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <AccessiBooksLogo />
+            <div className="hidden md:flex flex-1 max-w-md mx-8">
+              <SearchAutocomplete onSelectBook={handleGuestSelectBook} />
+            </div>
+            <div className="flex items-center space-x-4">
+              <AccessibilityControls />
+              <Button variant="ghost" onClick={() => { setIsRegistering(false); setLoginOpen(true); }}>
+                Sign In
+              </Button>
+              <Button onClick={() => { setIsRegistering(true); setLoginOpen(true); }}>
+                Create Account
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <Gift className="h-4 w-4 text-primary" />
+            <span>Sign up today and get <strong>250 XP bonus</strong>, a welcome badge, and a <strong>7-day free premium trial</strong>!</span>
+          </div>
+          <Button size="sm" onClick={() => { setIsRegistering(true); setLoginOpen(true); }}>
+            Claim Now
+          </Button>
+        </div>
+      </div>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" id="main-content">
+        <Library onSelectBook={handleGuestSelectBook} />
+      </main>
+
+      <SignUpPrompt
+        open={signUpPromptOpen}
+        onOpenChange={setSignUpPromptOpen}
+        action={signUpAction}
+        onSignUp={() => { setSignUpPromptOpen(false); setIsRegistering(true); setLoginOpen(true); }}
+        onSignIn={() => { setSignUpPromptOpen(false); setIsRegistering(false); setLoginOpen(true); }}
+      />
+
+      <LoginModal
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        isRegistering={isRegistering}
+        setIsRegistering={setIsRegistering}
+      />
+    </div>
+  );
+}
+
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [guestMode, setGuestMode] = useState(false);
+  const [showWelcomeBonus, setShowWelcomeBonus] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get("ref");
+    if (refCode) {
+      localStorage.setItem("accessibooks_referral_code", refCode);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setGuestMode(false);
+      const hasSeenWelcome = localStorage.getItem("accessibooks_welcome_shown");
+      if (!hasSeenWelcome) {
+        setShowWelcomeBonus(true);
+        localStorage.setItem("accessibooks_welcome_shown", "true");
+      }
+      const savedRefCode = localStorage.getItem("accessibooks_referral_code");
+      if (savedRefCode) {
+        apiRequest("POST", "/api/referrals/redeem", { code: savedRefCode })
+          .catch(() => {})
+          .finally(() => localStorage.removeItem("accessibooks_referral_code"));
+      }
+    }
+  }, [isAuthenticated]);
+
+  const handleWelcomeBonusClose = (open: boolean) => {
+    setShowWelcomeBonus(open);
+    if (!open) {
+      const hasOnboarded = localStorage.getItem("accessibooks_onboarding_done");
+      if (!hasOnboarded) {
+        setShowOnboarding(true);
+      }
+    }
+  };
+
+  const handleOnboardingComplete = () => {
+    localStorage.setItem("accessibooks_onboarding_done", "true");
+    setShowOnboarding(false);
+  };
 
   if (isLoading) {
     return (
@@ -1110,7 +1481,17 @@ function App() {
   return (
     <TooltipProvider>
       <AudioProvider>
-        {isAuthenticated ? <MainApp /> : <LandingPage />}
+        {isAuthenticated ? (
+          <>
+            <MainApp />
+            <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
+            <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
+          </>
+        ) : guestMode ? (
+          <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
+        ) : (
+          <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
+        )}
         <AccessibilityWidget />
         <Toaster />
       </AudioProvider>
