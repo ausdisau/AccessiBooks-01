@@ -17,6 +17,25 @@ const contentTypeConfig = {
   magazine: { icon: Newspaper, label: "Magazine", color: "bg-purple-500" },
 };
 
+const sourceLabels: Record<string, string> = {
+  librivox: "LibriVox",
+  openlibrary: "Open Library",
+  googlebooks: "Google Books",
+  itunes: "iTunes",
+  gutenberg: "Gutenberg",
+  loyalbooks: "Loyal Books",
+  standardebooks: "Std. Ebooks",
+  feedbooks: "Feedbooks",
+  openstax: "OpenStax",
+  wikipedia: "Wikipedia",
+  podcast: "Podcast",
+  bbc: "BBC",
+  "spotify-podcast": "Spotify",
+  spotify: "Spotify",
+  community: "Community",
+  local: "",
+};
+
 export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -81,6 +100,9 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
           <p className="text-xs text-muted-foreground truncate" data-testid={`text-author-${book.id}`}>
             {book.author}
           </p>
+          {sourceLabels[book.source] && (
+            <p className="text-[10px] text-muted-foreground/70 mt-0.5">{sourceLabels[book.source]}</p>
+          )}
         </CardContent>
       </Card>
     );
@@ -125,12 +147,15 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
         <p className="text-muted-foreground mb-2" data-testid={`text-author-${book.id}`}>
           by {book.author}
         </p>
-        <p className="text-sm text-muted-foreground mb-4" data-testid={`text-duration-${book.id}`}>
+        <p className="text-sm text-muted-foreground mb-1" data-testid={`text-duration-${book.id}`}>
           {isEbookOrMagazine 
             ? (book.pageCount ? `${book.pageCount} pages` : typeConfig.label)
             : formatDuration(book.duration)
           }
         </p>
+        {sourceLabels[book.source] && (
+          <p className="text-xs text-muted-foreground/70 mb-3">via {sourceLabels[book.source]}</p>
+        )}
         
         <Button
           className="w-full"

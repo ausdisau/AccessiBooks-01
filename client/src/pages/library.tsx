@@ -16,6 +16,7 @@ import { PlaylistSection } from "@/components/playlist-section";
 import { PlaylistDetail } from "@/components/playlist-detail";
 import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { SubmitContent } from "@/components/submit-content";
 
 interface LibraryProps {
   onSelectBook: (book: Book) => void;
@@ -42,7 +43,10 @@ export function Library({ onSelectBook }: LibraryProps) {
       const matchesGenre = !selectedGenre || 
         (book.genre && book.genre.toLowerCase().includes(selectedGenre.toLowerCase()));
       
-      return matchesSearch && matchesGenre;
+      const matchesSource = sourceFilter === "all" || book.source === sourceFilter ||
+        (sourceFilter === "podcasts" && (book.source === "podcast" || book.source === "bbc" || book.source === "spotify-podcast"));
+      
+      return matchesSearch && matchesGenre && matchesSource;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -62,14 +66,22 @@ export function Library({ onSelectBook }: LibraryProps) {
     setSearchQuery("");
   };
 
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+
   // Group books by source for carousels
   const booksBySource = useMemo(() => {
     const librivox = books.filter(b => b.source === "librivox").slice(0, 12);
     const itunes = books.filter(b => b.source === "itunes").slice(0, 12);
     const googleBooks = books.filter(b => b.source === "google-books").slice(0, 12);
     const openLibrary = books.filter(b => b.source === "open-library").slice(0, 12);
+    const standardEbooks = books.filter(b => b.source === "standardebooks").slice(0, 12);
+    const feedbooks = books.filter(b => b.source === "feedbooks").slice(0, 12);
+    const openstax = books.filter(b => b.source === "openstax").slice(0, 12);
+    const wikipedia = books.filter(b => b.source === "wikipedia").slice(0, 12);
+    const podcasts = books.filter(b => b.source === "podcast" || b.source === "bbc" || b.source === "spotify-podcast").slice(0, 12);
+    const loyalbooks = books.filter(b => b.source === "loyalbooks").slice(0, 12);
     const newest = [...books].sort((a, b) => (b.publishedYear || 0) - (a.publishedYear || 0)).slice(0, 12);
-    return { librivox, itunes, googleBooks, openLibrary, newest };
+    return { librivox, itunes, googleBooks, openLibrary, standardEbooks, feedbooks, openstax, wikipedia, podcasts, loyalbooks, newest };
   }, [books]);
 
   if (error) {
@@ -175,7 +187,55 @@ export function Library({ onSelectBook }: LibraryProps) {
               onBookSelect={onSelectBook}
             />
           )}
+          {booksBySource.standardEbooks.length > 0 && (
+            <BookCarousel
+              title="Standard Ebooks - Premium Formatting"
+              books={booksBySource.standardEbooks}
+              onBookSelect={onSelectBook}
+              icon={Sparkles}
+            />
+          )}
+          {booksBySource.feedbooks.length > 0 && (
+            <BookCarousel
+              title="Feedbooks - Public Domain"
+              books={booksBySource.feedbooks}
+              onBookSelect={onSelectBook}
+            />
+          )}
+          {booksBySource.loyalbooks.length > 0 && (
+            <BookCarousel
+              title="Loyal Books - Free Audiobooks"
+              books={booksBySource.loyalbooks}
+              onBookSelect={onSelectBook}
+            />
+          )}
+          {booksBySource.openstax.length > 0 && (
+            <BookCarousel
+              title="OpenStax - Free Textbooks"
+              books={booksBySource.openstax}
+              onBookSelect={onSelectBook}
+            />
+          )}
+          {booksBySource.wikipedia.length > 0 && (
+            <BookCarousel
+              title="Wikipedia - Spoken Articles"
+              books={booksBySource.wikipedia}
+              onBookSelect={onSelectBook}
+            />
+          )}
+          {booksBySource.podcasts.length > 0 && (
+            <BookCarousel
+              title="Podcasts & Audio Drama"
+              books={booksBySource.podcasts}
+              onBookSelect={onSelectBook}
+            />
+          )}
         </div>
+      )}
+
+      {/* Submit Content - for logged in users */}
+      {showPersonalizedSections && (
+        <SubmitContent />
       )}
 
       {/* Genre browsing */}
@@ -221,9 +281,25 @@ export function Library({ onSelectBook }: LibraryProps) {
           </div>
           
           <div className="flex items-center space-x-4">
-            <label htmlFor="sort-books" className="text-sm font-medium">
-              Sort by:
-            </label>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="w-36" data-testid="select-source">
+                <SelectValue placeholder="All Sources" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="librivox">LibriVox</SelectItem>
+                <SelectItem value="gutenberg">Gutenberg</SelectItem>
+                <SelectItem value="standardebooks">Standard Ebooks</SelectItem>
+                <SelectItem value="feedbooks">Feedbooks</SelectItem>
+                <SelectItem value="loyalbooks">Loyal Books</SelectItem>
+                <SelectItem value="openstax">OpenStax</SelectItem>
+                <SelectItem value="wikipedia">Wikipedia</SelectItem>
+                <SelectItem value="podcasts">Podcasts</SelectItem>
+                <SelectItem value="itunes">iTunes</SelectItem>
+                <SelectItem value="google-books">Google Books</SelectItem>
+                <SelectItem value="open-library">Open Library</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-32" data-testid="select-sort">
                 <SelectValue />

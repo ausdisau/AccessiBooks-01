@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions } from "@shared/schema";
 import { eq, desc, sql, count, sum } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
@@ -604,6 +604,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "gutendex.com",
         "standardebooks.org",
         "manybooks.net",
+        "feedbooks.com",
+        "openstax.org",
+        "wikipedia.org",
+        "loyalbooks.com",
       ];
 
       try {
@@ -2744,6 +2748,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating sitemap:", error);
       res.status(500).send("Internal server error");
+    }
+  });
+
+  // ============================================================
+  // USER-SUBMITTED CONTENT
+  // ============================================================
+
+  // POST /api/submissions - Submit user content
+  app.post("/api/submissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+      const { title, author, description, contentType, audioUrl, contentUrl, coverImage, genre, language } = req.body;
+      if (!title || !author) {
+        return res.status(400).json({ message: "Title and author are required" });
+      }
+
+      const [submission] = await db.insert(userSubmissions).values({
+        userId,
+        title,
+        author,
+        description: description || null,
+        contentType: contentType || "audiobook",
+        audioUrl: audioUrl || null,
+        contentUrl: contentUrl || null,
+        coverImage: coverImage || null,
+        genre: genre || null,
+        language: language || "English",
+        status: "pending",
+      }).returning();
+
+      res.json(submission);
+    } catch (error) {
+      console.error("Error creating submission:", error);
+      res.status(500).json({ message: "Failed to submit content" });
+    }
+  });
+
+  // GET /api/submissions - Get user's submissions
+  app.get("/api/submissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+      const submissions = await db.select().from(userSubmissions)
+        .where(eq(userSubmissions.userId, userId))
+        .orderBy(desc(userSubmissions.createdAt));
+      res.json(submissions);
+    } catch (error) {
+      console.error("Error fetching submissions:", error);
+      res.status(500).json({ message: "Failed to fetch submissions" });
+    }
+  });
+
+  // GET /api/submissions/approved - Get all approved submissions (public)
+  app.get("/api/submissions/approved", async (_req, res) => {
+    try {
+      const approved = await db.select().from(userSubmissions)
+        .where(eq(userSubmissions.status, "approved"))
+        .orderBy(desc(userSubmissions.createdAt))
+        .limit(50);
+
+      const books: any[] = approved.map(s => ({
+        id: `submission-${s.id}`,
+        title: s.title,
+        author: s.author,
+        narrator: null,
+        description: s.description,
+        duration: 0,
+        coverImage: s.coverImage,
+        audioUrl: s.audioUrl,
+        contentUrl: s.contentUrl,
+        genre: s.genre || "Community",
+        publishedYear: new Date().getFullYear(),
+        source: "community",
+        sourceId: s.id,
+        totalTime: null,
+        language: s.language || "English",
+        contentType: s.contentType || "audiobook",
+        isPremium: false,
+        pageCount: null,
+      }));
+
+      res.json(books);
+    } catch (error) {
+      console.error("Error fetching approved submissions:", error);
+      res.status(500).json({ message: "Failed to fetch community content" });
     }
   });
 
