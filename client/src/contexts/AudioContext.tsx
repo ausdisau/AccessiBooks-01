@@ -73,6 +73,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [currentBook?.id]);
 
+  const listeningAccumulator = useRef(0);
+
   useEffect(() => {
     if (!currentBook) return;
 
@@ -85,7 +87,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         };
         localStorageService.saveProgress(progress);
         
-        // Only sync to server for authenticated users
         if (user) {
           apiRequest("POST", "/api/history/progress", {
             bookId: currentBook.id,
@@ -94,12 +95,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
             bookAuthor: currentBook.author,
             bookCover: currentBook.coverImage,
             totalDuration: duration || currentBook.duration,
-          }).catch(() => {
-            // Silently fail - local storage is the fallback
-          });
+          }).catch(() => {});
+
+          listeningAccumulator.current += 10 / 60;
+          if (listeningAccumulator.current >= 1) {
+            const minutes = Math.floor(listeningAccumulator.current);
+            listeningAccumulator.current -= minutes;
+            apiRequest("POST", "/api/gamification/activity", {
+              minutesListened: minutes,
+              bookCompleted: false,
+            }).catch(() => {});
+          }
         }
       }
-    }, 10000); // Save every 10 seconds to reduce server load
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [currentBook?.id, isPlaying, currentTime, duration, user]);

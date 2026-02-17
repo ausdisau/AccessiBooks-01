@@ -54,6 +54,16 @@ import {
   getAuthorByName,
   getAuthorWorks,
 } from "./reviews";
+import {
+  getGamificationProfile,
+  recordListeningActivity,
+  getLeaderboard,
+  ACHIEVEMENT_DEFINITIONS,
+  setDailyGoal,
+  getActiveChallenges,
+  joinChallenge,
+  getUserChallenges,
+} from "./gamification";
 import express from "express";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -2109,6 +2119,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching DJ recommendations:", error);
       res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  // ============================================
+  // GAMIFICATION ROUTES
+  // ============================================
+
+  // GET /api/gamification/profile - Get user's gamification profile
+  app.get("/api/gamification/profile", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const profile = await getGamificationProfile(userId);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error fetching gamification profile:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // POST /api/gamification/activity - Record listening activity
+  app.post("/api/gamification/activity", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { minutesListened, bookCompleted } = req.body;
+      if (typeof minutesListened !== "number" || minutesListened < 0) {
+        return res.status(400).json({ message: "minutesListened must be a non-negative number" });
+      }
+      const result = await recordListeningActivity(userId, minutesListened, bookCompleted || false);
+      res.json(result);
+    } catch (error) {
+      console.error("Error recording activity:", error);
+      res.status(500).json({ message: "Failed to record activity" });
+    }
+  });
+
+  // GET /api/gamification/leaderboard - Get leaderboard
+  app.get("/api/gamification/leaderboard", async (req, res) => {
+    try {
+      const period = (req.query.period as string) || "alltime";
+      const limit = parseInt(req.query.limit as string) || 20;
+      const leaderboard = await getLeaderboard(period as any, limit);
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      res.status(500).json({ message: "Failed to fetch leaderboard" });
+    }
+  });
+
+  // GET /api/gamification/achievements - Get all achievement definitions
+  app.get("/api/gamification/achievements", (_req, res) => {
+    res.json(ACHIEVEMENT_DEFINITIONS);
+  });
+
+  // PUT /api/gamification/goal - Set daily listening goal
+  app.put("/api/gamification/goal", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { dailyMinutesGoal } = req.body;
+      if (typeof dailyMinutesGoal !== "number" || dailyMinutesGoal < 5 || dailyMinutesGoal > 480) {
+        return res.status(400).json({ message: "Goal must be between 5 and 480 minutes" });
+      }
+      const goal = await setDailyGoal(userId, dailyMinutesGoal);
+      res.json(goal);
+    } catch (error) {
+      console.error("Error setting goal:", error);
+      res.status(500).json({ message: "Failed to set goal" });
+    }
+  });
+
+  // GET /api/gamification/challenges - Get active challenges
+  app.get("/api/gamification/challenges", async (_req, res) => {
+    try {
+      const challenges = await getActiveChallenges();
+      res.json(challenges);
+    } catch (error) {
+      console.error("Error fetching challenges:", error);
+      res.status(500).json({ message: "Failed to fetch challenges" });
+    }
+  });
+
+  // POST /api/gamification/challenges/:id/join - Join a challenge
+  app.post("/api/gamification/challenges/:id/join", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { id } = req.params;
+      const progress = await joinChallenge(userId, id);
+      res.json(progress);
+    } catch (error) {
+      console.error("Error joining challenge:", error);
+      res.status(500).json({ message: "Failed to join challenge" });
+    }
+  });
+
+  // GET /api/gamification/challenges/mine - Get user's challenges
+  app.get("/api/gamification/challenges/mine", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const challenges = await getUserChallenges(userId);
+      res.json(challenges);
+    } catch (error) {
+      console.error("Error fetching user challenges:", error);
+      res.status(500).json({ message: "Failed to fetch challenges" });
     }
   });
 

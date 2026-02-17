@@ -247,3 +247,44 @@ When books don't have cover images from their sources, the system can generate A
 - Path: `client/public/generated-covers/`
 - Naming: `{sanitized-book-id}.png`
 - Served statically via Vite public folder
+
+## Gamification System
+
+### Database Schema
+- **user_streaks**: Tracks consecutive listening days (currentStreak, longestStreak, lastListenedDate)
+- **user_xp**: XP, level, totalListeningMinutes, booksCompleted, reviewsWritten
+- **user_achievements**: Awarded badges with unlock timestamps
+- **daily_listening_log**: Per-day listening stats (minutesListened, booksStarted, booksCompleted)
+- **user_goals**: Daily listening minute targets
+- **reading_challenges**: Community challenges with targets and deadlines
+- **user_challenge_progress**: Per-user challenge progress tracking
+
+### XP & Leveling
+- 1 XP per minute listened, 100 XP per book completed, 50 XP per review
+- Level formula: floor(totalXp / 500) + 1
+- Achievement bonuses award additional XP
+
+### Achievements (19 types)
+- Listening milestones: first_listen, marathon_listener
+- Completion milestones: first_complete, bookworm_5/10/25/50
+- Streak milestones: streak_3/7/30
+- Level milestones: level_5/10/25
+- Social: social_butterfly, critic, genre_explorer
+- Time-based: night_owl, early_bird, speed_demon
+
+### API Endpoints
+- GET /api/gamification/profile - Full gamification profile (auth required)
+- POST /api/gamification/activity - Record listening activity (auth required)
+- GET /api/gamification/leaderboard?period=weekly|monthly|alltime
+- GET /api/gamification/achievements - All achievement definitions
+- PUT /api/gamification/goal - Set daily listening goal (auth required)
+- GET /api/gamification/challenges - Active reading challenges
+- POST /api/gamification/challenges/:id/join - Join a challenge (auth required)
+- GET /api/gamification/challenges/mine - User's challenge progress (auth required)
+
+### Frontend Components
+- **GamificationDashboard**: Tabbed dashboard (Overview, Achievements, Leaderboard, Challenges)
+- Accessible via "Stats" tab in main navigation
+- Auto-records listening activity from AudioContext every minute
+- SVG progress ring for daily goals
+- Leaderboard with gold/silver/bronze styling for top 3

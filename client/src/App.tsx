@@ -33,10 +33,11 @@ import { AuthorPage } from "@/components/author-page";
 import { SocialFeed } from "@/components/social-feed";
 import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
+import { GamificationDashboard } from "@/components/gamification-dashboard";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
-import { Music2, BookOpen as BookOpenIcon } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy } from "lucide-react";
 
-type View = "library" | "player" | "reader" | "author" | "feed";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats";
 
 // Header component with user management
 function AppHeader() {
@@ -1004,6 +1005,23 @@ function MainApp() {
               <Star className="h-4 w-4 mr-2" aria-hidden="true" />
               Feed
             </Button>
+
+            <Button
+              variant="ghost"
+              className={`py-4 px-1 border-b-2 font-medium ${
+                currentView === "stats"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setCurrentView("stats")}
+              role="tab"
+              aria-selected={currentView === "stats"}
+              aria-controls="stats-panel"
+              data-testid="tab-stats"
+            >
+              <Trophy className="h-4 w-4 mr-2" aria-hidden="true" />
+              Stats
+            </Button>
           </div>
         </div>
       </nav>
@@ -1051,6 +1069,11 @@ function MainApp() {
         {currentView === "feed" && (
           <div id="feed-panel" role="tabpanel" data-testid="panel-feed">
             <SocialFeed />
+          </div>
+        )}
+        {currentView === "stats" && (
+          <div id="stats-panel" role="tabpanel" data-testid="panel-stats">
+            <GamificationDashboard />
           </div>
         )}
       </main>
