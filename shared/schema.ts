@@ -516,4 +516,29 @@ export const insertUserPreferencesSchema = createInsertSchema(userPreferences).o
 export type InsertUserPreferences = z.infer<typeof insertUserPreferencesSchema>;
 export type UserPreferences = typeof userPreferences.$inferSelect;
 
+// User-submitted content
+export const userSubmissions = pgTable("user_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  title: text("title").notNull(),
+  author: text("author").notNull(),
+  description: text("description"),
+  contentType: text("content_type").notNull().default("audiobook"),
+  audioUrl: text("audio_url"),
+  contentUrl: text("content_url"),
+  coverImage: text("cover_image"),
+  genre: text("genre"),
+  language: text("language").default("English"),
+  status: text("status").notNull().default("pending"), // pending, approved, rejected
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertUserSubmissionSchema = createInsertSchema(userSubmissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertUserSubmission = z.infer<typeof insertUserSubmissionSchema>;
+export type UserSubmission = typeof userSubmissions.$inferSelect;
+
 export * from "./models/chat";

@@ -4,6 +4,16 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import { db } from "./db";
 import { eq, desc, and, sql, count, asc } from "drizzle-orm";
+import {
+  fetchLoyalBooks, searchLoyalBooks,
+  fetchStandardEbooks, searchStandardEbooks,
+  fetchFeedbooks, searchFeedbooks,
+  fetchOpenStaxBooks, searchOpenStaxBooks,
+  fetchWikipediaSpokenArticles, searchWikipediaSpokenArticles,
+  fetchSerializedFictionPodcasts, searchSerializedFictionPodcasts,
+  fetchBBCPodcasts, searchBBCPodcasts,
+  fetchSpotifyPodcasts, searchSpotifyPodcasts,
+} from "./contentSources";
 
 const MemoryStore = createMemoryStore(session);
 
@@ -936,7 +946,49 @@ export class ExternalAPIStorage implements IStorage {
       }).catch(error => {
         console.warn('Gutenberg fetch failed:', error instanceof Error ? error.message : 'Unknown error');
         return [];
-      })
+      }),
+
+      // Loyal Books audiobooks
+      fetchLoyalBooks(15).then(books => {
+        console.log(`Fetched ${books.length} books from Loyal Books`);
+        return books;
+      }).catch(() => [] as Book[]),
+
+      // Standard Ebooks
+      fetchStandardEbooks(15).then(books => {
+        console.log(`Fetched ${books.length} ebooks from Standard Ebooks`);
+        return books;
+      }).catch(() => [] as Book[]),
+
+      // Feedbooks public domain
+      fetchFeedbooks(15).then(books => {
+        console.log(`Fetched ${books.length} ebooks from Feedbooks`);
+        return books;
+      }).catch(() => [] as Book[]),
+
+      // OpenStax textbooks (synchronous, curated catalog)
+      Promise.resolve(fetchOpenStaxBooks(15)).then(books => {
+        console.log(`Fetched ${books.length} textbooks from OpenStax`);
+        return books;
+      }),
+
+      // Wikipedia Spoken Articles
+      fetchWikipediaSpokenArticles(15).then(books => {
+        console.log(`Fetched ${books.length} spoken articles from Wikipedia`);
+        return books;
+      }).catch(() => [] as Book[]),
+
+      // Serialized Fiction Podcasts
+      fetchSerializedFictionPodcasts(10).then(books => {
+        console.log(`Fetched ${books.length} fiction podcasts`);
+        return books;
+      }).catch(() => [] as Book[]),
+
+      // BBC Podcasts
+      fetchBBCPodcasts(10).then(books => {
+        console.log(`Fetched ${books.length} BBC podcasts`);
+        return books;
+      }).catch(() => [] as Book[]),
     ];
     
     // Wait for all API calls to complete
@@ -1043,6 +1095,20 @@ export class ExternalAPIStorage implements IStorage {
       }
     }
     
+    // For new content sources, search in cached books first
+    const newSourcePrefixes = ['loyalbooks-', 'standardebooks-', 'feedbooks-', 'openstax-', 'wikipedia-', 'podcast-', 'bbc-', 'spotify-show-'];
+    if (newSourcePrefixes.some(prefix => id.startsWith(prefix))) {
+      const cached = this.getCached<Book[]>('all_books');
+      if (cached) {
+        const found = cached.find(b => b.id === id);
+        if (found) return found;
+      }
+      const allBooks = await this.getBooks();
+      const found = allBooks.find(b => b.id === id);
+      if (found) return found;
+      return this.fallbackBooks.get(id);
+    }
+
     // Try external API
     try {
       console.log(`Fetching book ${id} from external API...`);
@@ -1133,13 +1199,32 @@ export class ExternalAPIStorage implements IStorage {
         return [];
       }),
       
-      // External API (does not support search filtering, skip for search queries)
-      
       // Project Gutenberg search
       this.searchGutenbergBooks(query, 10).then(ebooks => ebooks.map(transformGutenbergBook)).catch(error => {
         console.warn('Gutenberg search failed:', error);
         return [];
-      })
+      }),
+
+      // Loyal Books search
+      searchLoyalBooks(query, 5).catch(() => [] as Book[]),
+
+      // Standard Ebooks search
+      searchStandardEbooks(query, 5).catch(() => [] as Book[]),
+
+      // Feedbooks search
+      searchFeedbooks(query, 5).catch(() => [] as Book[]),
+
+      // OpenStax search (synchronous)
+      Promise.resolve(searchOpenStaxBooks(query, 5)),
+
+      // Wikipedia Spoken Articles search
+      searchWikipediaSpokenArticles(query, 5).catch(() => [] as Book[]),
+
+      // Serialized Fiction Podcasts search
+      searchSerializedFictionPodcasts(query, 5).catch(() => [] as Book[]),
+
+      // BBC Podcasts search
+      searchBBCPodcasts(query, 3).catch(() => [] as Book[]),
     );
     
     // Wait for all searches to complete
