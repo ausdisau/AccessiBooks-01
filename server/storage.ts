@@ -1133,11 +1133,7 @@ export class ExternalAPIStorage implements IStorage {
         return [];
       }),
       
-      // External API search
-      this.searchExternalAPI(query).catch(error => {
-        console.warn('External API search failed:', error);
-        return [];
-      }),
+      // External API (does not support search filtering, skip for search queries)
       
       // Project Gutenberg search
       this.searchGutenbergBooks(query, 10).then(ebooks => ebooks.map(transformGutenbergBook)).catch(error => {
@@ -1152,11 +1148,13 @@ export class ExternalAPIStorage implements IStorage {
     // Flatten and combine results
     searchResults.forEach(results => allBooks.push(...results));
     
-    // Add fallback search if we don't have many results
-    if (allBooks.length < 5) {
+    // Only add fallback results if they actually match the query
+    if (allBooks.length === 0) {
       const fallbackResults = this.searchFallbackBooks(query);
-      allBooks.push(...fallbackResults);
-      console.log(`Added ${fallbackResults.length} books from fallback search`);
+      if (fallbackResults.length > 0) {
+        allBooks.push(...fallbackResults);
+        console.log(`Added ${fallbackResults.length} books from fallback search`);
+      }
     }
     
     // Basic deduplication by title + author
