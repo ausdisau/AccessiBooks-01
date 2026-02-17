@@ -473,4 +473,47 @@ export interface LeaderboardEntry {
   rank: number;
 }
 
+// Referral system
+export const referrals = pgTable("referrals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  referredUserId: varchar("referred_user_id").references(() => users.id, { onDelete: "set null" }),
+  referralCode: varchar("referral_code").notNull().unique(),
+  status: varchar("status").notNull().default("pending"),
+  rewardGranted: boolean("reward_granted").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  convertedAt: timestamp("converted_at"),
+}, (table) => [
+  index("idx_referrals_referrer").on(table.referrerId),
+  index("idx_referrals_code").on(table.referralCode),
+]);
+
+export const insertReferralSchema = createInsertSchema(referrals).omit({
+  id: true,
+  createdAt: true,
+  convertedAt: true,
+});
+
+export type InsertReferral = z.infer<typeof insertReferralSchema>;
+export type Referral = typeof referrals.$inferSelect;
+
+// User genre preferences for onboarding
+export const userPreferences = pgTable("user_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  favoriteGenres: text("favorite_genres").array().default(sql`'{}'::text[]`),
+  onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+  welcomeBonusGranted: boolean("welcome_bonus_granted").notNull().default(false),
+  premiumTrialEndDate: timestamp("premium_trial_end_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertUserPreferencesSchema = createInsertSchema(userPreferences).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertUserPreferences = z.infer<typeof insertUserPreferencesSchema>;
+export type UserPreferences = typeof userPreferences.$inferSelect;
+
 export * from "./models/chat";
