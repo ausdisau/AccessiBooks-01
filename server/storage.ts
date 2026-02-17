@@ -628,7 +628,7 @@ function transformGutenbergBook(gutenberg: GutenbergBook): Book {
   };
 }
 
-async function fetchWithTimeout(url: string, timeout = 5000): Promise<Response> {
+async function fetchWithTimeout(url: string, timeout = 15000): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   
@@ -730,7 +730,7 @@ export class ExternalAPIStorage implements IStorage {
   private localUsers: Map<string, User>; // For session management
   public sessionStore: session.Store;
   private cache: Map<string, CacheEntry<any>> = new Map();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
   
   // Security: Allowed domains for audio streaming and covers
   private readonly ALLOWED_AUDIO_DOMAINS = [
@@ -891,101 +891,105 @@ export class ExternalAPIStorage implements IStorage {
     const allBooks: Book[] = [];
     
     // Parallelize API calls for better performance
-    const fetchPromises = [
-      // LibriVox books
-      this.fetchLibriVoxBooks(30, 0).then(books => {
-        const transformed = books.map(transformLibriVoxBook);
-        console.log(`Fetched ${transformed.length} books from LibriVox`);
-        return transformed;
-      }).catch(error => {
-        console.warn('LibriVox fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [];
-      }),
+    const fetchPromises: Promise<Book[]>[] = [
+      // LibriVox books - multiple pages
+      ...(Array.from({length: 5}, (_, i) => 
+        this.fetchLibriVoxBooks(50, i * 50).then(books => {
+          const transformed = books.map(transformLibriVoxBook);
+          if (i === 0) console.log(`Fetched LibriVox page ${i+1}: ${transformed.length} books`);
+          return transformed;
+        }).catch(error => {
+          if (i === 0) console.warn('LibriVox fetch failed:', error instanceof Error ? error.message : 'Unknown error');
+          return [] as Book[];
+        })
+      )),
       
-      // Open Library books
-      this.fetchOpenLibraryBooks(20).then((books: OpenLibraryBook[]) => {
+      // Open Library books - multi-subject
+      this.fetchOpenLibraryBooks(100).then((books: OpenLibraryBook[]) => {
         const transformed = books.map(transformOpenLibraryBook);
         console.log(`Fetched ${transformed.length} books from Open Library`);
         return transformed;
       }).catch((error: any) => {
         console.warn('Open Library fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [];
+        return [] as Book[];
       }),
       
-      // Google Books
-      this.fetchGoogleBooks(20).then((volumes: GoogleBooksVolume[]) => {
+      // Google Books - multi-subject
+      this.fetchGoogleBooks(200).then((volumes: GoogleBooksVolume[]) => {
         const transformed = volumes.map(transformGoogleBooksVolume);
         console.log(`Fetched ${transformed.length} books from Google Books`);
         return transformed;
       }).catch((error: any) => {
         console.warn('Google Books fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [];
+        return [] as Book[];
       }),
       
-      // iTunes audiobooks
-      this.fetchiTunesAudiobooks(20).then((audiobooks: iTunesAudiobook[]) => {
+      // iTunes audiobooks - multi-term
+      this.fetchiTunesAudiobooks(200).then((audiobooks: iTunesAudiobook[]) => {
         const transformed = audiobooks.map(transformiTunesAudiobook);
         console.log(`Fetched ${transformed.length} audiobooks from iTunes`);
         return transformed;
       }).catch((error: any) => {
         console.warn('iTunes fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [];
+        return [] as Book[];
       }),
       
       // External API books
       this.fetchExternalAPIBooks().catch(error => {
         console.warn('External API fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [];
+        return [] as Book[];
       }),
       
-      // Project Gutenberg ebooks
-      this.fetchGutenbergBooks(20).then(ebooks => {
-        const transformed = ebooks.map(transformGutenbergBook);
-        console.log(`Fetched ${transformed.length} ebooks from Project Gutenberg`);
-        return transformed;
-      }).catch(error => {
-        console.warn('Gutenberg fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [];
-      }),
+      // Project Gutenberg ebooks - multiple pages
+      ...(Array.from({length: 5}, (_, i) => 
+        this.fetchGutenbergBooks(32, i + 1).then(ebooks => {
+          const transformed = ebooks.map(transformGutenbergBook);
+          if (i === 0) console.log(`Fetched Gutenberg page ${i+1}: ${transformed.length} ebooks`);
+          return transformed;
+        }).catch(error => {
+          if (i === 0) console.warn('Gutenberg fetch failed:', error instanceof Error ? error.message : 'Unknown error');
+          return [] as Book[];
+        })
+      )),
 
-      // Loyal Books audiobooks
-      fetchLoyalBooks(15).then(books => {
+      // Loyal Books audiobooks - multi-genre
+      fetchLoyalBooks(100).then(books => {
         console.log(`Fetched ${books.length} books from Loyal Books`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // Standard Ebooks
-      fetchStandardEbooks(15).then(books => {
+      // Standard Ebooks - multiple feeds
+      fetchStandardEbooks(200).then(books => {
         console.log(`Fetched ${books.length} ebooks from Standard Ebooks`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // Feedbooks public domain
-      fetchFeedbooks(15).then(books => {
+      // Feedbooks public domain - multiple categories
+      fetchFeedbooks(100).then(books => {
         console.log(`Fetched ${books.length} ebooks from Feedbooks`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // OpenStax textbooks (synchronous, curated catalog)
-      Promise.resolve(fetchOpenStaxBooks(15)).then(books => {
+      // OpenStax textbooks (expanded catalog)
+      Promise.resolve(fetchOpenStaxBooks(100)).then(books => {
         console.log(`Fetched ${books.length} textbooks from OpenStax`);
         return books;
       }),
 
-      // Wikipedia Spoken Articles
-      fetchWikipediaSpokenArticles(15).then(books => {
+      // Wikipedia Spoken Articles - multiple categories
+      fetchWikipediaSpokenArticles(100).then(books => {
         console.log(`Fetched ${books.length} spoken articles from Wikipedia`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // Serialized Fiction Podcasts
-      fetchSerializedFictionPodcasts(10).then(books => {
+      // Serialized Fiction Podcasts - expanded
+      fetchSerializedFictionPodcasts(100).then(books => {
         console.log(`Fetched ${books.length} fiction podcasts`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // BBC Podcasts
-      fetchBBCPodcasts(10).then(books => {
+      // BBC Podcasts - expanded
+      fetchBBCPodcasts(25).then(books => {
         console.log(`Fetched ${books.length} BBC podcasts`);
         return books;
       }).catch(() => [] as Book[]),
@@ -1464,7 +1468,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${OPEN_LIBRARY_API_BASE}/works/${olid}.json`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData = await response.json();
@@ -1496,20 +1500,28 @@ export class ExternalAPIStorage implements IStorage {
   private async fetchOpenLibraryBooks(limit: number = 20): Promise<OpenLibraryBook[]> {
     try {
       console.log(`Fetching Open Library books (limit: ${limit})...`);
+      const subjects = ['fiction', 'science', 'history', 'philosophy', 'biography', 'poetry', 'mystery', 'romance', 'fantasy', 'adventure'];
+      const perSubject = Math.ceil(limit / subjects.length);
+      const allBooks: OpenLibraryBook[] = [];
       
-      // Get popular/recent books using a general query
-      const url = `${OPEN_LIBRARY_API_BASE}/search.json?q=*&limit=${limit}&sort=new`;
+      const promises = subjects.map(async (subject) => {
+        try {
+          const url = `${OPEN_LIBRARY_API_BASE}/search.json?subject=${encodeURIComponent(subject)}&limit=${perSubject}&sort=rating`;
+          const response = await fetchWithTimeout(url, 20000);
+          if (response.ok) {
+            const data: OpenLibrarySearchResponse = await response.json();
+            return data.docs || [];
+          }
+          return [];
+        } catch {
+          return [];
+        }
+      });
       
-      const response = await fetchWithTimeout(url, 10000);
-      
-      if (response.ok) {
-        const responseData: OpenLibrarySearchResponse = await response.json();
-        console.log(`Open Library API response: ${responseData.docs.length} books`);
-        return responseData.docs || [];
-      } else {
-        console.warn(`Open Library API returned status ${response.status}`);
-        return [];
-      }
+      const results = await Promise.all(promises);
+      results.forEach(docs => allBooks.push(...docs));
+      console.log(`Open Library API response: ${allBooks.length} books`);
+      return allBooks.slice(0, limit);
     } catch (error) {
       console.error('Error fetching Open Library books:', error);
       return [];
@@ -1525,20 +1537,37 @@ export class ExternalAPIStorage implements IStorage {
     
     try {
       console.log(`Fetching Google Books (limit: ${limit})...`);
+      const subjects = ['fiction', 'mystery', 'science+fiction', 'history', 'biography', 'romance', 'fantasy', 'thriller', 'self+help', 'business', 'philosophy', 'poetry', 'adventure', 'horror', 'young+adult'];
+      const perSubject = Math.min(Math.ceil(limit / subjects.length), 40);
+      const allVolumes: GoogleBooksVolume[] = [];
+      const seenIds = new Set<string>();
       
-      // Get popular/interesting books using a broad query
-      const url = `${GOOGLE_BOOKS_API_BASE}/volumes?q=subject:fiction&orderBy=relevance&maxResults=${Math.min(limit, 40)}&key=${GOOGLE_BOOKS_API_KEY}`;
+      const promises = subjects.map(async (subject) => {
+        try {
+          const url = `${GOOGLE_BOOKS_API_BASE}/volumes?q=subject:${subject}&orderBy=relevance&maxResults=${perSubject}&key=${GOOGLE_BOOKS_API_KEY}`;
+          const response = await fetchWithTimeout(url, 15000);
+          if (response.ok) {
+            const data: GoogleBooksSearchResponse = await response.json();
+            return data.items || [];
+          }
+          return [];
+        } catch {
+          return [];
+        }
+      });
       
-      const response = await fetchWithTimeout(url, 10000);
+      const results = await Promise.all(promises);
+      results.forEach(volumes => {
+        volumes.forEach(v => {
+          if (!seenIds.has(v.id)) {
+            seenIds.add(v.id);
+            allVolumes.push(v);
+          }
+        });
+      });
       
-      if (response.ok) {
-        const responseData: GoogleBooksSearchResponse = await response.json();
-        console.log(`Google Books API response: ${responseData.items?.length || 0} books`);
-        return responseData.items || [];
-      } else {
-        console.warn(`Google Books API returned status ${response.status}`);
-        return [];
-      }
+      console.log(`Google Books API response: ${allVolumes.length} books`);
+      return allVolumes.slice(0, limit);
     } catch (error) {
       console.error('Error fetching Google Books:', error);
       return [];
@@ -1556,7 +1585,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${GOOGLE_BOOKS_API_BASE}/volumes?q=${encodeURIComponent(query)}&maxResults=${Math.min(limit, 40)}&key=${GOOGLE_BOOKS_API_KEY}`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData: GoogleBooksSearchResponse = await response.json();
@@ -1583,7 +1612,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${GOOGLE_BOOKS_API_BASE}/volumes/${volumeId}?key=${GOOGLE_BOOKS_API_KEY}`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const volume: GoogleBooksVolume = await response.json();
@@ -1603,20 +1632,38 @@ export class ExternalAPIStorage implements IStorage {
   private async fetchiTunesAudiobooks(limit: number = 20): Promise<iTunesAudiobook[]> {
     try {
       console.log(`Fetching iTunes audiobooks (limit: ${limit})...`);
+      const terms = ['bestseller', 'fiction audiobook', 'mystery audiobook', 'science fiction', 'romance audiobook', 'thriller audiobook', 'fantasy audiobook', 'history audiobook', 'biography audiobook', 'self help'];
+      const perTerm = Math.min(Math.ceil(limit / terms.length), 200);
+      const allAudiobooks: iTunesAudiobook[] = [];
+      const seenIds = new Set<number>();
       
-      // Search for popular audiobooks (using a broad term)
-      const url = `${ITUNES_SEARCH_API_BASE}/search?term=bestseller&entity=audiobook&limit=${limit}&country=us`;
+      const promises = terms.map(async (term) => {
+        try {
+          const url = `${ITUNES_SEARCH_API_BASE}/search?term=${encodeURIComponent(term)}&entity=audiobook&limit=${perTerm}&country=us`;
+          const response = await fetchWithTimeout(url, 15000);
+          if (response.ok) {
+            const data: iTunesSearchResponse = await response.json();
+            return data.results || [];
+          }
+          return [];
+        } catch {
+          return [];
+        }
+      });
       
-      const response = await fetchWithTimeout(url, 10000);
+      const results = await Promise.all(promises);
+      results.forEach(audiobooks => {
+        audiobooks.forEach(ab => {
+          const id = ab.collectionId || ab.trackId || 0;
+          if (id && !seenIds.has(id)) {
+            seenIds.add(id);
+            allAudiobooks.push(ab);
+          }
+        });
+      });
       
-      if (response.ok) {
-        const responseData: iTunesSearchResponse = await response.json();
-        console.log(`iTunes API response: ${responseData.results.length} audiobooks`);
-        return responseData.results || [];
-      } else {
-        console.warn(`iTunes API returned status ${response.status}`);
-        return [];
-      }
+      console.log(`iTunes API response: ${allAudiobooks.length} audiobooks`);
+      return allAudiobooks.slice(0, limit);
     } catch (error) {
       console.error('Error fetching iTunes audiobooks:', error);
       return [];
@@ -1629,7 +1676,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${ITUNES_SEARCH_API_BASE}/search?term=${encodeURIComponent(query)}&entity=audiobook&limit=${limit}&country=us`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData: iTunesSearchResponse = await response.json();
@@ -1651,7 +1698,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${ITUNES_SEARCH_API_BASE}/lookup?id=${collectionId}&entity=audiobook`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData: iTunesSearchResponse = await response.json();
@@ -1676,7 +1723,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${ITUNES_SEARCH_API_BASE}/search?term=${isbn}&entity=audiobook&limit=5&country=us`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData: iTunesSearchResponse = await response.json();
@@ -1701,7 +1748,7 @@ export class ExternalAPIStorage implements IStorage {
       const query = 'mediatype:texts AND language:eng AND collection:opensource';
       const url = `${INTERNET_ARCHIVE_API_BASE}/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier,title,creator,description,year,date,subject,language,mediatype&rows=${limit}&output=json`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData: InternetArchiveSearchResponse = await response.json();
@@ -1725,7 +1772,7 @@ export class ExternalAPIStorage implements IStorage {
       const searchQuery = `(title:(${query}) OR creator:(${query})) AND mediatype:texts`;
       const url = `${INTERNET_ARCHIVE_API_BASE}/advancedsearch.php?q=${encodeURIComponent(searchQuery)}&fl[]=identifier,title,creator,description,year,date,subject,language,mediatype,format&rows=${limit}&output=json`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData: InternetArchiveSearchResponse = await response.json();
@@ -1747,7 +1794,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${INTERNET_ARCHIVE_API_BASE}/metadata/${identifier}`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const metadata = await response.json();
@@ -1820,7 +1867,7 @@ export class ExternalAPIStorage implements IStorage {
       console.log(`Fetching LibriVox books (limit: ${limit}, offset: ${offset})...`);
       const url = `${LIBRIVOX_API_BASE}?format=json&extended=1&limit=${limit}&offset=${offset}`;
       
-      const response = await fetchWithTimeout(url, 10000); // 10 second timeout for LibriVox
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData = await response.json();
@@ -1887,7 +1934,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${LIBRIVOX_API_BASE}?id=${librivoxId}&format=json&extended=1`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const responseData = await response.json();
@@ -1910,7 +1957,7 @@ export class ExternalAPIStorage implements IStorage {
       console.log(`Fetching Gutenberg ebooks (page: ${page}, limit: ${limit})...`);
       const url = `${GUTENBERG_API_BASE}/books?page=${page}&languages=en`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const data = await response.json() as GutenbergSearchResponse;
@@ -1931,7 +1978,7 @@ export class ExternalAPIStorage implements IStorage {
       console.log(`Searching Gutenberg for: "${query}"`);
       const url = `${GUTENBERG_API_BASE}/books?search=${encodeURIComponent(query)}&languages=en`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const data = await response.json() as GutenbergSearchResponse;
@@ -1952,7 +1999,7 @@ export class ExternalAPIStorage implements IStorage {
       
       const url = `${GUTENBERG_API_BASE}/books/${gutenbergId}`;
       
-      const response = await fetchWithTimeout(url, 10000);
+      const response = await fetchWithTimeout(url, 20000);
       
       if (response.ok) {
         const data = await response.json() as GutenbergBook;
@@ -2128,7 +2175,7 @@ export class ExternalAPIStorage implements IStorage {
         console.log(`Fetching chapters for LibriVox book: ${librivoxId}`);
 
         const url = `${LIBRIVOX_API_BASE}?id=${librivoxId}&format=json&extended=1`;
-        const response = await fetchWithTimeout(url, 10000);
+        const response = await fetchWithTimeout(url, 20000);
 
         if (response.ok) {
           const responseData = await response.json();

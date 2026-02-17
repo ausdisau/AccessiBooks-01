@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Book, PlaylistWithCount } from "@shared/schema";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BookCard } from "@/components/book-card";
@@ -27,6 +28,8 @@ export function Library({ onSelectBook }: LibraryProps) {
   const [sortBy, setSortBy] = useState("title");
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [visibleCount, setVisibleCount] = useState(48);
   const { user } = useAuth();
 
   const { data: books = [], isLoading, error } = useQuery<Book[]>({
@@ -64,9 +67,8 @@ export function Library({ onSelectBook }: LibraryProps) {
   const handleGenreSelect = (genre: string) => {
     setSelectedGenre(genre || null);
     setSearchQuery("");
+    setVisibleCount(48);
   };
-
-  const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   // Group books by source for carousels
   const booksBySource = useMemo(() => {
@@ -272,6 +274,7 @@ export function Library({ onSelectBook }: LibraryProps) {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
+                  setVisibleCount(48);
                   if (e.target.value) setSelectedGenre(null);
                 }}
                 className="pl-10"
@@ -281,7 +284,7 @@ export function Library({ onSelectBook }: LibraryProps) {
           </div>
           
           <div className="flex items-center space-x-4">
-            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setVisibleCount(48); }}>
               <SelectTrigger className="w-36" data-testid="select-source">
                 <SelectValue placeholder="All Sources" />
               </SelectTrigger>
@@ -335,20 +338,36 @@ export function Library({ onSelectBook }: LibraryProps) {
           </p>
         </div>
       ) : (
-        <div 
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" 
-          role="list" 
-          aria-label="Audiobook library"
-          data-testid="grid-books"
-        >
-          {filteredAndSortedBooks.map((book) => (
-            <BookCard
-              key={book.id}
-              book={book}
-              onPlayBook={onSelectBook}
-            />
-          ))}
-        </div>
+        <>
+          <p className="text-sm text-muted-foreground mb-4">
+            Showing {Math.min(visibleCount, filteredAndSortedBooks.length)} of {filteredAndSortedBooks.length} titles
+          </p>
+          <div 
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" 
+            role="list" 
+            aria-label="Audiobook library"
+            data-testid="grid-books"
+          >
+            {filteredAndSortedBooks.slice(0, visibleCount).map((book) => (
+              <BookCard
+                key={book.id}
+                book={book}
+                onPlayBook={onSelectBook}
+              />
+            ))}
+          </div>
+          {visibleCount < filteredAndSortedBooks.length && (
+            <div className="flex justify-center mt-8">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setVisibleCount(prev => prev + 48)}
+              >
+                Load More ({filteredAndSortedBooks.length - visibleCount} remaining)
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
