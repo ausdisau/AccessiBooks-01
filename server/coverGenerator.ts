@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { generateImageBuffer } from './replit_integrations/image/client';
 
 const GENERATED_COVERS_DIR = path.join(process.cwd(), 'client', 'public', 'generated-covers');
 
@@ -109,4 +110,74 @@ export function listGeneratedCovers(): string[] {
   } catch {
     return [];
   }
+}
+
+export interface CoverGenerationResult {
+  bookId: string;
+  title: string;
+  status: 'generated' | 'skipped' | 'error';
+  coverUrl?: string;
+  error?: string;
+}
+
+export async function generateCoverForBook(
+  bookId: string,
+  title: string,
+  author: string,
+  genre?: string,
+  contentType?: string
+): Promise<CoverGenerationResult> {
+  if (hasGeneratedCover(bookId)) {
+    return { bookId, title, status: 'skipped', coverUrl: getGeneratedCoverUrl(bookId) || undefined };
+  }
+
+  try {
+    ensureCoversDir();
+    const prompt = buildCoverPrompt(title, author, genre, contentType);
+    const imageBuffer = await generateImageBuffer(prompt, "1024x1024");
+
+    const safeId = bookId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const filePath = path.join(GENERATED_COVERS_DIR, `${safeId}.png`);
+    fs.writeFileSync(filePath, imageBuffer);
+
+    markCoverGenerated(bookId);
+
+    return {
+      bookId,
+      title,
+      status: 'generated',
+      coverUrl: getGeneratedCoverPath(bookId),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Cover generation failed for "${title}" (${bookId}):`, message);
+    return { bookId, title, status: 'error', error: message };
+  }
+}
+
+export async function generateCoversForBooks(
+  books: Array<{ id: string; title: string; author: string; genre?: string | null; contentType?: string | null; coverImage?: string | null }>,
+  onProgress?: (result: CoverGenerationResult, completed: number, total: number) => void
+): Promise<CoverGenerationResult[]> {
+  const needsCovers = books.filter(b => !b.coverImage && !hasGeneratedCover(b.id));
+  const results: CoverGenerationResult[] = [];
+
+  for (let i = 0; i < needsCovers.length; i++) {
+    const book = needsCovers[i];
+    const result = await generateCoverForBook(
+      book.id,
+      book.title,
+      book.author,
+      book.genre || undefined,
+      book.contentType || undefined
+    );
+    results.push(result);
+    onProgress?.(result, i + 1, needsCovers.length);
+
+    if (i < needsCovers.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+
+  return results;
 }
