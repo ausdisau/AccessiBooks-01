@@ -329,3 +329,5 @@ export interface DJRecommendation {
   description: string;
   books: Book[];
 }
+
+export * from "./models/chat";

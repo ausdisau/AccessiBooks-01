@@ -13,7 +13,9 @@ import {
   queueCoverGeneration, 
   getPendingCovers,
   markCoverGenerated,
-  listGeneratedCovers
+  listGeneratedCovers,
+  generateCoverForBook,
+  generateCoversForBooks
 } from "./coverGenerator";
 import { stripe, PREMIUM_PRICE_MONTHLY, SUBSCRIPTION_CONFIG, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature } from "./stripe";
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
@@ -344,6 +346,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error marking cover complete:", error);
       res.status(500).json({ message: "Failed to mark cover complete" });
+    }
+  });
+
+  // POST /api/books/:id/cover/generate - Generate a cover for a single book using AI
+  app.post("/api/books/:id/cover/generate", async (req, res) => {
+    try {
+      const { id: bookId } = req.params;
+      const book = await storage.getBook(bookId);
+      if (!book) {
+        return res.status(404).json({ message: "Book not found" });
+      }
+
+      const result = await generateCoverForBook(
+        bookId,
+        book.title,
+        book.author,
+        book.genre || undefined,
+        book.contentType || 'audiobook'
+      );
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating cover:", error);
+      res.status(500).json({ message: "Failed to generate cover" });
+    }
+  });
+
+  // POST /api/covers/generate-all - Mass-generate covers for all books missing covers (SSE stream)
+  app.post("/api/covers/generate-all", async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    try {
+      const allBooks = await storage.getBooks();
+      const booksNeedingCovers = allBooks.filter(b => !b.coverImage && !hasGeneratedCover(b.id));
+
+      res.write(`data: ${JSON.stringify({ type: 'start', total: booksNeedingCovers.length })}\n\n`);
+
+      if (booksNeedingCovers.length === 0) {
+        res.write(`data: ${JSON.stringify({ type: 'complete', generated: 0, skipped: 0, errors: 0 })}\n\n`);
+        res.end();
+        return;
+      }
+
+      const results = await generateCoversForBooks(booksNeedingCovers, (result, completed, total) => {
+        res.write(`data: ${JSON.stringify({ type: 'progress', ...result, completed, total })}\n\n`);
+      });
+
+      const summary = {
+        type: 'complete',
+        generated: results.filter(r => r.status === 'generated').length,
+        skipped: results.filter(r => r.status === 'skipped').length,
+        errors: results.filter(r => r.status === 'error').length,
+        results,
+      };
+      res.write(`data: ${JSON.stringify(summary)}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error("Error in mass cover generation:", error);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Mass generation failed' })}\n\n`);
+      res.end();
+    }
+  });
+
+  // GET /api/covers/stats - Get cover generation statistics
+  app.get("/api/covers/stats", async (req, res) => {
+    try {
+      const allBooks = await storage.getBooks();
+      const generated = listGeneratedCovers();
+      const withOriginalCover = allBooks.filter(b => b.coverImage).length;
+      const withGeneratedCover = generated.length;
+      const noCover = allBooks.filter(b => !b.coverImage && !hasGeneratedCover(b.id)).length;
+
+      res.json({
+        total: allBooks.length,
+        withOriginalCover,
+        withGeneratedCover,
+        noCover,
+        generatedIds: generated,
+      });
+    } catch (error) {
+      console.error("Error getting cover stats:", error);
+      res.status(500).json({ message: "Failed to get cover stats" });
     }
   });
 
