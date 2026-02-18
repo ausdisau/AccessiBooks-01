@@ -17,7 +17,7 @@ import { EbookReader } from "@/components/ebook-reader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,10 +42,11 @@ import { ShareButton } from "@/components/share-button";
 import { ReferralSection } from "@/components/referral-section";
 import { AuthorDashboard } from "@/components/author-dashboard";
 import { NotificationBell } from "@/components/notification-center";
+import { ListeningParty } from "@/components/listening-party";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { Music2, BookOpen as BookOpenIcon, Trophy } from "lucide-react";
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party";
 
 // Header component with user management
 function AppHeader() {
@@ -1293,6 +1294,23 @@ function MainApp() {
               <Upload className="h-4 w-4 mr-2" aria-hidden="true" />
               Publish
             </Button>
+
+            <Button
+              variant="ghost"
+              className={`py-4 px-1 border-b-2 font-medium ${
+                currentView === "party"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setCurrentView("party")}
+              role="tab"
+              aria-selected={currentView === "party"}
+              aria-controls="party-panel"
+              data-testid="tab-party"
+            >
+              <Radio className="h-4 w-4 mr-2" aria-hidden="true" />
+              Party
+            </Button>
           </div>
         </div>
       </nav>
@@ -1351,6 +1369,11 @@ function MainApp() {
         {currentView === "publish" && (
           <div id="publish-panel" role="tabpanel" data-testid="panel-publish">
             <AuthorDashboard />
+          </div>
+        )}
+        {currentView === "party" && (
+          <div id="party-panel" role="tabpanel" data-testid="panel-party">
+            <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
           </div>
         )}
       </main>

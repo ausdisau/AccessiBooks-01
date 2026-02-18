@@ -715,3 +715,65 @@ export const notificationLog = pgTable("notification_log", {
 export type NotificationLogEntry = typeof notificationLog.$inferSelect;
 
 export * from "./models/chat";
+
+// Listening Party - synchronized listening rooms
+export const listeningRooms = pgTable("listening_rooms", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull(),
+  bookTitle: text("book_title").notNull(),
+  bookAuthor: text("book_author"),
+  bookCover: text("book_cover"),
+  hostUserId: varchar("host_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  roomCode: varchar("room_code", { length: 8 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_room_host").on(table.hostUserId),
+  index("idx_room_code").on(table.roomCode),
+  index("idx_room_status").on(table.status),
+]);
+
+export const insertListeningRoomSchema = createInsertSchema(listeningRooms).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertListeningRoom = z.infer<typeof insertListeningRoomSchema>;
+export type ListeningRoom = typeof listeningRooms.$inferSelect;
+
+export const listeningRoomParticipants = pgTable("listening_room_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roomId: varchar("room_id").notNull().references(() => listeningRooms.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  role: varchar("role", { length: 10 }).notNull().default("guest"),
+  joinedAt: timestamp("joined_at").defaultNow(),
+}, (table) => [
+  index("idx_participant_room").on(table.roomId),
+  index("idx_participant_user").on(table.userId),
+]);
+
+export const insertRoomParticipantSchema = createInsertSchema(listeningRoomParticipants).omit({
+  id: true,
+  joinedAt: true,
+});
+export type InsertRoomParticipant = z.infer<typeof insertRoomParticipantSchema>;
+export type RoomParticipant = typeof listeningRoomParticipants.$inferSelect;
+
+export const listeningRoomMessages = pgTable("listening_room_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roomId: varchar("room_id").notNull().references(() => listeningRooms.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_room_msg_room").on(table.roomId),
+  index("idx_room_msg_created").on(table.createdAt),
+]);
+
+export const insertRoomMessageSchema = createInsertSchema(listeningRoomMessages).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertRoomMessage = z.infer<typeof insertRoomMessageSchema>;
+export type RoomMessage = typeof listeningRoomMessages.$inferSelect;
