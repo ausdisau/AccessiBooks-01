@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   Trophy, Lock, Star, BookOpen, Clock, Flame, Target,
   Medal, Crown, Zap, Users, Calendar, CheckCircle2, Loader2,
-  ChevronRight, Award, TrendingUp,
+  ChevronRight, Award, TrendingUp, Snowflake, Shield, Gift, Sparkles,
 } from "lucide-react";
 import type {
   GamificationProfile,
@@ -19,6 +19,8 @@ import type {
   LeaderboardEntry,
   ReadingChallenge,
   UserChallengeProgress,
+  StreakFreeze,
+  ExpiringReward,
 } from "@shared/schema";
 
 function ProgressRing({ progress, size = 120, strokeWidth = 10 }: { progress: number; size?: number; strokeWidth?: number }) {
@@ -223,9 +225,16 @@ function OverviewTab({ profile }: { profile: GamificationProfile }) {
   );
 }
 
+const SURPRISE_TYPES = ["comeback_kid", "binge_reader", "weekend_warrior", "century_club",
+  "diverse_listener", "review_streak", "sharing_is_caring", "party_animal", "collector", "speed_reader"];
+
 function AchievementsTab({ profile }: { profile: GamificationProfile }) {
   const { data: allAchievements, isLoading } = useQuery<AchievementMeta[]>({
     queryKey: ["/api/gamification/achievements"],
+  });
+
+  const { data: surpriseAchievements } = useQuery<AchievementMeta[]>({
+    queryKey: ["/api/gamification/surprise-achievements"],
   });
 
   if (isLoading) {
@@ -241,14 +250,16 @@ function AchievementsTab({ profile }: { profile: GamificationProfile }) {
   const unlockedTypes = new Set(profile.achievements.map((a) => a.achievementType));
   const unlockedMap = new Map(profile.achievements.map((a) => [a.achievementType, a.unlockedAt]));
 
+  const regularAchievements = allAchievements?.filter((a) => !SURPRISE_TYPES.includes(a.type));
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Trophy className="h-4 w-4 text-green-500" />
         <span>{unlockedTypes.size} of {allAchievements?.length ?? 0} unlocked</span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {allAchievements?.map((achievement) => {
+        {regularAchievements?.map((achievement) => {
           const isUnlocked = unlockedTypes.has(achievement.type);
           const unlockedAt = unlockedMap.get(achievement.type);
 
@@ -299,6 +310,89 @@ function AchievementsTab({ profile }: { profile: GamificationProfile }) {
           );
         })}
       </div>
+
+      {surpriseAchievements && surpriseAchievements.length > 0 && (
+        <div className="space-y-4">
+          <Separator />
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-yellow-500" />
+            <h3 className="text-lg font-semibold">Secret Achievements</h3>
+            <span className="text-xs text-muted-foreground ml-1">
+              {surpriseAchievements.filter((a) => unlockedTypes.has(a.type)).length} / {surpriseAchievements.length} discovered
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {surpriseAchievements.map((achievement) => {
+              const isUnlocked = unlockedTypes.has(achievement.type);
+              const unlockedAt = unlockedMap.get(achievement.type);
+
+              if (isUnlocked) {
+                return (
+                  <Card
+                    key={achievement.type}
+                    className="relative overflow-hidden transition-all duration-300 border-yellow-200/60 dark:border-yellow-800/60 bg-gradient-to-br from-yellow-50/50 to-amber-50/50 dark:from-yellow-950/30 dark:to-amber-950/30 hover:shadow-lg hover:shadow-yellow-100/50 dark:hover:shadow-yellow-900/20"
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <span className="text-3xl">{achievement.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm truncate">{achievement.name}</h4>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                            {achievement.description}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400 flex items-center gap-0.5">
+                              <Zap className="h-3 w-3" /> +{achievement.xpReward} XP
+                            </span>
+                            {unlockedAt && (
+                              <span className="text-[10px] text-green-600 dark:text-green-400 flex items-center gap-0.5">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {new Date(unlockedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                    <div className="absolute top-2 right-2">
+                      <Sparkles className="h-4 w-4 text-yellow-500" />
+                    </div>
+                  </Card>
+                );
+              }
+
+              return (
+                <Card
+                  key={achievement.type}
+                  className="relative overflow-hidden transition-all duration-300 opacity-70 hover:opacity-90 border-dashed border-muted-foreground/30"
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="relative">
+                        <span className="text-3xl blur-sm select-none">❓</span>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Lock className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-sm truncate text-muted-foreground">Mystery Achievement</h4>
+                        <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2 italic">
+                          Keep exploring to discover this achievement!
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs font-medium text-muted-foreground/50 flex items-center gap-0.5">
+                            <Zap className="h-3 w-3" /> ??? XP
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -550,6 +644,203 @@ function ChallengesTab() {
   );
 }
 
+function getCountdown(expiresAt: string | Date): string {
+  const now = new Date().getTime();
+  const expiry = new Date(expiresAt).getTime();
+  const diff = expiry - now;
+  if (diff <= 0) return "Expired";
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  return `${minutes}m left`;
+}
+
+const rewardIcons: Record<string, typeof Star> = {
+  xp_bonus: Star,
+  streak_shield: Shield,
+  badge_upgrade: Trophy,
+  premium_trial: Crown,
+};
+
+const rewardColors: Record<string, string> = {
+  xp_bonus: "text-purple-500 bg-purple-100 dark:bg-purple-900/50",
+  streak_shield: "text-blue-500 bg-blue-100 dark:bg-blue-900/50",
+  badge_upgrade: "text-amber-500 bg-amber-100 dark:bg-amber-900/50",
+  premium_trial: "text-yellow-500 bg-yellow-100 dark:bg-yellow-900/50",
+};
+
+function RewardsFreezesTab() {
+  const { toast } = useToast();
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const { data: freezes, isLoading: freezesLoading } = useQuery<StreakFreeze>({
+    queryKey: ["/api/gamification/freezes"],
+  });
+
+  const { data: rewards, isLoading: rewardsLoading } = useQuery<ExpiringReward[]>({
+    queryKey: ["/api/gamification/rewards"],
+  });
+
+  const useFreezeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/gamification/freezes/use"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gamification/freezes"] });
+      toast({ title: "Streak Freeze Used!", description: "Your streak is protected for today." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to use freeze", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const claimRewardMutation = useMutation({
+    mutationFn: (rewardId: string) => apiRequest("POST", `/api/gamification/rewards/${rewardId}/claim`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gamification/rewards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/gamification/profile"] });
+      toast({ title: "Reward Claimed!", description: "Your reward has been applied." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to claim reward", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const isLoading = freezesLoading || rewardsLoading;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-40 bg-muted/50 rounded-xl" />
+        <div className="h-32 bg-muted/50 rounded-xl" />
+      </div>
+    );
+  }
+
+  const availableFreezes = freezes ? freezes.totalFreezes - freezes.usedFreezes : 0;
+
+  return (
+    <div className="space-y-6">
+      <Card className="relative overflow-hidden border-blue-200/50 dark:border-blue-800/50 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/40 dark:to-cyan-950/40">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Snowflake className="h-5 w-5 text-blue-500" />
+            Streak Freezes
+          </CardTitle>
+          <CardDescription>
+            Streak freezes protect your streak when you miss a day. Earn them through activity!
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                <Shield className="h-8 w-8 text-blue-500" />
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-blue-700 dark:text-blue-400">
+                  {availableFreezes}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Available freeze{availableFreezes !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => useFreezeMutation.mutate()}
+              disabled={availableFreezes <= 0 || useFreezeMutation.isPending}
+              variant={availableFreezes > 0 ? "default" : "outline"}
+              className="shrink-0"
+            >
+              {useFreezeMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Snowflake className="h-4 w-4 mr-2" />
+              )}
+              Use Freeze
+            </Button>
+          </div>
+          {freezes && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Total earned: {freezes.totalFreezes} · Used: {freezes.usedFreezes}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <Gift className="h-5 w-5 text-amber-500" />
+          <h3 className="text-lg font-semibold">Expiring Rewards</h3>
+        </div>
+
+        {rewards && rewards.length > 0 ? (
+          <div className="space-y-3">
+            {rewards.map((reward) => {
+              const Icon = rewardIcons[reward.rewardType] || Star;
+              const colorClass = rewardColors[reward.rewardType] || "text-gray-500 bg-gray-100 dark:bg-gray-900/50";
+              const countdown = getCountdown(reward.expiresAt);
+              const isExpired = countdown === "Expired";
+
+              return (
+                <Card key={reward.id} className={`transition-all hover:shadow-md ${isExpired ? "opacity-50" : ""}`}>
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className={`p-2.5 rounded-lg ${colorClass}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{reward.description}</p>
+                      <div className="flex items-center gap-3 mt-1">
+                        {reward.rewardType === "xp_bonus" && (
+                          <span className="text-xs font-medium text-purple-600 dark:text-purple-400 flex items-center gap-0.5">
+                            <Zap className="h-3 w-3" /> +{reward.rewardValue} XP
+                          </span>
+                        )}
+                        {reward.rewardType === "streak_shield" && (
+                          <span className="text-xs font-medium text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
+                            <Shield className="h-3 w-3" /> +{reward.rewardValue} freeze{reward.rewardValue !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        <span className={`text-xs ${isExpired ? "text-red-500" : "text-amber-600 dark:text-amber-400"}`}>
+                          <Clock className="h-3 w-3 inline mr-0.5" />
+                          {countdown}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => claimRewardMutation.mutate(reward.id)}
+                      disabled={isExpired || claimRewardMutation.isPending}
+                    >
+                      {claimRewardMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Claim"
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Card className="border-dashed">
+            <CardContent className="p-8 text-center">
+              <Gift className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">
+                No rewards right now. Keep listening to earn rewards!
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function GamificationDashboard() {
   const { data: profile, isLoading } = useQuery<GamificationProfile>({
     queryKey: ["/api/gamification/profile"],
@@ -568,10 +859,14 @@ export function GamificationDashboard() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview" className="flex items-center gap-1.5">
             <Flame className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
+          </TabsTrigger>
+          <TabsTrigger value="rewards" className="flex items-center gap-1.5">
+            <Gift className="h-4 w-4" />
+            <span className="hidden sm:inline">Rewards</span>
           </TabsTrigger>
           <TabsTrigger value="achievements" className="flex items-center gap-1.5">
             <Trophy className="h-4 w-4" />
@@ -589,6 +884,10 @@ export function GamificationDashboard() {
 
         <TabsContent value="overview">
           {isLoading || !profile ? <LoadingSkeleton /> : <OverviewTab profile={profile} />}
+        </TabsContent>
+
+        <TabsContent value="rewards">
+          <RewardsFreezesTab />
         </TabsContent>
 
         <TabsContent value="achievements">

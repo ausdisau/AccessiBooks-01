@@ -42,6 +42,17 @@ export const ACHIEVEMENT_DEFINITIONS: AchievementMeta[] = [
   { type: "early_bird", name: "Early Bird", description: "Listen between 5 AM and 7 AM", icon: "🐦", xpReward: 100 },
   { type: "genre_explorer", name: "Genre Explorer", description: "Listen to books from 5 different genres", icon: "🗺️", xpReward: 200 },
   { type: "social_butterfly", name: "Social Butterfly", description: "Follow 10 other listeners", icon: "🦋", xpReward: 150 },
+  // Surprise achievements - unexpected and delightful
+  { type: "comeback_kid", name: "Comeback Kid", description: "Return after 7+ days away and start listening again", icon: "🎉", xpReward: 200 },
+  { type: "binge_reader", name: "Binge Reader", description: "Listen for 3+ hours in a single day", icon: "🍿", xpReward: 250 },
+  { type: "weekend_warrior", name: "Weekend Warrior", description: "Listen every weekend for 4 consecutive weeks", icon: "🛡️", xpReward: 300 },
+  { type: "century_club", name: "Century Club", description: "Reach 100 total listening hours", icon: "💯", xpReward: 500 },
+  { type: "diverse_listener", name: "Diverse Listener", description: "Complete books in 3 different formats", icon: "🌈", xpReward: 200 },
+  { type: "review_streak", name: "Review Streak", description: "Write reviews 3 days in a row", icon: "📝", xpReward: 175 },
+  { type: "sharing_is_caring", name: "Sharing is Caring", description: "Share your first book or achievement", icon: "💝", xpReward: 100 },
+  { type: "party_animal", name: "Party Animal", description: "Join 3 listening parties", icon: "🎊", xpReward: 200 },
+  { type: "collector", name: "Collector", description: "Add 20 books to your playlists", icon: "🗃️", xpReward: 150 },
+  { type: "speed_reader", name: "Speed Reader", description: "Complete a book in under 24 hours", icon: "⚡", xpReward: 300 },
 ];
 
 export async function getOrCreateStreak(userId: string): Promise<UserStreak> {
@@ -226,6 +237,74 @@ export async function checkAndAwardAchievements(userId: string): Promise<Achieve
 
       newlyAwarded.push(def);
     }
+  }
+
+  const surpriseAchievements = await checkSurpriseAchievements(userId);
+  return [...newlyAwarded, ...surpriseAchievements];
+}
+
+export async function checkSurpriseAchievements(userId: string): Promise<AchievementMeta[]> {
+  const existingAchievements = await db
+    .select()
+    .from(userAchievements)
+    .where(eq(userAchievements.userId, userId));
+  const existingTypes = new Set(existingAchievements.map((a) => a.achievementType));
+
+  const newlyAwarded: AchievementMeta[] = [];
+  const now = new Date();
+  const currentHour = now.getHours();
+  const today = getTodayDate();
+
+  async function awardIfNew(type: string): Promise<boolean> {
+    if (existingTypes.has(type)) return false;
+    const def = ACHIEVEMENT_DEFINITIONS.find((d) => d.type === type);
+    if (!def) return false;
+
+    await db.insert(userAchievements).values({ userId, achievementType: type });
+    await db.update(userXp)
+      .set({
+        totalXp: sql`${userXp.totalXp} + ${def.xpReward}`,
+        level: sql`FLOOR((${userXp.totalXp} + ${def.xpReward}) / 500) + 1`,
+      })
+      .where(eq(userXp.userId, userId));
+
+    sendAchievementNotification(userId, def.name, def.xpReward, type).catch(() => {});
+    newlyAwarded.push(def);
+    return true;
+  }
+
+  // Comeback Kid: returned after 7+ days away
+  const streak = await getOrCreateStreak(userId);
+  if (!existingTypes.has("comeback_kid") && streak.lastListenedDate) {
+    const diff = getDateDiffDays(today, streak.lastListenedDate);
+    if (diff >= 7 && streak.currentStreak === 1) {
+      await awardIfNew("comeback_kid");
+    }
+  }
+
+  // Binge Reader: 3+ hours (180 min) in a single day
+  if (!existingTypes.has("binge_reader")) {
+    const [todayLog] = await db.select().from(dailyListeningLog)
+      .where(and(eq(dailyListeningLog.userId, userId), eq(dailyListeningLog.date, today)))
+      .limit(1);
+    if (todayLog && todayLog.minutesListened >= 180) {
+      await awardIfNew("binge_reader");
+    }
+  }
+
+  // Century Club: 100 hours = 6000 minutes total
+  if (!existingTypes.has("century_club")) {
+    const xpRecord = await getOrCreateXp(userId);
+    if (xpRecord.totalListeningMinutes >= 6000) {
+      await awardIfNew("century_club");
+    }
+  }
+
+  if (!existingTypes.has("night_owl") && currentHour >= 0 && currentHour < 5) {
+    await awardIfNew("night_owl");
+  }
+  if (!existingTypes.has("early_bird") && currentHour >= 5 && currentHour < 7) {
+    await awardIfNew("early_bird");
   }
 
   return newlyAwarded;
