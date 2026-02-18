@@ -300,7 +300,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6" role="region" aria-label={`Audio player: ${book.title} by ${book.author}`}>
       <audio ref={audioRef} preload="metadata" />
 
       <Card>

@@ -43,6 +43,12 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
       >
         <div 
           className="h-1.5 bg-secondary cursor-pointer group"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={duration || 100}
+          aria-valuenow={Math.round(currentTime)}
+          aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
+          aria-label="Playback progress"
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const percent = ((e.clientX - rect.left) / rect.width) * 100;

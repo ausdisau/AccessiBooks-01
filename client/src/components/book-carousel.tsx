@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ interface BookCarouselProps {
 
 export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen }: BookCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
 
   const scroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return;
@@ -23,13 +24,40 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
     });
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === "ArrowRight" && index < books.length - 1) {
+      e.preventDefault();
+      setFocusedIndex(index + 1);
+      const items = scrollRef.current?.querySelectorAll("[data-carousel-item]");
+      (items?.[index + 1] as HTMLElement)?.focus();
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      e.preventDefault();
+      setFocusedIndex(index - 1);
+      const items = scrollRef.current?.querySelectorAll("[data-carousel-item]");
+      (items?.[index - 1] as HTMLElement)?.focus();
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onBookSelect(books[index]);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setFocusedIndex(0);
+      const items = scrollRef.current?.querySelectorAll("[data-carousel-item]");
+      (items?.[0] as HTMLElement)?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setFocusedIndex(books.length - 1);
+      const items = scrollRef.current?.querySelectorAll("[data-carousel-item]");
+      (items?.[books.length - 1] as HTMLElement)?.focus();
+    }
+  };
+
   if (books.length === 0) return null;
 
   return (
-    <div className="space-y-3">
+    <section className="space-y-3" aria-label={title}>
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-lg flex items-center gap-2">
-          <Icon className="h-5 w-5" />
+          <Icon className="h-5 w-5" aria-hidden="true" />
           {title}
         </h3>
         <div className="flex gap-1">
@@ -38,7 +66,7 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
             size="icon"
             className="h-8 w-8"
             onClick={() => scroll("left")}
-            aria-label="Scroll left"
+            aria-label={`Scroll ${title} left`}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -47,7 +75,7 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
             size="icon"
             className="h-8 w-8"
             onClick={() => scroll("right")}
-            aria-label="Scroll right"
+            aria-label={`Scroll ${title} right`}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -58,29 +86,37 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
         ref={scrollRef}
         className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4 snap-x snap-mandatory"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        role="list"
+        aria-label={`${title} - ${books.length} books`}
       >
-        {books.map((book) => (
+        {books.map((book, index) => (
           <div
             key={book.id}
-            className="flex-shrink-0 w-36 md:w-44 cursor-pointer group snap-start"
+            data-carousel-item
+            role="listitem"
+            tabIndex={index === focusedIndex || (focusedIndex === -1 && index === 0) ? 0 : -1}
+            className="flex-shrink-0 w-36 md:w-44 cursor-pointer group snap-start carousel-item"
             onClick={() => onBookSelect(book)}
+            onKeyDown={(e) => handleKeyDown(e, index)}
+            onFocus={() => setFocusedIndex(index)}
+            aria-label={`${book.title} by ${book.author}. ${book.contentType || "Audiobook"}`}
           >
             <div className="relative aspect-[2/3] rounded-lg overflow-hidden shadow-md group-hover:shadow-xl transition-shadow">
               {book.coverImage ? (
                 <img
                   src={book.coverImage}
-                  alt={book.title}
+                  alt=""
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
               ) : (
                 <div className="w-full h-full bg-secondary flex items-center justify-center">
-                  <BookOpen className="h-12 w-12 text-muted-foreground" />
+                  <BookOpen className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
                 </div>
               )}
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="bg-primary rounded-full p-3 shadow-lg">
-                    <Play className="h-6 w-6 text-primary-foreground" />
+                    <Play className="h-6 w-6 text-primary-foreground" aria-hidden="true" />
                   </div>
                 </div>
               </div>
@@ -96,7 +132,7 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -119,7 +155,7 @@ export function GenreCarousel({ genres, onGenreSelect, selectedGenre }: GenreCar
   };
 
   return (
-    <div className="space-y-3">
+    <nav className="space-y-3" aria-label="Browse by genre">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-lg">Browse by Genre</h3>
         <div className="flex gap-1">
@@ -128,6 +164,7 @@ export function GenreCarousel({ genres, onGenreSelect, selectedGenre }: GenreCar
             size="icon"
             className="h-8 w-8"
             onClick={() => scroll("left")}
+            aria-label="Scroll genres left"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -136,6 +173,7 @@ export function GenreCarousel({ genres, onGenreSelect, selectedGenre }: GenreCar
             size="icon"
             className="h-8 w-8"
             onClick={() => scroll("right")}
+            aria-label="Scroll genres right"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -146,6 +184,7 @@ export function GenreCarousel({ genres, onGenreSelect, selectedGenre }: GenreCar
         ref={scrollRef}
         className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        role="list"
       >
         <Button
           variant={!selectedGenre ? "default" : "outline"}
@@ -169,13 +208,14 @@ export function GenreCarousel({ genres, onGenreSelect, selectedGenre }: GenreCar
           </Button>
         ))}
       </div>
-    </div>
+    </nav>
   );
 }
 
 export function LandingCarousel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   
   const { data: books = [] } = useQuery<Book[]>({
     queryKey: ["/api/books"],
@@ -185,8 +225,16 @@ export function LandingCarousel() {
   const duplicatedBooks = [...displayBooks, ...displayBooks];
 
   useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  useEffect(() => {
     const scrollContainer = scrollRef.current;
-    if (!scrollContainer || displayBooks.length === 0) return;
+    if (!scrollContainer || displayBooks.length === 0 || prefersReducedMotion) return;
 
     let animationId: number;
     let scrollPosition = 0;
@@ -211,7 +259,7 @@ export function LandingCarousel() {
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [displayBooks.length, isPaused]);
+  }, [displayBooks.length, isPaused, prefersReducedMotion]);
 
   if (displayBooks.length === 0) {
     return (
