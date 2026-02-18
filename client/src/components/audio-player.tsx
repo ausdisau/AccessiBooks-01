@@ -7,6 +7,7 @@ import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useMonetization } from "@/hooks/use-monetization";
 import { BookmarkList } from "./bookmark-list";
+import { PremiumFeatureBadge } from "./premium-feature-badge";
 import { SleepTimer } from "./sleep-timer";
 import { ChapterList } from "./chapter-list";
 import { AddToCollectionButton } from "./library-collections";
@@ -42,17 +43,13 @@ interface AudioPlayerProps {
   book: Book;
 }
 
-const SPEED_OPTIONS = [
-  { label: "0.5x", value: 0.5 },
-  { label: "0.75x", value: 0.75 },
-  { label: "1x", value: 1.0 },
-  { label: "1.25x", value: 1.25 },
-  { label: "1.5x", value: 1.5 },
-  { label: "1.75x", value: 1.75 },
-  { label: "2x", value: 2.0 },
-  { label: "2.5x", value: 2.5 },
-  { label: "3x", value: 3.0 },
-];
+const FREE_SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5];
+const ALL_SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+
+const SPEED_OPTIONS = ALL_SPEEDS.map((value) => ({
+  label: `${value}x`,
+  value,
+}));
 
 export function AudioPlayer({ book }: AudioPlayerProps) {
   const {
@@ -72,7 +69,6 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     audioUrl: `/api/stream/${book.id}`,
   });
 
-  const { bookmarks, addBookmark, removeBookmark } = useBookmarks(book.id);
   const { 
     skipStatus, 
     audioQuality, 
@@ -82,6 +78,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     endSession,
     isPremium,
   } = useMonetization();
+  const { bookmarks, addBookmark, removeBookmark, isAtLimit, maxBookmarks } = useBookmarks(book.id, isPremium);
   
   const { 
     chapters, 
@@ -458,21 +455,35 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             <div className="flex items-center gap-2">
               {/* Speed Preset Buttons */}
               <div className="hidden sm:flex items-center gap-1 bg-muted/50 rounded-full p-1" role="group" aria-label="Playback speed">
-                {[0.75, 1, 1.25, 1.5, 2].map((speed) => (
-                  <Button
-                    key={speed}
-                    variant={playbackRate === speed ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setSpeed(speed)}
-                    className={`h-7 px-2.5 rounded-full text-xs font-medium ${
-                      playbackRate === speed ? "shadow-sm" : "hover:bg-muted"
-                    }`}
-                    aria-pressed={playbackRate === speed}
-                    data-testid={`button-speed-${speed}x`}
-                  >
-                    {speed}x
-                  </Button>
-                ))}
+                {[0.75, 1, 1.25, 1.5, 2].map((speed) => {
+                  const isLockedSpeed = !isPremium && !FREE_SPEEDS.includes(speed);
+                  return (
+                    <Button
+                      key={speed}
+                      variant={playbackRate === speed ? "default" : "ghost"}
+                      size="sm"
+                      onClick={() => {
+                        if (isLockedSpeed) {
+                          toast({
+                            title: "Premium speed",
+                            description: "Upgrade to Premium for speeds above 1.5x",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        setSpeed(speed);
+                      }}
+                      className={`h-7 px-2.5 rounded-full text-xs font-medium ${
+                        playbackRate === speed ? "shadow-sm" : "hover:bg-muted"
+                      } ${isLockedSpeed ? "opacity-60" : ""}`}
+                      aria-pressed={playbackRate === speed}
+                      data-testid={`button-speed-${speed}x`}
+                    >
+                      {speed}x
+                      {isLockedSpeed && <Crown className="h-3 w-3 ml-0.5 text-yellow-500" />}
+                    </Button>
+                  );
+                })}
               </div>
               
               {/* Speed Dropdown (mobile fallback) */}
@@ -485,16 +496,37 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  {SPEED_OPTIONS.map((option) => (
-                    <DropdownMenuItem
-                      key={option.value}
-                      onClick={() => setSpeed(option.value)}
-                      className={playbackRate === option.value ? "bg-accent" : ""}
-                    >
-                      {option.label}
-                      {playbackRate === option.value && " ✓"}
-                    </DropdownMenuItem>
-                  ))}
+                  {SPEED_OPTIONS.map((option) => {
+                    const isLockedSpeed = !isPremium && !FREE_SPEEDS.includes(option.value);
+                    return (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => {
+                          if (isLockedSpeed) {
+                            toast({
+                              title: "Premium speed",
+                              description: "Upgrade to Premium for speeds above 1.5x",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          setSpeed(option.value);
+                        }}
+                        className={`${playbackRate === option.value ? "bg-accent" : ""} ${isLockedSpeed ? "opacity-60" : ""}`}
+                      >
+                        <span className="flex items-center gap-1">
+                          {option.label}
+                          {isLockedSpeed && (
+                            <>
+                              <Crown className="h-3 w-3 text-yellow-500" />
+                              <span className="text-xs text-yellow-600">(Premium)</span>
+                            </>
+                          )}
+                        </span>
+                        {playbackRate === option.value && " ✓"}
+                      </DropdownMenuItem>
+                    );
+                  })}
                 </DropdownMenuContent>
               </DropdownMenu>
               
@@ -556,6 +588,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               >
                 <BookmarkIcon className="h-4 w-4 mr-1" aria-hidden="true" />
                 Bookmark
+                {isAtLimit && <PremiumFeatureBadge className="ml-1" />}
               </Button>
               <AddToCollectionButton bookId={book.id} />
               {user && (

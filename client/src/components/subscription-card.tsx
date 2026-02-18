@@ -29,6 +29,7 @@ interface PaymentMethods {
 export function SubscriptionCard() {
   const { toast } = useToast();
   const [paymentMethod, setPaymentMethod] = useState<"stripe" | "paypal" | "crypto">("stripe");
+  const [selectedPlan, setSelectedPlan] = useState<"monthly" | "annual">("annual");
   const [isCryptoProcessing, setIsCryptoProcessing] = useState(false);
   
   const { 
@@ -122,14 +123,41 @@ export function SubscriptionCard() {
       
       <CardContent className="space-y-6">
         {!isPremium && (
-          <div className="text-center">
-            <div className="text-3xl font-bold text-foreground">
-              $9.99
-              <span className="text-base font-normal text-muted-foreground">/month</span>
+          <div className="grid grid-cols-2 gap-3">
+            <div
+              className={`relative rounded-lg border p-4 cursor-pointer transition-all ${
+                selectedPlan === "monthly"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border hover:border-muted-foreground/50"
+              }`}
+              onClick={() => setSelectedPlan("monthly")}
+            >
+              <div className="text-center">
+                <p className="text-sm font-medium text-muted-foreground mb-1">Monthly</p>
+                <div className="text-2xl font-bold text-foreground">$9.99</div>
+                <p className="text-xs text-muted-foreground">/month</p>
+                <p className="text-xs text-muted-foreground mt-2">Cancel anytime</p>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Cancel anytime
-            </p>
+            <div
+              className={`relative rounded-lg border p-4 cursor-pointer transition-all ${
+                selectedPlan === "annual"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-amber-500/50 hover:border-amber-500"
+              }`}
+              onClick={() => setSelectedPlan("annual")}
+            >
+              <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-amber-500 text-white hover:bg-amber-500 text-[10px] px-2">
+                Save 17%
+              </Badge>
+              <div className="text-center">
+                <p className="text-sm font-medium text-muted-foreground mb-1">Annual</p>
+                <div className="text-2xl font-bold text-foreground">$8.33</div>
+                <p className="text-xs text-muted-foreground">/month</p>
+                <p className="text-xs text-muted-foreground mt-1 line-through">$9.99/mo</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">$99.99/year</p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -194,7 +222,7 @@ export function SubscriptionCard() {
               <Button
                 className="w-full"
                 size="lg"
-                onClick={() => upgradeToPremium()}
+                onClick={() => upgradeToPremium(selectedPlan)}
                 disabled={isUpgrading}
               >
                 {isUpgrading ? (
@@ -205,7 +233,7 @@ export function SubscriptionCard() {
                 ) : (
                   <>
                     <CreditCard className="h-4 w-4 mr-2" />
-                    Pay $9.99 with Card
+                    Pay {selectedPlan === "annual" ? "$99.99/yr" : "$9.99/mo"} with Card
                   </>
                 )}
               </Button>
@@ -241,7 +269,7 @@ export function SubscriptionCard() {
                 ) : (
                   <>
                     <Bitcoin className="h-4 w-4 mr-2" />
-                    Pay $9.99 with Crypto
+                    Pay {selectedPlan === "annual" ? "$99.99/yr" : "$9.99/mo"} with Crypto
                   </>
                 )}
               </Button>
@@ -251,7 +279,7 @@ export function SubscriptionCard() {
           <Button
             className="w-full"
             size="lg"
-            onClick={() => upgradeToPremium()}
+            onClick={() => upgradeToPremium(selectedPlan)}
             disabled={isUpgrading}
           >
             {isUpgrading ? (
@@ -262,7 +290,7 @@ export function SubscriptionCard() {
             ) : (
               <>
                 <Crown className="h-4 w-4 mr-2" />
-                Upgrade to Premium
+                Subscribe {selectedPlan === "annual" ? "Annually — $99.99/yr" : "Monthly — $9.99/mo"}
               </>
             )}
           </Button>

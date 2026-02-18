@@ -13,6 +13,7 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
 import { useContentAccess } from "@/hooks/use-content-access";
 import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
+import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { EbookReader } from "@/components/ebook-reader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,9 +49,14 @@ import { AdvertiserDashboard } from "@/components/advertiser-dashboard";
 import { BillingDashboard } from "@/components/billing-dashboard";
 import { Footer } from "@/components/footer";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
-import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet } from "lucide-react";
+import { useSubscription } from "@/hooks/use-subscription";
+import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
+import { TrialNudge } from "@/components/trial-nudge";
+import { localStorageService } from "@/lib/storage";
+import { UsageDashboard } from "@/components/usage-dashboard";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3 } from "lucide-react";
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party" | "queue" | "advertise" | "billing";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing";
 
 // Header component with user management
 function AppHeader() {
@@ -1007,15 +1013,67 @@ function MainApp() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<string>("");
   const { toggleHighContrast } = useAccessibility();
-  const { currentBook, playBook, togglePlayPause, skip, changeSpeed } = useAudioContext();
+  const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
   const { 
     checkAccess, 
     showUpgradeModal, 
     blockedContent, 
     dismissUpgradeModal, 
     handleUpgrade, 
-    isUpgrading 
+    isUpgrading,
+    showPreview,
+    previewBook,
+    dismissPreview,
+    handlePreviewUpgrade,
   } = useContentAccess();
+  const { isPremium, upgradeToPremium } = useSubscription();
+  const [engagementUpsell, setEngagementUpsell] = useState<{ type: "book_complete" | "streak_milestone" | "listening_milestone"; detail: string; open: boolean }>({ type: "book_complete", detail: "", open: false });
+
+  useEffect(() => {
+    if (isPremium) return;
+    const audioCtx = onTrackEndCallback;
+    audioCtx.current = () => {
+      if (isPremium) return;
+      const title = currentBook?.title || "a book";
+      const triggerId = `book_complete_${title.replace(/\s+/g, "_").toLowerCase()}`;
+      if (!hasShownUpsell(triggerId)) {
+        setEngagementUpsell({ type: "book_complete", detail: title, open: true });
+      }
+    };
+    return () => { audioCtx.current = null; };
+  }, [isPremium, currentBook]);
+
+  useEffect(() => {
+    if (isPremium) return;
+    const streak = parseInt(localStorage.getItem("accessibooks_streak") || "0", 10);
+    const milestones = [3, 7, 14, 30];
+    for (const m of milestones) {
+      if (streak >= m) {
+        const triggerId = `streak_milestone_${m}`;
+        if (!hasShownUpsell(triggerId)) {
+          setEngagementUpsell({ type: "streak_milestone", detail: String(m), open: true });
+          break;
+        }
+      }
+    }
+  }, [isPremium]);
+
+  useEffect(() => {
+    if (isPremium) return;
+    const stats = localStorageService.getStats();
+    const completed = stats.booksCompleted || 0;
+    const listeningMilestones = [5, 10, 25, 50];
+    for (let i = listeningMilestones.length - 1; i >= 0; i--) {
+      const m = listeningMilestones[i];
+      if (completed >= m) {
+        const triggerId = `listening_milestone_${m}`;
+        if (!hasShownUpsell(triggerId)) {
+          setEngagementUpsell({ type: "listening_milestone", detail: String(m), open: true });
+          break;
+        }
+      }
+    }
+  }, [isPremium]);
 
   const handleSelectBook = (book: Book) => {
     if (!checkAccess(book)) {
@@ -1191,6 +1249,23 @@ function MainApp() {
             <Button
               variant="ghost"
               className={`py-4 px-1 border-b-2 font-medium ${
+                currentView === "usage"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setCurrentView("usage")}
+              role="tab"
+              aria-selected={currentView === "usage"}
+              aria-controls="usage-panel"
+              data-testid="tab-usage"
+            >
+              <BarChart3 className="h-4 w-4 mr-2" aria-hidden="true" />
+              Usage
+            </Button>
+
+            <Button
+              variant="ghost"
+              className={`py-4 px-1 border-b-2 font-medium ${
                 currentView === "publish"
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1281,6 +1356,11 @@ function MainApp() {
         id="main-content" 
         className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${hasMiniPlayer ? "pb-24" : ""}`}
       >
+        <TrialNudge
+          listeningHours={localStorageService.getStats().totalSecondsListened / 3600}
+          isPremium={isPremium}
+          onStartTrial={() => upgradeToPremium()}
+        />
         {currentView === "library" && (
           <div
             id="library-panel"
@@ -1327,6 +1407,11 @@ function MainApp() {
             <ReferralSection />
           </div>
         )}
+        {currentView === "usage" && (
+          <div id="usage-panel" role="tabpanel" data-testid="panel-usage">
+            <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium()} />
+          </div>
+        )}
         {currentView === "publish" && (
           <div id="publish-panel" role="tabpanel" data-testid="panel-publish">
             <AuthorDashboard />
@@ -1364,6 +1449,15 @@ function MainApp() {
       {/* Persistent mini player */}
       <MiniPlayer onExpand={handleExpandPlayer} />
 
+      {/* Premium preview player */}
+      {showPreview && previewBook && (
+        <PremiumPreviewPlayer
+          book={previewBook}
+          onUpgrade={handlePreviewUpgrade}
+          onDismiss={dismissPreview}
+        />
+      )}
+
       {/* Premium upgrade modal */}
       <PremiumUpgradeModal
         open={showUpgradeModal}
@@ -1371,6 +1465,15 @@ function MainApp() {
         book={blockedContent}
         onUpgrade={handleUpgrade}
         isUpgrading={isUpgrading}
+      />
+
+      {/* Engagement upsell modal */}
+      <EngagementUpsell
+        type={engagementUpsell.type}
+        detail={engagementUpsell.detail}
+        open={engagementUpsell.open}
+        onOpenChange={(open) => setEngagementUpsell(prev => ({ ...prev, open }))}
+        onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan); }}
       />
     </div>
   );

@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
 import { Bookmark } from "@shared/schema";
 import { localStorageService } from "@/lib/storage";
+import { useToast } from "@/hooks/use-toast";
 
-export function useBookmarks(bookId: string) {
+const MAX_FREE_BOOKMARKS = 5;
+
+export function useBookmarks(bookId: string, isPremium: boolean = false) {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (bookId) {
@@ -12,7 +16,18 @@ export function useBookmarks(bookId: string) {
     }
   }, [bookId]);
 
+  const isAtLimit = !isPremium && bookmarks.length >= MAX_FREE_BOOKMARKS;
+
   const addBookmark = (name: string, time: number) => {
+    if (!isPremium && bookmarks.length >= MAX_FREE_BOOKMARKS) {
+      toast({
+        title: "Bookmark limit reached",
+        description: `Free users can save up to ${MAX_FREE_BOOKMARKS} bookmarks per book. Upgrade to Premium for unlimited bookmarks.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const bookmark: Bookmark = {
       id: crypto.randomUUID(),
       bookId,
@@ -34,5 +49,7 @@ export function useBookmarks(bookId: string) {
     bookmarks,
     addBookmark,
     removeBookmark,
+    isAtLimit,
+    maxBookmarks: MAX_FREE_BOOKMARKS,
   };
 }

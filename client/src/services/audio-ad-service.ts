@@ -61,7 +61,7 @@ const DEFAULT_CONFIG: AdConfig = {
   preRollEnabled: true,
   midRollEnabled: true,
   preRollCooldownMs: 30 * 60 * 1000,
-  midRollCooldownMs: 20 * 60 * 1000,
+  midRollCooldownMs: 15 * 60 * 1000,
   skipAfterMs: 5000,
 };
 

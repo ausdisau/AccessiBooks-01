@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { useToast } from "@/hooks/use-toast";
+import { useSubscription } from "@/hooks/use-subscription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,9 @@ import {
   Loader2, Radio, ThumbsUp, Plus, ListMusic, Music, X,
 } from "lucide-react";
 import type { Book, StreamingQueue as StreamingQueueType, StreamingQueueItem } from "@shared/schema";
+import { AudioAdOverlay } from "@/components/audio-ad-overlay";
+import { audioAdService } from "@/services/audio-ad-service";
+import type { AdResponse } from "@/services/audio-ad-service";
 
 interface StreamingQueueProps {
   onBack: () => void;
@@ -245,11 +249,15 @@ function ActiveQueuesList({ onJoin }: { onJoin: (id: string) => void }) {
 function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: () => void; onBack: () => void }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { isPremium, upgradeToPremium } = useSubscription();
   const { playBook, currentBook, isPlaying, togglePlayPause, currentTime } = useAudioContext();
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [listenerCount, setListenerCount] = useState(0);
   const [myVotes, setMyVotes] = useState<string[]>([]);
+  const [interstitialAd, setInterstitialAd] = useState<AdResponse | null>(null);
+  const [showInterstitial, setShowInterstitial] = useState(false);
+  const pendingBookRef = useRef<{ id: string; title: string; author: string; audioUrl: string; coverImage?: string } | null>(null);
 
   const { data: queue, isLoading: queueLoading } = useQuery<StreamingQueueType>({
     queryKey: ["/api/streaming-queue", queueId],
@@ -311,13 +319,25 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
             break;
           case "book_changed":
             if (msg.book?.audioUrl) {
-              playBook({
+              const nextBook = {
                 id: msg.book.id || "",
                 title: msg.book.title,
                 author: msg.book.author || "",
                 audioUrl: msg.book.audioUrl,
                 coverImage: msg.book.coverImage || undefined,
-              } as any);
+              };
+              if (!isPremium && audioAdService.shouldShowMidRoll(false)) {
+                pendingBookRef.current = nextBook;
+                audioAdService.requestAd("mid-roll").then((ad) => {
+                  setInterstitialAd(ad);
+                  setShowInterstitial(true);
+                }).catch(() => {
+                  playBook(nextBook as any);
+                  pendingBookRef.current = null;
+                });
+              } else {
+                playBook(nextBook as any);
+              }
             }
             queryClient.invalidateQueries({ queryKey: ["/api/streaming-queue", queueId] });
             refetchItems();
@@ -404,6 +424,28 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
       onLeave();
     },
   });
+
+  const handleInterstitialComplete = useCallback((skipped: boolean) => {
+    if (interstitialAd) {
+      audioAdService.recordImpression(interstitialAd.id, "mid-roll", !skipped, skipped, interstitialAd.provider);
+    }
+    setShowInterstitial(false);
+    setInterstitialAd(null);
+    if (pendingBookRef.current) {
+      playBook(pendingBookRef.current as any);
+      pendingBookRef.current = null;
+    }
+  }, [interstitialAd, playBook]);
+
+  const handleInterstitialUpgrade = useCallback(() => {
+    setShowInterstitial(false);
+    setInterstitialAd(null);
+    if (pendingBookRef.current) {
+      playBook(pendingBookRef.current as any);
+      pendingBookRef.current = null;
+    }
+    upgradeToPremium("monthly");
+  }, [playBook, upgradeToPremium]);
 
   const isHost = queue?.hostUserId === user?.id;
   const pendingItems = (items || []).filter(i => i.status === "pending").sort((a, b) => (b.votes - a.votes) || (a.position - b.position));
@@ -603,6 +645,15 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
           </CardContent>
         </Card>
       </div>
+
+      {showInterstitial && interstitialAd && (
+        <AudioAdOverlay
+          ad={interstitialAd}
+          adType="mid-roll"
+          onComplete={handleInterstitialComplete}
+          onUpgrade={handleInterstitialUpgrade}
+        />
+      )}
     </div>
   );
 }

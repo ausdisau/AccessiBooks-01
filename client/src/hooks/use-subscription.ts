@@ -15,8 +15,9 @@ export function useSubscription() {
   });
 
   const upgradeMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/subscription/create-checkout");
+    mutationFn: async (plan?: "monthly" | "annual") => {
+      const queryParam = plan ? `?plan=${plan}` : "";
+      const response = await apiRequest("POST", `/api/subscription/create-checkout${queryParam}`);
       const data = await response.json();
       if (data.url) {
         window.location.href = data.url;
