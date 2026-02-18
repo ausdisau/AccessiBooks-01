@@ -600,4 +600,72 @@ export const insertContentAnalyticSchema = createInsertSchema(contentAnalytics).
 export type InsertContentAnalytic = z.infer<typeof insertContentAnalyticSchema>;
 export type ContentAnalytic = typeof contentAnalytics.$inferSelect;
 
+// === PODCAST INGESTION SYSTEM ===
+
+export const TRANSCRIPT_STATUSES = ["none", "available", "pending", "generated"] as const;
+export type TranscriptStatus = typeof TRANSCRIPT_STATUSES[number];
+
+export const podcastFeeds = pgTable("podcast_feeds", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  feedUrl: text("feed_url").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  author: text("author"),
+  language: text("language"),
+  websiteUrl: text("website_url"),
+  categories: jsonb("categories"),
+  etag: text("etag"),
+  lastModified: text("last_modified"),
+  lastFetchedAt: timestamp("last_fetched_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_podcast_feeds_title").on(table.title),
+]);
+
+export const insertPodcastFeedSchema = createInsertSchema(podcastFeeds).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastFetchedAt: true,
+});
+
+export type InsertPodcastFeed = z.infer<typeof insertPodcastFeedSchema>;
+export type PodcastFeed = typeof podcastFeeds.$inferSelect;
+
+export const podcastEpisodes = pgTable("podcast_episodes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  feedId: varchar("feed_id").notNull().references(() => podcastFeeds.id, { onDelete: "cascade" }),
+  guid: text("guid"),
+  title: text("title").notNull(),
+  descriptionText: text("description_text"),
+  descriptionHtml: text("description_html"),
+  pubDate: timestamp("pub_date"),
+  durationSeconds: integer("duration_seconds"),
+  audioUrl: text("audio_url").notNull(),
+  audioType: text("audio_type"),
+  audioLengthBytes: integer("audio_length_bytes"),
+  explicit: boolean("explicit"),
+  transcriptUrl: text("transcript_url"),
+  transcriptStatus: text("transcript_status").notNull().default("none"),
+  contentWarnings: jsonb("content_warnings"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_podcast_episodes_feed").on(table.feedId),
+  index("idx_podcast_episodes_pub_date").on(table.pubDate),
+  index("idx_podcast_episodes_guid").on(table.guid),
+  index("idx_podcast_episodes_audio_url").on(table.audioUrl),
+]);
+
+export const insertPodcastEpisodeSchema = createInsertSchema(podcastEpisodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPodcastEpisode = z.infer<typeof insertPodcastEpisodeSchema>;
+export type PodcastEpisode = typeof podcastEpisodes.$inferSelect;
+
 export * from "./models/chat";

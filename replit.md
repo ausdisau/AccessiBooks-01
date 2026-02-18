@@ -40,6 +40,7 @@ Preferred communication style: Simple, everyday language.
 - **Catalog Seeder**: A background service for batch importing large catalogs from sources like LibriVox and Project Gutenberg, handling rate limits and ensuring data deduplication.
 - **Self-Publishing Portal**: Author dashboard (Publish tab) for uploading audiobooks/ebooks via Object Storage presigned URLs, managing metadata, and viewing analytics (plays, reads, listeners, completions). Routes in `server/selfPublishing.ts`, frontend in `client/src/components/author-dashboard.tsx`. DB tables: `authorProfiles`, `contentAnalytics`, extended `userSubmissions`.
 - **Audio Ad System**: Pre-roll/mid-roll ads for free users with frequency capping, Premium bypass, and impression tracking.
+- **Podcast Ingestion Service**: RSS feed ingestion pipeline (`server/rss.ts` for parsing, `server/podcastIngestion.ts` for API routes). Supports any standard podcast RSS. Endpoints: POST `/api/ingest` (single), POST `/api/ingest/batch` (multiple), GET `/api/podcasts/feeds`, GET `/api/podcasts/feeds/:id`, GET `/api/podcasts/feeds/:id/episodes`, GET `/api/podcasts/episodes/:id`. Features: idempotent upsert, conditional requests (etag/last-modified), rate limiting, accessibility fields (transcriptUrl, transcriptStatus, contentWarnings). DB tables: `podcastFeeds`, `podcastEpisodes`.
 
 ## External Dependencies
 
