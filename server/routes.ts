@@ -32,6 +32,7 @@ import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, gene
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
 import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./amazon";
+import { isSoundCloudEnabled, searchSoundCloudTracks, getSoundCloudTrack, getSoundCloudUser, getSoundCloudUserTracks, getSoundCloudStreamUrl, getSoundCloudGenreTracks, getSoundCloudRelated, SOUNDCLOUD_GENRES } from "./soundcloud";
 import { registerListeningPartyRoutes, setupListeningPartyWS } from "./listeningParty";
 import { registerStreamingQueueRoutes } from "./streamingQueue";
 import {
@@ -159,16 +160,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/books/search - Search books
+  // GET /api/books/search - Search books (with optional SoundCloud augmentation)
   app.get("/api/books/search", async (req, res) => {
     try {
-      const { q } = req.query;
+      const { q, includeSoundCloud } = req.query;
       
       if (!q || typeof q !== "string") {
         return res.status(400).json({ message: "Search query is required" });
       }
 
       const books = await storage.searchBooks(q);
+
+      if (includeSoundCloud === "true" && isSoundCloudEnabled()) {
+        try {
+          const scTracks = await searchSoundCloudTracks(q, 5);
+          const scBooks = scTracks.map((track: any) => ({
+            id: `soundcloud-${track.id}`,
+            title: track.title,
+            author: track.artist,
+            description: track.description,
+            coverImage: track.artworkUrl,
+            audioUrl: track.permalinkUrl,
+            duration: Math.floor(track.duration / 1000),
+            genre: track.genre || "SoundCloud",
+            contentType: "audiobook",
+            source: "soundcloud",
+            externalUrl: track.permalinkUrl,
+            playbackCount: track.playbackCount,
+          }));
+          return res.json([...books, ...scBooks]);
+        } catch {
+          return res.json(books);
+        }
+      }
+
       res.json(books);
     } catch (error) {
       res.status(500).json({ message: "Failed to search books" });
@@ -1592,6 +1617,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Amazon audiobook error:", error);
       res.status(500).json({ message: "Failed to fetch Amazon audiobook" });
+    }
+  });
+
+  // ============================================
+  // SoundCloud Integration
+  // ============================================
+
+  app.get("/api/soundcloud/status", async (req, res) => {
+    res.json({ enabled: isSoundCloudEnabled() });
+  });
+
+  app.get("/api/soundcloud/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const limit = parseInt(req.query.limit as string) || 20;
+      const genre = req.query.genre as string | undefined;
+      if (!q) {
+        return res.status(400).json({ message: "Query parameter 'q' is required" });
+      }
+      const results = await searchSoundCloudTracks(q, limit, genre);
+      res.json({ results });
+    } catch (error) {
+      console.error("SoundCloud search error:", error);
+      res.status(500).json({ message: "Failed to search SoundCloud" });
+    }
+  });
+
+  app.get("/api/soundcloud/track/:id", async (req, res) => {
+    try {
+      const trackId = parseInt(req.params.id);
+      if (isNaN(trackId)) {
+        return res.status(400).json({ message: "Invalid track ID" });
+      }
+      const track = await getSoundCloudTrack(trackId);
+      if (!track) {
+        return res.status(404).json({ message: "Track not found" });
+      }
+      res.json(track);
+    } catch (error) {
+      console.error("SoundCloud track error:", error);
+      res.status(500).json({ message: "Failed to fetch SoundCloud track" });
+    }
+  });
+
+  app.get("/api/soundcloud/track/:id/stream", async (req, res) => {
+    try {
+      const trackId = parseInt(req.params.id);
+      if (isNaN(trackId)) {
+        return res.status(400).json({ message: "Invalid track ID" });
+      }
+      const streamUrl = await getSoundCloudStreamUrl(trackId);
+      if (!streamUrl) {
+        return res.status(404).json({ message: "Stream not available" });
+      }
+      res.json({ streamUrl });
+    } catch (error) {
+      console.error("SoundCloud stream error:", error);
+      res.status(500).json({ message: "Failed to get stream URL" });
+    }
+  });
+
+  app.get("/api/soundcloud/track/:id/related", async (req, res) => {
+    try {
+      const trackId = parseInt(req.params.id);
+      const limit = parseInt(req.query.limit as string) || 10;
+      if (isNaN(trackId)) {
+        return res.status(400).json({ message: "Invalid track ID" });
+      }
+      const tracks = await getSoundCloudRelated(trackId, limit);
+      res.json({ results: tracks });
+    } catch (error) {
+      console.error("SoundCloud related error:", error);
+      res.status(500).json({ message: "Failed to fetch related tracks" });
+    }
+  });
+
+  app.get("/api/soundcloud/user/:id", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      const user = await getSoundCloudUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error("SoundCloud user error:", error);
+      res.status(500).json({ message: "Failed to fetch SoundCloud user" });
+    }
+  });
+
+  app.get("/api/soundcloud/user/:id/tracks", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const limit = parseInt(req.query.limit as string) || 20;
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      const tracks = await getSoundCloudUserTracks(userId, limit);
+      res.json({ results: tracks });
+    } catch (error) {
+      console.error("SoundCloud user tracks error:", error);
+      res.status(500).json({ message: "Failed to fetch user tracks" });
+    }
+  });
+
+  app.get("/api/soundcloud/genres", async (req, res) => {
+    res.json({ genres: SOUNDCLOUD_GENRES });
+  });
+
+  app.get("/api/soundcloud/genres/:genre", async (req, res) => {
+    try {
+      const { genre } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const tracks = await getSoundCloudGenreTracks(genre, limit);
+      res.json({ results: tracks });
+    } catch (error) {
+      console.error("SoundCloud genre tracks error:", error);
+      res.status(500).json({ message: "Failed to fetch genre tracks" });
     }
   });
 
