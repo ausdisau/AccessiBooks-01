@@ -1532,7 +1532,7 @@ function App() {
 }
 
 function AudioAdManager() {
-  const { adState, skipAfterMs, onAdComplete, onAdUpgrade } = useAudioContext();
+  const { adState, onAdComplete, onAdUpgrade } = useAudioContext();
 
   if (!adState.isAdPlaying || !adState.currentAd || !adState.adType) {
     return null;
@@ -1542,7 +1542,6 @@ function AudioAdManager() {
     <AudioAdOverlay
       ad={adState.currentAd}
       adType={adState.adType}
-      skipAfterMs={skipAfterMs}
       onComplete={onAdComplete}
       onUpgrade={onAdUpgrade}
     />

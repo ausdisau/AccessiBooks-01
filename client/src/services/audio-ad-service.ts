@@ -1,48 +1,53 @@
-const HOUSE_ADS = [
-  {
-    id: "premium-upgrade-1",
-    title: "Go Premium",
-    message: "Upgrade to Premium for ad-free listening, unlimited skips, and high-quality audio.",
-    durationMs: 12000,
-    category: "premium-promo",
-  },
-  {
-    id: "premium-upgrade-2",
-    title: "Listen Without Limits",
-    message: "Premium members enjoy uninterrupted audiobook experiences. Try it free for 7 days!",
-    durationMs: 12000,
-    category: "premium-promo",
-  },
-  {
-    id: "premium-upgrade-3",
-    title: "Offline Listening",
-    message: "Download audiobooks for offline listening. Plus 5-device support and 320 kbps audio with Premium.",
-    durationMs: 15000,
-    category: "premium-promo",
-  },
-  {
-    id: "feature-highlight-1",
-    title: "Discover New Books",
-    message: "Explore thousands of free audiobooks from LibriVox and Project Gutenberg, right here on AccessiBooks.",
-    durationMs: 12000,
-    category: "feature",
-  },
-  {
-    id: "feature-highlight-2",
-    title: "Reading Challenges",
-    message: "Join reading challenges, earn achievements, and track your listening streaks. Stay motivated with gamification!",
-    durationMs: 12000,
-    category: "feature",
-  },
-];
-
-export interface AudioAd {
-  id: string;
-  title: string;
-  message: string;
-  durationMs: number;
-  category: string;
+export interface VASTTracking {
+  impression: string[];
+  start: string[];
+  firstQuartile: string[];
+  midpoint: string[];
+  thirdQuartile: string[];
+  complete: string[];
+  skip: string[];
+  mute: string[];
+  unmute: string[];
+  pause: string[];
+  resume: string[];
+  error: string[];
+  clickThrough?: string;
+  clickTracking: string[];
 }
+
+export interface AdCompanion {
+  imageUrl: string;
+  clickThrough?: string;
+  width: number;
+  height: number;
+  trackingPixels: string[];
+}
+
+export interface ProgrammaticAd {
+  id: string;
+  provider: string;
+  title: string;
+  description?: string;
+  advertiser?: string;
+  audioUrl: string;
+  mimeType: string;
+  duration: number;
+  skipOffset?: number;
+  companion?: AdCompanion;
+  tracking: VASTTracking;
+  isProgrammatic: true;
+}
+
+export interface HouseAd {
+  id: string;
+  provider: "house";
+  title: string;
+  description: string;
+  duration: number;
+  isProgrammatic: false;
+}
+
+export type AdResponse = ProgrammaticAd | HouseAd;
 
 interface AdConfig {
   preRollEnabled: boolean;
@@ -66,6 +71,7 @@ interface AdImpression {
   type: "pre-roll" | "mid-roll";
   completed: boolean;
   skipped: boolean;
+  provider: string;
 }
 
 const STORAGE_KEY = "accessibooks_ad_state";
@@ -108,6 +114,7 @@ export class AudioAdService {
   private audioContext: AudioContext | null = null;
   private currentOscillator: OscillatorNode | null = null;
   private currentGain: GainNode | null = null;
+  private firedQuartiles: Set<string> = new Set();
 
   constructor(config: Partial<AdConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -117,7 +124,6 @@ export class AudioAdService {
   shouldShowPreRoll(isPremium: boolean): boolean {
     if (isPremium) return false;
     if (!this.config.preRollEnabled) return false;
-
     const now = Date.now();
     const timeSinceLastAd = now - this.state.lastPreRollTime;
     if (this.state.sessionPlayCount === 0) return true;
@@ -127,22 +133,105 @@ export class AudioAdService {
   shouldShowMidRoll(isPremium: boolean): boolean {
     if (isPremium) return false;
     if (!this.config.midRollEnabled) return false;
-
     const now = Date.now();
     const timeSinceLastAd = now - this.state.lastMidRollTime;
     return timeSinceLastAd >= this.config.midRollCooldownMs;
   }
 
-  getAd(): AudioAd {
-    const index = Math.floor(Math.random() * HOUSE_ADS.length);
-    return HOUSE_ADS[index];
+  async requestAd(adType: "pre-roll" | "mid-roll", contentGenre?: string): Promise<AdResponse> {
+    try {
+      const type = adType === "pre-roll" ? "preroll" : "midroll";
+      const params = new URLSearchParams({ type });
+      if (contentGenre) params.set("genre", contentGenre);
+
+      const response = await fetch(`/api/ads/request?${params.toString()}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (err) {
+      console.warn("[AudioAdService] Failed to fetch ad, using house ad:", err);
+      return this.getHouseAd();
+    }
+  }
+
+  private getHouseAd(): HouseAd {
+    const houseAds: HouseAd[] = [
+      {
+        id: "house-premium-1",
+        provider: "house",
+        title: "Go Premium",
+        description: "Upgrade to Premium for ad-free listening, unlimited skips, and high-quality audio.",
+        duration: 12,
+        isProgrammatic: false,
+      },
+      {
+        id: "house-premium-2",
+        provider: "house",
+        title: "Listen Without Limits",
+        description: "Premium members enjoy uninterrupted audiobook experiences. Try it free for 7 days!",
+        duration: 12,
+        isProgrammatic: false,
+      },
+    ];
+    return houseAds[Math.floor(Math.random() * houseAds.length)]!;
   }
 
   get skipAfterMs(): number {
     return this.config.skipAfterMs;
   }
 
-  recordImpression(adId: string, type: "pre-roll" | "mid-roll", completed: boolean, skipped: boolean) {
+  getSkipOffsetMs(ad: AdResponse): number {
+    if (ad.isProgrammatic && ad.skipOffset !== undefined) {
+      return ad.skipOffset * 1000;
+    }
+    return this.config.skipAfterMs;
+  }
+
+  async fireTrackingPixels(urls: string[]): Promise<void> {
+    if (urls.length === 0) return;
+    try {
+      await fetch("/api/ads/tracking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      });
+    } catch (err) {
+      console.warn("[AudioAdService] Tracking pixel fire failed:", err);
+    }
+  }
+
+  async fireAdEvent(ad: AdResponse, event: keyof VASTTracking): Promise<void> {
+    if (!ad.isProgrammatic) return;
+    const urls = ad.tracking[event];
+    if (Array.isArray(urls) && urls.length > 0) {
+      await this.fireTrackingPixels(urls);
+    }
+  }
+
+  checkQuartileProgress(ad: AdResponse, currentTime: number, duration: number): void {
+    if (!ad.isProgrammatic || duration <= 0) return;
+
+    const progress = currentTime / duration;
+    const adId = ad.id;
+
+    if (progress >= 0.25 && !this.firedQuartiles.has(`${adId}_firstQuartile`)) {
+      this.firedQuartiles.add(`${adId}_firstQuartile`);
+      this.fireAdEvent(ad, "firstQuartile");
+    }
+    if (progress >= 0.5 && !this.firedQuartiles.has(`${adId}_midpoint`)) {
+      this.firedQuartiles.add(`${adId}_midpoint`);
+      this.fireAdEvent(ad, "midpoint");
+    }
+    if (progress >= 0.75 && !this.firedQuartiles.has(`${adId}_thirdQuartile`)) {
+      this.firedQuartiles.add(`${adId}_thirdQuartile`);
+      this.fireAdEvent(ad, "thirdQuartile");
+    }
+  }
+
+  resetQuartileTracking(): void {
+    this.firedQuartiles.clear();
+  }
+
+  recordImpression(adId: string, type: "pre-roll" | "mid-roll", completed: boolean, skipped: boolean, provider: string = "house") {
     const now = Date.now();
     const impression: AdImpression = {
       adId,
@@ -150,6 +239,7 @@ export class AudioAdService {
       type,
       completed,
       skipped,
+      provider,
     };
 
     if (type === "pre-roll") {
@@ -166,7 +256,7 @@ export class AudioAdService {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ adId, adType: type, completed, skipped }),
+      body: JSON.stringify({ adId, adType: type, completed, skipped, provider }),
     }).catch(() => {});
   }
 
@@ -182,27 +272,21 @@ export class AudioAdService {
           this.audioContext = new window.AudioContext();
         }
         const ctx = this.audioContext;
-
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
         gain.connect(ctx.destination);
-
         osc.type = "sine";
         const now = ctx.currentTime;
-
         osc.frequency.setValueAtTime(523.25, now);
         osc.frequency.setValueAtTime(659.25, now + 0.15);
         osc.frequency.setValueAtTime(783.99, now + 0.3);
-
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
         gain.gain.setValueAtTime(0.3, now + 0.35);
         gain.gain.linearRampToValueAtTime(0, now + 0.5);
-
         this.currentOscillator = osc;
         this.currentGain = gain;
-
         osc.start(now);
         osc.stop(now + 0.5);
         osc.onended = () => {
