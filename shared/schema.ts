@@ -777,3 +777,69 @@ export const insertRoomMessageSchema = createInsertSchema(listeningRoomMessages)
 });
 export type InsertRoomMessage = z.infer<typeof insertRoomMessageSchema>;
 export type RoomMessage = typeof listeningRoomMessages.$inferSelect;
+
+// Live Streaming Queues - preference-based book radio
+export const streamingQueues = pgTable("streaming_queues", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  genre: text("genre"),
+  hostUserId: varchar("host_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  currentBookId: varchar("current_book_id"),
+  currentBookTitle: text("current_book_title"),
+  currentBookAuthor: text("current_book_author"),
+  currentBookCover: text("current_book_cover"),
+  currentBookAudioUrl: text("current_book_audio_url"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  listenerCount: integer("listener_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_sq_host").on(table.hostUserId),
+  index("idx_sq_status").on(table.status),
+  index("idx_sq_genre").on(table.genre),
+]);
+
+export const insertStreamingQueueSchema = createInsertSchema(streamingQueues).omit({
+  id: true,
+  listenerCount: true,
+  createdAt: true,
+});
+export type InsertStreamingQueue = z.infer<typeof insertStreamingQueueSchema>;
+export type StreamingQueue = typeof streamingQueues.$inferSelect;
+
+export const streamingQueueItems = pgTable("streaming_queue_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  queueId: varchar("queue_id").notNull().references(() => streamingQueues.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull(),
+  bookTitle: text("book_title").notNull(),
+  bookAuthor: text("book_author"),
+  bookCover: text("book_cover"),
+  bookAudioUrl: text("book_audio_url"),
+  position: integer("position").notNull().default(0),
+  votes: integer("votes").notNull().default(0),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  addedBy: varchar("added_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_sqi_queue").on(table.queueId),
+  index("idx_sqi_position").on(table.queueId, table.position),
+  index("idx_sqi_status").on(table.status),
+]);
+
+export const insertStreamingQueueItemSchema = createInsertSchema(streamingQueueItems).omit({
+  id: true,
+  votes: true,
+  createdAt: true,
+});
+export type InsertStreamingQueueItem = z.infer<typeof insertStreamingQueueItemSchema>;
+export type StreamingQueueItem = typeof streamingQueueItems.$inferSelect;
+
+export const queueVotes = pgTable("queue_votes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  queueItemId: varchar("queue_item_id").notNull().references(() => streamingQueueItems.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_qv_item").on(table.queueItemId),
+  index("idx_qv_user").on(table.userId),
+]);
