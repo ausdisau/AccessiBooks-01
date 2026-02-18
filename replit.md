@@ -38,6 +38,8 @@ Preferred communication style: Simple, everyday language.
 - **AI-Generated Book Covers**: System to generate covers using AI prompts based on book metadata when original covers are unavailable.
 - **Gamification**: Tracks user activity (listening streaks, XP, levels, achievements), daily listening goals, and reading challenges to encourage engagement.
 - **Catalog Seeder**: A background service for batch importing large catalogs from sources like LibriVox and Project Gutenberg, handling rate limits and ensuring data deduplication.
+- **Self-Publishing Portal**: Author dashboard (Publish tab) for uploading audiobooks/ebooks via Object Storage presigned URLs, managing metadata, and viewing analytics (plays, reads, listeners, completions). Routes in `server/selfPublishing.ts`, frontend in `client/src/components/author-dashboard.tsx`. DB tables: `authorProfiles`, `contentAnalytics`, extended `userSubmissions`.
+- **Audio Ad System**: Pre-roll/mid-roll ads for free users with frequency capping, Premium bypass, and impression tracking.
 
 ## External Dependencies
 

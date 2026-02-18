@@ -340,6 +340,13 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const startPlaybackForBook = useCallback((book: Book) => {
     setCurrentBook(book);
+
+    fetch("/api/analytics/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookId: book.id, eventType: "play" }),
+    }).catch(() => {});
+
     setTimeout(async () => {
       const audio = audioRef.current;
       if (audio) {
