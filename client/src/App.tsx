@@ -41,6 +41,7 @@ import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
 import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
 import { ReferralSection } from "@/components/referral-section";
+import { YearInReview } from "./components/year-in-review";
 import { AuthorDashboard } from "@/components/author-dashboard";
 import { NotificationBell } from "@/components/notification-center";
 import { ListeningParty } from "@/components/listening-party";
@@ -1305,6 +1306,7 @@ function MainApp() {
         {currentView === "stats" && (
           <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
             <GamificationDashboard />
+            <YearInReview />
             <ReferralSection />
           </div>
         )}

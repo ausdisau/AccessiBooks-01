@@ -61,3 +61,11 @@ Preferred communication style: Simple, everyday language.
 - **Payment Gateways**: Stripe, PayPal, Coinbase Commerce.
 - **Content APIs**: iTunes Search API, LibriVox API, Open Library API, Google Books API, Project Gutenberg API (Gutendex), Internet Archive API, Spotify Web API, Amazon Product Advertising API, SoundCloud API.
 - **Advertising Platforms**: Google AdSense, Google Ad Manager.
+
+## Engagement Features (Added Feb 2026)
+- **Streak Freezes**: Users earn freeze tokens to protect listening streaks. DB: `streakFreezes`. Endpoints: GET/POST `/api/gamification/freezes`, POST `/api/gamification/freezes/use`.
+- **Expiring Rewards**: Time-limited rewards (XP bonuses, streak shields) with countdown timers. DB: `expiringRewards`. Endpoints: GET `/api/gamification/rewards`, POST `/api/gamification/rewards/:id/claim`, POST `/api/gamification/rewards/grant`.
+- **Surprise Achievements**: 10 hidden achievements (comeback_kid, binge_reader, weekend_warrior, century_club, diverse_listener, review_streak, sharing_is_caring, party_animal, collector, speed_reader) with trigger logic in `server/gamification.ts`. Displayed as mystery cards until unlocked.
+- **Year-in-Review**: Annual stats summary with monthly activity chart, fun facts, and social sharing. Backend: GET `/api/gamification/year-in-review?year=`. Frontend: `client/src/components/year-in-review.tsx`, shown in Stats panel.
+- **Referral System**: Generate/redeem referral codes, 500 XP + 7-day premium for both parties. DB: `referrals`. Frontend: `client/src/components/referral-section.tsx`.
+- **Achievement Popup**: Toast-style celebration component at `client/src/components/achievement-popup.tsx`.
