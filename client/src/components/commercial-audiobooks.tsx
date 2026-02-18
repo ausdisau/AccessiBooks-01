@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ChevronRight, Search, ExternalLink, Headphones, Star, Music, PlayCircle, Clock, DollarSign } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, ExternalLink, Headphones, Star, Music, PlayCircle, Clock, DollarSign, BookOpen, Download } from "lucide-react";
 import { SiSpotify, SiSoundcloud, SiGoogleplay } from "react-icons/si";
 
 interface SpotifyAudiobook {
@@ -764,9 +764,338 @@ function GooglePlaySection() {
   );
 }
 
+interface NordicApiEbook {
+  id: string;
+  title: string;
+  description: string;
+  coverUrl: string;
+  category: string;
+  formats: { label: string; url: string }[];
+}
+
+const nordicApisEbooks: NordicApiEbook[] = [
+  {
+    id: "developer-experience",
+    title: "Developer Experience",
+    description: "Top advice on improving API developer experience. Explore tips to streamline discovery and onboarding, make your API more self-service, and best practices around documentation, sandboxes, and sample code.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/developer-experience-ebook-683x1024.png",
+    category: "developer",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/developer-experience" },
+      { label: "Kindle", url: "https://www.amazon.com/dp/B0BC35FRJ2" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/Developer-Experience-v2.1.pdf" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/Developer-Experience-v2.1.epub" },
+    ],
+  },
+  {
+    id: "api-as-a-product",
+    title: "API-as-a-Product",
+    description: "Tips to help you create a working business model around a specialized public API. Discover common monetization models, developer marketing tips, and more helpful business advice for API-centric SaaS.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/API-as-a-Product-eBook-Cover-683x1024.png",
+    category: "business",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/apiasaproduct/" },
+      { label: "Kindle", url: "https://www.amazon.com/API-Product-Running-API-centric-Business-ebook/dp/B096WHVSMQ/" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/API-as-a-Product-v2.1.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/API-as-a-Product.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/API-as-a-Product-v2.1.epub" },
+    ],
+  },
+  {
+    id: "identity-and-apis",
+    title: "Identity and APIs",
+    description: "Discover techniques to secure platform access and delegate access throughout a mature API ecosystem, incorporating concepts like OAuth, OpenID Connect, and the API Security Maturity Model.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/Identity-and-APIs-Cover-683x1024.jpg",
+    category: "security",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/identityandapis/" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/Identity-And-APIs-v2.1.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/Identity-and-APIs-Nordic-APIs-ebook-v1.3.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/Identity-And-APIs-v2.1.epub" },
+    ],
+  },
+  {
+    id: "api-strategy-open-banking",
+    title: "API Strategy for Open Banking",
+    description: "A holistic API perspective on open banking covering PSD2, developer experience tips, frameworks for high-grade security and access management, plus best practices and case studies from the world's largest open banking initiatives.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/API-Strategy-for-Open-Banking-cover-683x1024.jpg",
+    category: "business",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/API-Strategy-for-Open-Banking/" },
+      { label: "Kindle", url: "https://www.amazon.com/dp/B08BBL88SK" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/API-Strategy-for-Open-Banking-v2.2.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/API-Strategy-for-Open-Banking-v2.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/API-Strategy-for-Open-Banking-v2.2.epub" },
+    ],
+  },
+  {
+    id: "strategies-microservices",
+    title: "Strategies For Microservices Architecture",
+    description: "Microservices are a vital component to modern web API discussion. This compilation addresses the top insights and best practices surrounding microservices design.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/Strategies-For-Microservices-Architecture-704x1024.png",
+    category: "architecture",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/microservices-architecture/" },
+    ],
+  },
+  {
+    id: "graphql-or-bust",
+    title: "GraphQL or Bust",
+    description: "Determine the position of GraphQL within the API ecosystem. Explore benefits, differences between GraphQL and REST, nuanced security concerns, extending GraphQL with additional tooling, and more.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/Graphql-or-bust-cover-1-704x1024.png",
+    category: "architecture",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/graphql/" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/GraphQL-or-Bust-v2.2.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/GraphQL-or-Bust-2018.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/GraphQL-or-Bust-v2.2.epub" },
+    ],
+  },
+  {
+    id: "api-design-decades",
+    title: "API Design on the Scale of Decades",
+    description: "Expert insights from the 2016 Nordic APIs Platform Summit, dedicated to the theme of architecting and designing APIs on the scale of decades.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/ages_ebook.png",
+    category: "architecture",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/API-Design/" },
+      { label: "Kindle", url: "https://www.amazon.com/dp/B06XZS8KHK" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/API-Design-on-the-Scale-of-Decades-v2.2.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/API-Design-on-the-scale-of-Decades.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/API-Design-on-the-Scale-of-Decades-v2.2.epub" },
+    ],
+  },
+  {
+    id: "how-to-market-api",
+    title: "How to Successfully Market an API",
+    description: "The bible for project managers, technical evangelists, or marketing aficionados promoting an API program. Learn how to plan an API-first business, make it discoverable, promote it to press and developer networks.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/how-to-market-an-api-704x1024.png",
+    category: "business",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/how-to-market-an-API/" },
+      { label: "Kindle", url: "https://www.amazon.com/How-Successfully-Market-API-Fine-tuning-ebook/dp/B01LZDE3GK/" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/How-to-Successfully-Market-an-API-v2.2.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/how-to-market-an-API.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/How-to-Successfully-Market-an-API-v2.2.epub" },
+    ],
+  },
+  {
+    id: "api-driven-devops",
+    title: "API-Driven DevOps",
+    description: "Learn about Continuous Integration tooling, Configuration Management, Docker Containers, and an API-driven approach to uniting development and delivery in the age of cloud computing.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/title_page-1-704x1024.png",
+    category: "developer",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/api-driven-devops/" },
+      { label: "Kindle", url: "https://www.amazon.com/API-Driven-DevOps-Strategies-Continuous-Deployment-ebook/dp/B01GP0Y5XQ/" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/API-Driven-DevOps-v2.2.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/api-driven-devops.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/API-Driven-DevOps-v2.2.epub" },
+    ],
+  },
+  {
+    id: "the-api-economy",
+    title: "The API Economy",
+    description: "Explore how agile businesses are using APIs to disrupt industries and outperform competitors. Track the historical progression of the space, forecast future trends, and examine the key players.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/title_page-medium-500px.png",
+    category: "business",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/the-API-economy/" },
+      { label: "Kindle", url: "https://www.amazon.com/API-Economy-Disruption-Business-APIs-ebook/dp/B01F2PIP3Q/" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/The-API-Economy-v2.2.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/theapieconomy.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/The-API-Economy-v2.2.epub" },
+    ],
+  },
+  {
+    id: "spark-web-framework",
+    title: "Programming APIs with the Spark Web Framework",
+    description: "Master Spark Java, a free open-source microframework for developing powerful APIs alongside JVM-based programming languages. Includes extensive code samples demonstrating Scala and Java usage.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/spark_ebook_final_large-704x1024.png",
+    category: "developer",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/using-spark-java-to-program-apis" },
+      { label: "Kindle", url: "https://www.amazon.com/Programming-APIs-With-Spark-Framework-ebook/dp/B017OLT37I" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/using-spark-java-to-program-apis.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/using-spark-java-to-program-apis.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/using-spark-java-to-program-apis.epub" },
+    ],
+  },
+  {
+    id: "securing-api-stronghold",
+    title: "Securing the API Stronghold",
+    description: "Vital advice on digital security for APIs and microservices. Outlines security stacks and workflows using modern technologies to ensure your digital assets are securely distributed.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/security_ebook_final-01-704x1024.png",
+    category: "security",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/securing-the-api-stronghold" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/securing-the-api-stronghold.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/securing-the-api-stronghold.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/securing-the-api-stronghold.epub" },
+    ],
+  },
+  {
+    id: "the-api-lifecycle",
+    title: "The API Lifecycle",
+    description: "The common API lifecycle boiled down into four main phases, helping API practitioners stabilize their API against internal and external factors through small revisions and iterative feedback.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/lifecycle_ebook_medium-704x1024.png",
+    category: "architecture",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/api-lifecycle" },
+      { label: "Kindle", url: "https://www.amazon.com/The-API-Lifecycle-Process-Managing-ebook/dp/B011ACJ368" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/theapilifecycle.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/theapilifecycle.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/theapilifecycle.epub" },
+    ],
+  },
+  {
+    id: "developing-api-mindset",
+    title: "Developing The API Mindset",
+    description: "A taxonomy for API types with insightful business strategies for Private, Partner, and Public APIs. Reorient your business culture towards a platform model and composable enterprise identity.",
+    coverUrl: "https://nordicapis.com/wp-content/uploads/mindset_ebook_final.png",
+    category: "business",
+    formats: [
+      { label: "LeanPub", url: "https://leanpub.com/developingtheapimindset" },
+      { label: "PDF", url: "https://nordicapis.com/wp-content/uploads/Developing-the-API-Mindset-v2.2.pdf" },
+      { label: "MOBI", url: "https://nordicapis.com/wp-content/uploads/developingtheapimindset.mobi" },
+      { label: "EPUB", url: "https://nordicapis.com/wp-content/uploads/Developing-the-API-Mindset-v2.2.epub" },
+    ],
+  },
+];
+
+const nordicCategories = [
+  { key: "all", label: "All" },
+  { key: "business", label: "Business" },
+  { key: "architecture", label: "Architecture" },
+  { key: "security", label: "Security" },
+  { key: "developer", label: "Developer" },
+];
+
+function NordicApisSection() {
+  const [category, setCategory] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const filtered = nordicApisEbooks.filter((book) => {
+    const matchesCategory = category === "all" || book.category === category;
+    const matchesSearch = !searchInput.trim() || book.title.toLowerCase().includes(searchInput.toLowerCase()) || book.description.toLowerCase().includes(searchInput.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  const scroll = (direction: "left" | "right") => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollBy({
+      left: direction === "left" ? -300 : 300,
+      behavior: "smooth",
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="font-semibold text-lg flex items-center gap-2">
+          <BookOpen className="h-5 w-5 text-purple-500" />
+          Nordic APIs eBooks
+          <Badge variant="secondary" className="text-xs">Free</Badge>
+        </h3>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Input
+              placeholder="Search eBooks..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="h-8 w-48 text-sm"
+            />
+          </div>
+          <div className="flex gap-1">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => scroll("left")}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => scroll("right")}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        ref={scrollRef}
+        className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        {filtered.map((book) => (
+          <div key={book.id} className="flex-shrink-0 w-[200px]">
+            <Card className="hover:shadow-lg transition-shadow h-full">
+              <CardContent className="p-3">
+                <div className="relative">
+                  <img
+                    src={book.coverUrl}
+                    alt={book.title}
+                    className="w-full h-[200px] object-contain rounded-md mb-2 bg-gray-50 dark:bg-gray-900"
+                  />
+                  <Badge className="absolute top-2 left-2 text-xs bg-purple-600 text-white">
+                    <BookOpen className="h-3 w-3 mr-1" />
+                    Free
+                  </Badge>
+                </div>
+                <h4 className="text-sm font-medium line-clamp-2">{book.title}</h4>
+                <p className="text-xs text-muted-foreground mt-1">Nordic APIs</p>
+                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{book.description}</p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {book.formats.map((fmt) => (
+                    <a
+                      key={fmt.label}
+                      href={fmt.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Badge
+                        variant="outline"
+                        className="text-xs cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors"
+                      >
+                        {fmt.label === "PDF" || fmt.label === "EPUB" || fmt.label === "MOBI" ? (
+                          <Download className="h-2.5 w-2.5 mr-1" />
+                        ) : (
+                          <ExternalLink className="h-2.5 w-2.5 mr-1" />
+                        )}
+                        {fmt.label}
+                      </Badge>
+                    </a>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="flex items-center justify-center w-full py-8 text-muted-foreground">
+            <p className="text-sm">No eBooks found matching your search.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {nordicCategories.map((cat) => (
+          <Button
+            key={cat.key}
+            variant={category === cat.key ? "default" : "outline"}
+            size="sm"
+            className="text-xs h-7"
+            onClick={() => setCategory(cat.key)}
+          >
+            {cat.label}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CommercialAudiobooks() {
   return (
     <div className="space-y-8">
+      <NordicApisSection />
       <GooglePlaySection />
       <SpotifySection />
       <AmazonSection />
