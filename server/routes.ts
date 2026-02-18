@@ -1726,6 +1726,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/monetization/ad-impression", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { adId, adType, completed, skipped } = req.body;
+      console.log(`Ad impression: user=${userId} ad=${adId} type=${adType} completed=${completed} skipped=${skipped}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error recording ad impression:", error);
+      res.status(500).json({ message: "Failed to record impression" });
+    }
+  });
+
   // ============ REVIEWS AND SOCIAL ENDPOINTS ============
 
   // GET /api/books/:bookId/reviews - Get reviews for a book

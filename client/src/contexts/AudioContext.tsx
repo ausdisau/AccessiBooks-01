@@ -3,6 +3,13 @@ import { Book, Progress, Chapter } from "@shared/schema";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { audioAdService, type AudioAd } from "@/services/audio-ad-service";
+
+interface AudioAdState {
+  isAdPlaying: boolean;
+  currentAd: AudioAd | null;
+  adType: "pre-roll" | "mid-roll" | null;
+}
 
 interface AudioContextType {
   currentBook: Book | null;
@@ -17,6 +24,8 @@ interface AudioContextType {
   chapters: Chapter[];
   currentChapter: Chapter | null;
   currentChapterIndex: number;
+  adState: AudioAdState;
+  skipAfterMs: number;
   setCurrentBook: (book: Book | null) => void;
   togglePlayPause: () => Promise<void>;
   skip: (seconds: number) => void;
@@ -31,6 +40,8 @@ interface AudioContextType {
   nextChapter: () => void;
   prevChapter: () => void;
   seekToChapter: (chapterIndex: number) => void;
+  onAdComplete: (skipped: boolean) => void;
+  onAdUpgrade: () => void;
 }
 
 const AudioContext = createContext<AudioContextType | null>(null);
@@ -60,6 +71,33 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [currentChapterIndex, setCurrentChapterIndex] = useState(-1);
   const lastChapterIndex = useRef(-1);
+
+  const [adState, setAdState] = useState<AudioAdState>({
+    isAdPlaying: false,
+    currentAd: null,
+    adType: null,
+  });
+  const pendingBookRef = useRef<Book | null>(null);
+  const isPremiumRef = useRef(false);
+  const externalChapterEndRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const checkPremium = () => {
+      if (user) {
+        fetch("/api/subscription/status", { credentials: "include" })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            isPremiumRef.current = data?.isPremium || false;
+          })
+          .catch(() => {});
+      } else {
+        isPremiumRef.current = false;
+      }
+    };
+    checkPremium();
+    const interval = setInterval(checkPremium, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     if (currentBook) {
@@ -201,12 +239,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     });
     
     if (newIndex !== -1 && newIndex !== currentChapterIndex) {
-      // Chapter changed - only fire callback on natural playback progression (next chapter)
-      // Avoid firing on large seeks or backward seeks
       if (lastChapterIndex.current !== -1 && newIndex === lastChapterIndex.current + 1) {
         if (onChapterEndCallback.current) {
           onChapterEndCallback.current();
         }
+        triggerMidRollAd();
       }
       setCurrentChapterIndex(newIndex);
       lastChapterIndex.current = newIndex;
@@ -301,7 +338,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const playBook = (book: Book) => {
+  const startPlaybackForBook = useCallback((book: Book) => {
     setCurrentBook(book);
     setTimeout(async () => {
       const audio = audioRef.current;
@@ -314,6 +351,69 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         }
       }
     }, 100);
+  }, []);
+
+  const onAdComplete = useCallback((skipped: boolean) => {
+    const ad = adState.currentAd;
+    const adType = adState.adType;
+    setAdState({ isAdPlaying: false, currentAd: null, adType: null });
+
+    if (ad && adType) {
+      audioAdService.recordImpression(ad.id, adType, !skipped, skipped);
+    }
+
+    if (adType === "pre-roll" && pendingBookRef.current) {
+      startPlaybackForBook(pendingBookRef.current);
+      pendingBookRef.current = null;
+    } else if (adType === "mid-roll") {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
+    }
+  }, [adState, startPlaybackForBook]);
+
+  const onAdUpgrade = useCallback(() => {
+    const ad = adState.currentAd;
+    const adType = adState.adType;
+    setAdState({ isAdPlaying: false, currentAd: null, adType: null });
+
+    if (ad && adType) {
+      audioAdService.recordImpression(ad.id, adType, false, true);
+    }
+
+    pendingBookRef.current = null;
+    window.location.href = "/api/subscription/create-checkout";
+  }, [adState]);
+
+  const triggerMidRollAd = useCallback(() => {
+    if (isPremiumRef.current) return;
+    if (!audioAdService.shouldShowMidRoll(isPremiumRef.current)) return;
+
+    const audio = audioRef.current;
+    if (audio && !audio.paused) {
+      audio.pause();
+      setIsPlaying(false);
+    }
+
+    const ad = audioAdService.getAd();
+    audioAdService.playAdChime();
+    setAdState({ isAdPlaying: true, currentAd: ad, adType: "mid-roll" });
+  }, []);
+
+
+  const playBook = (book: Book) => {
+    audioAdService.incrementPlayCount();
+
+    if (audioAdService.shouldShowPreRoll(isPremiumRef.current)) {
+      pendingBookRef.current = book;
+      const ad = audioAdService.getAd();
+      audioAdService.playAdChime();
+      setAdState({ isAdPlaying: true, currentAd: ad, adType: "pre-roll" });
+      return;
+    }
+
+    startPlaybackForBook(book);
   };
 
   const setSleepTimer = (minutes: number | null) => {
@@ -384,6 +484,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         chapters,
         currentChapter: chapters[currentChapterIndex] ?? null,
         currentChapterIndex,
+        adState,
+        skipAfterMs: audioAdService.skipAfterMs,
         setCurrentBook,
         togglePlayPause,
         skip,
@@ -398,6 +500,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         nextChapter,
         prevChapter,
         seekToChapter,
+        onAdComplete,
+        onAdUpgrade,
       }}
     >
       <audio ref={audioRef} preload="metadata" />

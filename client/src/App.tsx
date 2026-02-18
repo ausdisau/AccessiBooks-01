@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { AudioProvider, useAudioContext } from "@/contexts/AudioContext";
+import { AudioAdOverlay } from "@/components/audio-ad-overlay";
 import { MiniPlayer } from "@/components/mini-player";
 import { PremiumBadge } from "@/components/premium-badge";
 import { SubscriptionCard } from "@/components/subscription-card";
@@ -1481,6 +1482,7 @@ function App() {
   return (
     <TooltipProvider>
       <AudioProvider>
+        <AudioAdManager />
         {isAuthenticated ? (
           <>
             <MainApp />
@@ -1496,6 +1498,24 @@ function App() {
         <Toaster />
       </AudioProvider>
     </TooltipProvider>
+  );
+}
+
+function AudioAdManager() {
+  const { adState, skipAfterMs, onAdComplete, onAdUpgrade } = useAudioContext();
+
+  if (!adState.isAdPlaying || !adState.currentAd || !adState.adType) {
+    return null;
+  }
+
+  return (
+    <AudioAdOverlay
+      ad={adState.currentAd}
+      adType={adState.adType}
+      skipAfterMs={skipAfterMs}
+      onComplete={onAdComplete}
+      onUpgrade={onAdUpgrade}
+    />
   );
 }
 
