@@ -59,18 +59,53 @@ import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet,
 type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing";
 
 // Header component with user management
-function AppHeader() {
+function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: { 
+  menuOpen: boolean; 
+  onToggleMenu: () => void; 
+  currentView: string;
+  onNavigate: (view: View) => void;
+}) {
   const { user } = useAuth();
   
   const handleLogout = () => {
     window.location.href = "/api/logout";
   };
 
+  const navItems: { view: View; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
+    { view: "library", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
+    { view: "player", label: "Player", icon: <Play className="h-5 w-5" /> },
+    { view: "feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
+    { view: "stats", label: "Stats", icon: <Trophy className="h-5 w-5" /> },
+    { view: "usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
+    { view: "publish", label: "Publish", icon: <Upload className="h-5 w-5" /> },
+    { view: "party", label: "Party", icon: <Radio className="h-5 w-5" /> },
+    { view: "queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
+    { view: "advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
+    { view: "billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
+  ];
+
+  const currentLabel = navItems.find(i => i.view === currentView)?.label || "Menu";
+
   return (
-    <header className="bg-card border-b border-border" role="banner">
+    <header className="bg-card border-b border-border relative" role="banner">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <AccessiBooksLogo />
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onToggleMenu}
+              aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-expanded={menuOpen}
+              aria-controls="nav-shelf-menu"
+              data-testid="hamburger-menu-btn"
+              className="p-2"
+            >
+              {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </Button>
+            <AccessiBooksLogo />
+            <span className="text-sm text-muted-foreground hidden sm:inline">/ {currentLabel}</span>
+          </div>
 
           <div className="flex items-center space-x-4">
             <AccessibilityControls />
@@ -80,7 +115,7 @@ function AppHeader() {
                 <PremiumBadge showUpgrade />
                 <NotificationBell />
                 
-                <div className="flex items-center space-x-2">
+                <div className="hidden sm:flex items-center space-x-2">
                   <User className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium" data-testid="text-username">
                     {user.firstName && user.lastName 
@@ -117,6 +152,44 @@ function AppHeader() {
                 </Button>
               </div>
             )}
+          </div>
+        </div>
+      </div>
+
+      {menuOpen && (
+        <div 
+          className="fixed inset-0 top-16 bg-black/20 z-40" 
+          onClick={onToggleMenu}
+          aria-hidden="true"
+        />
+      )}
+
+      <div
+        id="nav-shelf-menu"
+        className={`absolute left-0 right-0 top-full bg-card border-b border-border shadow-lg z-50 transition-all duration-200 ease-in-out overflow-hidden ${
+          menuOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+        }`}
+        role="menu"
+        aria-label="Main navigation"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1">
+            {navItems.map(item => (
+              <button
+                key={item.view}
+                onClick={() => onNavigate(item.view)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  currentView === item.view
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+                role="menuitem"
+                data-testid={`menu-${item.view}`}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -1012,6 +1085,7 @@ function MainApp() {
   const [currentView, setCurrentView] = useState<View>("library");
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<string>("");
+  const [menuOpen, setMenuOpen] = useState(false);
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
   const { 
@@ -1129,8 +1203,13 @@ function MainApp() {
         Skip to main content
       </a>
 
-      {/* Header */}
-      <AppHeader />
+      {/* Header with hamburger menu */}
+      <AppHeader 
+        menuOpen={menuOpen} 
+        onToggleMenu={() => setMenuOpen(!menuOpen)} 
+        currentView={currentView}
+        onNavigate={(view) => { setCurrentView(view); setMenuOpen(false); }}
+      />
 
       {/* Breadcrumbs */}
       <nav className="bg-muted/50 border-b" aria-label="Breadcrumb">
@@ -1170,184 +1249,6 @@ function MainApp() {
               </>
             )}
           </ol>
-        </div>
-      </nav>
-
-      {/* Navigation Tabs */}
-      <nav className="bg-card border-b border-border" role="tablist" aria-label="Main navigation">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "library"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={handleBackToLibrary}
-              role="tab"
-              aria-selected={currentView === "library"}
-              aria-controls="library-panel"
-              data-testid="tab-library"
-            >
-              <BookIcon className="h-4 w-4 mr-2" aria-hidden="true" />
-              Library
-            </Button>
-            
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "player"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => (selectedBook || currentBook) && setCurrentView("player")}
-              disabled={!selectedBook && !currentBook}
-              role="tab"
-              aria-selected={currentView === "player"}
-              aria-controls="player-panel"
-              data-testid="tab-player"
-            >
-              <Play className="h-4 w-4 mr-2" aria-hidden="true" />
-              Player
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "feed"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={handleViewFeed}
-              role="tab"
-              aria-selected={currentView === "feed"}
-              aria-controls="feed-panel"
-              data-testid="tab-feed"
-            >
-              <Star className="h-4 w-4 mr-2" aria-hidden="true" />
-              Feed
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "stats"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCurrentView("stats")}
-              role="tab"
-              aria-selected={currentView === "stats"}
-              aria-controls="stats-panel"
-              data-testid="tab-stats"
-            >
-              <Trophy className="h-4 w-4 mr-2" aria-hidden="true" />
-              Stats
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "usage"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCurrentView("usage")}
-              role="tab"
-              aria-selected={currentView === "usage"}
-              aria-controls="usage-panel"
-              data-testid="tab-usage"
-            >
-              <BarChart3 className="h-4 w-4 mr-2" aria-hidden="true" />
-              Usage
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "publish"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCurrentView("publish")}
-              role="tab"
-              aria-selected={currentView === "publish"}
-              aria-controls="publish-panel"
-              data-testid="tab-publish"
-            >
-              <Upload className="h-4 w-4 mr-2" aria-hidden="true" />
-              Publish
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "party"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCurrentView("party")}
-              role="tab"
-              aria-selected={currentView === "party"}
-              aria-controls="party-panel"
-              data-testid="tab-party"
-            >
-              <Radio className="h-4 w-4 mr-2" aria-hidden="true" />
-              Party
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "queue"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCurrentView("queue")}
-              role="tab"
-              aria-selected={currentView === "queue"}
-              aria-controls="queue-panel"
-              data-testid="tab-queue"
-            >
-              <ListMusic className="h-4 w-4 mr-2" aria-hidden="true" />
-              Live Queue
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "advertise"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCurrentView("advertise")}
-              role="tab"
-              aria-selected={currentView === "advertise"}
-              aria-controls="advertise-panel"
-              data-testid="tab-advertise"
-            >
-              <Megaphone className="h-4 w-4 mr-2" aria-hidden="true" />
-              Advertise
-            </Button>
-
-            <Button
-              variant="ghost"
-              className={`py-4 px-1 border-b-2 font-medium ${
-                currentView === "billing"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCurrentView("billing")}
-              role="tab"
-              aria-selected={currentView === "billing"}
-              aria-controls="billing-panel"
-              data-testid="tab-billing"
-            >
-              <Wallet className="h-4 w-4 mr-2" aria-hidden="true" />
-              Billing
-            </Button>
-          </div>
         </div>
       </nav>
 
