@@ -42,6 +42,8 @@ Preferred communication style: Simple, everyday language.
 - **Audio Ad System**: Pre-roll/mid-roll ads for free users with frequency capping, Premium bypass, and impression tracking.
 - **Podcast Ingestion Service**: RSS feed ingestion pipeline (`server/rss.ts` for parsing, `server/podcastIngestion.ts` for API routes). Supports any standard podcast RSS. Endpoints: POST `/api/ingest` (single), POST `/api/ingest/batch` (multiple), GET `/api/podcasts/feeds`, GET `/api/podcasts/feeds/:id`, GET `/api/podcasts/feeds/:id/episodes`, GET `/api/podcasts/episodes/:id`. Features: idempotent upsert, conditional requests (etag/last-modified), rate limiting, accessibility fields (transcriptUrl, transcriptStatus, contentWarnings). DB tables: `podcastFeeds`, `podcastEpisodes`.
 - **Push Notifications**: Web Push API with Service Worker for engagement-boosting notifications. Backend in `server/pushNotifications.ts` (subscription management, send logic, templates). Trigger service in `server/notificationTriggers.ts` (streak reminders, goal nudges, achievements, re-engagement). Frontend: `client/src/components/notification-center.tsx` (bell icon, preferences panel, history), `client/src/hooks/use-push-notifications.ts`. Service Worker at `client/public/sw.js`. DB tables: `pushSubscriptions`, `notificationLog`. VAPID keys in env vars. Endpoints: POST/DELETE `/api/push/subscribe`, GET/PUT `/api/push/preferences`, GET `/api/push/history`, POST `/api/push/test`, GET `/api/push/vapid-key`.
+- **Spotify Audiobook Browsing**: Integration via Replit Spotify connector (`server/spotifyClient.ts`). Endpoints: GET `/api/spotify/status`, GET `/api/spotify/search?q=`, GET `/api/spotify/audiobook/:id`, GET `/api/spotify/library`. Frontend: `client/src/components/commercial-audiobooks.tsx` SpotifySection with search, category browsing, and "Listen on Spotify" links. Uses `@spotify/web-api-ts-sdk`.
+- **Amazon Affiliate / Audible**: Backend in `server/amazon.ts` using Amazon Product Advertising API (PA-API 5.0) with AWS v4 signature authentication. Endpoints: GET `/api/amazon/status`, GET `/api/amazon/search?q=`, GET `/api/amazon/audiobook/:asin`. Returns audiobook metadata with affiliate links (partner tag). Frontend: `client/src/components/commercial-audiobooks.tsx` AmazonSection with search, ratings, pricing, and "Get on Audible" affiliate links. Requires env vars: `AMAZON_ACCESS_KEY`, `AMAZON_SECRET_KEY`, `AMAZON_PARTNER_TAG`, optional `AMAZON_REGION`.
 
 ## External Dependencies
 
@@ -50,5 +52,5 @@ Preferred communication style: Simple, everyday language.
 - **UI & Styling**: `@radix-ui/react-*`, `tailwindcss`.
 - **Validation**: `zod`.
 - **Payment Gateways**: Stripe, PayPal, Coinbase Commerce.
-- **Content APIs**: iTunes Search API, LibriVox API, Open Library API, Google Books API, Project Gutenberg API (Gutendex), Internet Archive API.
+- **Content APIs**: iTunes Search API, LibriVox API, Open Library API, Google Books API, Project Gutenberg API (Gutendex), Internet Archive API, Spotify Web API, Amazon Product Advertising API.
 - **Advertising Platforms**: Google AdSense, Google Ad Manager.
