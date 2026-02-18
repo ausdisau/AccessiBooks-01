@@ -10,6 +10,7 @@ import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
 import { getSeederStatus, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
 import { registerSelfPublishingRoutes } from "./selfPublishing";
+import { registerPodcastRoutes } from "./podcastIngestion";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -105,6 +106,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Self-publishing portal routes (author profiles, file uploads, analytics)
   registerSelfPublishingRoutes(app);
+
+  // Podcast ingestion routes (RSS feeds, episodes)
+  registerPodcastRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
