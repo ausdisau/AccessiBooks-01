@@ -248,9 +248,31 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     );
   }
 
+  const readerContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleReaderKeyDown = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    const isInteractive = target.closest("button, input, select, textarea, [role='slider'], [role='menuitem'], [role='combobox']");
+    if (isInteractive) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown") {
+      e.preventDefault();
+      goToPage(currentPage + 1);
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+      e.preventDefault();
+      goToPage(currentPage - 1);
+    }
+  };
+
   return (
-    <div className={`min-h-screen transition-colors ${settings.darkMode ? "bg-gray-900" : "bg-amber-50"}`}>
-      <header className={`sticky top-0 z-10 border-b ${settings.darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
+    <div
+      ref={readerContainerRef}
+      className={`min-h-screen transition-colors ${settings.darkMode ? "bg-gray-900" : "bg-amber-50"}`}
+      role="document"
+      aria-label={`Reading ${book.title} by ${book.author}`}
+      onKeyDown={handleReaderKeyDown}
+      tabIndex={-1}
+    >
+      <header className={`sticky top-0 z-10 border-b ${settings.darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`} role="banner">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <Button variant="ghost" onClick={onBack} aria-label="Back to library">
             <ChevronLeft className="h-5 w-5 mr-1" />
@@ -297,8 +319,9 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                         size="icon" 
                         className="h-8 w-8"
                         onClick={() => updateSetting("fontSize", Math.max(12, settings.fontSize - 2))}
+                        aria-label="Decrease font size"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-4 w-4" aria-hidden="true" />
                       </Button>
                       <Slider
                         value={[settings.fontSize]}
@@ -307,14 +330,16 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                         step={2}
                         onValueChange={([v]) => updateSetting("fontSize", v)}
                         className="flex-1"
+                        aria-label="Font size"
                       />
                       <Button 
                         variant="outline" 
                         size="icon" 
                         className="h-8 w-8"
                         onClick={() => updateSetting("fontSize", Math.min(32, settings.fontSize + 2))}
+                        aria-label="Increase font size"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-4 w-4" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>
@@ -430,8 +455,9 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             variant="outline"
             onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage <= 1}
+            aria-label="Previous page"
           >
-            <ChevronLeft className="h-4 w-4 mr-1" />
+            <ChevronLeft className="h-4 w-4 mr-1" aria-hidden="true" />
             Previous
           </Button>
 
@@ -447,6 +473,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
               }`}
               min={1}
               max={totalPages}
+              aria-label={`Go to page, current page ${currentPage} of ${totalPages}`}
             />
             <span className={settings.darkMode ? "text-gray-400" : "text-gray-600"}>
               / {totalPages}
@@ -457,14 +484,22 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             variant="outline"
             onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= totalPages}
+            aria-label="Next page"
           >
             Next
-            <ChevronRight className="h-4 w-4 ml-1" />
+            <ChevronRight className="h-4 w-4 ml-1" aria-hidden="true" />
           </Button>
         </div>
 
         <div className="mt-4">
-          <div className={`h-2 rounded-full ${settings.darkMode ? "bg-gray-700" : "bg-gray-200"}`}>
+          <div
+            className={`h-2 rounded-full ${settings.darkMode ? "bg-gray-700" : "bg-gray-200"}`}
+            role="progressbar"
+            aria-valuenow={Math.round((currentPage / totalPages) * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Reading progress: ${Math.round((currentPage / totalPages) * 100)}%`}
+          >
             <div 
               className="h-full bg-primary rounded-full transition-all"
               style={{ width: `${(currentPage / totalPages) * 100}%` }}

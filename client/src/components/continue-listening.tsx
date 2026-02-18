@@ -67,6 +67,10 @@ export function ContinueListening({ onSelectBook, books }: ContinueListeningProp
                 key={item.id} 
                 className="flex-shrink-0 w-72 cursor-pointer hover:bg-accent/50 transition-colors group"
                 onClick={() => handlePlay(item)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handlePlay(item); } }}
+                tabIndex={0}
+                role="button"
+                aria-label={`Continue ${item.bookTitle}${item.bookAuthor ? ` by ${item.bookAuthor}` : ""}. ${progress}% complete`}
               >
                 <CardContent className="p-4">
                   <div className="flex gap-3">
@@ -100,7 +104,14 @@ export function ContinueListening({ onSelectBook, books }: ContinueListeningProp
                           {timeLeft}
                         </p>
                       )}
-                      <div className="mt-2 h-1 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="mt-2 h-1 bg-muted rounded-full overflow-hidden"
+                        role="progressbar"
+                        aria-valuenow={progress}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`Listening progress: ${progress}%`}
+                      >
                         <div 
                           className="h-full bg-primary rounded-full transition-all"
                           style={{ width: `${progress}%` }}

@@ -55,6 +55,10 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
         className="hover:shadow-lg transition-shadow cursor-pointer group" 
         data-testid={`card-book-${book.id}`}
         onClick={() => onPlayBook(book)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPlayBook(book); } }}
+        tabIndex={0}
+        role="button"
+        aria-label={`${isEbookOrMagazine ? "Read" : "Play"} ${book.title} by ${book.author}. ${typeConfig.label}${isPremium ? ". Premium content" : ""}`}
       >
         <CardContent className="p-3">
           <div className="relative">
