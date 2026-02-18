@@ -3,11 +3,11 @@ import { Book, Progress, Chapter } from "@shared/schema";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
-import { audioAdService, type AudioAd } from "@/services/audio-ad-service";
+import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 
 interface AudioAdState {
   isAdPlaying: boolean;
-  currentAd: AudioAd | null;
+  currentAd: AdResponse | null;
   adType: "pre-roll" | "mid-roll" | null;
 }
 
@@ -366,7 +366,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setAdState({ isAdPlaying: false, currentAd: null, adType: null });
 
     if (ad && adType) {
-      audioAdService.recordImpression(ad.id, adType, !skipped, skipped);
+      audioAdService.recordImpression(ad.id, adType, !skipped, skipped, ad.isProgrammatic ? ad.provider : "house");
     }
 
     if (adType === "pre-roll" && pendingBookRef.current) {
@@ -386,14 +386,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setAdState({ isAdPlaying: false, currentAd: null, adType: null });
 
     if (ad && adType) {
-      audioAdService.recordImpression(ad.id, adType, false, true);
+      audioAdService.recordImpression(ad.id, adType, false, true, ad.isProgrammatic ? ad.provider : "house");
     }
 
     pendingBookRef.current = null;
     window.location.href = "/api/subscription/create-checkout";
   }, [adState]);
 
-  const triggerMidRollAd = useCallback(() => {
+  const triggerMidRollAd = useCallback(async () => {
     if (isPremiumRef.current) return;
     if (!audioAdService.shouldShowMidRoll(isPremiumRef.current)) return;
 
@@ -403,19 +403,19 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setIsPlaying(false);
     }
 
-    const ad = audioAdService.getAd();
     audioAdService.playAdChime();
+    const ad = await audioAdService.requestAd("mid-roll");
     setAdState({ isAdPlaying: true, currentAd: ad, adType: "mid-roll" });
   }, []);
 
 
-  const playBook = (book: Book) => {
+  const playBook = async (book: Book) => {
     audioAdService.incrementPlayCount();
 
     if (audioAdService.shouldShowPreRoll(isPremiumRef.current)) {
       pendingBookRef.current = book;
-      const ad = audioAdService.getAd();
       audioAdService.playAdChime();
+      const ad = await audioAdService.requestAd("pre-roll");
       setAdState({ isAdPlaying: true, currentAd: ad, adType: "pre-roll" });
       return;
     }

@@ -12,6 +12,7 @@ import { getSeederStatus, startSeeding, stopSeeding, resetSeeder, getSeededBookC
 import { registerSelfPublishingRoutes } from "./selfPublishing";
 import { registerPodcastRoutes } from "./podcastIngestion";
 import { registerPushNotificationRoutes } from "./pushNotifications";
+import { registerAdMediationRoutes } from "./adMediation";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -114,6 +115,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Push notification routes (subscribe, preferences, history)
   registerPushNotificationRoutes(app);
+
+  // Programmatic audio ad mediation routes (AdsWizz, Triton, ad:personam, house ads)
+  registerAdMediationRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
