@@ -30,6 +30,7 @@ import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, gene
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
 import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./amazon";
+import { registerListeningPartyRoutes, setupListeningPartyWS } from "./listeningParty";
 import {
   getSkipStatus,
   useSkip,
@@ -2951,6 +2952,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  registerListeningPartyRoutes(app);
+
   const httpServer = createServer(app);
+  setupListeningPartyWS(httpServer);
   return httpServer;
 }

@@ -169,9 +169,14 @@ if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0
   );
 }
 
+let sessionMiddlewareInstance: any = null;
+
+export function getSessionMiddleware() {
+  return sessionMiddlewareInstance;
+}
+
 export function setupMultiAuth(app: Express) {
-  // Set up session store
-  const sessionTtl = 30 * 24 * 60 * 60 * 1000; // 30 days for extended sessions
+  const sessionTtl = 30 * 24 * 60 * 60 * 1000;
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -182,20 +187,21 @@ export function setupMultiAuth(app: Express) {
   
   const isProduction = process.env.NODE_ENV === 'production';
   
-  // Session middleware
-  app.use(session({
+  sessionMiddlewareInstance = session({
     secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    rolling: true, // Reset session expiry on each request
+    rolling: true,
     cookie: {
       httpOnly: true,
       secure: isProduction,
       sameSite: "lax",
       maxAge: sessionTtl,
     },
-  }));
+  });
+  
+  app.use(sessionMiddlewareInstance);
   
   // Initialize Passport
   app.use(passport.initialize());
