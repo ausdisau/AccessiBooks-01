@@ -134,6 +134,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [bookmarks, setBookmarks] = useState<number[]>([]);
   const [highlightedWordIndex, setHighlightedWordIndex] = useState<number | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const readerContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadContent();
@@ -249,8 +250,6 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       </div>
     );
   }
-
-  const readerContainerRef = useRef<HTMLDivElement>(null);
 
   const handleReaderKeyDown = (e: React.KeyboardEvent) => {
     const target = e.target as HTMLElement;
