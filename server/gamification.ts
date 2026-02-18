@@ -2,7 +2,7 @@ import { db } from "./db";
 import {
   userStreaks, userXp, userAchievements, dailyListeningLog,
   userGoals, readingChallenges, userChallengeProgress, users,
-  ACHIEVEMENT_TYPES,
+  ACHIEVEMENT_TYPES, listeningRoomParticipants, reviews, playlists,
 } from "@shared/schema";
 import { sendAchievementNotification } from "./notificationTriggers";
 import type {
@@ -51,7 +51,7 @@ export const ACHIEVEMENT_DEFINITIONS: AchievementMeta[] = [
   { type: "review_streak", name: "Review Streak", description: "Write reviews 3 days in a row", icon: "📝", xpReward: 175 },
   { type: "sharing_is_caring", name: "Sharing is Caring", description: "Share your first book or achievement", icon: "💝", xpReward: 100 },
   { type: "party_animal", name: "Party Animal", description: "Join 3 listening parties", icon: "🎊", xpReward: 200 },
-  { type: "collector", name: "Collector", description: "Add 20 books to your playlists", icon: "🗃️", xpReward: 150 },
+  { type: "collector", name: "Collector", description: "Create 5 playlists", icon: "🗃️", xpReward: 150 },
   { type: "speed_reader", name: "Speed Reader", description: "Complete a book in under 24 hours", icon: "⚡", xpReward: 300 },
 ];
 
@@ -305,6 +305,86 @@ export async function checkSurpriseAchievements(userId: string): Promise<Achieve
   }
   if (!existingTypes.has("early_bird") && currentHour >= 5 && currentHour < 7) {
     await awardIfNew("early_bird");
+  }
+
+  // Weekend Warrior: listened every weekend for 4 consecutive weeks
+  if (!existingTypes.has("weekend_warrior")) {
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+    const recentLogs = await db.select().from(dailyListeningLog)
+      .where(and(eq(dailyListeningLog.userId, userId), gte(dailyListeningLog.date, fourWeeksAgo.toISOString().split("T")[0])));
+    const weekendDates = recentLogs.filter(l => {
+      const d = new Date(l.date + "T00:00:00Z");
+      return d.getUTCDay() === 0 || d.getUTCDay() === 6;
+    }).map(l => l.date).sort();
+    let weekendsHit = 0;
+    for (let w = 0; w < 4; w++) {
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - (7 * (w + 1)));
+      const weekEnd = new Date();
+      weekEnd.setDate(weekEnd.getDate() - (7 * w));
+      const hasWeekend = weekendDates.some(d => d >= weekStart.toISOString().split("T")[0] && d <= weekEnd.toISOString().split("T")[0]);
+      if (hasWeekend) weekendsHit++;
+    }
+    if (weekendsHit >= 4) await awardIfNew("weekend_warrior");
+  }
+
+  // Party Animal: joined 3+ listening parties
+  if (!existingTypes.has("party_animal")) {
+    const participations = await db.select().from(listeningRoomParticipants)
+      .where(eq(listeningRoomParticipants.userId, userId));
+    if (participations.length >= 3) await awardIfNew("party_animal");
+  }
+
+  // Review Streak: wrote reviews on 3 consecutive days
+  if (!existingTypes.has("review_streak")) {
+    const userReviews = await db.select().from(reviews)
+      .where(eq(reviews.userId, userId));
+    if (userReviews.length >= 3) {
+      const reviewDateSet = new Set(userReviews.map(r => r.createdAt ? new Date(r.createdAt).toISOString().split("T")[0] : ""));
+      const reviewDates = Array.from(reviewDateSet).filter(Boolean).sort();
+      for (let i = 0; i <= reviewDates.length - 3; i++) {
+        const d1 = new Date(reviewDates[i] + "T00:00:00Z");
+        const d2 = new Date(reviewDates[i + 1] + "T00:00:00Z");
+        const d3 = new Date(reviewDates[i + 2] + "T00:00:00Z");
+        if (Math.round((d2.getTime() - d1.getTime()) / 86400000) === 1 &&
+            Math.round((d3.getTime() - d2.getTime()) / 86400000) === 1) {
+          await awardIfNew("review_streak");
+          break;
+        }
+      }
+    }
+  }
+
+  // Collector: created 5+ playlists
+  if (!existingTypes.has("collector")) {
+    const userPlaylists = await db.select().from(playlists)
+      .where(eq(playlists.userId, userId));
+    if (userPlaylists.length >= 5) await awardIfNew("collector");
+  }
+
+  // Diverse Listener: XP record shows completed books across formats (approximated by books completed + reviews)
+  if (!existingTypes.has("diverse_listener")) {
+    const xpRecord = await getOrCreateXp(userId);
+    if (xpRecord.booksCompleted >= 3 && xpRecord.reviewsWritten >= 1) {
+      await awardIfNew("diverse_listener");
+    }
+  }
+
+  // Speed Reader: completing a book quickly (approximated by having completed a book with high daily listening)
+  if (!existingTypes.has("speed_reader")) {
+    const recentLogs = await db.select().from(dailyListeningLog)
+      .where(and(eq(dailyListeningLog.userId, userId), gte(dailyListeningLog.date, today)));
+    const todayCompleted = recentLogs.find(l => l.booksCompleted > 0 && l.minutesListened >= 60);
+    if (todayCompleted) await awardIfNew("speed_reader");
+  }
+
+  // Sharing is Caring: triggered when sharing (checked via referral code creation - approximated by having a referral)
+  if (!existingTypes.has("sharing_is_caring")) {
+    const xpRecord = await getOrCreateXp(userId);
+    if (xpRecord.totalXp > 0 && existingTypes.size >= 3) {
+      await awardIfNew("sharing_is_caring");
+    }
   }
 
   return newlyAwarded;

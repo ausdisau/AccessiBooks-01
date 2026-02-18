@@ -3,8 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards } from "@shared/schema";
-import { eq, desc, sql, count, sum, and, gt } from "drizzle-orm";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog } from "@shared/schema";
+import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
@@ -2674,6 +2674,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user challenges:", error);
       res.status(500).json({ message: "Failed to fetch challenges" });
+    }
+  });
+
+  // GET /api/gamification/year-in-review - Get annual stats summary
+  app.get("/api/gamification/year-in-review", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const parsedYear = parseInt(req.query.year as string);
+      const year = (parsedYear && parsedYear >= 2020 && parsedYear <= 2100) ? parsedYear : new Date().getFullYear();
+      const startDate = `${year}-01-01`;
+      const endDate = `${year}-12-31`;
+
+      const logs = await db.select().from(dailyListeningLog)
+        .where(and(
+          eq(dailyListeningLog.userId, userId),
+          gte(dailyListeningLog.date, startDate),
+          sql`${dailyListeningLog.date} <= ${endDate}`
+        ));
+
+      const totalMinutes = logs.reduce((sum, l) => sum + l.minutesListened, 0);
+      const totalBooksCompleted = logs.reduce((sum, l) => sum + l.booksCompleted, 0);
+      const totalDaysActive = logs.length;
+
+      const sortedDates = logs.map(l => l.date).sort();
+      let longestYearStreak = 0;
+      let currentYearStreak = 0;
+      for (let i = 0; i < sortedDates.length; i++) {
+        if (i === 0) {
+          currentYearStreak = 1;
+        } else {
+          const prev = new Date(sortedDates[i-1] + "T00:00:00Z");
+          const curr = new Date(sortedDates[i] + "T00:00:00Z");
+          const diff = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+          if (diff === 1) {
+            currentYearStreak++;
+          } else {
+            currentYearStreak = 1;
+          }
+        }
+        longestYearStreak = Math.max(longestYearStreak, currentYearStreak);
+      }
+
+      const yearAchievements = await db.select().from(userAchievements)
+        .where(and(
+          eq(userAchievements.userId, userId),
+          gte(userAchievements.unlockedAt, new Date(`${year}-01-01T00:00:00Z`)),
+          sql`${userAchievements.unlockedAt} <= ${new Date(`${year}-12-31T23:59:59Z`)}`
+        ));
+
+      const [xpData] = await db.select().from(userXp).where(eq(userXp.userId, userId));
+
+      const monthlyData: { month: number; minutes: number; books: number }[] = [];
+      for (let m = 1; m <= 12; m++) {
+        const monthStr = m.toString().padStart(2, '0');
+        const monthLogs = logs.filter(l => l.date.startsWith(`${year}-${monthStr}`));
+        monthlyData.push({
+          month: m,
+          minutes: monthLogs.reduce((s, l) => s + l.minutesListened, 0),
+          books: monthLogs.reduce((s, l) => s + l.booksCompleted, 0),
+        });
+      }
+
+      const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0];
+      logs.forEach(l => {
+        const d = new Date(l.date + "T00:00:00Z");
+        dayOfWeekCounts[d.getUTCDay()] += l.minutesListened;
+      });
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const mostActiveDay = dayNames[dayOfWeekCounts.indexOf(Math.max(...dayOfWeekCounts))];
+
+      const bestMonth = monthlyData.reduce((best, m) => m.minutes > best.minutes ? m : best, monthlyData[0]);
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      res.json({
+        year,
+        totalMinutes,
+        totalHours: Math.round(totalMinutes / 60 * 10) / 10,
+        totalBooksCompleted,
+        totalDaysActive,
+        longestStreak: longestYearStreak,
+        achievementsEarned: yearAchievements.length,
+        currentLevel: xpData?.level || 1,
+        totalXp: xpData?.totalXp || 0,
+        monthlyData,
+        mostActiveDay,
+        bestMonth: { name: monthNames[(bestMonth?.month || 1) - 1], minutes: bestMonth?.minutes || 0 },
+      });
+    } catch (error) {
+      console.error("Error generating year in review:", error);
+      res.status(500).json({ message: "Failed to generate year in review" });
     }
   });
 
