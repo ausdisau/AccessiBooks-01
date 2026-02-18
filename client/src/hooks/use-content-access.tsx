@@ -13,28 +13,9 @@ export function useContentAccess() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewBook, setPreviewBook] = useState<Book | null>(null);
 
-  const checkAccess = useCallback((book: Book): boolean => {
-    if (!book.isPremium) {
-      return true;
-    }
-
-    if (!user) {
-      toast({
-        title: "Sign in required",
-        description: "Please sign in to access this content.",
-        variant: "destructive",
-      });
-      return false;
-    }
-
-    if (isPremium) {
-      return true;
-    }
-
-    setPreviewBook(book);
-    setShowPreview(true);
-    return false;
-  }, [user, isPremium, toast]);
+  const checkAccess = useCallback((_book: Book): boolean => {
+    return true;
+  }, []);
 
   const dismissPreview = useCallback(() => {
     setShowPreview(false);

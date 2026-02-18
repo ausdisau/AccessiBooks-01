@@ -116,7 +116,7 @@ export function SubscriptionCard() {
         <CardDescription>
           {isPremium 
             ? "You have access to all premium features" 
-            : "Upgrade to unlock all features"
+            : "Upgrade for ad-free listening and premium features"
           }
         </CardDescription>
       </CardHeader>

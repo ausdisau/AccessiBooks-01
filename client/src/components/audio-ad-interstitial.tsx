@@ -23,7 +23,7 @@ const AD_MESSAGES = [
     duration: 8,
   },
   {
-    title: "Unlock the full experience",
+    title: "Get the full experience",
     description: "Get offline downloads, 5-device support, and 320kbps audio with Premium.",
     duration: 10,
   },

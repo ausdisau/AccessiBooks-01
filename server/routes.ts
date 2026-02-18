@@ -308,17 +308,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const userId = req.user?.claims?.sub || req.user?.id;
       
-      // Check premium content requirement
-      if (id.startsWith("premium-")) {
-        const user = await storage.getUser(userId);
-        if (!user || user.subscriptionTier !== "premium") {
-          return res.status(403).json({
-            message: "Premium subscription required to access this content",
-            premiumRequired: true,
-          });
-        }
-      }
-      
       const signedUrl = generateSignedStreamUrl(id, userId);
       
       res.json({ 
