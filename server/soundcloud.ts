@@ -106,7 +106,14 @@ async function getAccessToken(): Promise<string> {
   }
 }
 
+let rateLimitedUntil: number = 0;
+
 async function soundcloudFetch(endpoint: string, params?: Record<string, string>): Promise<any> {
+  if (rateLimitedUntil > Date.now()) {
+    const waitSec = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
+    throw new Error(`SoundCloud rate limited, retry in ${waitSec}s`);
+  }
+
   const token = await getAccessToken();
   const url = new URL(`${SOUNDCLOUD_API_BASE}${endpoint}`);
   if (params) {
@@ -119,6 +126,13 @@ async function soundcloudFetch(endpoint: string, params?: Record<string, string>
       Accept: "application/json",
     },
   });
+
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get("Retry-After") || "60", 10);
+    rateLimitedUntil = Date.now() + retryAfter * 1000;
+    console.warn(`SoundCloud rate limited, backing off for ${retryAfter}s`);
+    throw new Error(`SoundCloud rate limited, retry after ${retryAfter}s`);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -239,7 +253,6 @@ export async function getSoundCloudStreamUrl(trackId: number): Promise<string | 
   if (!soundcloudEnabled) return null;
 
   try {
-    const token = await getAccessToken();
     const data = await soundcloudFetch(`/tracks/${trackId}/streams`);
     return data.http_mp3_128_url || data.hls_mp3_128_url || data.hls_opus_64_url || null;
   } catch (error) {
