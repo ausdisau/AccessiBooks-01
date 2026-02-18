@@ -41,6 +41,7 @@ import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
 import { ReferralSection } from "@/components/referral-section";
 import { AuthorDashboard } from "@/components/author-dashboard";
+import { NotificationBell } from "@/components/notification-center";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { Music2, BookOpen as BookOpenIcon, Trophy } from "lucide-react";
 
@@ -66,6 +67,7 @@ function AppHeader() {
             {user && (
               <div className="flex items-center space-x-2 pl-4 border-l border-border">
                 <PremiumBadge showUpgrade />
+                <NotificationBell />
                 
                 <div className="flex items-center space-x-2">
                   <User className="h-4 w-4 text-muted-foreground" />

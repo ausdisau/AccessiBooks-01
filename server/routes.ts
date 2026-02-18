@@ -11,6 +11,7 @@ import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient"
 import { getSeederStatus, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
 import { registerSelfPublishingRoutes } from "./selfPublishing";
 import { registerPodcastRoutes } from "./podcastIngestion";
+import { registerPushNotificationRoutes } from "./pushNotifications";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -109,6 +110,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Podcast ingestion routes (RSS feeds, episodes)
   registerPodcastRoutes(app);
+
+  // Push notification routes (subscribe, preferences, history)
+  registerPushNotificationRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
