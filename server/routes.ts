@@ -28,6 +28,7 @@ import { stripe, PREMIUM_PRICE_MONTHLY, SUBSCRIPTION_CONFIG, DONATION_CONFIG, DO
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
+import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./amazon";
 import {
   getSkipStatus,
   useSkip,
@@ -1421,6 +1422,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/payment-methods - Get available payment methods
   app.get("/api/payment-methods", async (req, res) => {
     await getPaymentMethods(req, res);
+  });
+
+  // ============================================
+  // Amazon Affiliate / Audible Integration
+  // ============================================
+
+  app.get("/api/amazon/status", async (req, res) => {
+    res.json({ enabled: isAmazonEnabled() });
+  });
+
+  app.get("/api/amazon/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const limit = parseInt(req.query.limit as string) || 10;
+      if (!q) {
+        return res.status(400).json({ message: "Query parameter 'q' is required" });
+      }
+      const results = await searchAmazonAudiobooks(q, limit);
+      res.json({ results });
+    } catch (error) {
+      console.error("Amazon search error:", error);
+      res.status(500).json({ message: "Failed to search Amazon audiobooks" });
+    }
+  });
+
+  app.get("/api/amazon/audiobook/:asin", async (req, res) => {
+    try {
+      const { asin } = req.params;
+      const audiobook = await getAmazonAudiobook(asin);
+      if (!audiobook) {
+        return res.status(404).json({ message: "Audiobook not found" });
+      }
+      res.json(audiobook);
+    } catch (error) {
+      console.error("Amazon audiobook error:", error);
+      res.status(500).json({ message: "Failed to fetch Amazon audiobook" });
+    }
   });
 
   // ============================================

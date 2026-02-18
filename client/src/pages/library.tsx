@@ -18,6 +18,7 @@ import { PlaylistDetail } from "@/components/playlist-detail";
 import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { SubmitContent } from "@/components/submit-content";
+import { CommercialAudiobooks } from "@/components/commercial-audiobooks";
 
 interface LibraryProps {
   onSelectBook: (book: Book) => void;
@@ -146,6 +147,11 @@ export function Library({ onSelectBook }: LibraryProps) {
       {/* For You recommendations - only show when logged in and not searching */}
       {showPersonalizedSections && (
         <ForYouSection books={books} onSelectBook={onSelectBook} />
+      )}
+
+      {/* Commercial Audiobooks - Spotify & Amazon/Audible */}
+      {!isLoading && !searchQuery && !selectedGenre && (
+        <CommercialAudiobooks />
       )}
 
       {/* Horizontal carousels by source */}
