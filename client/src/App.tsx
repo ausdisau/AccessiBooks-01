@@ -46,6 +46,7 @@ import { ListeningParty } from "@/components/listening-party";
 import { StreamingQueue } from "@/components/streaming-queue";
 import { AdvertiserDashboard } from "@/components/advertiser-dashboard";
 import { BillingDashboard } from "@/components/billing-dashboard";
+import { Footer } from "@/components/footer";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet } from "lucide-react";
 
@@ -988,101 +989,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
         </Card>
       </section>
       
-      {/* Footer */}
-      <footer className="border-t py-12 bg-muted/30" role="contentinfo" aria-label="Site footer">
-        <div className="w-full px-4 md:px-8 lg:px-16">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            {/* Brand Column */}
-            <div className="md:col-span-1">
-              <AccessiBooksLogo />
-              <p className="mt-4 text-sm text-muted-foreground">
-                Making audiobooks accessible to everyone, regardless of ability.
-              </p>
-            </div>
-            
-            {/* Quick Links */}
-            <div>
-              <h3 className="font-semibold mb-4">Quick Links</h3>
-              <ul className="space-y-2 text-sm">
-                <li>
-                  <button onClick={openLogin} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                    <Home className="h-3 w-3" /> Home
-                  </button>
-                </li>
-                <li>
-                  <button onClick={openRegister} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                    <BookOpen className="h-3 w-3" /> Library
-                  </button>
-                </li>
-                <li>
-                  <button onClick={openRegister} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                    <Crown className="h-3 w-3" /> Premium
-                  </button>
-                </li>
-              </ul>
-            </div>
-            
-            {/* Support Links */}
-            <div>
-              <h3 className="font-semibold mb-4">Support</h3>
-              <ul className="space-y-2 text-sm">
-                <li>
-                  <a href="https://ausdis.au" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                    <Phone className="h-3 w-3" /> Contact Us
-                  </a>
-                </li>
-                <li>
-                  <button onClick={openRegister} className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                    <Accessibility className="h-3 w-3" /> Accessibility
-                  </button>
-                </li>
-                <li>
-                  <a href="https://ausdis.au" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                    <Shield className="h-3 w-3" /> Privacy Policy
-                  </a>
-                </li>
-              </ul>
-            </div>
-            
-            {/* Australian Disability Ltd Branding */}
-            <div className="flex flex-col items-center md:items-end space-y-3">
-              <a 
-                href="https://ausdis.au" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="block hover:opacity-80 transition-opacity"
-                aria-label="Visit Australian Disability Ltd website"
-              >
-                <img 
-                  src="/assets/ausdis-logo.jpg" 
-                  alt="Australian Disability Ltd - We're for a Fair, Dignified and Equal Society for All People with Disabilities" 
-                  className="h-16 w-auto"
-                />
-              </a>
-              <p className="text-xs text-muted-foreground text-center md:text-right">
-                A project by{" "}
-                <a 
-                  href="https://ausdis.au" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline font-medium"
-                >
-                  Australian Disability Ltd
-                </a>
-              </p>
-            </div>
-          </div>
-          
-          <div className="border-t pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-xs text-muted-foreground">
-              © {new Date().getFullYear()} Australian Disability Ltd. All rights reserved.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              AccessiBooks - Making audiobooks accessible to everyone
-            </p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
       
       {/* Login Modal */}
       <LoginModal 
@@ -1450,6 +1357,8 @@ function MainApp() {
         )}
       </main>
 
+      <Footer />
+
       <div id="a11y-announcements" className="sr-live-region" aria-live="polite" aria-atomic="true" role="status" />
       
       {/* Persistent mini player */}
@@ -1527,6 +1436,8 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" id="main-content">
         <Library onSelectBook={handleGuestSelectBook} />
       </main>
+
+      <Footer />
 
       <SignUpPrompt
         open={signUpPromptOpen}
