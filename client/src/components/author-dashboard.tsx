@@ -16,8 +16,9 @@ import { Separator } from "@/components/ui/separator";
 import {
   Upload, BookOpen, BarChart3, User, Edit, Trash2, Eye, Loader2,
   FileAudio, FileText, Image, Plus, CheckCircle, Clock, XCircle,
-  TrendingUp, Users, Headphones, BookOpenCheck
+  TrendingUp, Users, Headphones, BookOpenCheck, ExternalLink
 } from "lucide-react";
+import { SiSoundcloud } from "react-icons/si";
 
 interface AuthorProfileData {
   exists: boolean;
@@ -370,13 +371,18 @@ function ProfileSetupForm({
   const [displayName, setDisplayName] = useState(existingProfile?.displayName || "");
   const [bio, setBio] = useState(existingProfile?.bio || "");
   const [website, setWebsite] = useState(existingProfile?.website || "");
+  const [soundcloudUrl, setSoundcloudUrl] = useState(existingProfile?.socialLinks?.soundcloud || "");
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const socialLinks = existingProfile?.socialLinks || {};
+      if (soundcloudUrl) socialLinks.soundcloud = soundcloudUrl;
+      else delete socialLinks.soundcloud;
       const res = await apiRequest("POST", "/api/author/profile", {
         displayName,
         bio: bio || null,
         website: website || null,
+        socialLinks,
       });
       return res.json();
     },
@@ -424,6 +430,21 @@ function ProfileSetupForm({
               onChange={(e) => setWebsite(e.target.value)}
               placeholder="https://yourwebsite.com"
             />
+          </div>
+          <div>
+            <Label htmlFor="soundcloudUrl" className="flex items-center gap-2">
+              <SiSoundcloud className="h-4 w-4 text-orange-600" />
+              SoundCloud Profile
+            </Label>
+            <Input
+              id="soundcloudUrl"
+              value={soundcloudUrl}
+              onChange={(e) => setSoundcloudUrl(e.target.value)}
+              placeholder="https://soundcloud.com/your-profile"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Link your SoundCloud profile to showcase your audio content alongside your books
+            </p>
           </div>
           <div className="flex gap-2 pt-2">
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || displayName.trim().length < 2}>
