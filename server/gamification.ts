@@ -4,6 +4,7 @@ import {
   userGoals, readingChallenges, userChallengeProgress, users,
   ACHIEVEMENT_TYPES,
 } from "@shared/schema";
+import { sendAchievementNotification } from "./notificationTriggers";
 import type {
   UserStreak, UserXp, UserAchievement, DailyListeningLog, UserGoal,
   ReadingChallenge, UserChallengeProgress, AchievementType, AchievementMeta,
@@ -220,6 +221,8 @@ export async function checkAndAwardAchievements(userId: string): Promise<Achieve
           level: sql`FLOOR((${userXp.totalXp} + ${def.xpReward}) / 500) + 1`,
         })
         .where(eq(userXp.userId, userId));
+
+      sendAchievementNotification(userId, def.name, def.xpReward, type).catch(() => {});
 
       newlyAwarded.push(def);
     }

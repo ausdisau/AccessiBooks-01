@@ -668,4 +668,50 @@ export const insertPodcastEpisodeSchema = createInsertSchema(podcastEpisodes).om
 export type InsertPodcastEpisode = z.infer<typeof insertPodcastEpisodeSchema>;
 export type PodcastEpisode = typeof podcastEpisodes.$inferSelect;
 
+export const NOTIFICATION_TYPES = [
+  "streak_reminder", "goal_nudge", "new_content", "achievement",
+  "recommendation", "re_engagement", "author_update", "system"
+] as const;
+export type NotificationType = typeof NOTIFICATION_TYPES[number];
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  enabledTypes: text("enabled_types").array().notNull().default(sql`ARRAY['streak_reminder','goal_nudge','new_content','achievement','recommendation','re_engagement','author_update','system']::text[]`),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at").defaultNow(),
+}, (table) => [
+  index("idx_push_sub_user").on(table.userId),
+  index("idx_push_sub_endpoint").on(table.endpoint),
+]);
+
+export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  lastUsedAt: true,
+});
+
+export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+export const notificationLog = pgTable("notification_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  url: text("url"),
+  sentAt: timestamp("sent_at").defaultNow(),
+  clicked: integer("clicked").notNull().default(0),
+}, (table) => [
+  index("idx_notif_log_user").on(table.userId),
+  index("idx_notif_log_type").on(table.type),
+  index("idx_notif_log_sent").on(table.sentAt),
+]);
+
+export type NotificationLogEntry = typeof notificationLog.$inferSelect;
+
 export * from "./models/chat";
