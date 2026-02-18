@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { resolveVAST, selectBestCreative, selectBestCompanion, type VASTAd, type VASTCreative, type VASTCompanion, type VASTTrackingEvents } from "./vastParser";
+import { selectSelfServeAd, recordImpression, recordImpressionEvent } from "./selfServeAds";
 
 export interface AdProvider {
   name: string;
@@ -214,13 +215,53 @@ async function fetchVASTFromProvider(
   }
 }
 
-async function requestAd(adType: "preroll" | "midroll", contentGenre?: string): Promise<AdResponse> {
+async function requestAd(adType: "preroll" | "midroll", contentGenre?: string, userId?: string): Promise<AdResponse & { _selfServeImpressionId?: string }> {
   const providers = getProviders();
 
   for (const provider of providers) {
     if (!provider.enabled) continue;
     const ad = await fetchVASTFromProvider(provider, adType, contentGenre);
     if (ad) return ad;
+  }
+
+  try {
+    const selfServeAd = await selectSelfServeAd(adType, contentGenre);
+    if (selfServeAd) {
+      const impressionId = await recordImpression(
+        selfServeAd.campaignId,
+        selfServeAd.creativeId,
+        userId,
+        adType,
+      );
+
+      console.log(`[AdMediation] Self-serve ad filled: "${selfServeAd.title}" (CPM: $${(selfServeAd.cpmBidCents / 100).toFixed(2)})`);
+
+      return {
+        id: `selfserve-${selfServeAd.creativeId}`,
+        provider: "self-serve",
+        title: selfServeAd.title,
+        advertiser: selfServeAd.advertiser,
+        audioUrl: selfServeAd.audioUrl,
+        mimeType: selfServeAd.mimeType,
+        duration: selfServeAd.duration,
+        companion: selfServeAd.companionImageUrl ? {
+          imageUrl: selfServeAd.companionImageUrl,
+          clickThrough: selfServeAd.clickThroughUrl,
+          width: 300,
+          height: 250,
+          trackingPixels: [],
+        } : undefined,
+        tracking: {
+          impression: [], start: [], firstQuartile: [], midpoint: [],
+          thirdQuartile: [], complete: [], skip: [], mute: [], unmute: [],
+          pause: [], resume: [], error: [], clickTracking: [],
+        },
+        isProgrammatic: true,
+        _selfServeImpressionId: impressionId,
+      };
+    }
+  } catch (err) {
+    console.error("[AdMediation] Self-serve ad error:", err);
   }
 
   console.log("[AdMediation] All providers exhausted, serving house ad");

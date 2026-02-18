@@ -843,3 +843,84 @@ export const queueVotes = pgTable("queue_votes", {
   index("idx_qv_item").on(table.queueItemId),
   index("idx_qv_user").on(table.userId),
 ]);
+
+// Self-Serve Advertising Platform
+export const AD_CAMPAIGN_STATUSES = ["draft", "pending_review", "active", "paused", "completed", "rejected"] as const;
+export type AdCampaignStatus = typeof AD_CAMPAIGN_STATUSES[number];
+
+export const adCampaigns = pgTable("ad_campaigns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  advertiserId: varchar("advertiser_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),
+  budgetCents: integer("budget_cents").notNull().default(0),
+  spentCents: integer("spent_cents").notNull().default(0),
+  cpmBidCents: integer("cpm_bid_cents").notNull().default(500),
+  targetGenres: text("target_genres").array(),
+  targetTimeSlots: text("target_time_slots").array(),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  impressions: integer("impressions").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_campaign_advertiser").on(table.advertiserId),
+  index("idx_campaign_status").on(table.status),
+]);
+
+export const insertAdCampaignSchema = createInsertSchema(adCampaigns).omit({
+  id: true,
+  spentCents: true,
+  impressions: true,
+  clicks: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAdCampaign = z.infer<typeof insertAdCampaignSchema>;
+export type AdCampaign = typeof adCampaigns.$inferSelect;
+
+export const adCreatives = pgTable("ad_creatives", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => adCampaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  audioUrl: text("audio_url").notNull(),
+  duration: integer("duration").notNull().default(0),
+  mimeType: text("mime_type").notNull().default("audio/mpeg"),
+  fileSize: integer("file_size"),
+  isRecorded: boolean("is_recorded").notNull().default(false),
+  clickThroughUrl: text("click_through_url"),
+  companionImageUrl: text("companion_image_url"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_creative_campaign").on(table.campaignId),
+  index("idx_creative_status").on(table.status),
+]);
+
+export const insertAdCreativeSchema = createInsertSchema(adCreatives).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAdCreative = z.infer<typeof insertAdCreativeSchema>;
+export type AdCreative = typeof adCreatives.$inferSelect;
+
+export const adImpressions = pgTable("ad_impressions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => adCampaigns.id, { onDelete: "cascade" }),
+  creativeId: varchar("creative_id").notNull().references(() => adCreatives.id, { onDelete: "cascade" }),
+  userId: varchar("user_id"),
+  adType: varchar("ad_type", { length: 10 }).notNull().default("preroll"),
+  costCents: integer("cost_cents").notNull().default(0),
+  clicked: boolean("clicked").notNull().default(false),
+  quartile25: boolean("quartile_25").notNull().default(false),
+  quartile50: boolean("quartile_50").notNull().default(false),
+  quartile75: boolean("quartile_75").notNull().default(false),
+  completed: boolean("completed").notNull().default(false),
+  servedAt: timestamp("served_at").defaultNow(),
+}, (table) => [
+  index("idx_impression_campaign").on(table.campaignId),
+  index("idx_impression_creative").on(table.creativeId),
+  index("idx_impression_served").on(table.servedAt),
+]);
