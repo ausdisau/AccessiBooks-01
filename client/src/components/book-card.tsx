@@ -2,7 +2,7 @@ import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, BookOpen, Headphones, Newspaper, Lock, BookOpenIcon } from "lucide-react";
+import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon } from "lucide-react";
 import { BookCover } from "@/components/book-cover";
 
 interface BookCardProps {
@@ -46,7 +46,6 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
   const contentType = (book.contentType as keyof typeof contentTypeConfig) || "audiobook";
   const typeConfig = contentTypeConfig[contentType] || contentTypeConfig.audiobook;
   const TypeIcon = typeConfig.icon;
-  const isPremium = book.isPremium ?? false;
   const isEbookOrMagazine = contentType === "ebook" || contentType === "magazine";
 
   if (compact) {
@@ -58,7 +57,7 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPlayBook(book); } }}
         tabIndex={0}
         role="button"
-        aria-label={`${isEbookOrMagazine ? "Read" : "Play"} ${book.title} by ${book.author}. ${typeConfig.label}${isPremium ? ". Premium content" : ""}`}
+        aria-label={`${isEbookOrMagazine ? "Read" : "Play"} ${book.title} by ${book.author}. ${typeConfig.label}`}
       >
         <CardContent className="p-3">
           <div className="relative">
@@ -87,15 +86,6 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
               {typeConfig.label}
             </Badge>
             
-            {/* Premium lock */}
-            {isPremium && (
-              <div 
-                className="absolute top-2 right-2 bg-yellow-500 rounded-full p-1"
-                aria-label="Premium content"
-              >
-                <Lock className="h-3 w-3 text-white" aria-hidden="true" />
-              </div>
-            )}
           </div>
           
           <h3 className="text-sm font-medium line-clamp-2" data-testid={`text-title-${book.id}`}>
@@ -134,15 +124,6 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
             {typeConfig.label}
           </Badge>
           
-          {/* Premium lock */}
-          {isPremium && (
-            <div 
-              className="absolute top-2 right-2 bg-yellow-500 rounded-full p-1.5"
-              aria-label="Premium content - subscription required"
-            >
-              <Lock className="h-4 w-4 text-white" aria-hidden="true" />
-            </div>
-          )}
         </div>
         
         <h3 className="text-lg font-semibold mb-2" data-testid={`text-title-${book.id}`}>
@@ -169,12 +150,12 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
           {isEbookOrMagazine ? (
             <>
               <BookOpenIcon className="h-4 w-4 mr-2" aria-hidden="true" />
-              {isPremium ? "Unlock to Read" : "Read Now"}
+              Read Now
             </>
           ) : (
             <>
               <Play className="h-4 w-4 mr-2" aria-hidden="true" />
-              {isPremium ? "Unlock to Listen" : "Play Book"}
+              Play Book
             </>
           )}
         </Button>

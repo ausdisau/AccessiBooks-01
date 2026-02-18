@@ -27,7 +27,7 @@ const benefits = [
 export function SignUpPrompt({ open, onOpenChange, action, onSignUp, onSignIn }: SignUpPromptProps) {
   const subtitle = action
     ? `Sign up to ${action}`
-    : "Sign up to unlock all features";
+    : "Sign up to enjoy all features";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

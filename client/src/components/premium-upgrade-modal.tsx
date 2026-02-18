@@ -3,7 +3,7 @@ import { Book } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Lock, Check } from "lucide-react";
+import { Crown, Headphones, Check } from "lucide-react";
 
 interface PremiumUpgradeModalProps {
   open: boolean;
@@ -21,8 +21,6 @@ export function PremiumUpgradeModal({
   isUpgrading,
 }: PremiumUpgradeModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<"monthly" | "annual">("annual");
-  const contentType = book?.contentType || "audiobook";
-  const contentAction = contentType === "audiobook" ? "listen to" : "read";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -30,18 +28,17 @@ export function PremiumUpgradeModal({
         <DialogHeader>
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-yellow-500 rounded-full p-2">
-              <Lock className="h-5 w-5 text-white" />
+              <Headphones className="h-5 w-5 text-white" />
             </div>
-            <DialogTitle>Premium Content</DialogTitle>
+            <DialogTitle>Go Ad-Free with Premium</DialogTitle>
           </div>
           <DialogDescription>
             {book ? (
               <>
-                <strong>"{book.title}"</strong> by {book.author} is premium content.
-                Upgrade to AccessiBooks Premium to {contentAction} this and thousands of other titles.
+                Enjoying <strong>"{book.title}"</strong>? Upgrade to AccessiBooks Premium for an uninterrupted, ad-free listening experience with high-quality audio.
               </>
             ) : (
-              "This content requires a Premium subscription."
+              "Upgrade to Premium for ad-free listening, high-quality audio, and offline downloads."
             )}
           </DialogDescription>
         </DialogHeader>
@@ -86,7 +83,7 @@ export function PremiumUpgradeModal({
           <ul className="space-y-2">
             <li className="flex items-center gap-2 text-sm">
               <Check className="h-4 w-4 text-green-500" />
-              Access to all commercial audiobooks & ebooks
+              Ad-free listening experience
             </li>
             <li className="flex items-center gap-2 text-sm">
               <Check className="h-4 w-4 text-green-500" />
@@ -98,7 +95,7 @@ export function PremiumUpgradeModal({
             </li>
             <li className="flex items-center gap-2 text-sm">
               <Check className="h-4 w-4 text-green-500" />
-              Ad-free experience
+              No shuffle restrictions
             </li>
           </ul>
         </div>
