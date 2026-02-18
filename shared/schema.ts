@@ -369,6 +369,10 @@ export const ACHIEVEMENT_TYPES = [
   "bookworm_5", "bookworm_10", "bookworm_25", "bookworm_50",
   "social_butterfly", "critic", "marathon_listener",
   "level_5", "level_10", "level_25",
+  // Surprise achievements
+  "comeback_kid", "binge_reader", "weekend_warrior", "century_club",
+  "diverse_listener", "review_streak", "sharing_is_caring", "party_animal",
+  "collector", "speed_reader",
 ] as const;
 export type AchievementType = typeof ACHIEVEMENT_TYPES[number];
 
@@ -952,3 +956,36 @@ export const adImpressions = pgTable("ad_impressions", {
   index("idx_impression_creative").on(table.creativeId),
   index("idx_impression_served").on(table.servedAt),
 ]);
+
+export const streakFreezes = pgTable("streak_freezes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  totalFreezes: integer("total_freezes").notNull().default(0),
+  usedFreezes: integer("used_freezes").notNull().default(0),
+  lastEarnedAt: timestamp("last_earned_at"),
+}, (table) => [
+  index("idx_streak_freezes_user").on(table.userId),
+]);
+
+export const insertStreakFreezeSchema = createInsertSchema(streakFreezes).omit({ id: true });
+export type InsertStreakFreeze = z.infer<typeof insertStreakFreezeSchema>;
+export type StreakFreeze = typeof streakFreezes.$inferSelect;
+
+export const expiringRewards = pgTable("expiring_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rewardType: varchar("reward_type").notNull(),
+  rewardValue: integer("reward_value").notNull().default(0),
+  description: text("description").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  claimed: boolean("claimed").notNull().default(false),
+  claimedAt: timestamp("claimed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_expiring_rewards_user").on(table.userId),
+  index("idx_expiring_rewards_expires").on(table.expiresAt),
+]);
+
+export const insertExpiringRewardSchema = createInsertSchema(expiringRewards).omit({ id: true, claimedAt: true, createdAt: true });
+export type InsertExpiringReward = z.infer<typeof insertExpiringRewardSchema>;
+export type ExpiringReward = typeof expiringRewards.$inferSelect;

@@ -3,8 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions } from "@shared/schema";
-import { eq, desc, sql, count, sum } from "drizzle-orm";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards } from "@shared/schema";
+import { eq, desc, sql, count, sum, and, gt } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
@@ -2617,6 +2617,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(ACHIEVEMENT_DEFINITIONS);
   });
 
+  // GET /api/gamification/surprise-achievements - Get surprise achievement definitions
+  app.get("/api/gamification/surprise-achievements", (_req, res) => {
+    const surpriseTypes = ["comeback_kid", "binge_reader", "weekend_warrior", "century_club",
+      "diverse_listener", "review_streak", "sharing_is_caring", "party_animal", "collector", "speed_reader"];
+    const surpriseAchievements = ACHIEVEMENT_DEFINITIONS.filter((a: any) => surpriseTypes.includes(a.type));
+    res.json(surpriseAchievements);
+  });
+
   // PUT /api/gamification/goal - Set daily listening goal
   app.put("/api/gamification/goal", isAuthenticated, async (req: any, res) => {
     try {
@@ -2666,6 +2674,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user challenges:", error);
       res.status(500).json({ message: "Failed to fetch challenges" });
+    }
+  });
+
+  // === STREAK FREEZES & EXPIRING REWARDS ===
+
+  app.get("/api/gamification/freezes", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const [freeze] = await db.select().from(streakFreezes).where(eq(streakFreezes.userId, userId));
+      if (!freeze) {
+        const [newFreeze] = await db.insert(streakFreezes).values({ userId, totalFreezes: 1, usedFreezes: 0 }).returning();
+        return res.json(newFreeze);
+      }
+      res.json(freeze);
+    } catch (error) {
+      console.error("Error fetching freezes:", error);
+      res.status(500).json({ message: "Failed to fetch streak freezes" });
+    }
+  });
+
+  app.post("/api/gamification/freezes/use", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const [freeze] = await db.select().from(streakFreezes).where(eq(streakFreezes.userId, userId));
+      if (!freeze || freeze.totalFreezes - freeze.usedFreezes <= 0) {
+        return res.status(400).json({ message: "No streak freezes available" });
+      }
+      const [updated] = await db.update(streakFreezes)
+        .set({ usedFreezes: freeze.usedFreezes + 1 })
+        .where(eq(streakFreezes.id, freeze.id))
+        .returning();
+      res.json(updated);
+    } catch (error) {
+      console.error("Error using freeze:", error);
+      res.status(500).json({ message: "Failed to use streak freeze" });
+    }
+  });
+
+  app.get("/api/gamification/rewards", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const rewards = await db.select().from(expiringRewards)
+        .where(and(
+          eq(expiringRewards.userId, userId),
+          eq(expiringRewards.claimed, false),
+          gt(expiringRewards.expiresAt, new Date())
+        ))
+        .orderBy(expiringRewards.expiresAt);
+      res.json(rewards);
+    } catch (error) {
+      console.error("Error fetching rewards:", error);
+      res.status(500).json({ message: "Failed to fetch rewards" });
+    }
+  });
+
+  app.post("/api/gamification/rewards/:id/claim", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const rewardId = req.params.id;
+      const [reward] = await db.select().from(expiringRewards)
+        .where(and(
+          eq(expiringRewards.id, rewardId),
+          eq(expiringRewards.userId, userId)
+        ));
+      if (!reward) return res.status(404).json({ message: "Reward not found" });
+      if (reward.claimed) return res.status(400).json({ message: "Already claimed" });
+      if (new Date(reward.expiresAt) < new Date()) return res.status(400).json({ message: "Reward expired" });
+
+      const [claimed] = await db.update(expiringRewards)
+        .set({ claimed: true, claimedAt: new Date() })
+        .where(eq(expiringRewards.id, rewardId))
+        .returning();
+
+      if (reward.rewardType === "xp_bonus") {
+        await db.update(userXp)
+          .set({ totalXp: sql`${userXp.totalXp} + ${reward.rewardValue}` })
+          .where(eq(userXp.userId, userId));
+      } else if (reward.rewardType === "streak_shield") {
+        const [freeze] = await db.select().from(streakFreezes).where(eq(streakFreezes.userId, userId));
+        if (freeze) {
+          await db.update(streakFreezes)
+            .set({ totalFreezes: freeze.totalFreezes + reward.rewardValue })
+            .where(eq(streakFreezes.id, freeze.id));
+        } else {
+          await db.insert(streakFreezes).values({ userId, totalFreezes: reward.rewardValue, usedFreezes: 0 });
+        }
+      }
+
+      res.json(claimed);
+    } catch (error) {
+      console.error("Error claiming reward:", error);
+      res.status(500).json({ message: "Failed to claim reward" });
+    }
+  });
+
+  app.post("/api/gamification/rewards/grant", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { rewardType, rewardValue, description, expiresInHours = 24 } = req.body;
+      if (!rewardType || !description) return res.status(400).json({ message: "Missing fields" });
+
+      const expiresAt = new Date(Date.now() + (expiresInHours * 60 * 60 * 1000));
+      const [reward] = await db.insert(expiringRewards).values({
+        userId, rewardType, rewardValue: rewardValue || 0, description, expiresAt, claimed: false,
+      }).returning();
+      res.json(reward);
+    } catch (error) {
+      console.error("Error granting reward:", error);
+      res.status(500).json({ message: "Failed to grant reward" });
     }
   });
 
