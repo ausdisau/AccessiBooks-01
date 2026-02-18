@@ -1,4 +1,4 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -1001,6 +1001,19 @@ export class ExternalAPIStorage implements IStorage {
     // Combine all results
     results.forEach((books: Book[]) => allBooks.push(...books));
     
+    // Merge in seeded books from the database (LibriVox + Gutenberg full catalogs)
+    try {
+      const seededBooks = await db.select().from(booksTable);
+      if (seededBooks.length > 0) {
+        const existingIds = new Set(allBooks.map(b => b.id));
+        const newSeeded = seededBooks.filter(b => !existingIds.has(b.id));
+        allBooks.push(...newSeeded);
+        console.log(`Merged ${newSeeded.length} seeded books from database (${seededBooks.length} total in DB)`);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch seeded books from database:', err);
+    }
+    
     // Add fallback books if we don't have many results
     if (allBooks.length < 10) {
       const fallbackBooks = Array.from(this.fallbackBooks.values());
@@ -1045,6 +1058,14 @@ export class ExternalAPIStorage implements IStorage {
   }
 
   async getBook(id: string): Promise<Book | undefined> {
+    // Check database first for seeded books
+    try {
+      const [dbBook] = await db.select().from(booksTable).where(eq(booksTable.id, id)).limit(1);
+      if (dbBook) return dbBook;
+    } catch (err) {
+      // DB check failed, continue to API fallback
+    }
+
     // Check if this is a LibriVox book
     if (id.startsWith('librivox-')) {
       try {

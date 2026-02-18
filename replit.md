@@ -2,7 +2,7 @@
 
 ## Overview
 
-AccessiBooks is an audiobook player application focused on accessibility. It offers a library management system to browse audiobooks from multiple sources and an audio player with advanced controls, bookmarking, and accessibility features like high contrast mode, dyslexia-friendly fonts, and keyboard navigation. The platform aggregates content from various external APIs to provide access to a wide range of audiobooks and ebooks. The project aims to provide an inclusive and rich audiobook experience, with market potential in the growing audiobook consumption demographic, especially among users requiring enhanced accessibility.
+AccessiBooks is an audiobook player application designed for accessibility, offering a comprehensive library management system and an advanced audio player. It aggregates audiobooks and ebooks from various external sources, providing features like high contrast mode, dyslexia-friendly fonts, and keyboard navigation. The project's vision is to deliver an inclusive audiobook experience, targeting the growing market of audiobook consumers, particularly those with accessibility needs, and aims for broad adoption through its feature set and ease of use.
 
 ## User Preferences
 
@@ -10,281 +10,41 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### Frontend
 - **Framework**: React with TypeScript.
 - **Styling**: Tailwind CSS with shadcn/ui.
-- **State Management**: React hooks for local state, TanStack Query for server state and caching.
+- **State Management**: React hooks for local state, TanStack Query for server state.
 - **Build Tool**: Vite.
+- **UI/UX**: Focus on accessible design with high contrast, dark mode, dyslexia-friendly fonts, and responsive layouts. Comprehensive keyboard navigation and screen reader support are integral.
 
-### Backend Architecture
+### Backend
 - **Runtime**: Node.js with Express.js.
-- **Language**: TypeScript with ES modules.
-- **API Design**: RESTful endpoints for book management and audio streaming.
-- **Middleware**: Express middleware for CORS, JSON parsing, and request logging.
+- **Language**: TypeScript.
+- **API Design**: RESTful endpoints.
+- **Authentication**: Passport.js with OAuth (Google, Facebook, Microsoft) and local email/password, using PostgreSQL-backed sessions.
 
-### Data Storage Solutions
-- **Database**: PostgreSQL with Drizzle ORM for type-safe operations.
-- **Schema**: `Books` table for metadata.
-- **Local Storage**: Browser localStorage for user preferences, bookmarks, and playback progress.
-- **In-Memory Storage**: Fallback with sample data for development.
+### Data Storage
+- **Database**: PostgreSQL with Drizzle ORM for main data like book metadata, reviews, and user-related gamification data.
+- **Local Storage**: Browser-based for user preferences, bookmarks, and playback progress.
 
-### Authentication and Authorization
-- **System**: Passport.js supporting Google, Facebook, Microsoft OAuth, and local email/password.
-- **Session Management**: PostgreSQL-backed sessions (30-day duration, rolling expiry).
-- **Security**: sameSite cookies, httpOnly, secure in production, bcrypt password hashing.
-
-### Accessibility Features
-- **Visual**: High contrast mode, dyslexia-friendly fonts, dark mode.
-- **Navigation**: Comprehensive keyboard shortcuts and screen reader support (semantic HTML, ARIA labels).
-- **Responsiveness**: Mobile-friendly interface.
-
-### Audio Player System
-- **Engine**: HTML5 audio with custom React hooks.
-- **Features**: Variable speed, skip, progress tracking, bookmarking, sleep timer, chapter navigation.
-- **Persistence**: Automatic playback position saving (local storage + database).
-
-### Personalization Features
-- "Continue Listening" section for in-progress books.
-- "For You" recommendations based on listening history.
-- Genre browsing and listening history tracking.
-
-### Monetization System
-- **Subscription Tiers**: Free (ad-supported) and Premium (ad-free, unlimited features).
-- **DRM and Content Protection**: Auth-gated streaming, signed URLs (15 min), rate limiting, premium content gating, session enforcement.
-- **Spotify-like Controls**: Skip limits, audio quality tiers, shuffle mode limitations, device limits, session-based playback, interstitial ads for free users.
-- **Advertising**: Integration with Google AdSense and Google Ad Manager for ad placements, with automatic exclusion for premium users.
+### Core Features
+- **Audio Player**: HTML5 audio with variable speed, skip, progress tracking, bookmarking, sleep timer, and chapter navigation. Playback position is persisted.
+- **Content Aggregation**: Integrates multiple APIs to offer a wide range of audiobooks and ebooks.
+- **Personalization**: "Continue Listening", recommendations, genre browsing, and listening history.
+- **Monetization**: Subscription tiers (Free/Premium), DRM, content protection, and ad integration (Google AdSense, Ad Manager) with premium user exclusion. Includes Spotify-like controls for free users.
+- **Social & Review System**: User reviews with ratings, helpful votes, user following, and aggregated external ratings. Author details from Open Library.
+- **Multi-Format Content**: Supports audiobooks and ebooks with an integrated ebook reader featuring customizable display options (font size, theme, family) and reading progress persistence.
+- **Chapter Navigation**: Database-driven chapter metadata for both audiobooks and ebooks, with automatic chapter tracking for audio.
+- **AI-Generated Book Covers**: System to generate covers using AI prompts based on book metadata when original covers are unavailable.
+- **Gamification**: Tracks user activity (listening streaks, XP, levels, achievements), daily listening goals, and reading challenges to encourage engagement.
+- **Catalog Seeder**: A background service for batch importing large catalogs from sources like LibriVox and Project Gutenberg, handling rate limits and ensuring data deduplication.
 
 ## External Dependencies
 
-- **Database**:
-    - `@neondatabase/serverless`: Neon Database serverless driver.
-    - `drizzle-orm`: Type-safe ORM for PostgreSQL.
-- **Data Fetching & Caching**:
-    - `@tanstack/react-query`: For server state management.
-- **UI & Styling**:
-    - `@radix-ui/react-*`: Accessible UI primitives.
-    - `tailwindcss`: Utility-first CSS framework.
-- **Validation**:
-    - `zod`: Schema validation.
-- **Payment Gateways**:
-    - **Stripe**: For subscription management and one-time donations.
-    - **PayPal**: Alternative payment method for subscriptions and donations.
-    - **Coinbase Commerce**: For cryptocurrency payments (Bitcoin, Ethereum, USDC, etc.).
-- **Content APIs**:
-    - **iTunes Search API**: Commercial audiobooks (premium).
-    - **LibriVox API**: Free public domain audiobooks.
-    - **Open Library API**: Comprehensive book metadata.
-    - **Google Books API**: Enhanced search and discovery.
-    - **Project Gutenberg API (Gutendex)**: Free public domain ebooks.
-    - **Internet Archive API**: Free audiobooks, ebooks, and magazines.
-- **Advertising Platforms**:
-    - **Google AdSense**: Simple ad integration.
-    - **Google Ad Manager (DFP)**: Advanced ad serving.
-
-## Audio Ad System
-
-### Components
-- **AudioAdInterstitial**: Full-screen interstitial ad shown between tracks for free users
-- **AdBanner**: Banner ads displayed in library for free users
-- **ResponsiveAd**: Multi-size responsive ad component
-- **GoogleAd**: Base component for AdSense/DFP integration
-
-### Implementation
-- **Track End Callback**: AudioContext fires onTrackEndCallback when audio finishes
-- **Books Played Counter**: Player increments booksPlayed count on track completion
-- **Backend Logic**: /api/monetization/should-show-ad determines ad display (every 3 books)
-- **Premium Exclusion**: All ads automatically hidden for premium subscribers
-
-### Hooks
-- **useAudioAds**: Manages booksPlayed state and increment/dismiss callbacks
-- **useShouldShowAd**: Queries backend to determine if ad should display
-- **useShouldShowBannerAd**: Controls banner ad visibility
-
-### Environment Variables (optional)
-- VITE_ADSENSE_CLIENT: Google AdSense publisher ID
-- VITE_ADSENSE_SLOT_BANNER: AdSense slot ID for banner ads
-- VITE_ADSENSE_SLOT_INTERSTITIAL: AdSense slot ID for interstitial ads
-- VITE_GPT_NETWORK_CODE: Google Ad Manager network code
-## Social Review System
-
-### Database Schema
-- **reviews**: User reviews with ratings (1-5), title, content, timestamps
-- **review_likes**: Helpful votes on reviews
-- **user_follows**: Social following relationships
-- **external_ratings**: Cached ratings from external sources
-- **authors**: Cached author metadata from Open Library
-
-### External Ratings Aggregation
-- **Google Books API**: Ratings and review counts
-- **iTunes Search API**: Audiobook ratings from Apple
-- **Weighted Average**: Combines all sources based on review count
-
-### Author Data (Open Library)
-- Biography and personal info
-- Birth/death dates
-- Author photos
-- Complete bibliography/works
-- Wikipedia links
-
-### API Endpoints
-- GET /api/books/:bookId/reviews - Get reviews for a book
-- GET /api/books/:bookId/ratings - Get aggregated ratings
-- POST /api/reviews - Create a review (auth required)
-- PUT /api/reviews/:id - Update a review (auth required)
-- DELETE /api/reviews/:id - Delete a review (auth required)
-- POST /api/reviews/:id/like - Toggle helpful vote
-- POST /api/users/:userId/follow - Follow a user
-- DELETE /api/users/:userId/follow - Unfollow a user
-- GET /api/feed - Get reviews from followed users
-- GET /api/authors/:name - Get author details
-- GET /api/authors/:name/works - Get author's bibliography
-
-### Frontend Components
-- **BookReviews**: Full review section with ratings and user reviews
-- **AuthorPage**: Author bio, photo, and complete works
-- **SocialFeed**: Reviews from followed users
-- **StarRating**: Reusable star rating component
-- **useReviews hook**: React hooks for review operations
-
-## Multi-Format Content System
-
-### Content Types
-- **Audiobooks**: Audio-based content with playback controls
-- **Ebooks**: Text-based content with dedicated reader
-- **Magazines**: Periodical content (in progress)
-
-### Database Schema Updates
-- `contentType`: Enum field (audiobook/ebook/magazine)
-- `isPremium`: Boolean flag for premium content gating
-- `contentUrl`: URL to text content for ebooks
-- `pageCount`: Number of pages for ebooks/magazines
-
-### Premium Content Gating
-- Free content: LibriVox, Project Gutenberg, Internet Archive
-- Premium content: iTunes audiobooks, commercial Google Books
-- Premium upgrade modal with Stripe integration
-- Content access hook for consistent gating across app
-
-### Ebook Reader Features
-- Variable font size (12-32px)
-- Light/dark theme toggle
-- Font family selection (serif, sans-serif, mono)
-- Page navigation with progress tracking
-- Bookmarks saved to localStorage
-- Reading progress persistence
-
-### UI Components
-- **BookCard**: Content type badges and premium lock icons
-- **EbookReader**: Full-featured text reader component
-- **PremiumUpgradeModal**: Subscription upsell modal
-- **useContentAccess hook**: Content access gating logic
-
-## Chapter Navigation System
-
-### Database Schema
-- **chapters**: Stores chapter metadata with support for both audiobooks and ebooks
-  - id: Primary key (UUID)
-  - bookId: Foreign key to books
-  - title: Chapter title
-  - chapterNumber: Sequential chapter number
-  - startTime/endTime: Time-based markers for audiobooks (seconds)
-  - duration: Chapter duration for audiobooks
-  - pageStart/pageEnd: Page-based markers for ebooks
-  - created_at: Timestamp
-
-### Chapter Data Sources
-- **Database-first**: Chapters stored in PostgreSQL
-- **LibriVox API fallback**: Auto-fetches chapter metadata for LibriVox audiobooks if not in database
-
-### AudioContext Chapter Features
-- **chapters**: Array of chapter objects for current book
-- **currentChapter**: Currently playing chapter
-- **currentChapterIndex**: Index of current chapter
-- **nextChapter()**: Skip to next chapter
-- **prevChapter()**: Go to previous chapter
-- **seekToChapter(index)**: Jump to specific chapter
-- **onChapterEndCallback**: Fires on natural chapter progression (for inter-chapter ads)
-
-### Chapter Tracking Logic
-- Automatic detection based on currentTime vs chapter start/end times
-- Only tracks time-based chapters (audiobooks, not ebooks)
-- Guards against false triggering on seeks (only fires on sequential progression)
-- Resets chapter state on book change
-
-### API Endpoints
-- GET /api/books/:bookId/chapters - Get all chapters for a book
-
-### UI Components
-- **ChapterList**: Displays all chapters with highlighting for current chapter
-- **Chapter navigation buttons**: Prev/Next chapter controls in audio player
-- **Chapter indicator**: Shows current chapter number and title
-
-## AI-Generated Book Covers
-
-### Overview
-When books don't have cover images from their sources, the system can generate AI covers based on book metadata.
-
-### Cover Generation Service (server/coverGenerator.ts)
-- **buildCoverPrompt**: Creates AI prompts based on title, author, genre, and content type
-- **Genre-based styling**: Different visual styles for fiction, mystery, romance, sci-fi, fantasy, etc.
-- **File management**: Covers saved to `client/public/generated-covers/`
-
-### API Endpoints
-- GET /api/books/:id/cover - Check if generated cover exists
-- POST /api/books/:id/cover/request - Request cover generation, returns prompt for AI
-- GET /api/covers/pending - List books queued for cover generation
-- GET /api/covers/generated - List all generated cover IDs
-- POST /api/covers/:id/complete - Mark cover as generated
-
-### Frontend Components
-- **BookCover**: Smart cover component with fallback chain:
-  1. Original cover from source API
-  2. Generated cover from /generated-covers/
-  3. Placeholder icon based on content type
-- **BookCard**: Uses BookCover for consistent cover display
-
-### Cover Storage
-- Path: `client/public/generated-covers/`
-- Naming: `{sanitized-book-id}.png`
-- Served statically via Vite public folder
-
-## Gamification System
-
-### Database Schema
-- **user_streaks**: Tracks consecutive listening days (currentStreak, longestStreak, lastListenedDate)
-- **user_xp**: XP, level, totalListeningMinutes, booksCompleted, reviewsWritten
-- **user_achievements**: Awarded badges with unlock timestamps
-- **daily_listening_log**: Per-day listening stats (minutesListened, booksStarted, booksCompleted)
-- **user_goals**: Daily listening minute targets
-- **reading_challenges**: Community challenges with targets and deadlines
-- **user_challenge_progress**: Per-user challenge progress tracking
-
-### XP & Leveling
-- 1 XP per minute listened, 100 XP per book completed, 50 XP per review
-- Level formula: floor(totalXp / 500) + 1
-- Achievement bonuses award additional XP
-
-### Achievements (19 types)
-- Listening milestones: first_listen, marathon_listener
-- Completion milestones: first_complete, bookworm_5/10/25/50
-- Streak milestones: streak_3/7/30
-- Level milestones: level_5/10/25
-- Social: social_butterfly, critic, genre_explorer
-- Time-based: night_owl, early_bird, speed_demon
-
-### API Endpoints
-- GET /api/gamification/profile - Full gamification profile (auth required)
-- POST /api/gamification/activity - Record listening activity (auth required)
-- GET /api/gamification/leaderboard?period=weekly|monthly|alltime
-- GET /api/gamification/achievements - All achievement definitions
-- PUT /api/gamification/goal - Set daily listening goal (auth required)
-- GET /api/gamification/challenges - Active reading challenges
-- POST /api/gamification/challenges/:id/join - Join a challenge (auth required)
-- GET /api/gamification/challenges/mine - User's challenge progress (auth required)
-
-### Frontend Components
-- **GamificationDashboard**: Tabbed dashboard (Overview, Achievements, Leaderboard, Challenges)
-- Accessible via "Stats" tab in main navigation
-- Auto-records listening activity from AudioContext every minute
-- SVG progress ring for daily goals
-- Leaderboard with gold/silver/bronze styling for top 3
+- **Database**: `@neondatabase/serverless`, `drizzle-orm`.
+- **Data Fetching & Caching**: `@tanstack/react-query`.
+- **UI & Styling**: `@radix-ui/react-*`, `tailwindcss`.
+- **Validation**: `zod`.
+- **Payment Gateways**: Stripe, PayPal, Coinbase Commerce.
+- **Content APIs**: iTunes Search API, LibriVox API, Open Library API, Google Books API, Project Gutenberg API (Gutendex), Internet Archive API.
+- **Advertising Platforms**: Google AdSense, Google Ad Manager.
