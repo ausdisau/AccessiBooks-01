@@ -43,10 +43,11 @@ import { ReferralSection } from "@/components/referral-section";
 import { AuthorDashboard } from "@/components/author-dashboard";
 import { NotificationBell } from "@/components/notification-center";
 import { ListeningParty } from "@/components/listening-party";
+import { StreamingQueue } from "@/components/streaming-queue";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
-import { Music2, BookOpen as BookOpenIcon, Trophy } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic } from "lucide-react";
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party" | "queue";
 
 // Header component with user management
 function AppHeader() {
@@ -1311,6 +1312,23 @@ function MainApp() {
               <Radio className="h-4 w-4 mr-2" aria-hidden="true" />
               Party
             </Button>
+
+            <Button
+              variant="ghost"
+              className={`py-4 px-1 border-b-2 font-medium ${
+                currentView === "queue"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setCurrentView("queue")}
+              role="tab"
+              aria-selected={currentView === "queue"}
+              aria-controls="queue-panel"
+              data-testid="tab-queue"
+            >
+              <ListMusic className="h-4 w-4 mr-2" aria-hidden="true" />
+              Live Queue
+            </Button>
           </div>
         </div>
       </nav>
@@ -1374,6 +1392,12 @@ function MainApp() {
         {currentView === "party" && (
           <div id="party-panel" role="tabpanel" data-testid="panel-party">
             <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
+          </div>
+        )}
+
+        {currentView === "queue" && (
+          <div id="queue-panel" role="tabpanel" data-testid="panel-queue">
+            <StreamingQueue onBack={handleBackToLibrary} />
           </div>
         )}
       </main>

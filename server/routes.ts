@@ -31,6 +31,7 @@ import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabl
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
 import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./amazon";
 import { registerListeningPartyRoutes, setupListeningPartyWS } from "./listeningParty";
+import { registerStreamingQueueRoutes } from "./streamingQueue";
 import {
   getSkipStatus,
   useSkip,
@@ -2953,6 +2954,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   registerListeningPartyRoutes(app);
+  registerStreamingQueueRoutes(app);
 
   const httpServer = createServer(app);
   setupListeningPartyWS(httpServer);

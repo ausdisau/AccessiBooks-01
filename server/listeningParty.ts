@@ -7,6 +7,7 @@ import { db } from "./db";
 import { listeningRooms, listeningRoomParticipants, listeningRoomMessages } from "@shared/schema";
 import { eq, desc, and, asc } from "drizzle-orm";
 import { isAuthenticated, getSessionMiddleware } from "./multiAuth";
+import { handleQueueWSMessage, handleQueueWSLeave } from "./streamingQueue";
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -109,15 +110,19 @@ function authenticateWS(request: IncomingMessage): Promise<any> {
 
 export function setupListeningPartyWS(server: Server) {
   const wss = new WebSocketServer({ noServer: true });
+  const queueWss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", async (request: IncomingMessage, socket, head) => {
-    if (!request.url?.startsWith("/ws/listening-party")) return;
+    const isParty = request.url?.startsWith("/ws/listening-party");
+    const isQueue = request.url?.startsWith("/ws/streaming-queue");
+    if (!isParty && !isQueue) return;
 
     try {
       const user = await authenticateWS(request);
       (request as any)._wsUser = user;
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
+      const targetWss = isQueue ? queueWss : wss;
+      targetWss.handleUpgrade(request, socket, head, (ws) => {
+        targetWss.emit("connection", ws, request);
       });
     } catch {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -289,6 +294,52 @@ export function setupListeningPartyWS(server: Server) {
     ws.on("close", () => {
       if (currentRoomId) {
         handleLeave(clientId, currentRoomId);
+      }
+    });
+  });
+
+  // Streaming Queue WebSocket connections
+  queueWss.on("connection", (ws: WebSocket, request: IncomingMessage) => {
+    const user = (request as any)._wsUser;
+    if (!user || !user.id) {
+      ws.close(1008, "Not authenticated");
+      return;
+    }
+
+    const userId: string = user.id;
+    const displayName: string = user.firstName
+      ? `${user.firstName} ${user.lastName || ""}`.trim()
+      : user.email || "User";
+    const clientId = `qclient_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    let currentQueueId: string | null = null;
+
+    ws.on("message", async (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+
+        if (msg.type === "join_queue" && msg.queueId) {
+          currentQueueId = msg.queueId;
+        }
+
+        if (currentQueueId || msg.queueId) {
+          handleQueueWSMessage(
+            currentQueueId || msg.queueId,
+            clientId,
+            userId,
+            displayName,
+            msg,
+            ws,
+          );
+        }
+      } catch (err) {
+        console.error("[StreamingQueue WS] Error:", err);
+        ws.send(JSON.stringify({ type: "error", error: "Invalid message" }));
+      }
+    });
+
+    ws.on("close", () => {
+      if (currentQueueId) {
+        handleQueueWSLeave(currentQueueId, clientId);
       }
     });
   });
