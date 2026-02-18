@@ -730,6 +730,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/tts/synthesize - Convert text to speech using OpenAI gpt-audio
+  app.post("/api/tts/synthesize", express.json({ limit: "10mb" }), async (req, res) => {
+    try {
+      const { text, voice = "nova", format = "mp3" } = req.body;
+
+      if (!text || typeof text !== "string") {
+        return res.status(400).json({ message: "Text is required" });
+      }
+
+      if (text.length > 5000) {
+        return res.status(400).json({ message: "Text too long. Maximum 5000 characters per request." });
+      }
+
+      const validVoices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+      if (!validVoices.includes(voice)) {
+        return res.status(400).json({ message: `Invalid voice. Choose from: ${validVoices.join(", ")}` });
+      }
+
+      const { textToSpeech } = await import("./replit_integrations/audio/client");
+      const audioBuffer = await textToSpeech(text, voice, format);
+
+      const contentTypes: Record<string, string> = {
+        mp3: "audio/mpeg",
+        wav: "audio/wav",
+        flac: "audio/flac",
+        opus: "audio/opus",
+      };
+
+      res.setHeader("Content-Type", contentTypes[format] || "audio/mpeg");
+      res.setHeader("Content-Length", audioBuffer.length.toString());
+      res.send(audioBuffer);
+    } catch (error) {
+      console.error("TTS synthesis error:", error);
+      res.status(500).json({ message: "Failed to synthesize speech" });
+    }
+  });
+
   // Helper function to generate sample ebook content
   function generateSampleEbookContent(book: any): string {
     const intro = `${book.title}\nby ${book.author}\n\n`;
