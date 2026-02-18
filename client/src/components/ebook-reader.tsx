@@ -26,6 +26,7 @@ import {
 import { localStorageService } from "@/lib/storage";
 import { PdfViewer } from "./pdf-viewer";
 import { EpubViewer } from "./epub-viewer";
+import { TTSPlayer } from "./tts-player";
 
 interface EbookReaderProps {
   book: Book;
@@ -131,6 +132,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [totalPages, setTotalPages] = useState(1);
   const [settings, setSettings] = useState<ReadingSettings>(defaultSettings);
   const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const [highlightedWordIndex, setHighlightedWordIndex] = useState<number | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -427,6 +429,19 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           </p>
         </div>
 
+        <div className="mb-4">
+          <TTSPlayer
+            text={getPageContent()}
+            bookTitle={book.title}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onNextPage={() => goToPage(currentPage + 1)}
+            onPrevPage={() => goToPage(currentPage - 1)}
+            darkMode={settings.darkMode}
+            onWordIndex={setHighlightedWordIndex}
+          />
+        </div>
+
         <Card className={settings.darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}>
           <CardContent className="p-8 md:p-12">
             <div 
@@ -441,10 +456,18 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                 lineHeight: settings.lineHeight,
               }}
             >
-              {getPageContent() || (
-                <p className="text-center text-muted-foreground italic">
-                  Content not available for preview
-                </p>
+              {highlightedWordIndex !== null ? (
+                <HighlightedText
+                  text={getPageContent()}
+                  activeWordIndex={highlightedWordIndex}
+                  darkMode={settings.darkMode}
+                />
+              ) : (
+                getPageContent() || (
+                  <p className="text-center text-muted-foreground italic">
+                    Content not available for preview
+                  </p>
+                )
               )}
             </div>
           </CardContent>
@@ -511,6 +534,35 @@ function TextReader({ book, onBack }: EbookReaderProps) {
         </div>
       </main>
     </div>
+  );
+}
+
+function HighlightedText({ text, activeWordIndex, darkMode }: { text: string; activeWordIndex: number; darkMode: boolean }) {
+  const words = text.split(/\s+/);
+  const activeRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (activeRef.current) {
+      activeRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [activeWordIndex]);
+
+  return (
+    <span>
+      {words.map((word, i) => (
+        <span
+          key={i}
+          ref={i === activeWordIndex ? activeRef : null}
+          className={
+            i === activeWordIndex
+              ? `rounded px-0.5 ${darkMode ? "bg-primary/30 text-white" : "bg-primary/20 text-primary-foreground"}`
+              : ""
+          }
+        >
+          {word}{" "}
+        </span>
+      ))}
+    </span>
   );
 }
 
