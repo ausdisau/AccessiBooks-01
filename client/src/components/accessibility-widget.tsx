@@ -133,6 +133,7 @@ export function AccessibilityWidget() {
     root.style.setProperty("--a11y-letter-spacing", `${s.letterSpacing * 0.05}em`);
     root.style.setProperty("--a11y-line-height", `${s.lineHeight}%`);
     root.style.setProperty("--a11y-saturation", `${s.saturation}%`);
+    root.style.setProperty("--a11y-word-spacing", `${(s.wordSpacing || 0) * 0.05}em`);
   };
 
   const updateSettings = (partial: Partial<AccessibilitySettings>) => {
@@ -293,6 +294,7 @@ export function AccessibilityWidget() {
                       max={200}
                       step={10}
                       onValueChange={([value]) => updateSettings({ saturation: value })}
+                      aria-label="Adjust color saturation"
                     />
                   </div>
                   <div className="flex items-center justify-between">
@@ -333,6 +335,7 @@ export function AccessibilityWidget() {
                       max={200}
                       step={5}
                       onValueChange={([value]) => updateSettings({ fontSize: value })}
+                      aria-label="Adjust font size"
                     />
                   </div>
                   <div className="space-y-1">
@@ -343,6 +346,7 @@ export function AccessibilityWidget() {
                       max={10}
                       step={1}
                       onValueChange={([value]) => updateSettings({ letterSpacing: value })}
+                      aria-label="Adjust letter spacing"
                     />
                   </div>
                   <div className="space-y-1">
@@ -353,6 +357,18 @@ export function AccessibilityWidget() {
                       max={200}
                       step={10}
                       onValueChange={([value]) => updateSettings({ lineHeight: value })}
+                      aria-label="Adjust line height"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm">Word Spacing: {settings.wordSpacing || 0}</Label>
+                    <Slider
+                      value={[settings.wordSpacing || 0]}
+                      min={0}
+                      max={10}
+                      step={1}
+                      onValueChange={([value]) => updateSettings({ wordSpacing: value })}
+                      aria-label="Adjust word spacing"
                     />
                   </div>
                 </div>

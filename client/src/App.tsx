@@ -56,7 +56,7 @@ function AppHeader() {
   };
 
   return (
-    <header className="bg-card border-b border-border">
+    <header className="bg-card border-b border-border" role="banner">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <AccessiBooksLogo />
@@ -667,6 +667,9 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/30">
+      <a href="#main-content" className="skip-to-content">
+        Skip to main content
+      </a>
       {/* Navigation */}
       <nav className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="w-full px-4 md:px-8 py-4 flex justify-between items-center">
@@ -757,9 +760,9 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
       </nav>
       
       {/* Hero Section */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16 md:py-24">
+      <section className="w-full px-4 md:px-8 lg:px-16 py-16 md:py-24" aria-labelledby="hero-heading">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
+          <h1 id="hero-heading" className="text-4xl md:text-6xl font-bold tracking-tight">
             Audiobooks for <span className="text-primary">Everyone</span>
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
@@ -926,9 +929,9 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
       )}
       
       {/* Features Grid */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16">
+      <section className="w-full px-4 md:px-8 lg:px-16 py-16" aria-labelledby="features-heading">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold mb-4">Why AccessiBooks?</h2>
+          <h2 id="features-heading" className="text-3xl font-bold mb-4">Why AccessiBooks?</h2>
           <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             We believe everyone deserves access to great literature. Our platform is built from the ground up with accessibility in mind.
           </p>
@@ -957,10 +960,10 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
       <PublicCommunitySection onJoin={openRegister} />
       
       {/* CTA Section */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16">
+      <section className="w-full px-4 md:px-8 lg:px-16 py-16" aria-labelledby="cta-heading">
         <Card className="max-w-4xl mx-auto bg-primary text-primary-foreground">
           <CardContent className="py-12 text-center">
-            <h2 className="text-3xl font-bold mb-4">Ready to Start Listening?</h2>
+            <h2 id="cta-heading" className="text-3xl font-bold mb-4">Ready to Start Listening?</h2>
             <p className="text-lg opacity-90 mb-6 max-w-xl mx-auto">
               Join our community of audiobook lovers and discover your next favorite story.
             </p>
@@ -982,7 +985,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
       </section>
       
       {/* Footer */}
-      <footer className="border-t py-12 bg-muted/30">
+      <footer className="border-t py-12 bg-muted/30" role="contentinfo" aria-label="Site footer">
         <div className="w-full px-4 md:px-8 lg:px-16">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             {/* Brand Column */}
@@ -1153,10 +1156,7 @@ function MainApp() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Skip to main content link */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:no-underline"
-      >
+      <a href="#main-content" className="skip-to-content">
         Skip to main content
       </a>
 
@@ -1354,6 +1354,8 @@ function MainApp() {
           </div>
         )}
       </main>
+
+      <div id="a11y-announcements" className="sr-live-region" aria-live="polite" aria-atomic="true" role="status" />
       
       {/* Persistent mini player */}
       <MiniPlayer onExpand={handleExpandPlayer} />
@@ -1392,7 +1394,10 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="bg-card border-b border-border">
+      <a href="#main-content" className="skip-to-content">
+        Skip to main content
+      </a>
+      <header className="bg-card border-b border-border" role="banner">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <AccessiBooksLogo />

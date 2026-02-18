@@ -40,6 +40,7 @@ export interface AccessibilitySettings {
   largerCursor: boolean;
   readingMask: boolean;
   activeProfile: string | null;
+  wordSpacing?: number;
 }
 
 export const localStorageService = {
@@ -130,6 +131,7 @@ export const localStorageService = {
       largerCursor: false,
       readingMask: false,
       activeProfile: null,
+      wordSpacing: 0,
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);
