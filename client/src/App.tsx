@@ -45,10 +45,11 @@ import { NotificationBell } from "@/components/notification-center";
 import { ListeningParty } from "@/components/listening-party";
 import { StreamingQueue } from "@/components/streaming-queue";
 import { AdvertiserDashboard } from "@/components/advertiser-dashboard";
+import { BillingDashboard } from "@/components/billing-dashboard";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
-import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet } from "lucide-react";
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party" | "queue" | "advertise";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party" | "queue" | "advertise" | "billing";
 
 // Header component with user management
 function AppHeader() {
@@ -1347,6 +1348,23 @@ function MainApp() {
               <Megaphone className="h-4 w-4 mr-2" aria-hidden="true" />
               Advertise
             </Button>
+
+            <Button
+              variant="ghost"
+              className={`py-4 px-1 border-b-2 font-medium ${
+                currentView === "billing"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setCurrentView("billing")}
+              role="tab"
+              aria-selected={currentView === "billing"}
+              aria-controls="billing-panel"
+              data-testid="tab-billing"
+            >
+              <Wallet className="h-4 w-4 mr-2" aria-hidden="true" />
+              Billing
+            </Button>
           </div>
         </div>
       </nav>
@@ -1422,6 +1440,12 @@ function MainApp() {
         {currentView === "advertise" && (
           <div id="advertise-panel" role="tabpanel" data-testid="panel-advertise">
             <AdvertiserDashboard />
+          </div>
+        )}
+
+        {currentView === "billing" && (
+          <div id="billing-panel" role="tabpanel" data-testid="panel-billing">
+            <BillingDashboard />
           </div>
         )}
       </main>

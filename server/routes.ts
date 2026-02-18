@@ -14,6 +14,7 @@ import { registerPodcastRoutes } from "./podcastIngestion";
 import { registerPushNotificationRoutes } from "./pushNotifications";
 import { registerAdMediationRoutes } from "./adMediation";
 import { registerSelfServeAdRoutes } from "./selfServeAds";
+import { registerBillingRoutes, recordTransaction, updateTransactionStatus } from "./billing";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -124,6 +125,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Self-serve advertising platform (campaign management, CPM bidding, audio upload)
   registerSelfServeAdRoutes(app);
+
+  // Centralized billing platform (transactions, invoices, billing portal)
+  registerBillingRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
@@ -1068,8 +1072,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 stripeSubscriptionId: session.subscription,
                 stripeCustomerId: session.customer,
               });
+              await recordTransaction({
+                userId,
+                provider: "stripe",
+                providerTransactionId: session.id,
+                type: "subscription",
+                status: "completed",
+                amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
+                description: "AccessiBooks Premium subscription",
+                receiptUrl: session.receipt_url || null,
+              });
               console.log(`User ${userId} upgraded to premium via checkout`);
             } else if (session.metadata?.type === "donation") {
+              if (userId) {
+                await recordTransaction({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: session.id,
+                  type: "donation",
+                  status: "completed",
+                  amountCents: session.amount_total || 0,
+                  description: "Donation to AccessiBooks",
+                });
+              }
               console.log(`Donation received: $${(session.amount_total / 100).toFixed(2)} from ${userId || "anonymous"}`);
             }
             break;
@@ -1106,6 +1131,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 stripeSubscriptionId: null,
                 subscriptionEndDate: null,
               });
+              await recordTransaction({
+                userId: user.id,
+                provider: "stripe",
+                providerTransactionId: subscription.id,
+                type: "subscription_cancelled",
+                status: "completed",
+                amountCents: 0,
+                description: "Premium subscription cancelled",
+              });
               console.log(`Subscription cancelled for user ${user.id}`);
             }
             break;
@@ -1113,6 +1147,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           case "invoice.payment_succeeded": {
             const invoice = event.data.object as any;
+            const invoiceCustomerId = invoice.customer;
+            const invoiceUser = await storage.getUserByStripeCustomerId(invoiceCustomerId);
+            if (invoiceUser) {
+              await recordTransaction({
+                userId: invoiceUser.id,
+                provider: "stripe",
+                providerTransactionId: invoice.id,
+                type: "subscription_renewal",
+                status: "completed",
+                amountCents: invoice.amount_paid || 0,
+                description: "Subscription renewal payment",
+                receiptUrl: invoice.hosted_invoice_url || null,
+              });
+            }
             console.log(`Payment succeeded for invoice ${invoice.id}`);
             break;
           }
@@ -1123,6 +1171,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             const user = await storage.getUserByStripeCustomerId(customerId);
             if (user) {
+              await recordTransaction({
+                userId: user.id,
+                provider: "stripe",
+                providerTransactionId: invoice.id,
+                type: "subscription_renewal",
+                status: "failed",
+                amountCents: invoice.amount_due || 0,
+                description: "Payment failed for subscription renewal",
+              });
               console.warn(`Payment failed for user ${user.id}, invoice ${invoice.id}`);
             }
             break;
@@ -1245,7 +1302,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const customerId = session.customer;
         
         if (userId && subscriptionId) {
-          // Fetch subscription to get current period end
           let subscriptionEndDate: Date | null = null;
           try {
             const subResponse = await stripe.subscriptions.retrieve(subscriptionId as string);
@@ -1253,7 +1309,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (sub.current_period_end) {
               subscriptionEndDate = new Date(sub.current_period_end * 1000);
             }
-            // Also update the subscription metadata with userId for future lookups
             await stripe.subscriptions.update(subscriptionId as string, {
               metadata: { userId },
             });
@@ -1261,12 +1316,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("Could not fetch subscription details:", e);
           }
           
-          // Persist stripeCustomerId along with subscription details
           await storage.updateUserSubscription(userId, {
             stripeCustomerId: customerId as string,
             stripeSubscriptionId: subscriptionId as string,
             subscriptionTier: "premium",
             subscriptionEndDate,
+          });
+          await recordTransaction({
+            userId,
+            provider: "stripe",
+            providerTransactionId: session.id,
+            type: "subscription",
+            status: "completed",
+            amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
+            description: "AccessiBooks Premium subscription",
           });
           console.log(`User ${userId} upgraded to premium with customer ${customerId}`);
         }
@@ -1277,7 +1340,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const subscription = event.data.object as any;
         let userId = subscription.metadata?.userId;
         
-        // Fallback: lookup user by Stripe customer ID if userId not in metadata
         if (!userId && subscription.customer) {
           const user = await storage.getUserByStripeCustomerId(subscription.customer);
           if (user) {
@@ -1290,6 +1352,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             subscriptionTier: "free",
             stripeSubscriptionId: null,
             subscriptionEndDate: null,
+          });
+          await recordTransaction({
+            userId,
+            provider: "stripe",
+            providerTransactionId: subscription.id,
+            type: "subscription_cancelled",
+            status: "completed",
+            amountCents: 0,
+            description: "Premium subscription cancelled",
           });
           console.log(`User ${userId} subscription deleted - downgraded to free`);
         } else {
@@ -1359,6 +1430,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 subscriptionTier: "premium",
                 subscriptionEndDate: endDate,
               });
+              await recordTransaction({
+                userId,
+                provider: "stripe",
+                providerTransactionId: invoice.id,
+                type: "subscription_renewal",
+                status: "completed",
+                amountCents: invoice.amount_paid || 0,
+                description: "Subscription renewal payment",
+                receiptUrl: invoice.hosted_invoice_url || null,
+              });
               console.log(`User ${userId} subscription renewed`);
             }
           } catch (e) {
@@ -1390,7 +1471,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /paypal/order/:orderID/capture - Capture PayPal order
-  app.post("/paypal/order/:orderID/capture", async (req, res) => {
+  app.post("/paypal/order/:orderID/capture", async (req: any, res) => {
+    const originalJson = res.json.bind(res);
+    res.json = function(data: any) {
+      if (res.statusCode >= 200 && res.statusCode < 300 && data?.status === "COMPLETED") {
+        const userId = req.user?.claims?.sub || req.user?.id;
+        if (userId) {
+          const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+          const amountStr = capture?.amount?.value || data.purchase_units?.[0]?.amount?.value || "0";
+          const currency = capture?.amount?.currency_code || data.purchase_units?.[0]?.amount?.currency_code || "USD";
+          recordTransaction({
+            userId,
+            provider: "paypal",
+            providerTransactionId: data.id,
+            type: "donation",
+            status: "completed",
+            amountCents: Math.round(parseFloat(amountStr) * 100),
+            currency,
+            description: "PayPal payment",
+          }).catch(err => console.error("[Billing] PayPal tx record failed:", err));
+        }
+      }
+      return originalJson(data);
+    };
     await capturePaypalOrder(req, res);
   });
 
@@ -1412,16 +1515,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Note: This route needs raw body for signature verification
   // The body is already available as req.body since express.json() runs globally
   // For production, consider adding express.raw() middleware specifically for this route
-  app.post("/api/crypto/webhook", express.text({ type: "application/json" }), async (req, res) => {
-    // Parse the raw text body if needed
+  app.post("/api/crypto/webhook", express.text({ type: "application/json" }), async (req: any, res) => {
     if (typeof req.body === "string") {
       try {
-        (req as any).rawBody = req.body;
+        req.rawBody = req.body;
         req.body = JSON.parse(req.body);
       } catch (e) {
         return res.status(400).json({ error: "Invalid JSON" });
       }
     }
+
+    const event = req.body;
+    if (event?.type === "charge:confirmed" || event?.type === "charge:failed") {
+      const metadata = event.data?.metadata || {};
+      const userId = metadata.userId;
+      if (userId) {
+        const localPrice = event.data?.pricing?.local;
+        const amountCents = localPrice ? Math.round(parseFloat(localPrice.amount) * 100) : 0;
+        const currency = localPrice?.currency || "USD";
+        recordTransaction({
+          userId,
+          provider: "coinbase",
+          providerTransactionId: event.data?.id || event.data?.code,
+          type: metadata.type || "donation",
+          status: event.type === "charge:confirmed" ? "completed" : "failed",
+          amountCents,
+          currency,
+          description: `Cryptocurrency ${metadata.type || "payment"}`,
+        }).catch(err => console.error("[Billing] Coinbase tx record failed:", err));
+      }
+    }
+
     await handleCoinbaseWebhook(req, res);
   });
 

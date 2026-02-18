@@ -906,6 +906,34 @@ export const insertAdCreativeSchema = createInsertSchema(adCreatives).omit({
 export type InsertAdCreative = z.infer<typeof insertAdCreativeSchema>;
 export type AdCreative = typeof adCreatives.$inferSelect;
 
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 20 }).notNull(),
+  providerTransactionId: varchar("provider_transaction_id"),
+  type: varchar("type", { length: 30 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  description: text("description"),
+  metadata: text("metadata"),
+  receiptUrl: text("receipt_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_tx_user").on(table.userId),
+  index("idx_tx_provider").on(table.provider),
+  index("idx_tx_created").on(table.createdAt),
+]);
+
+export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
+export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
+
 export const adImpressions = pgTable("ad_impressions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => adCampaigns.id, { onDelete: "cascade" }),
