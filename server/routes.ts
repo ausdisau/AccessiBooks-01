@@ -8,6 +8,7 @@ import { eq, desc, sql, count, sum } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
+import { getSeederStatus, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -2836,6 +2837,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching approved submissions:", error);
       res.status(500).json({ message: "Failed to fetch community content" });
+    }
+  });
+
+  // Catalog Seeder API endpoints
+  app.get("/api/admin/seed/status", async (_req, res) => {
+    try {
+      const status = getSeederStatus();
+      const counts = await getSeededBookCount();
+      res.json({ ...status, dbCounts: counts });
+    } catch (error) {
+      console.error("Error getting seeder status:", error);
+      res.status(500).json({ message: "Failed to get seeder status" });
+    }
+  });
+
+  app.post("/api/admin/seed/start", async (req, res) => {
+    try {
+      const sources = req.body.sources || ["librivox", "gutenberg"];
+      const result = await startSeeding(sources);
+      res.json(result);
+    } catch (error) {
+      console.error("Error starting seeder:", error);
+      res.status(500).json({ message: "Failed to start seeder" });
+    }
+  });
+
+  app.post("/api/admin/seed/stop", (_req, res) => {
+    try {
+      const result = stopSeeding();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to stop seeder" });
+    }
+  });
+
+  app.post("/api/admin/seed/reset", (req, res) => {
+    try {
+      const result = resetSeeder(req.body.source);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reset seeder" });
     }
   });
 
