@@ -9,6 +9,7 @@ import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
 import { getSeederStatus, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
+import { registerSelfPublishingRoutes } from "./selfPublishing";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -101,6 +102,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Setup Auth0 M2M API routes
   setupAuth0Routes(app);
+
+  // Self-publishing portal routes (author profiles, file uploads, analytics)
+  registerSelfPublishingRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {

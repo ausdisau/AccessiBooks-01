@@ -531,6 +531,14 @@ export const userSubmissions = pgTable("user_submissions", {
   language: text("language").default("English"),
   status: text("status").notNull().default("pending"), // pending, approved, rejected
   createdAt: timestamp("created_at").defaultNow(),
+  duration: integer("duration"),
+  pageCount: integer("page_count"),
+  publishedAt: timestamp("published_at"),
+  totalPlays: integer("total_plays").notNull().default(0),
+  totalReads: integer("total_reads").notNull().default(0),
+  fileSize: integer("file_size"),
+  narrator: text("narrator"),
+  tags: text("tags").array().default(sql`'{}'::text[]`),
 });
 
 export const insertUserSubmissionSchema = createInsertSchema(userSubmissions).omit({
@@ -540,5 +548,56 @@ export const insertUserSubmissionSchema = createInsertSchema(userSubmissions).om
 
 export type InsertUserSubmission = z.infer<typeof insertUserSubmissionSchema>;
 export type UserSubmission = typeof userSubmissions.$inferSelect;
+
+// Author profiles for self-publishing system
+export const authorProfiles = pgTable("author_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  bio: text("bio"),
+  website: text("website"),
+  socialLinks: jsonb("social_links"),
+  profileImage: text("profile_image"),
+  isVerified: boolean("is_verified").notNull().default(false),
+  totalPlays: integer("total_plays").notNull().default(0),
+  totalListeners: integer("total_listeners").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_author_profiles_user").on(table.userId),
+]);
+
+export const insertAuthorProfileSchema = createInsertSchema(authorProfiles).omit({
+  id: true,
+  createdAt: true,
+  totalPlays: true,
+  totalListeners: true,
+  isVerified: true,
+});
+
+export type InsertAuthorProfile = z.infer<typeof insertAuthorProfileSchema>;
+export type AuthorProfile = typeof authorProfiles.$inferSelect;
+
+// Content analytics for tracking plays/reads
+export const contentAnalytics = pgTable("content_analytics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull(),
+  authorUserId: varchar("author_user_id").notNull(),
+  eventType: text("event_type").notNull(), // play, read, complete, skip
+  listenerId: varchar("listener_id"),
+  duration: integer("duration"), // seconds listened/read
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_content_analytics_book").on(table.bookId),
+  index("idx_content_analytics_author").on(table.authorUserId),
+  index("idx_content_analytics_date").on(table.createdAt),
+]);
+
+export const insertContentAnalyticSchema = createInsertSchema(contentAnalytics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertContentAnalytic = z.infer<typeof insertContentAnalyticSchema>;
+export type ContentAnalytic = typeof contentAnalytics.$inferSelect;
 
 export * from "./models/chat";
