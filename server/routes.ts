@@ -180,7 +180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             author: track.artist,
             description: track.description,
             coverImage: track.artworkUrl,
-            audioUrl: track.permalinkUrl,
+            audioUrl: `/api/soundcloud/track/${track.id}/stream`,
             duration: Math.floor(track.duration / 1000),
             genre: track.genre || "SoundCloud",
             contentType: "audiobook",
@@ -1670,6 +1670,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const streamUrl = await getSoundCloudStreamUrl(trackId);
       if (!streamUrl) {
         return res.status(404).json({ message: "Stream not available" });
+      }
+      const format = req.query.format;
+      if (format === "redirect") {
+        return res.redirect(streamUrl);
       }
       res.json({ streamUrl });
     } catch (error) {
