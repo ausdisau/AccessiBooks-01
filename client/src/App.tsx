@@ -44,10 +44,11 @@ import { AuthorDashboard } from "@/components/author-dashboard";
 import { NotificationBell } from "@/components/notification-center";
 import { ListeningParty } from "@/components/listening-party";
 import { StreamingQueue } from "@/components/streaming-queue";
+import { AdvertiserDashboard } from "@/components/advertiser-dashboard";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
-import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone } from "lucide-react";
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party" | "queue";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "publish" | "party" | "queue" | "advertise";
 
 // Header component with user management
 function AppHeader() {
@@ -1329,6 +1330,23 @@ function MainApp() {
               <ListMusic className="h-4 w-4 mr-2" aria-hidden="true" />
               Live Queue
             </Button>
+
+            <Button
+              variant="ghost"
+              className={`py-4 px-1 border-b-2 font-medium ${
+                currentView === "advertise"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setCurrentView("advertise")}
+              role="tab"
+              aria-selected={currentView === "advertise"}
+              aria-controls="advertise-panel"
+              data-testid="tab-advertise"
+            >
+              <Megaphone className="h-4 w-4 mr-2" aria-hidden="true" />
+              Advertise
+            </Button>
           </div>
         </div>
       </nav>
@@ -1398,6 +1416,12 @@ function MainApp() {
         {currentView === "queue" && (
           <div id="queue-panel" role="tabpanel" data-testid="panel-queue">
             <StreamingQueue onBack={handleBackToLibrary} />
+          </div>
+        )}
+
+        {currentView === "advertise" && (
+          <div id="advertise-panel" role="tabpanel" data-testid="panel-advertise">
+            <AdvertiserDashboard />
           </div>
         )}
       </main>

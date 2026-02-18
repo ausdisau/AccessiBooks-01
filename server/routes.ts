@@ -13,6 +13,7 @@ import { registerSelfPublishingRoutes } from "./selfPublishing";
 import { registerPodcastRoutes } from "./podcastIngestion";
 import { registerPushNotificationRoutes } from "./pushNotifications";
 import { registerAdMediationRoutes } from "./adMediation";
+import { registerSelfServeAdRoutes } from "./selfServeAds";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -120,6 +121,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Programmatic audio ad mediation routes (AdsWizz, Triton, ad:personam, house ads)
   registerAdMediationRoutes(app);
+
+  // Self-serve advertising platform (campaign management, CPM bidding, audio upload)
+  registerSelfServeAdRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
