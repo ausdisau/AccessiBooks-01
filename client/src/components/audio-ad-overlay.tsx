@@ -6,6 +6,74 @@ import { Crown, Volume2, VolumeX, Radio, ExternalLink } from "lucide-react";
 import type { AdResponse } from "@/services/audio-ad-service";
 import { audioAdService } from "@/services/audio-ad-service";
 
+interface HouseCompanionAd {
+  title: string;
+  description: string;
+  icon: "crown" | "radio";
+  gradient: string;
+  clickLabel?: string;
+}
+
+const HOUSE_COMPANION_ADS: HouseCompanionAd[] = [
+  {
+    title: "Upgrade to Premium",
+    description: "Enjoy unlimited ad-free listening, offline downloads, and high-quality audio.",
+    icon: "crown",
+    gradient: "from-amber-500/20 via-yellow-500/10 to-orange-500/20",
+    clickLabel: "Go Premium",
+  },
+  {
+    title: "Ad-Free Listening",
+    description: "No more interruptions. Premium members listen to their favorite audiobooks uninterrupted.",
+    icon: "radio",
+    gradient: "from-purple-500/20 via-indigo-500/10 to-blue-500/20",
+    clickLabel: "Learn More",
+  },
+  {
+    title: "Try Premium Free",
+    description: "Start your 7-day free trial today. Cancel anytime, no commitment required.",
+    icon: "crown",
+    gradient: "from-emerald-500/20 via-teal-500/10 to-cyan-500/20",
+    clickLabel: "Start Free Trial",
+  },
+];
+
+function getRandomHouseCompanion(): HouseCompanionAd {
+  return HOUSE_COMPANION_ADS[Math.floor(Math.random() * HOUSE_COMPANION_ADS.length)]!;
+}
+
+interface CompanionAdBannerProps {
+  companion: HouseCompanionAd;
+  onClick?: () => void;
+}
+
+function CompanionAdBanner({ companion, onClick }: CompanionAdBannerProps) {
+  const IconComponent = companion.icon === "crown" ? Crown : Radio;
+
+  return (
+    <div
+      className={`relative min-h-[120px] rounded-lg bg-gradient-to-r ${companion.gradient} border border-primary/10 p-4 flex items-center gap-4 ${onClick ? "cursor-pointer hover:border-primary/30 transition-colors" : ""}`}
+      onClick={onClick}
+      role={onClick ? "link" : undefined}
+      aria-label={onClick ? companion.clickLabel || companion.title : undefined}
+    >
+      <div className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-full bg-primary/15">
+        <IconComponent className="h-7 w-7 text-primary" aria-hidden="true" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h4 className="text-sm font-bold text-foreground">{companion.title}</h4>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{companion.description}</p>
+        {companion.clickLabel && (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-primary mt-2">
+            {companion.clickLabel}
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface AudioAdOverlayProps {
   ad: AdResponse;
   adType: "pre-roll" | "mid-roll";
@@ -18,6 +86,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
   const [isMuted, setIsMuted] = useState(false);
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [audioError, setAudioError] = useState(false);
+  const [houseCompanion] = useState<HouseCompanionAd>(() => getRandomHouseCompanion());
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef(Date.now());
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -26,6 +95,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const impressionFiredRef = useRef(false);
   const startFiredRef = useRef(false);
+  const companionViewTrackedRef = useRef(false);
 
   const isProgrammatic = ad.isProgrammatic;
   const totalDuration = ad.duration;
@@ -98,6 +168,20 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
     if (isProgrammatic && ad.isProgrammatic && !impressionFiredRef.current) {
       impressionFiredRef.current = true;
       audioAdService.fireAdEvent(ad, "impression");
+    }
+
+    if (!companionViewTrackedRef.current) {
+      companionViewTrackedRef.current = true;
+      if (isProgrammatic && ad.isProgrammatic && ad.companion?.trackingPixels?.length) {
+        audioAdService.fireTrackingPixels(ad.companion.trackingPixels);
+      }
+      audioAdService.recordImpression(
+        ad.id,
+        adType,
+        false,
+        false,
+        isProgrammatic ? (ad.isProgrammatic ? ad.provider : "house") : "house"
+      );
     }
 
     intervalRef.current = setInterval(() => {
@@ -258,7 +342,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
             </div>
           </div>
 
-          {isProgrammatic && ad.isProgrammatic && ad.companion?.imageUrl && (
+          {isProgrammatic && ad.isProgrammatic && ad.companion?.imageUrl ? (
             <div
               className={`flex justify-center ${ad.companion.clickThrough ? "cursor-pointer" : ""}`}
               onClick={ad.companion.clickThrough ? handleCompanionClick : undefined}
@@ -276,26 +360,28 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
                 <ExternalLink className="absolute top-2 right-2 h-4 w-4 text-white/70" aria-hidden="true" />
               )}
             </div>
-          )}
-
-          {!isProgrammatic && (
-            <div className="text-center space-y-3 py-2">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10">
-                <Crown className="h-8 w-8 text-primary" aria-hidden="true" />
+          ) : isProgrammatic && ad.isProgrammatic && !ad.companion?.imageUrl ? (
+            <div className="space-y-2">
+              <div className="text-center space-y-1 py-1">
+                <h3 className="text-lg font-semibold">{adTitle}</h3>
+                {adDescription && (
+                  <p className="text-muted-foreground text-sm">{adDescription}</p>
+                )}
               </div>
-              <h3 className="text-xl font-bold">{adTitle}</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed">{adDescription}</p>
+              <CompanionAdBanner companion={houseCompanion} onClick={handleUpgrade} />
             </div>
-          )}
-
-          {isProgrammatic && !ad.isProgrammatic === false && (
-            <div className="text-center space-y-2 py-2">
-              <h3 className="text-lg font-semibold">{adTitle}</h3>
-              {adDescription && (
-                <p className="text-muted-foreground text-sm">{adDescription}</p>
-              )}
-            </div>
-          )}
+          ) : !isProgrammatic ? (
+            <CompanionAdBanner
+              companion={{
+                title: "Upgrade to Premium",
+                description: adDescription || "Enjoy unlimited ad-free listening, offline downloads, and high-quality audio.",
+                icon: "crown",
+                gradient: "from-amber-500/20 via-yellow-500/10 to-orange-500/20",
+                clickLabel: "Go Premium",
+              }}
+              onClick={handleUpgrade}
+            />
+          ) : null}
 
           {!audioLoaded && isProgrammatic && (
             <div className="text-center text-sm text-muted-foreground py-2">
@@ -333,6 +419,16 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
               </Button>
             )}
           </div>
+
+          <Button
+            variant="outline"
+            className="w-full border-yellow-500/50 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 hover:text-yellow-400"
+            onClick={handleUpgrade}
+            aria-label="Remove ads by upgrading to Premium"
+          >
+            <Crown className="h-4 w-4 mr-2" aria-hidden="true" />
+            Remove Ads - Go Premium
+          </Button>
 
           <p className="text-xs text-center text-muted-foreground">
             Premium members enjoy ad-free listening

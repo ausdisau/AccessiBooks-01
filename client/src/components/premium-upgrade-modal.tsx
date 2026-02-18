@@ -1,13 +1,15 @@
+import { useState } from "react";
 import { Book } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Crown, Lock, Check } from "lucide-react";
 
 interface PremiumUpgradeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   book: Book | null;
-  onUpgrade: () => void;
+  onUpgrade: (plan?: "monthly" | "annual") => void;
   isUpgrading: boolean;
 }
 
@@ -18,6 +20,7 @@ export function PremiumUpgradeModal({
   onUpgrade,
   isUpgrading,
 }: PremiumUpgradeModalProps) {
+  const [selectedPlan, setSelectedPlan] = useState<"monthly" | "annual">("annual");
   const contentType = book?.contentType || "audiobook";
   const contentAction = contentType === "audiobook" ? "listen to" : "read";
 
@@ -44,11 +47,39 @@ export function PremiumUpgradeModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border">
-            <Crown className="h-8 w-8 text-yellow-500" />
-            <div>
-              <p className="font-semibold">AccessiBooks Premium</p>
-              <p className="text-sm text-muted-foreground">$9.99/month</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div
+              className={`relative rounded-lg border p-3 cursor-pointer transition-all ${
+                selectedPlan === "monthly"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border hover:border-muted-foreground/50"
+              }`}
+              onClick={() => setSelectedPlan("monthly")}
+            >
+              <div className="text-center">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Monthly</p>
+                <div className="text-xl font-bold text-foreground">$9.99</div>
+                <p className="text-xs text-muted-foreground">/month</p>
+              </div>
+            </div>
+            <div
+              className={`relative rounded-lg border p-3 cursor-pointer transition-all ${
+                selectedPlan === "annual"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-amber-500/50 hover:border-amber-500"
+              }`}
+              onClick={() => setSelectedPlan("annual")}
+            >
+              <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-amber-500 text-white hover:bg-amber-500 text-[10px] px-2">
+                Best Value
+              </Badge>
+              <div className="text-center">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Annual</p>
+                <div className="text-xl font-bold text-foreground">$8.33</div>
+                <p className="text-xs text-muted-foreground">/month</p>
+                <p className="text-xs text-muted-foreground line-through">$9.99/mo</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">$99.99 billed annually</p>
+              </div>
             </div>
           </div>
 
@@ -74,12 +105,12 @@ export function PremiumUpgradeModal({
 
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button
-            onClick={onUpgrade}
+            onClick={() => onUpgrade(selectedPlan)}
             disabled={isUpgrading}
             className="w-full bg-yellow-500 hover:bg-yellow-600 text-black"
           >
             <Crown className="h-4 w-4 mr-2" />
-            {isUpgrading ? "Processing..." : "Upgrade to Premium"}
+            {isUpgrading ? "Processing..." : `Subscribe ${selectedPlan === "annual" ? "Annually — $99.99/yr" : "Monthly — $9.99/mo"}`}
           </Button>
           <Button
             variant="ghost"
