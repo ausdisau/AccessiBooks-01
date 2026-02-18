@@ -33,6 +33,7 @@ import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabl
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
 import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./amazon";
 import { isSoundCloudEnabled, searchSoundCloudTracks, getSoundCloudTrack, getSoundCloudUser, getSoundCloudUserTracks, getSoundCloudStreamUrl, getSoundCloudGenreTracks, getSoundCloudRelated, SOUNDCLOUD_GENRES } from "./soundcloud";
+import { isGooglePlayEnabled, searchGooglePlayAudiobooks, getGooglePlayAudiobook, getGooglePlaySimilar } from "./googlePlay";
 import { registerListeningPartyRoutes, setupListeningPartyWS } from "./listeningParty";
 import { registerStreamingQueueRoutes } from "./streamingQueue";
 import {
@@ -160,16 +161,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/books/search - Search books (with optional SoundCloud augmentation)
+  // GET /api/books/search - Search books (with optional SoundCloud/Google Play augmentation)
   app.get("/api/books/search", async (req, res) => {
     try {
-      const { q, includeSoundCloud } = req.query;
+      const { q, includeSoundCloud, includeGooglePlay } = req.query;
       
       if (!q || typeof q !== "string") {
         return res.status(400).json({ message: "Search query is required" });
       }
 
       const books = await storage.searchBooks(q);
+      let augmented: any[] = [...books];
 
       if (includeSoundCloud === "true" && isSoundCloudEnabled()) {
         try {
@@ -188,13 +190,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             externalUrl: track.permalinkUrl,
             playbackCount: track.playbackCount,
           }));
-          return res.json([...books, ...scBooks]);
-        } catch {
-          return res.json(books);
-        }
+          augmented = [...augmented, ...scBooks];
+        } catch {}
       }
 
-      res.json(books);
+      if (includeGooglePlay === "true" && isGooglePlayEnabled()) {
+        try {
+          const gpResults = await searchGooglePlayAudiobooks(q as string, 5);
+          const gpBooks = gpResults.map((item) => ({
+            id: `gplay-${item.productId}`,
+            title: item.title,
+            author: item.authors.join(", "),
+            description: item.description || "",
+            coverImage: item.coverUrl,
+            audioUrl: "",
+            duration: 0,
+            genre: item.categories?.[0] || "Google Play",
+            contentType: "audiobook",
+            source: "google_play",
+            externalUrl: item.link,
+            rating: item.rating,
+            price: item.price,
+          }));
+          augmented = [...augmented, ...gpBooks];
+        } catch {}
+      }
+
+      res.json(augmented);
     } catch (error) {
       res.status(500).json({ message: "Failed to search books" });
     }
@@ -1779,6 +1801,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("SoundCloud genre tracks error:", error);
       res.status(500).json({ message: "Failed to fetch genre tracks" });
+    }
+  });
+
+  // ============================================
+  // Google Play Audiobooks Integration (via SerpApi)
+  // ============================================
+
+  app.get("/api/google-play/status", async (req, res) => {
+    res.json({ enabled: isGooglePlayEnabled() });
+  });
+
+  app.get("/api/google-play/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const limit = parseInt(req.query.limit as string) || 20;
+      if (!q) return res.json({ results: [] });
+      const results = await searchGooglePlayAudiobooks(q, limit);
+      res.json({ results });
+    } catch (error) {
+      console.error("Google Play search error:", error);
+      res.status(500).json({ message: "Failed to search Google Play" });
+    }
+  });
+
+  app.get("/api/google-play/audiobook/:productId", async (req, res) => {
+    try {
+      const { productId } = req.params;
+      if (!productId) return res.status(400).json({ message: "Product ID required" });
+      const audiobook = await getGooglePlayAudiobook(productId);
+      if (!audiobook) return res.status(404).json({ message: "Audiobook not found" });
+      res.json(audiobook);
+    } catch (error) {
+      console.error("Google Play audiobook error:", error);
+      res.status(500).json({ message: "Failed to fetch Google Play audiobook" });
+    }
+  });
+
+  app.get("/api/google-play/similar/:productId", async (req, res) => {
+    try {
+      const { productId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const similar = await getGooglePlaySimilar(productId, limit);
+      res.json({ results: similar });
+    } catch (error) {
+      console.error("Google Play similar error:", error);
+      res.status(500).json({ message: "Failed to fetch similar audiobooks" });
     }
   });
 
