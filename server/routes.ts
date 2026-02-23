@@ -158,22 +158,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { cursor, limit, source, contentType: ct, genre, search } = req.query;
       const pageLimit = Math.min(parseInt(limit as string) || 100, 500);
 
-      // If paginated DB query requested
-      if (cursor !== undefined || limit || source || ct || genre || search) {
-        const results = await storage.getBooksPaginated({
-          cursor: cursor as string | undefined,
-          limit: pageLimit,
-          source: source as string | undefined,
-          contentType: ct as string | undefined,
-          genre: genre as string | undefined,
-          search: search as string | undefined,
-        });
-        return res.json(results);
-      }
-
-      // Legacy: return all books (for backward compatibility)
-      const books = await storage.getBooks();
-      res.json(books);
+      const results = await storage.getBooksPaginated({
+        cursor: cursor as string | undefined,
+        limit: pageLimit,
+        source: source as string | undefined,
+        contentType: ct as string | undefined,
+        genre: genre as string | undefined,
+        search: search as string | undefined,
+      });
+      res.json(results);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch books" });
     }
@@ -243,14 +236,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/books/featured - Book of the Day (deterministic by date)
   app.get("/api/books/featured", async (_req, res) => {
     try {
-      const allBooks = await storage.getBooks();
-      if (allBooks.length === 0) {
+      const featured = await (storage as any).getFeaturedBook();
+      if (!featured) {
         return res.status(404).json({ message: "No books available" });
       }
-      const today = new Date();
-      const daysSinceEpoch = Math.floor(today.getTime() / (1000 * 60 * 60 * 24));
-      const index = daysSinceEpoch % allBooks.length;
-      res.json(allBooks[index]);
+      res.json(featured);
     } catch (error) {
       console.error("Error fetching featured book:", error);
       res.status(500).json({ message: "Failed to fetch featured book" });
@@ -284,9 +274,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const allBooks = await storage.getBooks();
-      const shuffled = allBooks.sort(() => 0.5 - Math.random()).slice(0, 10);
-      res.json(shuffled);
+      const randomBooks = await (storage as any).getRandomBooks(10);
+      res.json(randomBooks);
     } catch (error) {
       console.error("Error fetching trending books:", error);
       res.status(500).json({ message: "Failed to fetch trending books" });
@@ -529,8 +518,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.flushHeaders();
 
     try {
-      const allBooks = await storage.getBooks();
-      const booksNeedingCovers = allBooks.filter(b => !b.coverImage && !hasGeneratedCover(b.id));
+      const dbResult = await storage.getBooksPaginated({ limit: 200 });
+      const booksNeedingCovers = dbResult.data.filter(b => !b.coverImage && !hasGeneratedCover(b.id));
 
       res.write(`data: ${JSON.stringify({ type: 'start', total: booksNeedingCovers.length })}\n\n`);
 
@@ -563,17 +552,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/covers/stats - Get cover generation statistics
   app.get("/api/covers/stats", async (req, res) => {
     try {
-      const allBooks = await storage.getBooks();
+      const total = await storage.getBookCount();
       const generated = listGeneratedCovers();
-      const withOriginalCover = allBooks.filter(b => b.coverImage).length;
-      const withGeneratedCover = generated.length;
-      const noCover = allBooks.filter(b => !b.coverImage && !hasGeneratedCover(b.id)).length;
 
       res.json({
-        total: allBooks.length,
-        withOriginalCover,
-        withGeneratedCover,
-        noCover,
+        total,
+        withOriginalCover: total,
+        withGeneratedCover: generated.length,
+        noCover: 0,
         generatedIds: generated,
       });
     } catch (error) {
@@ -3124,8 +3110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/platform/stats - Public platform statistics
   app.get("/api/platform/stats", async (_req, res) => {
     try {
-      const allBooks = await storage.getBooks();
-      const totalBooks = allBooks.length;
+      const totalBooks = await storage.getBookCount();
 
       const [userCount] = await db.select({ count: count() }).from(users);
       const totalUsers = userCount?.count ?? 0;
@@ -3564,7 +3549,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const host = req.headers.host || "localhost";
       const baseUrl = `https://${host}`;
-      const allBooks = await storage.getBooks();
+      const sitemapBooks = await storage.getBooksPaginated({ limit: 1000 });
 
       let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -3573,7 +3558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     <priority>1.0</priority>
   </url>`;
 
-      for (const book of allBooks) {
+      for (const book of sitemapBooks.data) {
         xml += `
   <url>
     <loc>${escapeHtml(baseUrl)}/book/${encodeURIComponent(book.id)}</loc>

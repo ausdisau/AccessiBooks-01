@@ -43,12 +43,38 @@ export interface BookQueryOptions {
   search?: string;
 }
 
+function mapRowToBook(row: any): Book {
+  return {
+    id: row.id,
+    title: row.title,
+    author: row.author,
+    narrator: row.narrator || null,
+    description: row.description || null,
+    duration: row.duration || 0,
+    coverImage: row.cover_image || row.coverImage || null,
+    audioUrl: row.audio_url || row.audioUrl || null,
+    contentUrl: row.content_url || row.contentUrl || null,
+    genre: row.genre || null,
+    publishedYear: row.published_year ?? row.publishedYear ?? null,
+    source: row.source || "local",
+    sourceId: row.source_id || row.sourceId || null,
+    totalTime: row.total_time || row.totalTime || null,
+    language: row.language || "English",
+    contentType: row.content_type || row.contentType || "audiobook",
+    isPremium: row.is_premium ?? row.isPremium ?? false,
+    pageCount: row.page_count ?? row.pageCount ?? null,
+    searchVector: row.search_vector || row.searchVector || null,
+  };
+}
+
 export interface IStorage {
   getBooks(): Promise<Book[]>;
   getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>>;
+  getBookCount(filters?: { source?: string; contentType?: string; genre?: string }): Promise<number>;
   getBook(id: string): Promise<Book | undefined>;
   createBook(book: InsertBook): Promise<Book>;
   searchBooks(query: string): Promise<Book[]>;
+  refreshRuntimeBooks(): Promise<{ inserted: number; skipped: number }>;
   
   // User management (Replit Auth)
   getUser(id: string): Promise<User | undefined>;
@@ -920,161 +946,130 @@ export class ExternalAPIStorage implements IStorage {
   }
 
   async getBooks(): Promise<Book[]> {
-    // Check cache first
     const cached = this.getCached<Book[]>('all_books');
-    if (cached) {
-      console.log('Returning cached books');
-      return cached;
+    if (cached) return cached;
+    
+    try {
+      const rows = await db.execute(
+        sql`SELECT * FROM books ORDER BY title ASC LIMIT 500`
+      );
+      const allRows = (rows as any).rows || rows;
+      if (!Array.isArray(allRows)) return Array.from(this.fallbackBooks.values());
+      
+      const books: Book[] = allRows.map(mapRowToBook);
+      if (books.length < 10) {
+        books.push(...Array.from(this.fallbackBooks.values()));
+      }
+      this.setCached('all_books', books);
+      return books;
+    } catch (err) {
+      console.warn('getBooks DB query failed:', err);
+      return Array.from(this.fallbackBooks.values());
     }
+  }
+
+  async getBookCount(filters?: { source?: string; contentType?: string; genre?: string }): Promise<number> {
+    try {
+      const conditions: any[] = [];
+      if (filters?.source) conditions.push(sql`source = ${filters.source}`);
+      if (filters?.contentType) conditions.push(sql`content_type = ${filters.contentType}`);
+      if (filters?.genre) conditions.push(sql`genre ILIKE ${'%' + filters.genre + '%'}`);
+      
+      const whereClause = conditions.length > 0
+        ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+        : sql``;
+      
+      const result = await db.execute(sql`SELECT COUNT(*) as count FROM books ${whereClause}`);
+      const rows = (result as any).rows || result;
+      return parseInt(rows?.[0]?.count || "0");
+    } catch {
+      return 0;
+    }
+  }
+
+  async getRandomBooks(count: number = 10): Promise<Book[]> {
+    try {
+      const rows = await db.execute(
+        sql`SELECT * FROM books ORDER BY RANDOM() LIMIT ${count}`
+      );
+      const allRows = (rows as any).rows || rows;
+      if (!Array.isArray(allRows) || allRows.length === 0) return [];
+      return allRows.map(mapRowToBook);
+    } catch {
+      return [];
+    }
+  }
+
+  async getFeaturedBook(): Promise<Book | null> {
+    try {
+      const today = new Date();
+      const daysSinceEpoch = Math.floor(today.getTime() / (1000 * 60 * 60 * 24));
+      const totalCount = await this.getBookCount();
+      if (totalCount === 0) return null;
+      const offset = daysSinceEpoch % totalCount;
+      const rows = await db.execute(
+        sql`SELECT * FROM books ORDER BY id ASC LIMIT 1 OFFSET ${offset}`
+      );
+      const allRows = (rows as any).rows || rows;
+      if (!Array.isArray(allRows) || allRows.length === 0) return null;
+      return mapRowToBook(allRows[0]);
+    } catch {
+      return null;
+    }
+  }
+
+  async refreshRuntimeBooks(): Promise<{ inserted: number; skipped: number }> {
+    let inserted = 0;
+    let skipped = 0;
     
-    const allBooks: Book[] = [];
+    console.log('[RuntimeRefresh] Starting background ingestion of runtime API books...');
     
-    // Parallelize API calls for better performance
     const fetchPromises: Promise<Book[]>[] = [
-      // LibriVox books - multiple pages (8 pages × 50 = 400 max)
-      ...(Array.from({length: 8}, (_, i) => 
-        this.fetchLibriVoxBooks(50, i * 50).then(books => {
-          const transformed = books.map(transformLibriVoxBook);
-          if (i === 0) console.log(`Fetched LibriVox page ${i+1}: ${transformed.length} books`);
-          return transformed;
-        }).catch(error => {
-          if (i === 0) console.warn('LibriVox fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-          return [] as Book[];
-        })
+      ...(Array.from({length: 4}, (_, i) => 
+        this.fetchLibriVoxBooks(50, i * 50).then(books => books.map(transformLibriVoxBook)).catch(() => [] as Book[])
       )),
-      
-      // Open Library books - multi-subject (20 subjects × 20 each = 400 max)
-      this.fetchOpenLibraryBooks(400).then((books: OpenLibraryBook[]) => {
-        const transformed = books.map(transformOpenLibraryBook);
-        console.log(`Fetched ${transformed.length} books from Open Library`);
-        return transformed;
-      }).catch((error: any) => {
-        console.warn('Open Library fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [] as Book[];
-      }),
-      
-      // Google Books - multi-subject (25 subjects × 20 each = 500 max)
-      this.fetchGoogleBooks(500).then((volumes: GoogleBooksVolume[]) => {
-        const transformed = volumes.map(transformGoogleBooksVolume);
-        console.log(`Fetched ${transformed.length} books from Google Books`);
-        return transformed;
-      }).catch((error: any) => {
-        console.warn('Google Books fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [] as Book[];
-      }),
-      
-      // iTunes audiobooks - multi-term
-      this.fetchiTunesAudiobooks(200).then((audiobooks: iTunesAudiobook[]) => {
-        const transformed = audiobooks.map(transformiTunesAudiobook);
-        console.log(`Fetched ${transformed.length} audiobooks from iTunes`);
-        return transformed;
-      }).catch((error: any) => {
-        console.warn('iTunes fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [] as Book[];
-      }),
-      
-      // External API books
-      this.fetchExternalAPIBooks().catch(error => {
-        console.warn('External API fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-        return [] as Book[];
-      }),
-      
-      // Project Gutenberg ebooks - 3 pages (seeder handles bulk import, runtime fetches a few for freshness)
-      ...(Array.from({length: 3}, (_, i) => 
-        this.fetchGutenbergBooks(32, i + 1).then(ebooks => {
-          const transformed = ebooks.map(transformGutenbergBook);
-          if (i === 0) console.log(`Fetched Gutenberg page ${i+1}: ${transformed.length} ebooks`);
-          return transformed;
-        }).catch(error => {
-          if (i === 0) console.warn('Gutenberg fetch failed:', error instanceof Error ? error.message : 'Unknown error');
-          return [] as Book[];
-        })
-      )),
-
-      // Internet Archive - expanded multi-query (200 max)
-      this.fetchInternetArchiveBooks(200).then(docs => {
-        const transformed = docs.map(transformInternetArchiveDoc);
-        console.log(`Fetched ${transformed.length} books from Internet Archive`);
-        return transformed;
-      }).catch(() => [] as Book[]),
-
-      // Loyal Books audiobooks - multi-genre (200 max)
-      fetchLoyalBooks(200).then(books => {
-        console.log(`Fetched ${books.length} books from Loyal Books`);
-        return books;
-      }).catch(() => [] as Book[]),
-
-      // Standard Ebooks - multiple feeds (400 max)
-      fetchStandardEbooks(400).then(books => {
-        console.log(`Fetched ${books.length} ebooks from Standard Ebooks`);
-        return books;
-      }).catch(() => [] as Book[]),
-
-      // Feedbooks public domain - multiple categories (200 max)
-      fetchFeedbooks(200).then(books => {
-        console.log(`Fetched ${books.length} ebooks from Feedbooks`);
-        return books;
-      }).catch(() => [] as Book[]),
-
-      // OpenStax textbooks (expanded catalog)
-      Promise.resolve(fetchOpenStaxBooks(100)).then(books => {
-        console.log(`Fetched ${books.length} textbooks from OpenStax`);
-        return books;
-      }),
-
-      // Wikipedia Spoken Articles - multiple categories (300 max)
-      fetchWikipediaSpokenArticles(300).then(books => {
-        console.log(`Fetched ${books.length} spoken articles from Wikipedia`);
-        return books;
-      }).catch(() => [] as Book[]),
-
-      // Serialized Fiction Podcasts - expanded (200 max)
-      fetchSerializedFictionPodcasts(200).then(books => {
-        console.log(`Fetched ${books.length} fiction podcasts`);
-        return books;
-      }).catch(() => [] as Book[]),
-
-      // BBC Podcasts - expanded
-      fetchBBCPodcasts(25).then(books => {
-        console.log(`Fetched ${books.length} BBC podcasts`);
-        return books;
-      }).catch(() => [] as Book[]),
+      this.fetchOpenLibraryBooks(200).then((books: OpenLibraryBook[]) => books.map(transformOpenLibraryBook)).catch(() => [] as Book[]),
+      this.fetchGoogleBooks(200).then((volumes: GoogleBooksVolume[]) => volumes.map(transformGoogleBooksVolume)).catch(() => [] as Book[]),
+      this.fetchiTunesAudiobooks(200).then((audiobooks: iTunesAudiobook[]) => audiobooks.map(transformiTunesAudiobook)).catch(() => [] as Book[]),
+      this.fetchExternalAPIBooks().catch(() => [] as Book[]),
+      this.fetchGutenbergBooks(32, 1).then(ebooks => ebooks.map(transformGutenbergBook)).catch(() => [] as Book[]),
+      this.fetchInternetArchiveBooks(200).then(docs => docs.map(transformInternetArchiveDoc)).catch(() => [] as Book[]),
+      fetchLoyalBooks(100).catch(() => [] as Book[]),
+      fetchStandardEbooks(200).catch(() => [] as Book[]),
+      fetchFeedbooks(100).catch(() => [] as Book[]),
+      Promise.resolve(fetchOpenStaxBooks(100)),
+      fetchWikipediaSpokenArticles(200).catch(() => [] as Book[]),
+      fetchSerializedFictionPodcasts(200).catch(() => [] as Book[]),
+      fetchBBCPodcasts(25).catch(() => [] as Book[]),
     ];
     
-    // Wait for all API calls to complete
     const results = await Promise.all(fetchPromises);
-    
-    // Combine all results
+    const allBooks: Book[] = [];
     results.forEach((books: Book[]) => allBooks.push(...books));
     
-    // Merge in seeded books from the database (LibriVox + Gutenberg full catalogs)
-    try {
-      const seededBooks = await db.select().from(booksTable);
-      if (seededBooks.length > 0) {
-        const existingIds = new Set(allBooks.map(b => b.id));
-        const newSeeded = seededBooks.filter(b => !existingIds.has(b.id));
-        allBooks.push(...newSeeded);
-        console.log(`Merged ${newSeeded.length} seeded books from database (${seededBooks.length} total in DB)`);
+    console.log(`[RuntimeRefresh] Fetched ${allBooks.length} books from runtime APIs, upserting to DB...`);
+    
+    for (const book of allBooks) {
+      try {
+        const bookId = book.id || `${book.source}-${book.sourceId || randomUUID()}`;
+        await db.insert(booksTable).values({
+          ...book,
+          id: bookId,
+          duration: book.duration ?? 0,
+          source: book.source ?? "local",
+          contentType: book.contentType ?? "audiobook",
+          isPremium: book.isPremium ?? false,
+          language: book.language ?? "English",
+        }).onConflictDoNothing();
+        inserted++;
+      } catch {
+        skipped++;
       }
-    } catch (err) {
-      console.warn('Failed to fetch seeded books from database:', err);
     }
     
-    // Add fallback books if we don't have many results
-    if (allBooks.length < 10) {
-      const fallbackBooks = Array.from(this.fallbackBooks.values());
-      allBooks.push(...fallbackBooks);
-      console.log(`Added ${fallbackBooks.length} fallback books`);
-    }
-    
-    // Enrich books with missing covers
-    const enrichedBooks = await enrichBooksWithCovers(allBooks);
-    
-    // Cache the result
-    this.setCached('all_books', enrichedBooks);
-    
-    console.log(`Total books available: ${enrichedBooks.length}`);
-    return enrichedBooks;
+    this.invalidateCache('all_books');
+    console.log(`[RuntimeRefresh] Complete: ${inserted} inserted, ${skipped} skipped`);
+    return { inserted, skipped };
   }
   
   private async fetchExternalAPIBooks(): Promise<Book[]> {
@@ -1274,42 +1269,18 @@ export class ExternalAPIStorage implements IStorage {
       const hasMore = allRows.length > limit;
       const pageRows = hasMore ? allRows.slice(0, limit) : allRows;
 
-      const data: Book[] = pageRows.map((row: any) => ({
-        id: row.id,
-        title: row.title,
-        author: row.author,
-        narrator: row.narrator || null,
-        description: row.description || null,
-        duration: row.duration || 0,
-        coverImage: row.cover_image || null,
-        audioUrl: row.audio_url || null,
-        contentUrl: row.content_url || null,
-        genre: row.genre || null,
-        publishedYear: row.published_year || null,
-        source: row.source || "local",
-        sourceId: row.source_id || null,
-        totalTime: row.total_time || null,
-        language: row.language || "English",
-        contentType: row.content_type || "audiobook",
-        isPremium: row.is_premium || false,
-        pageCount: row.page_count || null,
-        searchVector: row.search_vector || null,
-      }));
+      const data: Book[] = pageRows.map(mapRowToBook);
 
       const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
-      return { data, nextCursor, hasMore };
+      
+      const countResult = await db.execute(sql`SELECT COUNT(*) as count FROM books ${whereClause}`);
+      const countRows = (countResult as any).rows || countResult;
+      const total = parseInt(countRows?.[0]?.count || "0");
+      
+      return { data, nextCursor, hasMore, total };
     } catch (error) {
-      console.warn('Paginated DB query failed, falling back to getBooks:', error);
-      const allBooks = await this.getBooks();
-      let filtered = allBooks;
-      if (source) filtered = filtered.filter(b => b.source === source);
-      if (contentType) filtered = filtered.filter(b => b.contentType === contentType);
-      if (genre) filtered = filtered.filter(b => b.genre === genre);
-      const startIndex = cursor ? filtered.findIndex(b => b.id === cursor) + 1 : 0;
-      const data = filtered.slice(startIndex, startIndex + limit);
-      const hasMore = startIndex + limit < filtered.length;
-      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
-      return { data, nextCursor, hasMore };
+      console.warn('Paginated DB query failed:', error);
+      return { data: [], nextCursor: null, hasMore: false, total: 0 };
     }
   }
 
@@ -1383,27 +1354,7 @@ export class ExternalAPIStorage implements IStorage {
       );
       const rows = (results as any).rows || results;
       if (!Array.isArray(rows)) return [];
-      return rows.map((row: any) => ({
-        id: row.id,
-        title: row.title,
-        author: row.author,
-        narrator: row.narrator || null,
-        description: row.description || null,
-        duration: row.duration || 0,
-        coverImage: row.cover_image || null,
-        audioUrl: row.audio_url || null,
-        contentUrl: row.content_url || null,
-        genre: row.genre || null,
-        publishedYear: row.published_year || null,
-        source: row.source || "local",
-        sourceId: row.source_id || null,
-        totalTime: row.total_time || null,
-        language: row.language || "English",
-        contentType: row.content_type || "audiobook",
-        isPremium: row.is_premium || false,
-        pageCount: row.page_count || null,
-        searchVector: row.search_vector || null,
-      }));
+      return rows.map(mapRowToBook);
     } catch (error) {
       console.warn('Full-text search failed, falling back:', error);
       return [];

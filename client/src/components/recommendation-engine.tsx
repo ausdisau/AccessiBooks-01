@@ -37,9 +37,15 @@ export function RecommendationEngine({ onSelectBook }: { onSelectBook?: (book: B
   const preferences = useMemo(() => getPreferences(), []);
   const userGenres = preferences?.genres || [];
 
-  const { data: books, isLoading } = useQuery<Book[]>({
-    queryKey: ["/api/books"],
+  const { data: booksResponse, isLoading } = useQuery<{ data: Book[] }>({
+    queryKey: ["/api/books", "recommendations"],
+    queryFn: async () => {
+      const res = await fetch("/api/books?limit=200");
+      if (!res.ok) throw new Error("Failed to fetch books");
+      return res.json();
+    },
   });
+  const books = booksResponse?.data;
 
   const { recommended, matchedGenre } = useMemo(() => {
     if (!books || books.length === 0) return { recommended: [], matchedGenre: "" };

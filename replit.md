@@ -46,10 +46,16 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Performance**: React.lazy() code splitting for 13 heavy components, image lazy loading, memoized navigation and event handlers. gzip compression middleware (level 6, threshold 1KB).
 - **Offline**: Browser-side IndexedDB-based download manager for Premium users (client/src/hooks/use-offline-downloads.ts).
 - **Scaling Infrastructure** (Feb 2026):
+  - **Database-first architecture**: All book queries go through PostgreSQL with pagination. No full-table scans or in-memory loading.
   - Database indexes on books (title, author, genre, source, contentType, publishedYear, language, isPremium) + composite indexes
   - PostgreSQL full-text search with tsvector column (`search_tsv`), weighted columns (title=A, author=B, genre=C, description=D), GIN index (`idx_books_search_tsv`), auto-update trigger (`trg_books_search_tsv`). Setup runs on server startup via `setupFullTextSearch()` in `server/db.ts`.
-  - Cursor-based pagination API: `GET /api/books?cursor=&limit=&source=&contentType=&genre=&search=` returns `{data, nextCursor, hasMore}`
-  - Frontend infinite scroll with IntersectionObserver for progressive loading of large catalogs
+  - Cursor-based pagination API: `GET /api/books?cursor=&limit=&source=&contentType=&genre=&search=` returns `{data, nextCursor, hasMore, total}`
+  - Frontend `useInfiniteQuery` with IntersectionObserver for progressive loading of large catalogs
   - `searchBooksDB()` method for instant full-text search across millions of database rows using `ts_rank` and `to_tsquery`
-  - Catalog seeder (`server/catalogSeeder.ts`): auto-starts 30s after server boot, auto-resumes from existing DB count (no re-scanning), seeds LibriVox (~5,000+) and Gutenberg (~4,500+) books. Admin API: `GET /api/admin/seed/status`, `POST /api/admin/seed/start`, `POST /api/admin/seed/stop`.
-  - Total catalog: 9,500+ DB books + ~1,200 runtime API titles = **10,700+ total titles**
+  - **Background runtime API refresh**: `refreshRuntimeBooks()` fetches from external APIs and upserts to DB every 30 minutes (starts 10s after boot). No runtime merging at request time.
+  - **Batch inserts**: Seeder uses chunk-based `INSERT ... ON CONFLICT DO NOTHING` for 50x faster ingestion.
+  - Catalog seeder (`server/catalogSeeder.ts`): auto-starts 30s after server boot, auto-resumes from existing DB count. 4 sources: LibriVox (target 15K), Gutenberg (target 60K), Open Library (target 15K), Internet Archive (target 8K). Admin API: `GET /api/admin/seed/status`, `POST /api/admin/seed/start`, `POST /api/admin/seed/stop`.
+  - Gutenberg seeder: exponential backoff for 429 rate limits (30s→60s→120s), 5 empty page tolerance
+  - Open Library seeder: browses 30 subjects (fiction, science_fiction, mystery, etc.), 500 titles per subject
+  - Internet Archive seeder: 10 queries across texts and audio, ~800 titles per query
+  - Total catalog target: **100,000+ titles** across all seeder sources + runtime API ingestion
