@@ -8,7 +8,7 @@ import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
-import { getSeederStatus, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
+import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
 import { registerSelfPublishingRoutes } from "./selfPublishing";
 import { registerPodcastRoutes } from "./podcastIngestion";
 import { registerPushNotificationRoutes } from "./pushNotifications";
@@ -3688,9 +3688,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/seed/stop", (_req, res) => {
+  app.post("/api/admin/seed/stop", (req, res) => {
     try {
-      const result = stopSeeding();
+      const result = stopSeeding(req.body.source);
       res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to stop seeder" });
@@ -3703,6 +3703,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to reset seeder" });
+    }
+  });
+
+  app.get("/api/admin/seed/metrics", (_req, res) => {
+    try {
+      const metrics = getSeederMetrics();
+      res.json(metrics);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get seeder metrics" });
     }
   });
 
