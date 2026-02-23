@@ -27,7 +27,10 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Advertising**: A programmatic audio ad system with server-side mediation and a self-serve advertising platform for advertisers.
 - **Real-time Interaction**: Listening Party for synchronized group listening and Live Streaming Queues for preference-based audiobook radio.
 - **Financial Management**: A centralized billing platform for transactions and subscription management.
-- **AI Integration**: AI-generated book covers when original covers are unavailable.
+- **AI Integration**: AI-generated book covers when original covers are unavailable. OpenAI TTS for ebook-to-audiobook conversion with 6 voice options and word-by-word highlighting.
+- **Podcasts**: RSS feed ingestion with search, curated popular podcasts, episode listing and playback. Backend at `/api/podcasts/feeds` and `/api/ingest`.
+- **Digital Magazines**: Curated catalog of 12 free tech/science/design publications with category filtering (Technology, Web Design, Programming, Science, Engineering).
+- **Content Model**: Ad-supported freemium - all content accessible to free users with ads. Premium removes ads, adds high-quality audio (320kbps), offline downloads, unlimited skips.
 
 ## External Dependencies
 
