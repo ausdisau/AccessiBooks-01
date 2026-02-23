@@ -48,6 +48,17 @@ export const insertBookSchema = createInsertSchema(books).omit({
 export type InsertBook = z.infer<typeof insertBookSchema>;
 export type Book = typeof books.$inferSelect;
 
+export const seederProgress = pgTable("seeder_progress", {
+  source: varchar("source").primaryKey(),
+  currentOffset: integer("current_offset").notNull().default(0),
+  subjectIndex: integer("subject_index").notNull().default(0),
+  nextUrl: text("next_url"),
+  status: text("status").notNull().default("idle"),
+  totalInserted: integer("total_inserted").notNull().default(0),
+  lastError: text("last_error"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const chapters = pgTable("chapters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),

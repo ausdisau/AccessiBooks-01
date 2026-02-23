@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { books, type InsertBook } from "@shared/schema";
+import { books, seederProgress, type InsertBook } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const LIBRIVOX_API_BASE = "https://librivox.org/api/feed/audiobooks";
@@ -9,10 +9,15 @@ const INTERNET_ARCHIVE_SEARCH_BASE = "https://archive.org/advancedsearch.php";
 
 const BATCH_SIZE = 100;
 const LIBRIVOX_DELAY_MS = 1500;
-const GUTENBERG_DELAY_MS = 2000;
+const GUTENBERG_BASE_DELAY_MS = 1500;
 const GUTENBERG_PAGE_SIZE = 32;
 const OL_DELAY_MS = 1200;
 const IA_DELAY_MS = 2000;
+const PROGRESS_SAVE_INTERVAL = 10;
+const LOG_INTERVAL_MS = 5 * 60 * 1000;
+
+type SeederSource = "librivox" | "gutenberg" | "openlibrary" | "internetarchive";
+const ALL_SOURCES: SeederSource[] = ["librivox", "gutenberg", "openlibrary", "internetarchive"];
 
 interface SeederProgress {
   source: string;
@@ -20,11 +25,17 @@ interface SeederProgress {
   totalFetched: number;
   totalInserted: number;
   totalSkipped: number;
+  totalDeduped: number;
   currentOffset: number;
+  subjectIndex: number;
+  nextUrl: string | null;
   lastError: string | null;
   startedAt: string | null;
   updatedAt: string | null;
   estimatedTotal: number | null;
+  ratePerMinute: number;
+  lastLogTime: number;
+  batchesSinceLastSave: number;
 }
 
 interface SeederState {
@@ -32,7 +43,8 @@ interface SeederState {
   gutenberg: SeederProgress;
   openlibrary: SeederProgress;
   internetarchive: SeederProgress;
-  abortController: AbortController | null;
+  abortControllers: Record<SeederSource, AbortController | null>;
+  seenIds: Record<SeederSource, Set<string>>;
 }
 
 function createProgress(source: string): SeederProgress {
@@ -42,11 +54,17 @@ function createProgress(source: string): SeederProgress {
     totalFetched: 0,
     totalInserted: 0,
     totalSkipped: 0,
+    totalDeduped: 0,
     currentOffset: 0,
+    subjectIndex: 0,
+    nextUrl: null,
     lastError: null,
     startedAt: null,
     updatedAt: null,
     estimatedTotal: null,
+    ratePerMinute: 0,
+    lastLogTime: 0,
+    batchesSinceLastSave: 0,
   };
 }
 
@@ -55,7 +73,8 @@ const state: SeederState = {
   gutenberg: createProgress("gutenberg"),
   openlibrary: createProgress("openlibrary"),
   internetarchive: createProgress("internetarchive"),
-  abortController: null,
+  abortControllers: { librivox: null, gutenberg: null, openlibrary: null, internetarchive: null },
+  seenIds: { librivox: new Set(), gutenberg: new Set(), openlibrary: new Set(), internetarchive: new Set() },
 };
 
 async function fetchWithTimeout(url: string, timeout = 20000, abortSignal?: AbortSignal): Promise<Response> {
@@ -65,19 +84,111 @@ async function fetchWithTimeout(url: string, timeout = 20000, abortSignal?: Abor
     abortSignal.addEventListener("abort", () => controller.abort(), { once: true });
   }
   try {
-    const response = await fetch(url, { signal: controller.signal });
-    return response;
+    return await fetch(url, { signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
 }
 
 function delay(ms: number, abortSignal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (abortSignal?.aborted) { resolve(); return; }
     const timer = setTimeout(resolve, ms);
     abortSignal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
   });
+}
+
+function isValidTitle(title: string | null | undefined): boolean {
+  if (!title) return false;
+  const trimmed = title.trim();
+  if (trimmed.length < 3) return false;
+  if (/^[^a-zA-Z0-9]+$/.test(trimmed)) return false;
+  if (trimmed.toLowerCase() === "untitled") return false;
+  return true;
+}
+
+function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function shouldLog(progress: SeederProgress): boolean {
+  const now = Date.now();
+  if (now - progress.lastLogTime >= LOG_INTERVAL_MS) {
+    progress.lastLogTime = now;
+    return true;
+  }
+  return false;
+}
+
+function updateRate(progress: SeederProgress): void {
+  if (!progress.startedAt) return;
+  const elapsed = (Date.now() - new Date(progress.startedAt).getTime()) / 60000;
+  if (elapsed > 0) {
+    progress.ratePerMinute = Math.round(progress.totalInserted / elapsed);
+  }
+}
+
+async function saveProgressToDB(source: SeederSource, progress: SeederProgress): Promise<void> {
+  try {
+    await db.insert(seederProgress).values({
+      source,
+      currentOffset: progress.currentOffset,
+      subjectIndex: progress.subjectIndex,
+      nextUrl: progress.nextUrl,
+      status: progress.status,
+      totalInserted: progress.totalInserted,
+      lastError: progress.lastError,
+    }).onConflictDoUpdate({
+      target: seederProgress.source,
+      set: {
+        currentOffset: progress.currentOffset,
+        subjectIndex: progress.subjectIndex,
+        nextUrl: progress.nextUrl,
+        status: progress.status,
+        totalInserted: progress.totalInserted,
+        lastError: progress.lastError,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (err: any) {
+    console.warn(`[Seeder] Failed to save progress for ${source}:`, err.message);
+  }
+}
+
+async function loadProgressFromDB(source: SeederSource): Promise<{
+  currentOffset: number;
+  subjectIndex: number;
+  nextUrl: string | null;
+  totalInserted: number;
+} | null> {
+  try {
+    const rows = await db.select().from(seederProgress).where(eq(seederProgress.source, source)).limit(1);
+    if (rows.length > 0) {
+      return {
+        currentOffset: rows[0].currentOffset,
+        subjectIndex: rows[0].subjectIndex,
+        nextUrl: rows[0].nextUrl,
+        totalInserted: rows[0].totalInserted,
+      };
+    }
+  } catch (err: any) {
+    console.warn(`[Seeder] Failed to load progress for ${source}:`, err.message);
+  }
+  return null;
+}
+
+async function maybeSaveProgress(source: SeederSource, progress: SeederProgress): Promise<void> {
+  progress.batchesSinceLastSave++;
+  if (progress.batchesSinceLastSave >= PROGRESS_SAVE_INTERVAL) {
+    await saveProgressToDB(source, progress);
+    progress.batchesSinceLastSave = 0;
+  }
 }
 
 interface LibriVoxBook {
@@ -92,7 +203,6 @@ interface LibriVoxBook {
   genres?: string[];
   authors: { first_name: string; last_name: string }[];
   sections: { listen_url: string; title: string; duration: string }[];
-  url_librivox?: string;
 }
 
 interface GutenbergBook {
@@ -109,7 +219,6 @@ function transformLibriVoxToInsert(lv: LibriVoxBook): InsertBook {
   const authorNames = lv.authors.map(a => `${a.first_name} ${a.last_name}`.trim()).join(", ");
   const audioUrl = lv.sections.length > 0 ? lv.sections[0].listen_url : lv.url_zip_file;
   const duration = typeof lv.totaltimesecs === "string" ? parseInt(lv.totaltimesecs) || 0 : lv.totaltimesecs || 0;
-
   return {
     title: lv.title,
     author: authorNames || "Unknown Author",
@@ -145,7 +254,6 @@ function transformGutenbergToInsert(gb: GutenbergBook): InsertBook {
   const genre = gb.subjects.length > 0 ? gb.subjects[0] : "Classic Literature";
   const langMap: Record<string, string> = { en: "English", fr: "French", de: "German", es: "Spanish", it: "Italian" };
   const language = gb.languages.length > 0 ? langMap[gb.languages[0]] || gb.languages[0] : "English";
-
   return {
     title: gb.title,
     author,
@@ -167,10 +275,32 @@ function transformGutenbergToInsert(gb: GutenbergBook): InsertBook {
   };
 }
 
-async function insertBatch(booksToInsert: InsertBook[], progress: SeederProgress): Promise<void> {
+async function insertBatch(booksToInsert: InsertBook[], progress: SeederProgress, seenIds: Set<string>): Promise<void> {
+  const deduped = booksToInsert.filter(book => {
+    const key = `${book.source}-${book.sourceId}`;
+    if (seenIds.has(key)) {
+      progress.totalDeduped++;
+      return false;
+    }
+    seenIds.add(key);
+    return true;
+  });
+
+  if (deduped.length === 0) return;
+
+  const filtered = deduped.filter(book => {
+    if (!isValidTitle(book.title)) return false;
+    if (!book.audioUrl && !book.contentUrl) return false;
+    if (book.audioUrl && !isValidUrl(book.audioUrl)) return false;
+    if (book.contentUrl && !isValidUrl(book.contentUrl)) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) return;
+
   const CHUNK = 50;
-  for (let i = 0; i < booksToInsert.length; i += CHUNK) {
-    const chunk = booksToInsert.slice(i, i + CHUNK);
+  for (let i = 0; i < filtered.length; i += CHUNK) {
+    const chunk = filtered.slice(i, i + CHUNK);
     const values = chunk.map(book => ({
       ...book,
       id: `${book.source}-${book.sourceId}`,
@@ -180,7 +310,7 @@ async function insertBatch(booksToInsert: InsertBook[], progress: SeederProgress
       const inserted = (result as any).rowCount ?? chunk.length;
       progress.totalInserted += inserted;
       progress.totalSkipped += chunk.length - inserted;
-    } catch (err) {
+    } catch {
       for (const book of chunk) {
         try {
           await db.insert(books).values({ ...book, id: `${book.source}-${book.sourceId}` }).onConflictDoNothing();
@@ -192,36 +322,41 @@ async function insertBatch(booksToInsert: InsertBook[], progress: SeederProgress
     }
   }
   progress.updatedAt = new Date().toISOString();
+  updateRate(progress);
 }
 
 async function seedLibriVox(abortSignal: AbortSignal): Promise<void> {
   const progress = state.librivox;
+  const seenIds = state.seenIds.librivox;
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
+  progress.lastLogTime = Date.now();
   progress.estimatedTotal = 18000;
 
   try {
-    // Auto-resume: skip to approximate offset based on existing DB count
-    if (progress.currentOffset === 0) {
+    const saved = await loadProgressFromDB("librivox");
+    if (saved && saved.currentOffset > 0) {
+      progress.currentOffset = saved.currentOffset;
+      progress.totalInserted = saved.totalInserted;
+      console.log(`[Seeder] LibriVox: resuming from DB progress, offset=${saved.currentOffset}`);
+    } else if (progress.currentOffset === 0) {
       const countResult = await db.execute<{ count: string }>(
         `SELECT COUNT(*) as count FROM books WHERE source = 'librivox'`
       );
       const existingCount = parseInt(countResult.rows?.[0]?.count || "0");
       if (existingCount > 0) {
         progress.currentOffset = existingCount;
-        console.log(`[Seeder] LibriVox: resuming from offset ${existingCount} (${existingCount} existing books)`);
+        console.log(`[Seeder] LibriVox: resuming from DB count ${existingCount}`);
       }
     }
 
     let emptyPages = 0;
     while (!abortSignal.aborted && emptyPages < 5) {
       const url = `${LIBRIVOX_API_BASE}?format=json&extended=1&limit=${BATCH_SIZE}&offset=${progress.currentOffset}`;
-      console.log(`[Seeder] LibriVox batch: offset=${progress.currentOffset}`);
 
       try {
         const response = await fetchWithTimeout(url, 20000, abortSignal);
         if (!response.ok) {
-          console.warn(`[Seeder] LibriVox API error: ${response.status}`);
           progress.lastError = `HTTP ${response.status}`;
           emptyPages++;
           await delay(LIBRIVOX_DELAY_MS * 2, abortSignal);
@@ -246,14 +381,16 @@ async function seedLibriVox(abortSignal: AbortSignal): Promise<void> {
           .filter(b => b.title && b.language === "English")
           .map(transformLibriVoxToInsert);
 
-        await insertBatch(batch, progress);
+        await insertBatch(batch, progress, seenIds);
         progress.currentOffset += BATCH_SIZE;
+        await maybeSaveProgress("librivox", progress);
 
-        console.log(`[Seeder] LibriVox: fetched=${progress.totalFetched}, inserted=${progress.totalInserted}, skipped=${progress.totalSkipped}`);
+        if (shouldLog(progress)) {
+          console.log(`[Seeder] LibriVox: offset=${progress.currentOffset}, inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}, rate=${progress.ratePerMinute}/min`);
+        }
         await delay(LIBRIVOX_DELAY_MS, abortSignal);
       } catch (err: any) {
         progress.lastError = err.message || "Unknown error";
-        console.warn(`[Seeder] LibriVox batch error:`, err.message);
         await delay(LIBRIVOX_DELAY_MS * 3, abortSignal);
         progress.currentOffset += BATCH_SIZE;
         emptyPages++;
@@ -266,60 +403,92 @@ async function seedLibriVox(abortSignal: AbortSignal): Promise<void> {
     progress.lastError = err.message || "Unknown error";
   }
   progress.updatedAt = new Date().toISOString();
+  await saveProgressToDB("librivox", progress);
+  console.log(`[Seeder] LibriVox finished: status=${progress.status}, inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}`);
 }
 
 async function seedGutenberg(abortSignal: AbortSignal): Promise<void> {
   const progress = state.gutenberg;
+  const seenIds = state.seenIds.gutenberg;
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
+  progress.lastLogTime = Date.now();
   progress.estimatedTotal = 70000;
 
-  // Auto-resume: skip to approximate page based on existing DB count
-  if (progress.currentOffset === 0) {
+  const saved = await loadProgressFromDB("gutenberg");
+  if (saved) {
+    if (saved.nextUrl) {
+      progress.nextUrl = saved.nextUrl;
+      progress.currentOffset = saved.currentOffset;
+      progress.totalInserted = saved.totalInserted;
+      console.log(`[Seeder] Gutenberg: resuming from DB progress, nextUrl present`);
+    } else if (saved.currentOffset > 0) {
+      progress.currentOffset = saved.currentOffset;
+      progress.totalInserted = saved.totalInserted;
+      console.log(`[Seeder] Gutenberg: resuming from DB progress, offset=${saved.currentOffset}`);
+    }
+  }
+
+  if (progress.currentOffset === 0 && !progress.nextUrl) {
     const countResult = await db.execute<{ count: string }>(
       `SELECT COUNT(*) as count FROM books WHERE source = 'gutenberg'`
     );
     const existingCount = parseInt(countResult.rows?.[0]?.count || "0");
     if (existingCount > 0) {
       progress.currentOffset = existingCount;
-      console.log(`[Seeder] Gutenberg: resuming from page ~${Math.floor(existingCount / GUTENBERG_PAGE_SIZE) + 1} (${existingCount} existing books)`);
+      console.log(`[Seeder] Gutenberg: resuming from DB count ${existingCount}`);
     }
   }
 
-  const startPage = Math.floor(progress.currentOffset / GUTENBERG_PAGE_SIZE) + 1;
+  let currentUrl = progress.nextUrl ||
+    `${GUTENBERG_API_BASE}/books?page=${Math.floor(progress.currentOffset / GUTENBERG_PAGE_SIZE) + 1}&languages=en`;
 
   try {
     let emptyPages = 0;
-    let currentPage = startPage;
-    while (!abortSignal.aborted && emptyPages < 5) {
-      const url = `${GUTENBERG_API_BASE}/books?page=${currentPage}&languages=en`;
-      console.log(`[Seeder] Gutenberg batch: page=${currentPage}`);
+    let rateLimitRetries = 0;
+    let adaptiveDelay = GUTENBERG_BASE_DELAY_MS;
 
+    while (!abortSignal.aborted && emptyPages < 5) {
       try {
-        const response = await fetchWithTimeout(url, 20000, abortSignal);
+        const fetchStart = Date.now();
+        const response = await fetchWithTimeout(currentUrl, 25000, abortSignal);
+        const fetchDuration = Date.now() - fetchStart;
+
+        if (fetchDuration < 500) {
+          adaptiveDelay = Math.max(1000, adaptiveDelay - 200);
+        } else if (fetchDuration > 2000) {
+          adaptiveDelay = Math.min(4000, adaptiveDelay + 500);
+        }
+
         if (!response.ok) {
           if (response.status === 429) {
-            const backoffMs = Math.min(30000 * Math.pow(2, emptyPages), 120000);
-            console.warn(`[Seeder] Gutenberg rate limited, waiting ${backoffMs / 1000}s...`);
-            progress.lastError = "Rate limited - waiting";
+            rateLimitRetries++;
+            const jitter = Math.random() * 5000;
+            const backoffMs = Math.min(30000 * Math.pow(2, rateLimitRetries - 1), 180000) + jitter;
+            console.warn(`[Seeder] Gutenberg rate limited (attempt ${rateLimitRetries}), waiting ${Math.round(backoffMs / 1000)}s...`);
+            progress.lastError = `Rate limited - retry ${rateLimitRetries}`;
             await delay(backoffMs, abortSignal);
             continue;
           }
-          console.warn(`[Seeder] Gutenberg API error: ${response.status}`);
           progress.lastError = `HTTP ${response.status}`;
           emptyPages++;
-          currentPage++;
-          await delay(GUTENBERG_DELAY_MS * 2, abortSignal);
+          await delay(adaptiveDelay * 2, abortSignal);
           continue;
         }
 
+        rateLimitRetries = 0;
         const data = await response.json();
         const gbBooks: GutenbergBook[] = data.results || [];
+        const nextPageUrl: string | null = data.next || null;
 
         if (gbBooks.length === 0) {
           emptyPages++;
-          currentPage++;
-          await delay(GUTENBERG_DELAY_MS, abortSignal);
+          if (nextPageUrl) {
+            currentUrl = nextPageUrl;
+          } else {
+            break;
+          }
+          await delay(adaptiveDelay, abortSignal);
           continue;
         }
 
@@ -330,17 +499,25 @@ async function seedGutenberg(abortSignal: AbortSignal): Promise<void> {
           .filter(b => b.title && b.languages.includes("en"))
           .map(transformGutenbergToInsert);
 
-        await insertBatch(batch, progress);
-        progress.currentOffset = currentPage * GUTENBERG_PAGE_SIZE;
-        currentPage++;
+        await insertBatch(batch, progress, seenIds);
+        progress.currentOffset += gbBooks.length;
+        progress.nextUrl = nextPageUrl;
 
-        console.log(`[Seeder] Gutenberg: page=${currentPage - 1}, fetched=${progress.totalFetched}, inserted=${progress.totalInserted}, skipped=${progress.totalSkipped}`);
-        await delay(GUTENBERG_DELAY_MS, abortSignal);
+        if (nextPageUrl) {
+          currentUrl = nextPageUrl;
+        } else {
+          break;
+        }
+
+        await maybeSaveProgress("gutenberg", progress);
+
+        if (shouldLog(progress)) {
+          console.log(`[Seeder] Gutenberg: offset=${progress.currentOffset}, inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}, rate=${progress.ratePerMinute}/min, delay=${adaptiveDelay}ms`);
+        }
+        await delay(adaptiveDelay, abortSignal);
       } catch (err: any) {
         progress.lastError = err.message || "Unknown error";
-        console.warn(`[Seeder] Gutenberg batch error:`, err.message);
-        await delay(GUTENBERG_DELAY_MS * 3, abortSignal);
-        currentPage++;
+        await delay(adaptiveDelay * 3, abortSignal);
         emptyPages++;
       }
     }
@@ -351,6 +528,8 @@ async function seedGutenberg(abortSignal: AbortSignal): Promise<void> {
     progress.lastError = err.message || "Unknown error";
   }
   progress.updatedAt = new Date().toISOString();
+  await saveProgressToDB("gutenberg", progress);
+  console.log(`[Seeder] Gutenberg finished: status=${progress.status}, inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}`);
 }
 
 const OL_SUBJECTS = [
@@ -363,40 +542,52 @@ const OL_SUBJECTS = [
 
 async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
   const progress = state.openlibrary;
+  const seenIds = state.seenIds.openlibrary;
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
+  progress.lastLogTime = Date.now();
   progress.estimatedTotal = 15000;
 
-  if (progress.currentOffset === 0) {
+  const saved = await loadProgressFromDB("openlibrary");
+  if (saved) {
+    progress.subjectIndex = saved.subjectIndex;
+    progress.currentOffset = saved.currentOffset;
+    progress.totalInserted = saved.totalInserted;
+    if (saved.subjectIndex > 0) {
+      console.log(`[Seeder] OpenLibrary: resuming from subject index ${saved.subjectIndex} (${OL_SUBJECTS[saved.subjectIndex] || 'end'})`);
+    }
+  }
+
+  if (progress.subjectIndex === 0 && progress.currentOffset === 0) {
     const countResult = await db.execute<{ count: string }>(
       `SELECT COUNT(*) as count FROM books WHERE source = 'openlibrary'`
     );
     const existingCount = parseInt(countResult.rows?.[0]?.count || "0");
     if (existingCount > 0) {
       progress.currentOffset = existingCount;
-      console.log(`[Seeder] OpenLibrary: resuming with ${existingCount} existing books`);
+      console.log(`[Seeder] OpenLibrary: ${existingCount} existing books`);
     }
   }
 
   const targetPerSubject = Math.ceil(15000 / OL_SUBJECTS.length);
 
   try {
-    for (const subject of OL_SUBJECTS) {
+    for (let si = progress.subjectIndex; si < OL_SUBJECTS.length; si++) {
       if (abortSignal.aborted) break;
+      const subject = OL_SUBJECTS[si];
+      progress.subjectIndex = si;
 
       let offset = 0;
       let subjectCount = 0;
       let emptyPages = 0;
 
       while (!abortSignal.aborted && subjectCount < targetPerSubject && emptyPages < 3) {
-        const url = `${OPEN_LIBRARY_SEARCH_BASE}?subject=${subject}&limit=100&offset=${offset}&fields=key,title,author_name,first_publish_year,subject,cover_i,number_of_pages_median,language`;
-        console.log(`[Seeder] OpenLibrary: subject=${subject}, offset=${offset}`);
+        const url = `${OPEN_LIBRARY_SEARCH_BASE}?subject=${subject}&limit=100&offset=${offset}&fields=key,title,author_name,first_publish_year,subject,cover_i,number_of_pages_median`;
 
         try {
           const response = await fetchWithTimeout(url, 30000, abortSignal);
           if (!response.ok) {
             if (response.status === 429) {
-              console.warn(`[Seeder] OpenLibrary rate limited, waiting 10s...`);
               await delay(10000, abortSignal);
               continue;
             }
@@ -430,7 +621,6 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
               const genre = subjects.length > 0
                 ? subjects.slice(0, 2).join(", ")
                 : subject.replace(/_/g, " ");
-
               return {
                 title: d.title,
                 author: d.author_name?.join(", ") || "Unknown Author",
@@ -452,15 +642,17 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
               };
             });
 
-          await insertBatch(batch, progress);
+          await insertBatch(batch, progress, seenIds);
           subjectCount += batch.length;
           offset += 100;
+          await maybeSaveProgress("openlibrary", progress);
 
-          console.log(`[Seeder] OpenLibrary: subject=${subject}, fetched=${progress.totalFetched}, inserted=${progress.totalInserted}`);
+          if (shouldLog(progress)) {
+            console.log(`[Seeder] OpenLibrary: subject=${subject} (${si + 1}/${OL_SUBJECTS.length}), inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}, rate=${progress.ratePerMinute}/min`);
+          }
           await delay(OL_DELAY_MS, abortSignal);
         } catch (err: any) {
           progress.lastError = err.message || "Unknown error";
-          console.warn(`[Seeder] OpenLibrary error:`, err.message);
           await delay(OL_DELAY_MS * 3, abortSignal);
           offset += 100;
           emptyPages++;
@@ -474,6 +666,8 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
     progress.lastError = err.message || "Unknown error";
   }
   progress.updatedAt = new Date().toISOString();
+  await saveProgressToDB("openlibrary", progress);
+  console.log(`[Seeder] OpenLibrary finished: status=${progress.status}, inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}`);
 }
 
 const IA_QUERIES = [
@@ -489,44 +683,61 @@ const IA_QUERIES = [
   "mediatype:audio AND subject:audiobook AND language:English",
 ];
 
+const IA_SKIP_SUBJECTS = new Set([
+  "software", "manual", "government", "census", "tax", "regulation",
+  "proceedings", "bulletin", "catalog", "directory", "index",
+]);
+
 async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
   const progress = state.internetarchive;
+  const seenIds = state.seenIds.internetarchive;
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
+  progress.lastLogTime = Date.now();
   progress.estimatedTotal = 8000;
 
-  if (progress.currentOffset === 0) {
+  const saved = await loadProgressFromDB("internetarchive");
+  if (saved) {
+    progress.subjectIndex = saved.subjectIndex;
+    progress.currentOffset = saved.currentOffset;
+    progress.totalInserted = saved.totalInserted;
+    if (saved.subjectIndex > 0) {
+      console.log(`[Seeder] InternetArchive: resuming from query index ${saved.subjectIndex}`);
+    }
+  }
+
+  if (progress.subjectIndex === 0 && progress.currentOffset === 0) {
     const countResult = await db.execute<{ count: string }>(
       `SELECT COUNT(*) as count FROM books WHERE source = 'internet_archive'`
     );
     const existingCount = parseInt(countResult.rows?.[0]?.count || "0");
     if (existingCount > 0) {
       progress.currentOffset = existingCount;
-      console.log(`[Seeder] InternetArchive: resuming with ${existingCount} existing books`);
+      console.log(`[Seeder] InternetArchive: ${existingCount} existing books`);
     }
   }
 
   const targetPerQuery = Math.ceil(8000 / IA_QUERIES.length);
 
   try {
-    for (const query of IA_QUERIES) {
+    for (let qi = progress.subjectIndex; qi < IA_QUERIES.length; qi++) {
       if (abortSignal.aborted) break;
+      const query = IA_QUERIES[qi];
+      progress.subjectIndex = qi;
+      const isAudio = query.includes("mediatype:audio");
 
       let page = 1;
       let queryCount = 0;
       let emptyPages = 0;
-      const isAudio = query.includes("mediatype:audio");
 
       while (!abortSignal.aborted && queryCount < targetPerQuery && emptyPages < 3) {
         const encodedQuery = encodeURIComponent(query);
         const url = `${INTERNET_ARCHIVE_SEARCH_BASE}?q=${encodedQuery}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=description&fl[]=subject&fl[]=date&fl[]=mediatype&rows=100&page=${page}&output=json`;
-        console.log(`[Seeder] InternetArchive: query=${query.substring(0, 40)}..., page=${page}`);
 
         try {
           const response = await fetchWithTimeout(url, 30000, abortSignal);
           if (!response.ok) {
             if (response.status === 429) {
-              console.warn(`[Seeder] InternetArchive rate limited, waiting 15s...`);
               await delay(15000, abortSignal);
               continue;
             }
@@ -549,7 +760,13 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
           progress.totalFetched += docs.length;
 
           const batch: InsertBook[] = docs
-            .filter((d: any) => d.title && d.identifier)
+            .filter((d: any) => {
+              if (!d.title || !d.identifier) return false;
+              const subjects = Array.isArray(d.subject) ? d.subject : d.subject ? [d.subject] : [];
+              const lowerSubjects = subjects.map((s: string) => s.toLowerCase());
+              if (lowerSubjects.some((s: string) => IA_SKIP_SUBJECTS.has(s))) return false;
+              return true;
+            })
             .map((d: any) => {
               const subjects = Array.isArray(d.subject) ? d.subject : d.subject ? [d.subject] : [];
               const genre = subjects.length > 0
@@ -559,7 +776,6 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
               const desc = typeof d.description === "string"
                 ? d.description.substring(0, 500)
                 : Array.isArray(d.description) ? d.description[0]?.substring(0, 500) : null;
-
               return {
                 title: typeof d.title === "string" ? d.title : Array.isArray(d.title) ? d.title[0] : "Untitled",
                 author: d.creator || "Unknown Author",
@@ -581,15 +797,17 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
               };
             });
 
-          await insertBatch(batch, progress);
+          await insertBatch(batch, progress, seenIds);
           queryCount += batch.length;
           page++;
+          await maybeSaveProgress("internetarchive", progress);
 
-          console.log(`[Seeder] InternetArchive: fetched=${progress.totalFetched}, inserted=${progress.totalInserted}`);
+          if (shouldLog(progress)) {
+            console.log(`[Seeder] InternetArchive: query ${qi + 1}/${IA_QUERIES.length}, inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}, rate=${progress.ratePerMinute}/min`);
+          }
           await delay(IA_DELAY_MS, abortSignal);
         } catch (err: any) {
           progress.lastError = err.message || "Unknown error";
-          console.warn(`[Seeder] InternetArchive error:`, err.message);
           await delay(IA_DELAY_MS * 3, abortSignal);
           page++;
           emptyPages++;
@@ -603,28 +821,68 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
     progress.lastError = err.message || "Unknown error";
   }
   progress.updatedAt = new Date().toISOString();
+  await saveProgressToDB("internetarchive", progress);
+  console.log(`[Seeder] InternetArchive finished: status=${progress.status}, inserted=${progress.totalInserted}, deduped=${progress.totalDeduped}`);
 }
 
-type SeederSource = "librivox" | "gutenberg" | "openlibrary" | "internetarchive";
-const ALL_SOURCES: SeederSource[] = ["librivox", "gutenberg", "openlibrary", "internetarchive"];
-
 export function getSeederStatus() {
+  const sources: Record<string, any> = {};
+  for (const s of ALL_SOURCES) {
+    const p = state[s];
+    const efficiency = p.totalFetched > 0 ? Math.round((p.totalInserted / p.totalFetched) * 100) : 0;
+    const eta = p.ratePerMinute > 0 && p.estimatedTotal
+      ? Math.round((p.estimatedTotal - p.totalInserted) / p.ratePerMinute)
+      : null;
+    sources[s] = {
+      ...p,
+      efficiency,
+      etaMinutes: eta,
+    };
+  }
   return {
-    librivox: { ...state.librivox },
-    gutenberg: { ...state.gutenberg },
-    openlibrary: { ...state.openlibrary },
-    internetarchive: { ...state.internetarchive },
+    ...sources,
     isRunning: ALL_SOURCES.some(s => state[s].status === "running"),
   };
 }
 
+export function getSeederMetrics() {
+  const metrics: Record<string, any> = {};
+  for (const s of ALL_SOURCES) {
+    const p = state[s];
+    const elapsed = p.startedAt ? (Date.now() - new Date(p.startedAt).getTime()) / 60000 : 0;
+    const efficiency = p.totalFetched > 0 ? Math.round((p.totalInserted / p.totalFetched) * 100) : 0;
+    const dedupeRate = p.totalFetched > 0 ? Math.round((p.totalDeduped / p.totalFetched) * 100) : 0;
+    const eta = p.ratePerMinute > 0 && p.estimatedTotal
+      ? Math.round((p.estimatedTotal - p.totalInserted) / p.ratePerMinute)
+      : null;
+    metrics[s] = {
+      status: p.status,
+      ratePerMinute: p.ratePerMinute,
+      efficiency: `${efficiency}%`,
+      dedupeRate: `${dedupeRate}%`,
+      etaMinutes: eta,
+      totalFetched: p.totalFetched,
+      totalInserted: p.totalInserted,
+      totalDeduped: p.totalDeduped,
+      totalSkipped: p.totalSkipped,
+      elapsedMinutes: Math.round(elapsed),
+      currentOffset: p.currentOffset,
+    };
+  }
+  return metrics;
+}
+
 export async function startSeeding(sources: SeederSource[] = ALL_SOURCES): Promise<{ message: string }> {
-  if (state.abortController && ALL_SOURCES.some(s => state[s].status === "running")) {
-    return { message: "Seeding is already running" };
+  const toStart: SeederSource[] = [];
+
+  for (const source of sources) {
+    if (state[source].status === "running") continue;
+    toStart.push(source);
   }
 
-  state.abortController = new AbortController();
-  const signal = state.abortController.signal;
+  if (toStart.length === 0) {
+    return { message: "All requested seeders are already running" };
+  }
 
   const seedFns: Record<SeederSource, (s: AbortSignal) => Promise<void>> = {
     librivox: seedLibriVox,
@@ -633,38 +891,53 @@ export async function startSeeding(sources: SeederSource[] = ALL_SOURCES): Promi
     internetarchive: seedInternetArchive,
   };
 
-  const promises: Promise<void>[] = [];
-  for (const source of sources) {
-    if (state[source].status !== "running") {
-      promises.push(seedFns[source](signal));
-    }
+  for (const source of toStart) {
+    const controller = new AbortController();
+    state.abortControllers[source] = controller;
+    state.seenIds[source] = new Set();
+    seedFns[source](controller.signal).then(() => {
+      console.log(`[Seeder] ${source} task finished`);
+    }).catch(err => {
+      console.error(`[Seeder] ${source} task crashed:`, err);
+    });
   }
 
-  Promise.all(promises).then(() => {
-    console.log("[Seeder] All seeding tasks finished");
-  });
-
-  return { message: `Started seeding: ${sources.join(", ")}` };
+  return { message: `Started seeding: ${toStart.join(", ")}` };
 }
 
-export function stopSeeding(): { message: string } {
-  if (state.abortController) {
-    state.abortController.abort();
-    state.abortController = null;
-    return { message: "Seeding stopped" };
+export function stopSeeding(source?: SeederSource): { message: string } {
+  if (source) {
+    const ctrl = state.abortControllers[source];
+    if (ctrl) {
+      ctrl.abort();
+      state.abortControllers[source] = null;
+      return { message: `Stopped ${source} seeder` };
+    }
+    return { message: `${source} seeder is not running` };
   }
-  return { message: "No seeding in progress" };
+
+  let stopped = 0;
+  for (const s of ALL_SOURCES) {
+    const ctrl = state.abortControllers[s];
+    if (ctrl) {
+      ctrl.abort();
+      state.abortControllers[s] = null;
+      stopped++;
+    }
+  }
+  return { message: stopped > 0 ? `Stopped ${stopped} seeder(s)` : "No seeders running" };
 }
 
 export function resetSeeder(source?: SeederSource): { message: string } {
   if (source) {
     state[source] = createProgress(source);
+    state.seenIds[source] = new Set();
     return { message: `Reset ${source} seeder progress` };
   }
   for (const s of ALL_SOURCES) {
     state[s] = createProgress(s);
+    state.seenIds[s] = new Set();
   }
-  state.abortController = null;
   return { message: "Reset all seeder progress" };
 }
 
