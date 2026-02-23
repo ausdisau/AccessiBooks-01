@@ -22,7 +22,7 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Core Player**: HTML5 audio player with variable speed, skip, progress tracking, bookmarking, sleep timer, and chapter navigation.
 - **Content Management**: Aggregation from multiple APIs, personalization features (e.g., "Continue Listening," recommendations), and multi-format support for audiobooks and ebooks with an integrated reader.
 - **Monetization**: 3-tier subscription model (Free/$0, Plus/$4.99/mo, Premium/$9.99/mo) with per-title micro-payments ($1.99-$2.99), DRM, ad integration with paid tier exclusion. Plus/Premium get 10%/20% off individual purchases. Database `purchases` table tracks owned titles.
-- **Community & Engagement**: User reviews, ratings, gamification (streaks, XP, achievements), push notifications, and a referral system.
+- **Community & Engagement**: User reviews, ratings, gamification (streaks, XP, achievements), push notifications, referral system with referral codes/credits/tracking, and content recommendation engine.
 - **Content Creation**: A self-publishing portal for authors to upload and manage content, and a catalog seeder for bulk content import.
 - **Advertising**: A programmatic audio ad system with server-side mediation and a self-serve advertising platform for advertisers.
 - **Real-time Interaction**: Listening Party for synchronized group listening and Live Streaming Queues for preference-based audiobook radio.
@@ -41,3 +41,6 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Advertising Platforms**: Google AdSense, Google Ad Manager, AdsWizz, Triton Digital, ad:personam.
 - **Content Catalogs**: Nordic APIs eBooks (14 free ebooks on API topics with PDF, EPUB, MOBI, Kindle, LeanPub downloads).
 - **Utilities**: TanStack Query (data fetching), Zod (validation), SerpApi.
+- **Caching**: In-memory API cache (server/apiCache.ts) with TTL for external API responses, retry logic with exponential backoff for rate-limited APIs.
+- **Performance**: React.lazy() code splitting for 13 heavy components, image lazy loading, memoized navigation and event handlers.
+- **Offline**: Browser-side IndexedDB-based download manager for Premium users (client/src/hooks/use-offline-downloads.ts).

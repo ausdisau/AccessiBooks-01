@@ -1,9 +1,10 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { db } from "./db";
 import { eq, desc, and, sql, count, asc } from "drizzle-orm";
+import { fetchWithRetry, cachedFetch, CACHE_TTL } from "./apiCache";
 import {
   fetchLoyalBooks, searchLoyalBooks,
   fetchStandardEbooks, searchStandardEbooks,
@@ -89,6 +90,13 @@ export interface IStorage {
   
   // DJ Recommendations
   getDJRecommendations(userId?: string): Promise<DJRecommendation[]>;
+  
+  // Referrals
+  getReferralByCode(code: string): Promise<Referral | null>;
+  createReferral(referrerId: string): Promise<Referral>;
+  completeReferral(code: string, referredUserId: string): Promise<void>;
+  getUserReferrals(userId: string): Promise<Referral[]>;
+  getUserReferralCode(userId: string): Promise<string>;
   
   sessionStore: session.Store;
 }
@@ -330,6 +338,8 @@ function transformExternalUser(externalUser: ExternalUser): User {
     subscriptionEndDate: null,
     createdAt: externalUser.createdAt ? new Date(externalUser.createdAt) : new Date(),
     updatedAt: externalUser.updatedAt ? new Date(externalUser.updatedAt) : new Date(),
+    referralCode: null,
+    referralCredits: 0,
     // Legacy NextAuth columns
     name: null,
     emailVerified: null,
@@ -1656,44 +1666,46 @@ export class ExternalAPIStorage implements IStorage {
   
   // iTunes Search API methods
   private async fetchiTunesAudiobooks(limit: number = 20): Promise<iTunesAudiobook[]> {
-    try {
-      console.log(`Fetching iTunes audiobooks (limit: ${limit})...`);
-      const terms = ['bestseller', 'fiction audiobook', 'mystery audiobook', 'science fiction', 'romance audiobook', 'thriller audiobook', 'fantasy audiobook', 'history audiobook', 'biography audiobook', 'self help'];
-      const perTerm = Math.min(Math.ceil(limit / terms.length), 200);
-      const allAudiobooks: iTunesAudiobook[] = [];
-      const seenIds = new Set<number>();
-      
-      const promises = terms.map(async (term) => {
-        try {
-          const url = `${ITUNES_SEARCH_API_BASE}/search?term=${encodeURIComponent(term)}&entity=audiobook&limit=${perTerm}&country=us`;
-          const response = await fetchWithTimeout(url, 15000);
-          if (response.ok) {
-            const data: iTunesSearchResponse = await response.json();
-            return data.results || [];
-          }
-          return [];
-        } catch {
-          return [];
-        }
-      });
-      
-      const results = await Promise.all(promises);
-      results.forEach(audiobooks => {
-        audiobooks.forEach(ab => {
-          const id = ab.collectionId || ab.trackId || 0;
-          if (id && !seenIds.has(id)) {
-            seenIds.add(id);
-            allAudiobooks.push(ab);
+    return cachedFetch(`itunes_audiobooks_${limit}`, CACHE_TTL.BOOKS, async () => {
+      try {
+        console.log(`Fetching iTunes audiobooks (limit: ${limit})...`);
+        const terms = ['bestseller', 'fiction audiobook', 'mystery audiobook', 'science fiction', 'romance audiobook', 'thriller audiobook', 'fantasy audiobook', 'history audiobook', 'biography audiobook', 'self help'];
+        const perTerm = Math.min(Math.ceil(limit / terms.length), 200);
+        const allAudiobooks: iTunesAudiobook[] = [];
+        const seenIds = new Set<number>();
+        
+        const promises = terms.map(async (term) => {
+          try {
+            const url = `${ITUNES_SEARCH_API_BASE}/search?term=${encodeURIComponent(term)}&entity=audiobook&limit=${perTerm}&country=us`;
+            const response = await fetchWithRetry(url, {}, 2, 1000);
+            if (response.ok) {
+              const data: iTunesSearchResponse = await response.json();
+              return data.results || [];
+            }
+            return [];
+          } catch {
+            return [];
           }
         });
-      });
-      
-      console.log(`iTunes API response: ${allAudiobooks.length} audiobooks`);
-      return allAudiobooks.slice(0, limit);
-    } catch (error) {
-      console.error('Error fetching iTunes audiobooks:', error);
-      return [];
-    }
+        
+        const results = await Promise.all(promises);
+        results.forEach(audiobooks => {
+          audiobooks.forEach(ab => {
+            const id = ab.collectionId || ab.trackId || 0;
+            if (id && !seenIds.has(id)) {
+              seenIds.add(id);
+              allAudiobooks.push(ab);
+            }
+          });
+        });
+        
+        console.log(`iTunes API response: ${allAudiobooks.length} audiobooks`);
+        return allAudiobooks.slice(0, limit);
+      } catch (error) {
+        console.error('Error fetching iTunes audiobooks:', error);
+        return [];
+      }
+    });
   }
   
   private async searchiTunesAudiobooks(query: string, limit: number = 10): Promise<iTunesAudiobook[]> {
@@ -1889,28 +1901,30 @@ export class ExternalAPIStorage implements IStorage {
 
   // LibriVox API integration methods
   private async fetchLibriVoxBooks(limit = 50, offset = 0): Promise<LibriVoxBook[]> {
-    try {
-      console.log(`Fetching LibriVox books (limit: ${limit}, offset: ${offset})...`);
-      const url = `${LIBRIVOX_API_BASE}?format=json&extended=1&limit=${limit}&offset=${offset}`;
-      
-      const response = await fetchWithTimeout(url, 20000);
-      
-      if (response.ok) {
-        const responseData = await response.json();
-        console.log(`LibriVox API response: ${responseData.books?.length || 0} books`);
+    return cachedFetch(`librivox_books_${limit}_${offset}`, CACHE_TTL.BOOKS, async () => {
+      try {
+        console.log(`Fetching LibriVox books (limit: ${limit}, offset: ${offset})...`);
+        const url = `${LIBRIVOX_API_BASE}?format=json&extended=1&limit=${limit}&offset=${offset}`;
         
-        if (responseData.books && Array.isArray(responseData.books)) {
-          return responseData.books;
+        const response = await fetchWithRetry(url, {}, 2, 1500);
+        
+        if (response.ok) {
+          const responseData = await response.json();
+          console.log(`LibriVox API response: ${responseData.books?.length || 0} books`);
+          
+          if (responseData.books && Array.isArray(responseData.books)) {
+            return responseData.books;
+          }
+          return [];
+        } else {
+          console.warn('LibriVox API returned error:', response.status);
+          return [];
         }
-        return [];
-      } else {
-        console.warn('LibriVox API returned error:', response.status);
+      } catch (error) {
+        console.warn('Failed to fetch from LibriVox API:', error);
         return [];
       }
-    } catch (error) {
-      console.warn('Failed to fetch from LibriVox API:', error);
-      return [];
-    }
+    });
   }
   
   private async searchLibriVoxBooks(query: string, limit = 20): Promise<LibriVoxBook[]> {
@@ -1979,43 +1993,49 @@ export class ExternalAPIStorage implements IStorage {
 
   // Project Gutenberg API integration methods
   private async fetchGutenbergBooks(limit = 32, page = 1): Promise<GutenbergBook[]> {
-    try {
-      console.log(`Fetching Gutenberg ebooks (page: ${page}, limit: ${limit})...`);
-      const url = `${GUTENBERG_API_BASE}/books?page=${page}&languages=en`;
-      
-      const response = await fetchWithTimeout(url, 20000);
-      
-      if (response.ok) {
-        const data = await response.json() as GutenbergSearchResponse;
-        console.log(`Gutenberg API response: ${data.results?.length || 0} ebooks`);
-        return data.results?.slice(0, limit) || [];
-      } else {
-        console.warn('Gutenberg API returned error:', response.status);
+    const cacheKey = `gutenberg_books_p${page}_l${limit}`;
+    return cachedFetch(cacheKey, CACHE_TTL.BOOKS, async () => {
+      try {
+        console.log(`Fetching Gutenberg ebooks (page: ${page}, limit: ${limit})...`);
+        const url = `${GUTENBERG_API_BASE}/books?page=${page}&languages=en`;
+        
+        const response = await fetchWithRetry(url, {}, 3, 2000);
+        
+        if (response.ok) {
+          const data = await response.json() as GutenbergSearchResponse;
+          console.log(`Gutenberg API response: ${data.results?.length || 0} ebooks`);
+          return data.results?.slice(0, limit) || [];
+        } else {
+          console.warn('Gutenberg API returned error:', response.status);
+          return [];
+        }
+      } catch (error) {
+        console.warn('Failed to fetch from Gutenberg API:', error);
         return [];
       }
-    } catch (error) {
-      console.warn('Failed to fetch from Gutenberg API:', error);
-      return [];
-    }
+    });
   }
 
   private async searchGutenbergBooks(query: string, limit = 20): Promise<GutenbergBook[]> {
-    try {
-      console.log(`Searching Gutenberg for: "${query}"`);
-      const url = `${GUTENBERG_API_BASE}/books?search=${encodeURIComponent(query)}&languages=en`;
-      
-      const response = await fetchWithTimeout(url, 20000);
-      
-      if (response.ok) {
-        const data = await response.json() as GutenbergSearchResponse;
-        console.log(`Gutenberg search returned: ${data.results?.length || 0} ebooks`);
-        return data.results?.slice(0, limit) || [];
+    const cacheKey = `gutenberg_search_${query}_${limit}`;
+    return cachedFetch(cacheKey, CACHE_TTL.SEARCH, async () => {
+      try {
+        console.log(`Searching Gutenberg for: "${query}"`);
+        const url = `${GUTENBERG_API_BASE}/books?search=${encodeURIComponent(query)}&languages=en`;
+        
+        const response = await fetchWithRetry(url, {}, 2, 2000);
+        
+        if (response.ok) {
+          const data = await response.json() as GutenbergSearchResponse;
+          console.log(`Gutenberg search returned: ${data.results?.length || 0} ebooks`);
+          return data.results?.slice(0, limit) || [];
+        }
+        return [];
+      } catch (error) {
+        console.warn('Failed to search Gutenberg API:', error);
+        return [];
       }
-      return [];
-    } catch (error) {
-      console.warn('Failed to search Gutenberg API:', error);
-      return [];
-    }
+    });
   }
 
   private async getGutenbergBook(id: string): Promise<GutenbergBook | null> {
@@ -2581,6 +2601,62 @@ export class ExternalAPIStorage implements IStorage {
     });
 
     return recommendations;
+  }
+
+  private generateCode(length = 8): string {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let code = "";
+    for (let i = 0; i < length; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  async getReferralByCode(code: string): Promise<Referral | null> {
+    const [referral] = await db.select().from(referrals).where(eq(referrals.referralCode, code));
+    return referral || null;
+  }
+
+  async createReferral(referrerId: string): Promise<Referral> {
+    const code = this.generateCode();
+    const [referral] = await db.insert(referrals).values({
+      referrerId,
+      referralCode: code,
+      status: "pending",
+    }).returning();
+    return referral;
+  }
+
+  async completeReferral(code: string, referredUserId: string): Promise<void> {
+    const [referral] = await db.select().from(referrals).where(eq(referrals.referralCode, code));
+    if (!referral) throw new Error("Referral not found");
+
+    const creditAmount = referral.creditAmount;
+
+    await db.update(referrals)
+      .set({ status: "completed", referredUserId })
+      .where(eq(referrals.id, referral.id));
+
+    await db.update(users)
+      .set({ referralCredits: sql`${users.referralCredits} + ${creditAmount}` })
+      .where(eq(users.id, referral.referrerId));
+
+    await db.update(users)
+      .set({ referralCredits: sql`${users.referralCredits} + ${creditAmount}` })
+      .where(eq(users.id, referredUserId));
+  }
+
+  async getUserReferrals(userId: string): Promise<Referral[]> {
+    return db.select().from(referrals).where(eq(referrals.referrerId, userId)).orderBy(desc(referrals.createdAt));
+  }
+
+  async getUserReferralCode(userId: string): Promise<string> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (user?.referralCode) return user.referralCode;
+
+    const code = this.generateCode();
+    await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
+    return code;
   }
 }
 

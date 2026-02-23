@@ -243,15 +243,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/books/trending - Top 10 most-listened books
   app.get("/api/books/trending", async (_req, res) => {
     try {
-      const trending = await db
-        .select({
-          bookId: listeningHistory.bookId,
-          playCount: sql<number>`cast(sum(${listeningHistory.playCount}) as int)`,
-        })
-        .from(listeningHistory)
-        .groupBy(listeningHistory.bookId)
-        .orderBy(desc(sql`sum(${listeningHistory.playCount})`))
-        .limit(10);
+      let trending: { bookId: string; playCount: number }[] = [];
+      try {
+        trending = await db
+          .select({
+            bookId: listeningHistory.bookId,
+            playCount: sql<number>`cast(sum(${listeningHistory.playCount}) as int)`,
+          })
+          .from(listeningHistory)
+          .groupBy(listeningHistory.bookId)
+          .orderBy(desc(sql`sum(${listeningHistory.playCount})`))
+          .limit(10);
+      } catch {}
 
       if (trending.length > 0) {
         const trendingBooks = [];
@@ -3154,68 +3157,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/referrals/generate - Generate a referral code
-  app.post("/api/referrals/generate", isAuthenticated, async (req: any, res) => {
+  // GET /api/referral/code - Get or generate user's referral code
+  app.get("/api/referral/code", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const [existing] = await db.select().from(referrals).where(eq(referrals.referrerId, userId));
-      if (existing) {
-        return res.json({
-          code: existing.referralCode,
-          shareUrl: `${req.protocol}://${req.get("host")}/referral/${existing.referralCode}`,
-        });
-      }
-
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-      let code = "";
-      for (let i = 0; i < 8; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-
-      const [newReferral] = await db.insert(referrals).values({
-        referrerId: userId,
-        referralCode: code,
-        status: "pending",
-        rewardGranted: false,
-      }).returning();
-
-      res.json({
-        code: newReferral.referralCode,
-        shareUrl: `${req.protocol}://${req.get("host")}/referral/${newReferral.referralCode}`,
-      });
+      const code = await storage.getUserReferralCode(userId);
+      res.json({ code });
     } catch (error) {
-      console.error("Error generating referral code:", error);
-      res.status(500).json({ message: "Failed to generate referral code" });
+      console.error("Error getting referral code:", error);
+      res.status(500).json({ message: "Failed to get referral code" });
     }
   });
 
-  // GET /api/referrals/stats - Get referral statistics
-  app.get("/api/referrals/stats", isAuthenticated, async (req: any, res) => {
+  // GET /api/referral/stats - Get referral statistics
+  app.get("/api/referral/stats", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const userReferrals = await db.select().from(referrals).where(eq(referrals.referrerId, userId));
-      if (userReferrals.length === 0) {
-        return res.json({ referralCode: null, totalReferred: 0, convertedCount: 0, pendingCount: 0 });
-      }
+      const userReferrals = await storage.getUserReferrals(userId);
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
 
-      const referralCode = userReferrals[0].referralCode;
-      const totalReferred = userReferrals.filter(r => r.referredUserId).length;
-      const convertedCount = userReferrals.filter(r => r.status === "converted").length;
-      const pendingCount = userReferrals.filter(r => r.status === "pending").length;
+      const totalReferrals = userReferrals.length;
+      const completedReferrals = userReferrals.filter(r => r.status === "completed" || r.status === "rewarded").length;
+      const creditsEarned = user?.referralCredits || 0;
 
-      res.json({ referralCode, totalReferred, convertedCount, pendingCount });
+      res.json({ totalReferrals, completedReferrals, creditsEarned });
     } catch (error) {
       console.error("Error fetching referral stats:", error);
       res.status(500).json({ message: "Failed to fetch referral stats" });
     }
   });
 
-  // POST /api/referrals/redeem - Redeem a referral code
-  app.post("/api/referrals/redeem", isAuthenticated, async (req: any, res) => {
+  // POST /api/referral/apply - Apply a referral code
+  app.post("/api/referral/apply", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -3225,65 +3202,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Referral code is required" });
       }
 
-      const [referral] = await db.select().from(referrals).where(eq(referrals.referralCode, code));
+      const referral = await storage.getReferralByCode(code);
       if (!referral) {
         return res.status(404).json({ message: "Invalid referral code" });
       }
 
       if (referral.referrerId === userId) {
-        return res.status(400).json({ message: "Cannot redeem your own referral code" });
+        return res.status(400).json({ message: "Cannot apply your own referral code" });
       }
 
-      if (referral.status === "converted") {
-        return res.status(400).json({ message: "Referral code already redeemed" });
+      if (referral.status !== "pending") {
+        return res.status(400).json({ message: "Referral code already used" });
       }
 
-      await db.update(referrals)
-        .set({
-          status: "converted",
-          referredUserId: userId,
-          convertedAt: new Date(),
-          rewardGranted: true,
-        })
-        .where(eq(referrals.id, referral.id));
+      await storage.completeReferral(code, userId);
 
-      const [existingXp] = await db.select().from(userXp).where(eq(userXp.userId, referral.referrerId));
-      if (existingXp) {
-        await db.update(userXp)
-          .set({ totalXp: sql`${userXp.totalXp} + 500` })
-          .where(eq(userXp.userId, referral.referrerId));
-      } else {
-        await db.insert(userXp).values({
-          userId: referral.referrerId,
-          totalXp: 500,
-          level: 1,
-          totalListeningMinutes: 0,
-          booksCompleted: 0,
-          reviewsWritten: 0,
-        });
+      res.json({ success: true, creditAmount: referral.creditAmount });
+    } catch (error) {
+      console.error("Error applying referral:", error);
+      res.status(500).json({ message: "Failed to apply referral code" });
+    }
+  });
+
+  // GET /api/referral/history - List referral history
+  app.get("/api/referral/history", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const history = await storage.getUserReferrals(userId);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching referral history:", error);
+      res.status(500).json({ message: "Failed to fetch referral history" });
+    }
+  });
+
+  // Legacy referral routes (backwards compatibility)
+  app.post("/api/referrals/generate", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const code = await storage.getUserReferralCode(userId);
+      const existing = await storage.getReferralByCode(code);
+      if (existing) {
+        return res.json({ code: existing.referralCode, shareUrl: `${req.protocol}://${req.get("host")}?ref=${existing.referralCode}` });
       }
+      const newReferral = await storage.createReferral(userId);
+      res.json({ code: newReferral.referralCode, shareUrl: `${req.protocol}://${req.get("host")}?ref=${newReferral.referralCode}` });
+    } catch (error) {
+      console.error("Error generating referral code:", error);
+      res.status(500).json({ message: "Failed to generate referral code" });
+    }
+  });
 
-      const [referrerPrefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, referral.referrerId));
-      const newTrialEnd = new Date();
-      if (referrerPrefs?.premiumTrialEndDate && referrerPrefs.premiumTrialEndDate > new Date()) {
-        newTrialEnd.setTime(referrerPrefs.premiumTrialEndDate.getTime());
+  app.get("/api/referrals/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const userReferrals = await storage.getUserReferrals(userId);
+      const code = userReferrals.length > 0 ? userReferrals[0].referralCode : null;
+      const totalReferred = userReferrals.length;
+      const convertedCount = userReferrals.filter(r => r.status === "completed" || r.status === "rewarded").length;
+      const pendingCount = userReferrals.filter(r => r.status === "pending").length;
+      res.json({ referralCode: code, totalReferred, convertedCount, pendingCount });
+    } catch (error) {
+      console.error("Error fetching referral stats:", error);
+      res.status(500).json({ message: "Failed to fetch referral stats" });
+    }
+  });
+
+  app.post("/api/referrals/redeem", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { code } = req.body;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ message: "Referral code is required" });
       }
-      newTrialEnd.setDate(newTrialEnd.getDate() + 7);
-
-      if (referrerPrefs) {
-        await db.update(userPreferences)
-          .set({ premiumTrialEndDate: newTrialEnd })
-          .where(eq(userPreferences.userId, referral.referrerId));
-      } else {
-        await db.insert(userPreferences).values({
-          userId: referral.referrerId,
-          premiumTrialEndDate: newTrialEnd,
-          favoriteGenres: [],
-          onboardingCompleted: false,
-          welcomeBonusGranted: false,
-        });
-      }
-
+      const referral = await storage.getReferralByCode(code);
+      if (!referral) return res.status(404).json({ message: "Invalid referral code" });
+      if (referral.referrerId === userId) return res.status(400).json({ message: "Cannot redeem your own referral code" });
+      if (referral.status !== "pending") return res.status(400).json({ message: "Referral code already redeemed" });
+      await storage.completeReferral(code, userId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error redeeming referral:", error);
@@ -3352,21 +3353,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
 
-      const publicReviews = await db
-        .select({
-          id: reviews.id,
-          rating: reviews.rating,
-          title: reviews.title,
-          content: reviews.content,
-          createdAt: reviews.createdAt,
-          bookId: reviews.bookId,
-          userName: sql<string>`coalesce(${users.firstName} || ' ' || ${users.lastName}, ${users.email}, 'Anonymous')`,
-          userImage: users.profileImageUrl,
-        })
-        .from(reviews)
-        .innerJoin(users, eq(reviews.userId, users.id))
-        .orderBy(desc(reviews.createdAt))
-        .limit(limit);
+      let publicReviews: any[] = [];
+      try {
+        publicReviews = await db
+          .select({
+            id: reviews.id,
+            rating: reviews.rating,
+            title: reviews.title,
+            content: reviews.content,
+            createdAt: reviews.createdAt,
+            bookId: reviews.bookId,
+            userName: sql<string>`coalesce(${users.firstName} || ' ' || ${users.lastName}, ${users.email}, 'Anonymous')`,
+            userImage: users.profileImageUrl,
+          })
+          .from(reviews)
+          .innerJoin(users, eq(reviews.userId, users.id))
+          .orderBy(desc(reviews.createdAt))
+          .limit(limit);
+      } catch {
+        return res.json([]);
+      }
 
       const reviewsWithBooks = await Promise.all(
         publicReviews.map(async (review) => {

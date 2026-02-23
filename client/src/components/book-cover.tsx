@@ -75,6 +75,7 @@ export function BookCover({
         className={className}
         onError={handleImageError}
         loading="lazy"
+        decoding="async"
       />
     );
   }
