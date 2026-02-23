@@ -12,12 +12,19 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Users, Play, Pause, SkipForward, ArrowLeft, Volume2,
-  Loader2, Radio, ThumbsUp, Plus, ListMusic, Music, X,
+  Loader2, Radio, ThumbsUp, Plus, ListMusic, Music, X, Megaphone,
 } from "lucide-react";
 import type { Book, StreamingQueue as StreamingQueueType, StreamingQueueItem } from "@shared/schema";
 import { AudioAdOverlay } from "@/components/audio-ad-overlay";
 import { audioAdService } from "@/services/audio-ad-service";
 import type { AdResponse } from "@/services/audio-ad-service";
+
+interface Sponsorship {
+  id: string;
+  sponsorName: string;
+  sponsorLogo: string;
+  adAudioUrl?: string;
+}
 
 interface StreamingQueueProps {
   onBack: () => void;
@@ -258,6 +265,41 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
   const [interstitialAd, setInterstitialAd] = useState<AdResponse | null>(null);
   const [showInterstitial, setShowInterstitial] = useState(false);
   const pendingBookRef = useRef<{ id: string; title: string; author: string; audioUrl: string; coverImage?: string } | null>(null);
+  const [preRollPlayed, setPreRollPlayed] = useState(false);
+  const [playingPreRoll, setPlayingPreRoll] = useState(false);
+  const preRollAudioRef = useRef<HTMLAudioElement | null>(null);
+  const impressionTrackedRef = useRef<Set<string>>(new Set());
+
+  const { data: sponsorships } = useQuery<Sponsorship[]>({
+    queryKey: ["/api/sponsorships/active"],
+  });
+
+  const activeSponsor = sponsorships && sponsorships.length > 0 ? sponsorships[0] : null;
+
+  const impressionMutation = useMutation({
+    mutationFn: async (sponsorId: string) => {
+      await apiRequest("POST", `/api/sponsorships/${sponsorId}/impression`);
+    },
+  });
+
+  const clickMutation = useMutation({
+    mutationFn: async (sponsorId: string) => {
+      await apiRequest("POST", `/api/sponsorships/${sponsorId}/click`);
+    },
+  });
+
+  useEffect(() => {
+    if (activeSponsor && !impressionTrackedRef.current.has(activeSponsor.id)) {
+      impressionTrackedRef.current.add(activeSponsor.id);
+      impressionMutation.mutate(activeSponsor.id);
+    }
+  }, [activeSponsor?.id]);
+
+  const handleSponsorClick = useCallback(() => {
+    if (activeSponsor) {
+      clickMutation.mutate(activeSponsor.id);
+    }
+  }, [activeSponsor]);
 
   const { data: queue, isLoading: queueLoading } = useQuery<StreamingQueueType>({
     queryKey: ["/api/streaming-queue", queueId],
@@ -283,15 +325,48 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
 
   useEffect(() => {
     if (queue?.currentBookAudioUrl && queue.currentBookTitle) {
-      playBook({
+      const bookData = {
         id: queue.currentBookId || "",
         title: queue.currentBookTitle,
         author: queue.currentBookAuthor || "",
         audioUrl: queue.currentBookAudioUrl,
         coverImage: queue.currentBookCover || undefined,
-      } as any);
+      };
+
+      if (!preRollPlayed && activeSponsor?.adAudioUrl) {
+        setPlayingPreRoll(true);
+        setPreRollPlayed(true);
+        const audio = new Audio(activeSponsor.adAudioUrl);
+        preRollAudioRef.current = audio;
+        audio.onended = () => {
+          setPlayingPreRoll(false);
+          preRollAudioRef.current = null;
+          playBook(bookData as any);
+        };
+        audio.onerror = () => {
+          setPlayingPreRoll(false);
+          preRollAudioRef.current = null;
+          playBook(bookData as any);
+        };
+        audio.play().catch(() => {
+          setPlayingPreRoll(false);
+          preRollAudioRef.current = null;
+          playBook(bookData as any);
+        });
+      } else {
+        playBook(bookData as any);
+      }
     }
   }, [queue?.currentBookId]);
+
+  useEffect(() => {
+    return () => {
+      if (preRollAudioRef.current) {
+        preRollAudioRef.current.pause();
+        preRollAudioRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!user || !queueId) return;
@@ -509,6 +584,32 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
           </div>
         )}
       </div>
+
+      {activeSponsor && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+          onClick={handleSponsorClick}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSponsorClick(); }}
+        >
+          <img
+            src={activeSponsor.sponsorLogo}
+            alt={activeSponsor.sponsorName}
+            className="w-6 h-6 rounded object-contain"
+          />
+          <span className="text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center gap-1">
+            <Megaphone className="h-3 w-3" />
+            Sponsored by {activeSponsor.sponsorName}
+          </span>
+          {playingPreRoll && (
+            <span className="ml-auto text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <Volume2 className="h-3 w-3 animate-pulse" />
+              Playing sponsor message...
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Now Playing */}
       <Card className="border-primary/20 bg-primary/5">

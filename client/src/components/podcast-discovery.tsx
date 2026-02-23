@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,10 +6,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Search, Podcast, Play, Pause, Clock, ChevronLeft, ChevronRight, Rss, ExternalLink, Loader2, Star, Calendar, Headphones, TrendingUp } from "lucide-react";
+import { Search, Podcast, Play, Pause, Clock, ChevronLeft, ChevronRight, Rss, ExternalLink, Loader2, Star, Calendar, Headphones, TrendingUp, Volume2, X, SkipForward } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAudioContext } from "@/contexts/AudioContext";
+import { useSubscription } from "@/hooks/use-subscription";
+import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 
 interface PodcastFeed {
   id: string;
@@ -290,6 +292,76 @@ function FeedDetail({ feed, onBack, onPlayEpisode }: {
   );
 }
 
+function PodcastAdOverlay({ ad, adType, skipAfterMs, onComplete, onSkip, onUpgrade }: {
+  ad: AdResponse;
+  adType: "pre-roll" | "mid-roll";
+  skipAfterMs: number;
+  onComplete: () => void;
+  onSkip: () => void;
+  onUpgrade: () => void;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+  const canSkip = elapsed * 1000 >= skipAfterMs;
+  const adDuration = ad.duration || 15;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(prev => {
+        const next = prev + 1;
+        if (next >= adDuration) {
+          clearInterval(interval);
+          onComplete();
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [adDuration, onComplete]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md border-orange-400/50 shadow-2xl">
+        <CardContent className="p-6 text-center space-y-4">
+          <div className="flex items-center justify-center gap-2 text-orange-500">
+            <Volume2 className="h-5 w-5 animate-pulse" />
+            <span className="text-sm font-medium uppercase tracking-wider">
+              {adType === "pre-roll" ? "Ad before episode" : "Mid-roll ad"}
+            </span>
+          </div>
+
+          <h3 className="text-lg font-bold">{ad.title}</h3>
+          {ad.isProgrammatic === false && ad.description && (
+            <p className="text-sm text-muted-foreground">{ad.description}</p>
+          )}
+
+          <div className="w-full bg-muted rounded-full h-2">
+            <div
+              className="bg-orange-500 h-2 rounded-full transition-all duration-1000"
+              style={{ width: `${Math.min(100, (elapsed / adDuration) * 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">{Math.max(0, adDuration - elapsed)}s remaining</p>
+
+          <div className="flex gap-2 justify-center">
+            {canSkip ? (
+              <Button variant="outline" size="sm" onClick={onSkip}>
+                <SkipForward className="h-4 w-4 mr-1" /> Skip Ad
+              </Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Skip available in {Math.ceil((skipAfterMs / 1000) - elapsed)}s
+              </p>
+            )}
+            <Button size="sm" className="bg-orange-600 hover:bg-orange-700" onClick={onUpgrade}>
+              Go Ad-Free
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function PodcastDiscovery() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFeed, setSelectedFeed] = useState<PodcastFeed | null>(null);
@@ -299,6 +371,131 @@ export function PodcastDiscovery() {
   const { audioRef: mainAudioRef } = useAudioContext();
   const podcastAudioRef = useRef<HTMLAudioElement | null>(null);
   const [playingEpisodeId, setPlayingEpisodeId] = useState<string | null>(null);
+  const { isPaid, isLoading: subLoading } = useSubscription();
+
+  const [podcastAd, setPodcastAd] = useState<{
+    ad: AdResponse;
+    adType: "pre-roll" | "mid-roll";
+    genre?: string;
+  } | null>(null);
+  const pendingEpisodeRef = useRef<PodcastEpisode | null>(null);
+  const pendingGenreRef = useRef<string | undefined>(undefined);
+  const playbackStartRef = useRef<number>(0);
+  const lastMidRollRef = useRef<number>(0);
+  const midRollCheckRef = useRef<NodeJS.Timeout | null>(null);
+
+  const currentFeedGenre = useMemo(() => {
+    if (!selectedFeed?.categories || !Array.isArray(selectedFeed.categories)) return undefined;
+    return selectedFeed.categories[0] || undefined;
+  }, [selectedFeed]);
+
+  const startMidRollTracking = useCallback(() => {
+    if (midRollCheckRef.current) clearInterval(midRollCheckRef.current);
+    if (isPaid) return;
+
+    playbackStartRef.current = Date.now();
+    lastMidRollRef.current = Date.now();
+
+    midRollCheckRef.current = setInterval(async () => {
+      const now = Date.now();
+      const elapsed = now - playbackStartRef.current;
+
+      if (audioAdService.shouldShowPodcastMidRoll(isPaid, elapsed, lastMidRollRef.current - playbackStartRef.current)) {
+        lastMidRollRef.current = now;
+
+        if (podcastAudioRef.current && !podcastAudioRef.current.paused) {
+          podcastAudioRef.current.pause();
+        }
+
+        audioAdService.playAdChime();
+        const ad = await audioAdService.requestPodcastAd("mid-roll", pendingGenreRef.current);
+        setPodcastAd({ ad, adType: "mid-roll", genre: pendingGenreRef.current });
+      }
+    }, 30000);
+  }, [isPaid]);
+
+  const stopMidRollTracking = useCallback(() => {
+    if (midRollCheckRef.current) {
+      clearInterval(midRollCheckRef.current);
+      midRollCheckRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => stopMidRollTracking();
+  }, [stopMidRollTracking]);
+
+  const handlePodcastAdComplete = useCallback((skipped: boolean) => {
+    if (podcastAd) {
+      audioAdService.recordPodcastImpression(
+        podcastAd.ad.id,
+        podcastAd.adType,
+        !skipped,
+        skipped,
+        podcastAd.ad.isProgrammatic ? podcastAd.ad.provider : "house",
+        podcastAd.genre
+      );
+    }
+
+    const adType = podcastAd?.adType;
+    setPodcastAd(null);
+
+    if (adType === "pre-roll" && pendingEpisodeRef.current) {
+      const ep = pendingEpisodeRef.current;
+      pendingEpisodeRef.current = null;
+      startEpisodePlayback(ep);
+    } else if (adType === "mid-roll") {
+      if (podcastAudioRef.current) {
+        podcastAudioRef.current.play().catch(() => {});
+      }
+    }
+  }, [podcastAd]);
+
+  const handlePodcastAdUpgrade = useCallback(() => {
+    if (podcastAd) {
+      audioAdService.recordPodcastImpression(
+        podcastAd.ad.id,
+        podcastAd.adType,
+        false,
+        true,
+        podcastAd.ad.isProgrammatic ? podcastAd.ad.provider : "house",
+        podcastAd.genre
+      );
+    }
+    setPodcastAd(null);
+    pendingEpisodeRef.current = null;
+    stopMidRollTracking();
+    window.location.href = "/api/subscription/create-checkout";
+  }, [podcastAd, stopMidRollTracking]);
+
+  const startEpisodePlayback = useCallback((ep: PodcastEpisode) => {
+    if (podcastAudioRef.current) {
+      podcastAudioRef.current.pause();
+      podcastAudioRef.current.src = "";
+      podcastAudioRef.current = null;
+    }
+
+    if (mainAudioRef.current && !mainAudioRef.current.paused) {
+      mainAudioRef.current.pause();
+    }
+
+    const audio = new Audio(ep.audioUrl);
+    podcastAudioRef.current = audio;
+    setPlayingEpisodeId(ep.id);
+    audio.addEventListener("ended", () => {
+      setPlayingEpisodeId(null);
+      podcastAudioRef.current = null;
+      stopMidRollTracking();
+    });
+    audio.play().catch(() => {
+      setPlayingEpisodeId(null);
+      podcastAudioRef.current = null;
+      toast({ title: "Playback error", description: "Could not play this episode. It may require direct access.", variant: "destructive" });
+    });
+    toast({ title: "Now playing", description: ep.title });
+
+    startMidRollTracking();
+  }, [mainAudioRef, toast, startMidRollTracking, stopMidRollTracking]);
 
   const { data: feedsData, isLoading } = useQuery<{ feeds: PodcastFeed[] }>({
     queryKey: ["/api/podcasts/feeds", searchQuery],
@@ -348,7 +545,7 @@ export function PodcastDiscovery() {
     },
   });
 
-  const handlePlayEpisode = (ep: PodcastEpisode) => {
+  const handlePlayEpisode = useCallback(async (ep: PodcastEpisode) => {
     if (!ep.audioUrl) return;
 
     if (playingEpisodeId === ep.id && podcastAudioRef.current) {
@@ -356,33 +553,23 @@ export function PodcastDiscovery() {
       podcastAudioRef.current.src = "";
       podcastAudioRef.current = null;
       setPlayingEpisodeId(null);
+      stopMidRollTracking();
       return;
     }
 
-    if (podcastAudioRef.current) {
-      podcastAudioRef.current.pause();
-      podcastAudioRef.current.src = "";
-      podcastAudioRef.current = null;
+    const genre = currentFeedGenre;
+    pendingGenreRef.current = genre;
+
+    if (audioAdService.shouldShowPodcastPreRoll(isPaid)) {
+      pendingEpisodeRef.current = ep;
+      audioAdService.playAdChime();
+      const ad = await audioAdService.requestPodcastAd("pre-roll", genre);
+      setPodcastAd({ ad, adType: "pre-roll", genre });
+      return;
     }
 
-    if (mainAudioRef.current && !mainAudioRef.current.paused) {
-      mainAudioRef.current.pause();
-    }
-
-    const audio = new Audio(ep.audioUrl);
-    podcastAudioRef.current = audio;
-    setPlayingEpisodeId(ep.id);
-    audio.addEventListener("ended", () => {
-      setPlayingEpisodeId(null);
-      podcastAudioRef.current = null;
-    });
-    audio.play().catch(() => {
-      setPlayingEpisodeId(null);
-      podcastAudioRef.current = null;
-      toast({ title: "Playback error", description: "Could not play this episode. It may require direct access.", variant: "destructive" });
-    });
-    toast({ title: "Now playing", description: ep.title });
-  };
+    startEpisodePlayback(ep);
+  }, [playingEpisodeId, isPaid, currentFeedGenre, startEpisodePlayback, stopMidRollTracking]);
 
   const feeds = feedsData?.feeds || [];
 
@@ -399,9 +586,19 @@ export function PodcastDiscovery() {
   if (selectedFeed) {
     return (
       <section className="w-full" aria-label="Podcast detail">
+        {podcastAd && (
+          <PodcastAdOverlay
+            ad={podcastAd.ad}
+            adType={podcastAd.adType}
+            skipAfterMs={audioAdService.getSkipOffsetMs(podcastAd.ad)}
+            onComplete={() => handlePodcastAdComplete(false)}
+            onSkip={() => handlePodcastAdComplete(true)}
+            onUpgrade={handlePodcastAdUpgrade}
+          />
+        )}
         <FeedDetail
           feed={selectedFeed}
-          onBack={() => setSelectedFeed(null)}
+          onBack={() => { setSelectedFeed(null); stopMidRollTracking(); }}
           onPlayEpisode={handlePlayEpisode}
         />
       </section>
@@ -410,6 +607,16 @@ export function PodcastDiscovery() {
 
   return (
     <section className="w-full" aria-labelledby="podcast-discovery-heading">
+      {podcastAd && (
+        <PodcastAdOverlay
+          ad={podcastAd.ad}
+          adType={podcastAd.adType}
+          skipAfterMs={audioAdService.getSkipOffsetMs(podcastAd.ad)}
+          onComplete={() => handlePodcastAdComplete(false)}
+          onSkip={() => handlePodcastAdComplete(true)}
+          onUpgrade={handlePodcastAdUpgrade}
+        />
+      )}
       <div className="flex items-center gap-3 mb-6">
         <div className="h-10 w-10 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
           <Podcast className="h-5 w-5 text-orange-600 dark:text-orange-400" />

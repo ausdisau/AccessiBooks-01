@@ -309,6 +309,34 @@ export class AudioAdService {
     } catch {}
   }
 
+  shouldShowPodcastPreRoll(isPaid: boolean): boolean {
+    if (isPaid) return false;
+    if (!this.config.preRollEnabled) return false;
+    return true;
+  }
+
+  shouldShowPodcastMidRoll(isPaid: boolean, elapsedMs: number, lastMidRollMs: number): boolean {
+    if (isPaid) return false;
+    if (!this.config.midRollEnabled) return false;
+    const PODCAST_MIDROLL_INTERVAL = 15 * 60 * 1000;
+    return (elapsedMs - lastMidRollMs) >= PODCAST_MIDROLL_INTERVAL;
+  }
+
+  async requestPodcastAd(adType: "pre-roll" | "mid-roll", podcastGenre?: string): Promise<AdResponse> {
+    return this.requestAd(adType, podcastGenre || "podcast");
+  }
+
+  recordPodcastImpression(adId: string, type: "pre-roll" | "mid-roll", completed: boolean, skipped: boolean, provider: string = "house", podcastGenre?: string) {
+    this.recordImpression(adId, type, completed, skipped, provider);
+
+    fetch("/api/monetization/ad-impression", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ adId, adType: type, completed, skipped, provider, contentType: "podcast", genre: podcastGenre }),
+    }).catch(() => {});
+  }
+
   getStats() {
     return {
       totalImpressions: this.state.totalImpressions,

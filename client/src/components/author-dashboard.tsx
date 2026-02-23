@@ -16,7 +16,8 @@ import { Separator } from "@/components/ui/separator";
 import {
   Upload, BookOpen, BarChart3, User, Edit, Trash2, Eye, Loader2,
   FileAudio, FileText, Image, Plus, CheckCircle, Clock, XCircle,
-  TrendingUp, Users, Headphones, BookOpenCheck, ExternalLink
+  TrendingUp, Users, Headphones, BookOpenCheck, ExternalLink,
+  DollarSign, Megaphone
 } from "lucide-react";
 import { SiSoundcloud } from "react-icons/si";
 
@@ -192,6 +193,10 @@ export function AuthorDashboard() {
         <TabsList>
           <TabsTrigger value="overview">My Books</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="earnings" className="flex items-center gap-1">
+            <DollarSign className="h-4 w-4" />
+            Earnings
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
@@ -227,6 +232,10 @@ export function AuthorDashboard() {
 
         <TabsContent value="analytics" className="mt-4">
           <AnalyticsView analytics={analytics} />
+        </TabsContent>
+
+        <TabsContent value="earnings" className="mt-4">
+          <EarningsView />
         </TabsContent>
       </Tabs>
 
@@ -347,6 +356,7 @@ function BookListItem({
             </div>
           </div>
           <div className="flex gap-1">
+            <PromoteButton bookId={book.id} />
             <Button variant="ghost" size="icon" onClick={onEdit} aria-label="Edit book">
               <Edit className="h-4 w-4" />
             </Button>
@@ -866,6 +876,257 @@ function AnalyticsView({ analytics }: { analytics?: AnalyticsData }) {
                 </div>
               ))}
             </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function PromoteButton({ bookId }: { bookId: string }) {
+  const { toast } = useToast();
+  const promoteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/author/promote", { bookId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Book promoted successfully!" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Promotion failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => promoteMutation.mutate()}
+      disabled={promoteMutation.isPending}
+      aria-label="Promote book"
+      className="text-orange-600 hover:text-orange-700"
+    >
+      {promoteMutation.isPending ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Megaphone className="h-4 w-4" />
+      )}
+    </Button>
+  );
+}
+
+interface EarningsSummary {
+  totalGrossCents: number;
+  totalCommissionCents: number;
+  pendingCents: number;
+  paidCents: number;
+}
+
+interface EarningsHistoryItem {
+  id: string;
+  date: string;
+  bookTitle: string;
+  type: string;
+  grossCents: number;
+  commissionCents: number;
+  status: string;
+}
+
+interface EarningsHistoryResponse {
+  items: EarningsHistoryItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+function EarningsView() {
+  const { toast } = useToast();
+  const [page, setPage] = useState(1);
+
+  const { data: summary, isLoading: summaryLoading } = useQuery<EarningsSummary>({
+    queryKey: ["/api/author/earnings"],
+  });
+
+  const { data: history, isLoading: historyLoading } = useQuery<EarningsHistoryResponse>({
+    queryKey: ["/api/author/earnings/history", page],
+  });
+
+  const payoutMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/author/earnings/request-payout");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Payout requested successfully!" });
+      queryClient.invalidateQueries({ queryKey: ["/api/author/earnings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/author/earnings/history"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Payout request failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const formatDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+  if (summaryLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
+
+  const totalGross = summary?.totalGrossCents || 0;
+  const totalCommission = summary?.totalCommissionCents || 0;
+  const pending = summary?.pendingCents || 0;
+  const paid = summary?.paidCents || 0;
+
+  const statusColors: Record<string, string> = {
+    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    paid: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    processing: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                <DollarSign className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{formatDollars(totalGross - totalCommission)}</p>
+                <p className="text-xs text-muted-foreground">Total Earned</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{formatDollars(pending)}</p>
+                <p className="text-xs text-muted-foreground">Pending</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                <CheckCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{formatDollars(paid)}</p>
+                <p className="text-xs text-muted-foreground">Paid Out</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{formatDollars(totalCommission)}</p>
+                <p className="text-xs text-muted-foreground">Platform Fee 30%</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          onClick={() => payoutMutation.mutate()}
+          disabled={payoutMutation.isPending || pending <= 0}
+        >
+          {payoutMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <DollarSign className="h-4 w-4 mr-2" />
+          )}
+          Request Payout
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Earnings History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {historyLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : !history?.items?.length ? (
+            <div className="text-center py-8">
+              <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No earnings yet. Start publishing to earn revenue!</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-2 font-medium text-muted-foreground">Date</th>
+                      <th className="text-left py-2 px-2 font-medium text-muted-foreground">Book</th>
+                      <th className="text-left py-2 px-2 font-medium text-muted-foreground">Type</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Gross</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Commission</th>
+                      <th className="text-left py-2 px-2 font-medium text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.items.map((item) => (
+                      <tr key={item.id} className="border-b last:border-0">
+                        <td className="py-2 px-2">{new Date(item.date).toLocaleDateString()}</td>
+                        <td className="py-2 px-2 truncate max-w-[200px]">{item.bookTitle}</td>
+                        <td className="py-2 px-2 capitalize">{item.type}</td>
+                        <td className="py-2 px-2 text-right">{formatDollars(item.grossCents)}</td>
+                        <td className="py-2 px-2 text-right">{formatDollars(item.commissionCents)}</td>
+                        <td className="py-2 px-2">
+                          <Badge className={statusColors[item.status] || ""}>{item.status}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {history.total > history.pageSize && (
+                <div className="flex justify-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground flex items-center px-2">
+                    Page {page} of {Math.ceil(history.total / history.pageSize)}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={page >= Math.ceil(history.total / history.pageSize)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

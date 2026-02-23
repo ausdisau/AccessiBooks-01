@@ -59,6 +59,8 @@ const AdvertiserDashboard = lazy(() => import('@/components/advertiser-dashboard
 const BillingDashboard = lazy(() => import('@/components/billing-dashboard').then(m => ({ default: m.BillingDashboard })));
 const UsageDashboard = lazy(() => import('@/components/usage-dashboard').then(m => ({ default: m.UsageDashboard })));
 const OfflineDownloads = lazy(() => import('@/components/offline-downloads').then(m => ({ default: m.OfflineDownloads })));
+const BattlePassComponent = lazy(() => import('@/components/battle-pass').then(m => ({ default: m.BattlePassComponent })));
+const EnterprisePage = lazy(() => import('@/pages/enterprise'));
 
 function LoadingSpinner() {
   return (
@@ -1323,6 +1325,7 @@ function MainApp() {
           {currentView === "stats" && (
             <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
               <GamificationDashboard />
+              <BattlePassComponent />
               <YearInReview />
               <ReferralSection />
             </div>

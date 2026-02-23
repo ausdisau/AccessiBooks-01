@@ -3,7 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, BookOpen, ExternalLink, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Search, BookOpen, ExternalLink, FileText, Lock, Crown } from "lucide-react";
+import { useSubscription } from "@/hooks/use-subscription";
+import { apiRequest } from "@/lib/queryClient";
 
 interface Magazine {
   id: string;
@@ -89,7 +92,7 @@ const MAGAZINE_CATALOG: Magazine[] = [
     issueInfo: "Daily • Open Access",
     readUrl: "https://arxiv.org/",
     format: "PDF",
-    free: true,
+    free: false,
   },
   {
     id: "mit-tr-1",
@@ -101,7 +104,7 @@ const MAGAZINE_CATALOG: Magazine[] = [
     issueInfo: "Bi-monthly",
     readUrl: "https://www.technologyreview.com/",
     format: "Web",
-    free: true,
+    free: false,
   },
   {
     id: "freecodecamp-1",
@@ -113,7 +116,7 @@ const MAGAZINE_CATALOG: Magazine[] = [
     issueInfo: "Daily • Online",
     readUrl: "https://www.freecodecamp.org/news/",
     format: "Web",
-    free: true,
+    free: false,
   },
   {
     id: "spectrum-1",
@@ -125,7 +128,7 @@ const MAGAZINE_CATALOG: Magazine[] = [
     issueInfo: "Monthly",
     readUrl: "https://spectrum.ieee.org/",
     format: "Web",
-    free: true,
+    free: false,
   },
   {
     id: "nature-1",
@@ -137,7 +140,7 @@ const MAGAZINE_CATALOG: Magazine[] = [
     issueInfo: "Daily Newsletter",
     readUrl: "https://www.nature.com/nature/articles",
     format: "Web",
-    free: true,
+    free: false,
   },
   {
     id: "quanta-1",
@@ -149,7 +152,7 @@ const MAGAZINE_CATALOG: Magazine[] = [
     issueInfo: "Weekly • Online",
     readUrl: "https://www.quantamagazine.org/",
     format: "Web",
-    free: true,
+    free: false,
   },
   {
     id: "infoq-1",
@@ -161,24 +164,127 @@ const MAGAZINE_CATALOG: Magazine[] = [
     issueInfo: "eMag Quarterly",
     readUrl: "https://www.infoq.com/minibooks/",
     format: "PDF/ePub",
-    free: true,
+    free: false,
+  },
+  {
+    id: "oreilly-radar",
+    title: "O'Reilly Radar",
+    publisher: "O'Reilly Media",
+    coverColor: "from-teal-600 to-emerald-800",
+    category: "Technology",
+    description: "Emerging tech trends and insights from industry leaders. Deep analysis of AI, cloud computing, data science, and software engineering.",
+    issueInfo: "Weekly • Online",
+    readUrl: "https://www.oreilly.com/radar/",
+    format: "Web",
+    free: false,
+  },
+  {
+    id: "acm-queue",
+    title: "ACM Queue",
+    publisher: "ACM",
+    coverColor: "from-indigo-600 to-blue-900",
+    category: "Programming",
+    description: "Practitioner-driven articles on the problems, solutions, and technologies of large-scale distributed systems.",
+    issueInfo: "Bi-monthly",
+    readUrl: "https://queue.acm.org/",
+    format: "Web",
+    free: false,
+  },
+  {
+    id: "new-scientist",
+    title: "New Scientist",
+    publisher: "New Scientist Ltd",
+    coverColor: "from-rose-600 to-red-900",
+    category: "Science",
+    description: "Breaking science and technology news. Expert analysis of the latest discoveries, innovations, and breakthroughs shaping our world.",
+    issueInfo: "Weekly",
+    readUrl: "https://www.newscientist.com/",
+    format: "Web",
+    free: false,
+  },
+  {
+    id: "ieee-software",
+    title: "IEEE Software",
+    publisher: "IEEE Computer Society",
+    coverColor: "from-cyan-600 to-blue-800",
+    category: "Engineering",
+    description: "Covers the full spectrum of software engineering topics, from design and architecture to testing and maintenance.",
+    issueInfo: "Bi-monthly",
+    readUrl: "https://www.computer.org/csdl/magazine/so",
+    format: "PDF",
+    free: false,
+  },
+  {
+    id: "distill-pub",
+    title: "Distill",
+    publisher: "Distill Pub",
+    coverColor: "from-yellow-500 to-amber-700",
+    category: "Science",
+    description: "Machine learning research presented with clear, dynamic interactive visualizations. Making AI research accessible and understandable.",
+    issueInfo: "Ongoing • Online",
+    readUrl: "https://distill.pub/",
+    format: "Web",
+    free: false,
+  },
+  {
+    id: "pragpub",
+    title: "PragPub Magazine",
+    publisher: "Pragmatic Programmers",
+    coverColor: "from-sky-500 to-indigo-700",
+    category: "Programming",
+    description: "Articles on software development best practices, new languages, tools, and techniques for the working programmer.",
+    issueInfo: "Monthly",
+    readUrl: "https://pragprog.com/",
+    format: "PDF/ePub",
+    free: false,
   },
 ];
 
+const FREE_MAGAZINE_LIMIT = 5;
+
 const CATEGORIES = ["All", "Technology", "Web Design", "Programming", "Science", "Engineering"];
 
-function MagazineCard({ magazine }: { magazine: Magazine }) {
+function MagazineCard({
+  magazine,
+  isLocked,
+  onLockedClick,
+  onRead,
+}: {
+  magazine: Magazine;
+  isLocked: boolean;
+  onLockedClick: () => void;
+  onRead: (magazineId: string) => void;
+}) {
+  const handleReadClick = () => {
+    if (isLocked) {
+      onLockedClick();
+    } else {
+      onRead(magazine.id);
+      window.open(magazine.readUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
   return (
-    <Card className="group hover:shadow-lg transition-all duration-200 border-rose-200/30 hover:border-rose-400/50 overflow-hidden">
-      <div className={`h-40 bg-gradient-to-br ${magazine.coverColor} p-4 flex flex-col justify-between`}>
+    <Card className={`group hover:shadow-lg transition-all duration-200 overflow-hidden ${isLocked ? "border-gray-300/50 opacity-90" : "border-rose-200/30 hover:border-rose-400/50"}`}>
+      <div className={`h-40 bg-gradient-to-br ${magazine.coverColor} p-4 flex flex-col justify-between relative`}>
+        {isLocked && (
+          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+            <Lock className="h-8 w-8 text-white/80" />
+          </div>
+        )}
         <div>
           <h3 className="font-bold text-white text-lg leading-tight line-clamp-2">{magazine.title}</h3>
           <p className="text-white/80 text-xs mt-1">{magazine.publisher}</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge className="bg-white/20 text-white border-0 text-[10px]">{magazine.category}</Badge>
-          {magazine.free && (
+          {magazine.free ? (
             <Badge className="bg-green-400/30 text-green-100 border-0 text-[10px]">Free</Badge>
+          ) : (
+            <Badge className="bg-amber-400/30 text-amber-100 border-0 text-[10px] flex items-center gap-1">
+              <Crown className="h-2.5 w-2.5" />
+              Premium
+            </Badge>
           )}
         </div>
       </div>
@@ -189,11 +295,15 @@ function MagazineCard({ magazine }: { magazine: Magazine }) {
             <FileText className="h-3 w-3" />
             <span>{magazine.issueInfo}</span>
           </div>
-          <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
-            <a href={magazine.readUrl} target="_blank" rel="noopener noreferrer">
+          {isLocked ? (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleReadClick}>
+              <Lock className="h-3 w-3 mr-1" /> Unlock
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleReadClick}>
               Read <ExternalLink className="h-3 w-3 ml-1" />
-            </a>
-          </Button>
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -203,8 +313,20 @@ function MagazineCard({ magazine }: { magazine: Magazine }) {
 export function MagazineSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const { isPaid, upgradeToTier, isUpgrading } = useSubscription();
 
-  const filteredMagazines = MAGAZINE_CATALOG.filter((mag) => {
+  const visibleMagazines = isPaid
+    ? MAGAZINE_CATALOG
+    : MAGAZINE_CATALOG.slice(0, FREE_MAGAZINE_LIMIT);
+
+  const lockedMagazines = isPaid
+    ? []
+    : MAGAZINE_CATALOG.slice(FREE_MAGAZINE_LIMIT);
+
+  const allDisplayed = [...visibleMagazines, ...lockedMagazines];
+
+  const filteredMagazines = allDisplayed.filter((mag) => {
     const matchesSearch =
       mag.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       mag.publisher.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -212,6 +334,12 @@ export function MagazineSection() {
     const matchesCategory = selectedCategory === "All" || mag.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const trackMagazineRead = async (magazineId: string) => {
+    try {
+      await apiRequest("POST", "/api/magazines/track-read", { magazineId });
+    } catch {}
+  };
 
   return (
     <section className="w-full" aria-labelledby="magazine-section-heading">
@@ -221,7 +349,14 @@ export function MagazineSection() {
         </div>
         <div>
           <h2 id="magazine-section-heading" className="text-2xl font-bold">Digital Magazines</h2>
-          <p className="text-sm text-muted-foreground">Curated tech, science, and design publications</p>
+          <p className="text-sm text-muted-foreground">
+            Curated tech, science, and design publications
+            {!isPaid && (
+              <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">
+                • {MAGAZINE_CATALOG.length - FREE_MAGAZINE_LIMIT} more with Plus/Premium
+              </span>
+            )}
+          </p>
         </div>
       </div>
 
@@ -263,11 +398,77 @@ export function MagazineSection() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredMagazines.map((mag) => (
-            <MagazineCard key={mag.id} magazine={mag} />
-          ))}
+          {filteredMagazines.map((mag) => {
+            const isLocked = !isPaid && lockedMagazines.some((l) => l.id === mag.id);
+            return (
+              <MagazineCard
+                key={mag.id}
+                magazine={mag}
+                isLocked={isLocked}
+                onLockedClick={() => setShowUpgradeDialog(true)}
+                onRead={trackMagazineRead}
+              />
+            );
+          })}
         </div>
       )}
+
+      <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crown className="h-5 w-5 text-amber-500" />
+              Unlock All Magazines
+            </DialogTitle>
+            <DialogDescription>
+              Upgrade to Plus or Premium to access all {MAGAZINE_CATALOG.length} curated magazines, including exclusive publications in science, engineering, and programming.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border">
+              <div>
+                <p className="font-medium">Plus</p>
+                <p className="text-sm text-muted-foreground">All magazines + ad-free</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  upgradeToTier("plus", "monthly");
+                  setShowUpgradeDialog(false);
+                }}
+                disabled={isUpgrading}
+              >
+                $4.99/mo
+              </Button>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+              <div>
+                <p className="font-medium flex items-center gap-1">
+                  <Crown className="h-4 w-4 text-amber-500" /> Premium
+                </p>
+                <p className="text-sm text-muted-foreground">All magazines + offline + TTS</p>
+              </div>
+              <Button
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700"
+                onClick={() => {
+                  upgradeToTier("premium", "monthly");
+                  setShowUpgradeDialog(false);
+                }}
+                disabled={isUpgrading}
+              >
+                $9.99/mo
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowUpgradeDialog(false)}>
+              Maybe Later
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

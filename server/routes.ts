@@ -3,13 +3,14 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
 import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
 import { registerSelfPublishingRoutes } from "./selfPublishing";
+import { registerRevenueRoutes, seedVoicePacks } from "./revenueRoutes";
 import { registerPodcastRoutes } from "./podcastIngestion";
 import { registerPushNotificationRoutes } from "./pushNotifications";
 import { registerAdMediationRoutes } from "./adMediation";
@@ -131,6 +132,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Centralized billing platform (transactions, invoices, billing portal)
   registerBillingRoutes(app);
+
+  // Revenue expansion routes (voice packs, annotations, gifts, enterprise, sponsorships)
+  registerRevenueRoutes(app);
+  seedVoicePacks().catch(err => console.warn("[Revenue] Failed to seed voice packs:", err.message));
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
@@ -3105,6 +3110,313 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // === BATTLE PASS ROUTES ===
+
+  async function seedDefaultBattlePass() {
+    try {
+      const [existing] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      if (existing) return;
+
+      const now = new Date();
+      const endDate = new Date(now);
+      endDate.setMonth(endDate.getMonth() + 3);
+
+      const [pass] = await db.insert(battlePasses).values({
+        seasonName: "Spring Reading Challenge",
+        description: "Complete milestones to earn exclusive badges, streak freezes, XP multipliers, and more! Season runs for 3 months.",
+        priceCents: 299,
+        startDate: now,
+        endDate: endDate,
+        isActive: true,
+      }).returning();
+
+      const milestones = [
+        { tier: 1, xpRequired: 100, rewardType: "badge", rewardValue: "🌱", description: "Sprout Badge - You're just getting started!" },
+        { tier: 2, xpRequired: 250, rewardType: "streak_freeze", rewardValue: "1", description: "1 Streak Freeze - Protect your streak" },
+        { tier: 3, xpRequired: 500, rewardType: "badge", rewardValue: "📖", description: "Reader Badge - Dedicated listener" },
+        { tier: 4, xpRequired: 1000, rewardType: "xp_multiplier", rewardValue: "1.5x for 24h", description: "1.5x XP Boost for 24 hours" },
+        { tier: 5, xpRequired: 2000, rewardType: "streak_freeze", rewardValue: "2", description: "2 Streak Freezes - Extra protection" },
+        { tier: 6, xpRequired: 3500, rewardType: "badge", rewardValue: "⭐", description: "Star Badge - Rising star reader" },
+        { tier: 7, xpRequired: 5000, rewardType: "premium_trial", rewardValue: "3", description: "3-Day Premium Trial" },
+        { tier: 8, xpRequired: 7500, rewardType: "discount", rewardValue: "20", description: "20% off any title purchase" },
+        { tier: 9, xpRequired: 10000, rewardType: "badge", rewardValue: "🏆", description: "Champion Badge - Season champion" },
+        { tier: 10, xpRequired: 15000, rewardType: "premium_trial", rewardValue: "7", description: "7-Day Premium Trial + Exclusive 👑 Badge" },
+      ];
+
+      for (const m of milestones) {
+        await db.insert(battlePassMilestones).values({
+          battlePassId: pass.id,
+          tier: m.tier,
+          xpRequired: m.xpRequired,
+          rewardType: m.rewardType,
+          rewardValue: m.rewardValue,
+          description: m.description,
+        });
+      }
+
+      console.log(`[BattlePass] Seeded default season: ${pass.seasonName} with ${milestones.length} milestones`);
+    } catch (error) {
+      console.error("[BattlePass] Error seeding default battle pass:", error);
+    }
+  }
+
+  seedDefaultBattlePass();
+
+  // GET /api/battle-pass/current - Active season + user progress if purchased
+  app.get("/api/battle-pass/current", async (req: any, res) => {
+    try {
+      const [activeSeason] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      if (!activeSeason) {
+        return res.json({ season: null, milestones: [], purchase: null });
+      }
+
+      const milestones = await db.select().from(battlePassMilestones)
+        .where(eq(battlePassMilestones.battlePassId, activeSeason.id))
+        .orderBy(battlePassMilestones.tier);
+
+      let purchase = null;
+      if (req.isAuthenticated?.() && req.user?.id) {
+        const [userPurchase] = await db.select().from(battlePassPurchases)
+          .where(and(
+            eq(battlePassPurchases.userId, req.user.id),
+            eq(battlePassPurchases.battlePassId, activeSeason.id)
+          ))
+          .limit(1);
+
+        if (userPurchase) {
+          const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, req.user.id)).limit(1);
+          const currentXp = xpRecord?.totalXp ?? 0;
+
+          let currentTier = 0;
+          for (const m of milestones) {
+            if (currentXp >= m.xpRequired) {
+              currentTier = m.tier;
+            }
+          }
+
+          if (currentTier !== userPurchase.currentTier) {
+            await db.update(battlePassPurchases)
+              .set({ currentTier, xpEarned: currentXp })
+              .where(eq(battlePassPurchases.id, userPurchase.id));
+          }
+
+          purchase = { ...userPurchase, currentTier, xpEarned: currentXp };
+        }
+      }
+
+      res.json({ season: activeSeason, milestones, purchase });
+    } catch (error) {
+      console.error("Error fetching battle pass:", error);
+      res.status(500).json({ message: "Failed to fetch battle pass" });
+    }
+  });
+
+  // POST /api/battle-pass/purchase - Buy via Stripe
+  app.post("/api/battle-pass/purchase", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const [activeSeason] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      if (!activeSeason) {
+        return res.status(404).json({ message: "No active battle pass season" });
+      }
+
+      const [existingPurchase] = await db.select().from(battlePassPurchases)
+        .where(and(
+          eq(battlePassPurchases.userId, userId),
+          eq(battlePassPurchases.battlePassId, activeSeason.id)
+        ))
+        .limit(1);
+
+      if (existingPurchase) {
+        return res.status(400).json({ message: "Battle pass already purchased for this season" });
+      }
+
+      if (stripe) {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [{
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `Battle Pass: ${activeSeason.seasonName}`,
+                description: activeSeason.description || "Seasonal battle pass with exclusive rewards",
+              },
+              unit_amount: activeSeason.priceCents,
+            },
+            quantity: 1,
+          }],
+          mode: "payment",
+          success_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/?battle_pass=success`,
+          cancel_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/?battle_pass=cancelled`,
+          metadata: {
+            type: "battle_pass",
+            userId,
+            battlePassId: activeSeason.id,
+          },
+        });
+
+        return res.json({ checkoutUrl: session.url, sessionId: session.id });
+      }
+
+      const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
+      const currentXp = xpRecord?.totalXp ?? 0;
+
+      const [purchase] = await db.insert(battlePassPurchases).values({
+        userId,
+        battlePassId: activeSeason.id,
+        amountCents: activeSeason.priceCents,
+        currentTier: 0,
+        xpEarned: currentXp,
+        claimedMilestones: "[]",
+      }).returning();
+
+      res.json({ purchase, message: "Battle pass purchased successfully" });
+    } catch (error) {
+      console.error("Error purchasing battle pass:", error);
+      res.status(500).json({ message: "Failed to purchase battle pass" });
+    }
+  });
+
+  // POST /api/battle-pass/claim/:milestone - Claim reward at reached tier
+  app.post("/api/battle-pass/claim/:milestone", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const milestoneId = req.params.milestone;
+
+      const [activeSeason] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      if (!activeSeason) {
+        return res.status(404).json({ message: "No active battle pass season" });
+      }
+
+      const [purchase] = await db.select().from(battlePassPurchases)
+        .where(and(
+          eq(battlePassPurchases.userId, userId),
+          eq(battlePassPurchases.battlePassId, activeSeason.id)
+        ))
+        .limit(1);
+
+      if (!purchase) {
+        return res.status(403).json({ message: "Battle pass not purchased" });
+      }
+
+      const [milestone] = await db.select().from(battlePassMilestones)
+        .where(eq(battlePassMilestones.id, milestoneId))
+        .limit(1);
+
+      if (!milestone) {
+        return res.status(404).json({ message: "Milestone not found" });
+      }
+
+      const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
+      const currentXp = xpRecord?.totalXp ?? 0;
+
+      if (currentXp < milestone.xpRequired) {
+        return res.status(400).json({ message: "Not enough XP to claim this milestone" });
+      }
+
+      let claimed: string[] = [];
+      try { claimed = JSON.parse(purchase.claimedMilestones); } catch { claimed = []; }
+      if (claimed.includes(milestoneId)) {
+        return res.status(400).json({ message: "Milestone already claimed" });
+      }
+
+      claimed.push(milestoneId);
+      await db.update(battlePassPurchases)
+        .set({ claimedMilestones: JSON.stringify(claimed) })
+        .where(eq(battlePassPurchases.id, purchase.id));
+
+      let rewardDetails: any = { type: milestone.rewardType, value: milestone.rewardValue, description: milestone.description };
+
+      if (milestone.rewardType === "streak_freeze") {
+        const freezeCount = parseInt(milestone.rewardValue || "1");
+        const [existingFreeze] = await db.select().from(streakFreezes).where(eq(streakFreezes.userId, userId)).limit(1);
+        if (existingFreeze) {
+          await db.update(streakFreezes)
+            .set({ totalFreezes: sql`${streakFreezes.totalFreezes} + ${freezeCount}`, lastEarnedAt: new Date() })
+            .where(eq(streakFreezes.id, existingFreeze.id));
+        } else {
+          await db.insert(streakFreezes).values({ userId, totalFreezes: freezeCount, usedFreezes: 0, lastEarnedAt: new Date() });
+        }
+      } else if (milestone.rewardType === "premium_trial") {
+        const days = parseInt(milestone.rewardValue || "3");
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + days);
+        const [existingPrefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).limit(1);
+        if (existingPrefs) {
+          await db.update(userPreferences).set({ premiumTrialEndDate: trialEnd }).where(eq(userPreferences.userId, userId));
+        } else {
+          await db.insert(userPreferences).values({ userId, premiumTrialEndDate: trialEnd, favoriteGenres: [], onboardingCompleted: false, welcomeBonusGranted: false });
+        }
+      } else if (milestone.rewardType === "xp_multiplier") {
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 24);
+        await db.insert(expiringRewards).values({
+          userId,
+          rewardType: "xp_multiplier",
+          rewardValue: 150,
+          description: milestone.description || "1.5x XP Boost from Battle Pass",
+          expiresAt,
+          claimed: false,
+        });
+      } else if (milestone.rewardType === "discount") {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+        await db.insert(expiringRewards).values({
+          userId,
+          rewardType: "discount",
+          rewardValue: parseInt(milestone.rewardValue || "20"),
+          description: milestone.description || "Discount from Battle Pass",
+          expiresAt,
+          claimed: false,
+        });
+      }
+
+      res.json({ success: true, reward: rewardDetails });
+    } catch (error) {
+      console.error("Error claiming milestone:", error);
+      res.status(500).json({ message: "Failed to claim milestone" });
+    }
+  });
+
+  // GET /api/battle-pass/leaderboard - Top participants by XP
+  app.get("/api/battle-pass/leaderboard", async (_req, res) => {
+    try {
+      const [activeSeason] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      if (!activeSeason) {
+        return res.json([]);
+      }
+
+      const participants = await db
+        .select({
+          userId: battlePassPurchases.userId,
+          xpEarned: battlePassPurchases.xpEarned,
+          currentTier: battlePassPurchases.currentTier,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          profileImageUrl: users.profileImageUrl,
+        })
+        .from(battlePassPurchases)
+        .innerJoin(users, eq(users.id, battlePassPurchases.userId))
+        .where(eq(battlePassPurchases.battlePassId, activeSeason.id))
+        .orderBy(desc(battlePassPurchases.xpEarned))
+        .limit(20);
+
+      const leaderboard = participants.map((p, i) => ({
+        ...p,
+        rank: i + 1,
+      }));
+
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Error fetching battle pass leaderboard:", error);
+      res.status(500).json({ message: "Failed to fetch leaderboard" });
+    }
+  });
+
   // === USER ACQUISITION ROUTES ===
 
   // GET /api/platform/stats - Public platform statistics
@@ -3712,6 +4024,279 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(metrics);
     } catch (error) {
       res.status(500).json({ message: "Failed to get seeder metrics" });
+    }
+  });
+
+  app.post("/api/magazines/track-read", async (req: any, res) => {
+    try {
+      const { magazineId } = req.body;
+      if (!magazineId || typeof magazineId !== "string") {
+        return res.status(400).json({ message: "magazineId is required" });
+      }
+
+      const userId = req.isAuthenticated?.() ? (req.user?.id || req.user?.claims?.sub || null) : null;
+
+      await db.insert(contentAnalytics).values({
+        bookId: magazineId,
+        authorUserId: "system",
+        eventType: "magazine_read",
+        listenerId: userId,
+        duration: 0,
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error tracking magazine read:", error);
+      res.status(500).json({ message: "Failed to track magazine read" });
+    }
+  });
+
+  // === Gift Cards & Gifting System ===
+
+  function generateGiftCode(): string {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 16; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  const GIFT_SUBSCRIPTION_OPTIONS: Record<string, { tier: string; months: number; priceCents: number; label: string }> = {
+    "plus-1": { tier: "plus", months: 1, priceCents: 499, label: "1 Month Plus" },
+    "plus-3": { tier: "plus", months: 3, priceCents: 1397, label: "3 Months Plus" },
+    "plus-6": { tier: "plus", months: 6, priceCents: 2694, label: "6 Months Plus" },
+    "plus-12": { tier: "plus", months: 12, priceCents: 4999, label: "12 Months Plus" },
+    "premium-1": { tier: "premium", months: 1, priceCents: 999, label: "1 Month Premium" },
+    "premium-3": { tier: "premium", months: 3, priceCents: 2797, label: "3 Months Premium" },
+    "premium-6": { tier: "premium", months: 6, priceCents: 5394, label: "6 Months Premium" },
+    "premium-12": { tier: "premium", months: 12, priceCents: 9999, label: "12 Months Premium" },
+  };
+
+  const GIFT_CREDIT_OPTIONS: Record<number, { priceCents: number; label: string }> = {
+    500: { priceCents: 500, label: "$5 Credit" },
+    1000: { priceCents: 1000, label: "$10 Credit" },
+    2500: { priceCents: 2500, label: "$25 Credit" },
+    5000: { priceCents: 5000, label: "$50 Credit" },
+  };
+
+  app.post("/api/gifts/purchase", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { type, optionKey, toEmail, message: giftMessage } = req.body;
+
+      if (!type || !["subscription", "credits"].includes(type)) {
+        return res.status(400).json({ message: "Invalid gift type" });
+      }
+
+      let amountCents = 0;
+      let tierGift: string | null = null;
+      let monthsGift: number | null = null;
+      let description = "";
+
+      if (type === "subscription") {
+        const option = GIFT_SUBSCRIPTION_OPTIONS[optionKey];
+        if (!option) return res.status(400).json({ message: "Invalid subscription option" });
+        amountCents = option.priceCents;
+        tierGift = option.tier;
+        monthsGift = option.months;
+        description = `Gift: ${option.label}`;
+      } else {
+        const creditAmount = parseInt(optionKey);
+        const option = GIFT_CREDIT_OPTIONS[creditAmount];
+        if (!option) return res.status(400).json({ message: "Invalid credit amount" });
+        amountCents = option.priceCents;
+        description = `Gift: ${option.label}`;
+      }
+
+      let stripeSessionUrl: string | null = null;
+      const code = generateGiftCode();
+
+      if (stripe) {
+        try {
+          const session = await stripe.checkout.sessions.create({
+            mode: "payment",
+            line_items: [{
+              price_data: {
+                currency: "usd",
+                product_data: { name: description },
+                unit_amount: amountCents,
+              },
+              quantity: 1,
+            }],
+            metadata: { giftCode: code, userId, type, optionKey },
+            success_url: `${req.headers.origin || "http://localhost:5000"}/billing?gift=success&code=${code}`,
+            cancel_url: `${req.headers.origin || "http://localhost:5000"}/billing?gift=cancelled`,
+          });
+          stripeSessionUrl = session.url;
+        } catch (stripeErr) {
+          console.error("[Gifts] Stripe error:", stripeErr);
+        }
+      }
+
+      const expiresAt = new Date();
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+      const [giftCard] = await db.insert(giftCards).values({
+        code,
+        fromUserId: userId,
+        toEmail: toEmail || null,
+        amountCents,
+        balanceRemaining: amountCents,
+        type,
+        tierGift,
+        monthsGift,
+        message: giftMessage || null,
+        status: "active",
+        expiresAt,
+        redeemedBy: null,
+      }).returning();
+
+      try {
+        await recordTransaction({
+          userId,
+          provider: "stripe",
+          type: "gift_card_purchase",
+          status: "completed",
+          amountCents,
+          description,
+          metadata: { giftCardId: giftCard.id, code },
+        });
+      } catch {}
+
+      res.json({
+        giftCard,
+        code,
+        checkoutUrl: stripeSessionUrl,
+      });
+    } catch (error) {
+      console.error("[Gifts] Purchase error:", error);
+      res.status(500).json({ message: "Failed to purchase gift card" });
+    }
+  });
+
+  app.post("/api/gifts/redeem", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { code } = req.body;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ message: "Gift code is required" });
+      }
+
+      const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+      const [card] = await db.select().from(giftCards)
+        .where(eq(giftCards.code, normalizedCode))
+        .limit(1);
+
+      if (!card) {
+        return res.status(404).json({ message: "Invalid gift code" });
+      }
+
+      if (card.status === "redeemed") {
+        return res.status(400).json({ message: "This gift card has already been redeemed" });
+      }
+
+      if (card.status === "expired" || (card.expiresAt && new Date(card.expiresAt) < new Date())) {
+        return res.status(400).json({ message: "This gift card has expired" });
+      }
+
+      if (card.fromUserId === userId) {
+        return res.status(400).json({ message: "You cannot redeem your own gift card" });
+      }
+
+      if (card.type === "subscription" && card.tierGift && card.monthsGift) {
+        const endDate = new Date();
+        endDate.setMonth(endDate.getMonth() + card.monthsGift);
+
+        await db.update(users)
+          .set({
+            subscriptionTier: card.tierGift,
+            subscriptionEndDate: endDate,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, userId));
+      } else if (card.type === "credits") {
+        await db.update(users)
+          .set({
+            referralCredits: sql`${users.referralCredits} + ${card.balanceRemaining}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, userId));
+      }
+
+      await db.update(giftCards)
+        .set({
+          status: "redeemed",
+          redeemedBy: userId,
+          redeemedAt: new Date(),
+          balanceRemaining: 0,
+        })
+        .where(eq(giftCards.id, card.id));
+
+      try {
+        await recordTransaction({
+          userId,
+          provider: "gift_card",
+          type: "gift_card_redemption",
+          status: "completed",
+          amountCents: card.amountCents,
+          description: card.type === "subscription"
+            ? `Redeemed: ${card.monthsGift} month(s) ${card.tierGift}`
+            : `Redeemed: $${(card.amountCents / 100).toFixed(2)} credit`,
+          metadata: { giftCardId: card.id, code: card.code },
+        });
+      } catch {}
+
+      res.json({
+        success: true,
+        type: card.type,
+        tier: card.tierGift,
+        months: card.monthsGift,
+        amountCents: card.amountCents,
+        message: card.type === "subscription"
+          ? `Your account has been upgraded to ${card.tierGift} for ${card.monthsGift} month(s)!`
+          : `$${(card.amountCents / 100).toFixed(2)} in credits has been added to your account!`,
+      });
+    } catch (error) {
+      console.error("[Gifts] Redeem error:", error);
+      res.status(500).json({ message: "Failed to redeem gift card" });
+    }
+  });
+
+  app.get("/api/gifts/sent", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const sent = await db.select().from(giftCards)
+        .where(eq(giftCards.fromUserId, userId))
+        .orderBy(desc(giftCards.createdAt));
+
+      res.json(sent);
+    } catch (error) {
+      console.error("[Gifts] Sent error:", error);
+      res.status(500).json({ message: "Failed to fetch sent gifts" });
+    }
+  });
+
+  app.get("/api/gifts/received", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const received = await db.select().from(giftCards)
+        .where(eq(giftCards.redeemedBy, userId))
+        .orderBy(desc(giftCards.redeemedAt));
+
+      res.json(received);
+    } catch (error) {
+      console.error("[Gifts] Received error:", error);
+      res.status(500).json({ message: "Failed to fetch received gifts" });
     }
   });
 
