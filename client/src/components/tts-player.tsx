@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useAudioContext } from "@/contexts/AudioContext";
 
 type Voice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 
@@ -70,6 +71,7 @@ export function TTSPlayer({
   const currentTextRef = useRef<string>("");
   const animationFrameRef = useRef<number | null>(null);
   const { toast } = useToast();
+  const { audioRef: mainAudioRef } = useAudioContext();
 
   useEffect(() => {
     return () => {
@@ -129,6 +131,10 @@ export function TTSPlayer({
     setIsLoading(true);
     setProgress(0);
     setDuration(0);
+
+    if (mainAudioRef.current && !mainAudioRef.current.paused) {
+      mainAudioRef.current.pause();
+    }
 
     try {
       const response = await fetch("/api/tts/synthesize", {

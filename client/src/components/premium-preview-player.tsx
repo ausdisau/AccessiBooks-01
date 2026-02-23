@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Crown, Play, Pause, X } from "lucide-react";
+import { useAudioContext } from "@/contexts/AudioContext";
 
 const PREVIEW_DURATION = 30;
 const FADE_START = 25;
@@ -15,6 +16,7 @@ interface PremiumPreviewPlayerProps {
 }
 
 export function PremiumPreviewPlayer({ book, onUpgrade, onDismiss }: PremiumPreviewPlayerProps) {
+  const { audioRef: mainAudioRef } = useAudioContext();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -60,6 +62,10 @@ export function PremiumPreviewPlayer({ book, onUpgrade, onDismiss }: PremiumPrev
   }, []);
 
   useEffect(() => {
+    if (mainAudioRef.current && !mainAudioRef.current.paused) {
+      mainAudioRef.current.pause();
+    }
+
     const audio = new Audio(audioSrc);
     audio.volume = 1;
     audioRef.current = audio;

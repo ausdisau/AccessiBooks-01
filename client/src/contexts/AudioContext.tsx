@@ -31,6 +31,7 @@ interface AudioContextType {
   skip: (seconds: number) => void;
   seekTo: (time: number) => void;
   changeSpeed: (delta: number) => void;
+  setSpeed: (speed: number) => void;
   formatTime: (seconds: number) => string;
   playBook: (book: Book) => void;
   setSleepTimer: (minutes: number | null) => void;
@@ -325,6 +326,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setPlaybackRate(newRate);
   };
 
+  const setSpeed = (speed: number) => {
+    const clampedSpeed = Math.max(0.5, Math.min(3.0, speed));
+    setPlaybackRate(clampedSpeed);
+  };
+
   const formatTime = (seconds: number) => {
     if (isNaN(seconds)) return "0:00:00";
     
@@ -498,6 +504,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         skip,
         seekTo,
         changeSpeed,
+        setSpeed,
         formatTime,
         playBook,
         setSleepTimer,
