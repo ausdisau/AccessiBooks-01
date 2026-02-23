@@ -10,8 +10,12 @@ export const stripe = stripeSecretKey
   ? new Stripe(stripeSecretKey, { apiVersion: "2025-12-15.clover" })
   : null;
 
-export const PREMIUM_PRICE_MONTHLY = 999; // $9.99/month in cents
-export const PREMIUM_PRICE_YEARLY = 9999; // $99.99/year in cents
+import { TIER_PRICING } from "@shared/schema";
+
+export const PREMIUM_PRICE_MONTHLY = TIER_PRICING.premium.monthly;
+export const PREMIUM_PRICE_YEARLY = TIER_PRICING.premium.yearly;
+export const PLUS_PRICE_MONTHLY = TIER_PRICING.plus.monthly;
+export const PLUS_PRICE_YEARLY = TIER_PRICING.plus.yearly;
 
 export interface SubscriptionConfig {
   priceId?: string;
@@ -20,11 +24,20 @@ export interface SubscriptionConfig {
   interval: "month" | "year";
 }
 
-export const SUBSCRIPTION_CONFIG: SubscriptionConfig = {
-  productName: "AccessiBooks Premium",
-  amount: PREMIUM_PRICE_MONTHLY,
-  interval: "month",
+export const SUBSCRIPTION_CONFIGS: Record<string, SubscriptionConfig> = {
+  plus: {
+    productName: "AccessiBooks Plus",
+    amount: PLUS_PRICE_MONTHLY,
+    interval: "month",
+  },
+  premium: {
+    productName: "AccessiBooks Premium",
+    amount: PREMIUM_PRICE_MONTHLY,
+    interval: "month",
+  },
 };
+
+export const SUBSCRIPTION_CONFIG = SUBSCRIPTION_CONFIGS.premium;
 
 export const DONATION_AMOUNTS = [500, 1000, 2500, 5000]; // $5, $10, $25, $50 in cents
 

@@ -21,7 +21,7 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 ### Feature Specifications
 - **Core Player**: HTML5 audio player with variable speed, skip, progress tracking, bookmarking, sleep timer, and chapter navigation.
 - **Content Management**: Aggregation from multiple APIs, personalization features (e.g., "Continue Listening," recommendations), and multi-format support for audiobooks and ebooks with an integrated reader.
-- **Monetization**: Subscription tiers, DRM, ad integration with premium user exclusion, and Spotify-like controls for free users.
+- **Monetization**: 3-tier subscription model (Free/$0, Plus/$4.99/mo, Premium/$9.99/mo) with per-title micro-payments ($1.99-$2.99), DRM, ad integration with paid tier exclusion. Plus/Premium get 10%/20% off individual purchases. Database `purchases` table tracks owned titles.
 - **Community & Engagement**: User reviews, ratings, gamification (streaks, XP, achievements), push notifications, and a referral system.
 - **Content Creation**: A self-publishing portal for authors to upload and manage content, and a catalog seeder for bulk content import.
 - **Advertising**: A programmatic audio ad system with server-side mediation and a self-serve advertising platform for advertisers.
@@ -30,7 +30,7 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **AI Integration**: AI-generated book covers when original covers are unavailable. OpenAI TTS for ebook-to-audiobook conversion with 6 voice options and word-by-word highlighting.
 - **Podcasts**: RSS feed ingestion with search, curated popular podcasts, episode listing and playback. Backend at `/api/podcasts/feeds` and `/api/ingest`.
 - **Digital Magazines**: Curated catalog of 12 free tech/science/design publications with category filtering (Technology, Web Design, Programming, Science, Engineering).
-- **Content Model**: Ad-supported freemium - all content accessible to free users with ads. Premium removes ads, adds high-quality audio (320kbps), offline downloads, unlimited skips.
+- **Content Model**: Ad-supported freemium with 3 tiers. Free: ads + 128kbps + 6 skips/hr + 2 devices. Plus ($4.99/mo): ad-free + 192kbps + unlimited skips + 3 devices + 10 TTS pages/day. Premium ($9.99/mo): 320kbps + offline + 5 devices + unlimited TTS. Individual titles buyable for $1.99-$2.99.
 
 ## External Dependencies
 

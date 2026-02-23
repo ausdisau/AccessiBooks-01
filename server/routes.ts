@@ -27,7 +27,8 @@ import {
   generateCoverForBook,
   generateCoversForBooks
 } from "./coverGenerator";
-import { stripe, PREMIUM_PRICE_MONTHLY, SUBSCRIPTION_CONFIG, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature } from "./stripe";
+import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature } from "./stripe";
+import { TIER_PRICING, TITLE_PRICING, TIER_DISCOUNTS, TIER_FEATURES, type SubscriptionTier, purchases } from "@shared/schema";
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
@@ -911,19 +912,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
+      const tier = (user.subscriptionTier || "free") as SubscriptionTier;
+      const features = TIER_FEATURES[tier] || TIER_FEATURES.free;
+      
       res.json({
-        subscriptionTier: user.subscriptionTier || "free",
+        subscriptionTier: tier,
         subscriptionEndDate: user.subscriptionEndDate,
         stripeSubscriptionId: user.stripeSubscriptionId,
-        isPremium: user.subscriptionTier === "premium",
+        isPremium: tier === "premium",
+        isPlus: tier === "plus",
+        isPaid: tier === "plus" || tier === "premium",
+        features,
+        pricing: TIER_PRICING,
+        discountRate: TIER_DISCOUNTS[tier] || 0,
       });
     } catch (error) {
       console.error("Error fetching subscription status:", error);
       res.status(500).json({ message: "Failed to fetch subscription status" });
     }
   });
+
+  // GET /api/subscription/pricing - Get pricing info (no auth required)
+  app.get("/api/subscription/pricing", (_req: any, res) => {
+    res.json({
+      tiers: TIER_PRICING,
+      titlePricing: TITLE_PRICING,
+      discounts: TIER_DISCOUNTS,
+      features: TIER_FEATURES,
+    });
+  });
   
-  // POST /api/subscription/create-checkout - Create Stripe checkout session
+  // POST /api/subscription/create-checkout - Create Stripe checkout session for Plus or Premium
   app.post("/api/subscription/create-checkout", async (req: any, res) => {
     try {
       if (!stripe) {
@@ -940,24 +959,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+
+      const plan = (req.query.plan as string) || "monthly";
+      const tier = (req.query.tier as string) || "premium";
+      const validTiers = ["plus", "premium"];
+      if (!validTiers.includes(tier)) {
+        return res.status(400).json({ message: "Invalid tier. Choose 'plus' or 'premium'" });
+      }
       
-      // Get or create Stripe customer
+      const config = SUBSCRIPTION_CONFIGS[tier];
+      const isAnnual = plan === "annual";
+      const amount = isAnnual
+        ? (tier === "plus" ? PLUS_PRICE_YEARLY : PREMIUM_PRICE_YEARLY)
+        : (tier === "plus" ? PLUS_PRICE_MONTHLY : PREMIUM_PRICE_MONTHLY);
+      const interval: "month" | "year" = isAnnual ? "year" : "month";
+
+      const descriptions: Record<string, string> = {
+        plus: "Ad-free listening, unlimited skips, 192kbps audio, 3 devices",
+        premium: "Ad-free listening, 320kbps audio, offline downloads, 5 devices, unlimited TTS",
+      };
+      
       let customerId = user.stripeCustomerId;
-      
       if (!customerId) {
         const customer = await stripe.customers.create({
           email: user.email || undefined,
-          metadata: {
-            userId: user.id,
-          },
+          metadata: { userId: user.id },
         });
         customerId = customer.id;
-        
-        // Save customer ID to database
         await storage.updateUserSubscription(userId, { stripeCustomerId: customerId });
       }
       
-      // Create checkout session for subscription
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         mode: "subscription",
@@ -967,21 +998,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             price_data: {
               currency: "usd",
               product_data: {
-                name: SUBSCRIPTION_CONFIG.productName,
-                description: "Ad-free listening, unlimited bookmarks, exclusive content",
+                name: config.productName,
+                description: descriptions[tier] || "",
               },
-              unit_amount: PREMIUM_PRICE_MONTHLY,
-              recurring: {
-                interval: "month",
-              },
+              unit_amount: amount,
+              recurring: { interval },
             },
             quantity: 1,
           },
         ],
-        success_url: `${req.headers.origin || "http://localhost:5000"}?subscription=success`,
+        success_url: `${req.headers.origin || "http://localhost:5000"}?subscription=success&tier=${tier}`,
         cancel_url: `${req.headers.origin || "http://localhost:5000"}?subscription=cancelled`,
         metadata: {
           userId: user.id,
+          tier,
+          plan,
         },
       });
       
@@ -989,6 +1020,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating checkout session:", error);
       res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // POST /api/purchase/checkout - Create Stripe checkout for individual title purchase
+  app.post("/api/purchase/checkout", async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.status(503).json({ message: "Payment system not configured" });
+      }
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const userId = req.user.claims?.sub || req.user.id;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { bookId, bookTitle, contentType } = req.body;
+      if (!bookId || !bookTitle) {
+        return res.status(400).json({ message: "bookId and bookTitle are required" });
+      }
+
+      const existing = await storage.getUserPurchase(userId, bookId);
+      if (existing) {
+        return res.status(400).json({ message: "You already own this title" });
+      }
+
+      const pricing = TITLE_PRICING[contentType as keyof typeof TITLE_PRICING] || TITLE_PRICING.default;
+      const tier = (user.subscriptionTier || "free") as SubscriptionTier;
+      const discount = TIER_DISCOUNTS[tier] || 0;
+      const finalAmount = Math.round(pricing.base * (1 - discount));
+
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email || undefined,
+          metadata: { userId: user.id },
+        });
+        customerId = customer.id;
+        await storage.updateUserSubscription(userId, { stripeCustomerId: customerId });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: bookTitle,
+                description: `Individual ${contentType || "title"} purchase — ad-free, high quality`,
+              },
+              unit_amount: finalAmount,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${req.headers.origin || "http://localhost:5000"}?purchase=success&bookId=${bookId}`,
+        cancel_url: `${req.headers.origin || "http://localhost:5000"}?purchase=cancelled`,
+        metadata: {
+          userId: user.id,
+          bookId,
+          bookTitle,
+          type: "purchase",
+          amountCents: finalAmount.toString(),
+        },
+      });
+
+      res.json({ url: session.url, finalAmount, discount: discount > 0 ? `${Math.round(discount * 100)}% off` : null });
+    } catch (error) {
+      console.error("Error creating purchase checkout:", error);
+      res.status(500).json({ message: "Failed to create purchase checkout" });
+    }
+  });
+
+  // GET /api/purchases - Get user's purchased titles
+  app.get("/api/purchases", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const userId = req.user.claims?.sub || req.user.id;
+      const userPurchases = await storage.getUserPurchases(userId);
+      res.json({ purchases: userPurchases });
+    } catch (error) {
+      console.error("Error fetching purchases:", error);
+      res.status(500).json({ message: "Failed to fetch purchases" });
+    }
+  });
+
+  // GET /api/purchases/:bookId - Check if user owns a specific title
+  app.get("/api/purchases/:bookId", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const userId = req.user.claims?.sub || req.user.id;
+      const purchase = await storage.getUserPurchase(userId, req.params.bookId);
+      res.json({ owned: !!purchase, purchase: purchase || null });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to check purchase status" });
     }
   });
   
@@ -2004,23 +2140,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = await storage.getUser(userId);
-      const isPremium = user?.subscriptionTier === "premium";
+      const tier = (user?.subscriptionTier || "free") as SubscriptionTier;
+      const isPremium = tier === "premium";
+      const isPaid = tier === "plus" || tier === "premium";
 
-      const registerResult = registerDevice(userId, deviceId, req.headers["user-agent"] || "Unknown Device", isPremium);
+      const registerResult = registerDevice(userId, deviceId, req.headers["user-agent"] || "Unknown Device", isPremium, tier);
       if (!registerResult.success) {
         return res.status(403).json({
           success: false,
           message: registerResult.message,
-          upgradeUrl: !isPremium ? "/api/subscription/create-checkout" : null,
+          upgradeUrl: !isPaid ? "/api/subscription/create-checkout" : null,
         });
       }
 
-      const sessionResult = createPlaybackSession(userId, deviceId, bookId, isPremium);
+      const sessionResult = createPlaybackSession(userId, deviceId, bookId, isPremium, tier);
 
       res.json({
         ...sessionResult,
         bitrate: getQualityBitrate(sessionResult.quality),
         isPremium,
+        isPaid,
+        tier,
       });
     } catch (error) {
       console.error("Error starting playback session:", error);

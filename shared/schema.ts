@@ -69,8 +69,35 @@ export const sessions = pgTable(
 );
 
 // Subscription tier enum values
-export const SUBSCRIPTION_TIERS = ["free", "premium"] as const;
+export const SUBSCRIPTION_TIERS = ["free", "plus", "premium"] as const;
 export type SubscriptionTier = typeof SUBSCRIPTION_TIERS[number];
+
+// Tier pricing constants (in cents)
+export const TIER_PRICING = {
+  plus: { monthly: 499, yearly: 4999, monthlyDisplay: "$4.99", yearlyDisplay: "$49.99", yearlyMonthly: "$4.17" },
+  premium: { monthly: 999, yearly: 9999, monthlyDisplay: "$9.99", yearlyDisplay: "$99.99", yearlyMonthly: "$8.33" },
+} as const;
+
+// Per-title micro-payment pricing (in cents)
+export const TITLE_PRICING = {
+  audiobook: { base: 299, label: "$2.99" },
+  ebook: { base: 199, label: "$1.99" },
+  default: { base: 199, label: "$1.99" },
+} as const;
+
+// Tier-based discounts on individual purchases
+export const TIER_DISCOUNTS = {
+  free: 0,
+  plus: 0.10,
+  premium: 0.20,
+} as const;
+
+// Tier feature limits
+export const TIER_FEATURES = {
+  free:    { skipLimit: 6, audioQuality: 128, maxDevices: 2, adsEnabled: true,  offlineEnabled: false, ttsDaily: 0,  bookmarkLimit: 10 },
+  plus:    { skipLimit: Infinity, audioQuality: 192, maxDevices: 3, adsEnabled: false, offlineEnabled: false, ttsDaily: 10, bookmarkLimit: Infinity },
+  premium: { skipLimit: Infinity, audioQuality: 320, maxDevices: 5, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
+} as const;
 
 // User table for multi-provider authentication (matches existing database)
 export const users = pgTable("users", {
@@ -103,6 +130,30 @@ export const insertUserSchema = createInsertSchema(users).omit({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+// Individual title purchases table
+export const purchases = pgTable("purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull(),
+  bookTitle: text("book_title").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency").default("usd"),
+  stripePaymentId: varchar("stripe_payment_id"),
+  status: varchar("status").notNull().default("completed"),
+  purchasedAt: timestamp("purchased_at").defaultNow(),
+}, (table) => [
+  index("idx_purchases_user").on(table.userId),
+  index("idx_purchases_book").on(table.bookId),
+  index("idx_purchases_user_book").on(table.userId, table.bookId),
+]);
+
+export const insertPurchaseSchema = createInsertSchema(purchases).omit({
+  id: true,
+  purchasedAt: true,
+});
+export type InsertPurchase = z.infer<typeof insertPurchaseSchema>;
+export type Purchase = typeof purchases.$inferSelect;
 
 // Listening history table for tracking user activity
 export const listeningHistory = pgTable("listening_history", {

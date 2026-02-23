@@ -36,7 +36,7 @@ export function PremiumBadge({ showUpgrade = false, size = "sm" }: PremiumBadgeP
       }`}
       onClick={(e) => {
         e.stopPropagation();
-        upgradeToPremium();
+        upgradeToPremium("monthly");
       }}
     >
       {isUpgrading ? (

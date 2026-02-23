@@ -36,7 +36,7 @@ export function useContentAccess() {
   }, []);
 
   const handleUpgrade = useCallback(() => {
-    upgradeToPremium();
+    upgradeToPremium("monthly");
   }, [upgradeToPremium]);
 
   return {

@@ -1,12 +1,21 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
+import { TIER_FEATURES, type SubscriptionTier } from "@shared/schema";
 
-const SKIP_LIMIT_FREE = 6;
+function getTierFeatures(tier: SubscriptionTier) {
+  return TIER_FEATURES[tier] || TIER_FEATURES.free;
+}
+
+function isPaidTier(tier: SubscriptionTier): boolean {
+  return tier === "plus" || tier === "premium";
+}
+
+const SKIP_LIMIT_FREE = TIER_FEATURES.free.skipLimit;
 const SKIP_RESET_HOURS = 1;
 const SKIP_RESET_MS = SKIP_RESET_HOURS * 60 * 60 * 1000;
-const MAX_DEVICES_FREE = 1;
-const MAX_DEVICES_PREMIUM = 5;
+const MAX_DEVICES_FREE = TIER_FEATURES.free.maxDevices;
+const MAX_DEVICES_PREMIUM = TIER_FEATURES.premium.maxDevices;
 const SESSION_TOKEN_EXPIRY_MS = 30 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const HEARTBEAT_GRACE_MS = 60 * 1000;
@@ -30,7 +39,7 @@ interface PlaybackSession {
   bookId: string;
   startedAt: number;
   lastHeartbeat: number;
-  quality: "low" | "high";
+  quality: "low" | "mid" | "high";
 }
 
 const skipTrackers = new Map<string, SkipTracker>();
@@ -92,21 +101,32 @@ export function useSkip(userId: string, isPremium: boolean): { success: boolean;
   };
 }
 
-export function getAudioQuality(isPremium: boolean): "low" | "high" {
+export function getAudioQuality(isPremium: boolean): "low" | "mid" | "high" {
   return isPremium ? "high" : "low";
 }
 
-export function getQualityBitrate(quality: "low" | "high"): number {
-  return quality === "high" ? 320 : 128;
+export function getAudioQualityForTier(tier: SubscriptionTier): "low" | "mid" | "high" {
+  if (tier === "premium") return "high";
+  if (tier === "plus") return "mid";
+  return "low";
+}
+
+export function getQualityBitrate(quality: "low" | "mid" | "high"): number {
+  if (quality === "high") return 320;
+  if (quality === "mid") return 192;
+  return 128;
 }
 
 export function registerDevice(
   userId: string,
   deviceId: string,
   deviceName: string,
-  isPremium: boolean
+  isPremium: boolean,
+  tier?: SubscriptionTier
 ): { success: boolean; devices: DeviceInfo[]; message?: string } {
-  const maxDevices = isPremium ? MAX_DEVICES_PREMIUM : MAX_DEVICES_FREE;
+  const effectiveTier = tier || (isPremium ? "premium" : "free");
+  const features = getTierFeatures(effectiveTier);
+  const maxDevices = features.maxDevices;
   let devices = userDevices.get(userId) || [];
 
   const existingDevice = devices.find(d => d.deviceId === deviceId);
@@ -122,10 +142,13 @@ export function registerDevice(
     if (inactiveDevices.length > 0) {
       devices = devices.filter(d => d.deviceId !== inactiveDevices[0].deviceId);
     } else {
+      const upgradeMsg = effectiveTier === "free" ? "Upgrade to Plus for 3 devices or Premium for 5." :
+                         effectiveTier === "plus" ? "Upgrade to Premium for up to 5 devices." :
+                         "Remove a device to add this one.";
       return {
         success: false,
         devices,
-        message: `Device limit reached (${maxDevices}). ${isPremium ? "Remove a device to add this one." : "Upgrade to Premium for up to 5 devices."}`,
+        message: `Device limit reached (${maxDevices}). ${upgradeMsg}`,
       };
     }
   }
@@ -166,8 +189,9 @@ export function createPlaybackSession(
   userId: string,
   deviceId: string,
   bookId: string,
-  isPremium: boolean
-): { success: boolean; sessionId?: string; quality: "low" | "high"; message?: string } {
+  isPremium: boolean,
+  tier?: SubscriptionTier
+): { success: boolean; sessionId?: string; quality: "low" | "mid" | "high"; message?: string } {
   const existingSessionId = userActiveSessions.get(userId);
 
   if (existingSessionId) {
@@ -179,7 +203,8 @@ export function createPlaybackSession(
   }
 
   const sessionId = crypto.randomBytes(16).toString("hex");
-  const quality = getAudioQuality(isPremium);
+  const effectiveTier = tier || (isPremium ? "premium" : "free");
+  const quality = getAudioQualityForTier(effectiveTier);
 
   const session: PlaybackSession = {
     sessionId,
@@ -268,6 +293,11 @@ export function shouldShowAd(userId: string, isPremium: boolean, booksPlayed: nu
   return booksPlayed > 0 && booksPlayed % 3 === 0;
 }
 
+export function shouldShowAdForTier(tier: SubscriptionTier, booksPlayed: number): boolean {
+  if (isPaidTier(tier)) return false;
+  return booksPlayed > 0 && booksPlayed % 3 === 0;
+}
+
 export function isShuffleModeRequired(isPremium: boolean, contentType: "album" | "playlist" | "single"): boolean {
   if (isPremium) return false;
   return contentType === "album";
@@ -281,10 +311,12 @@ export async function skipLimitMiddleware(req: Request, res: Response, next: Nex
   }
 
   const user = await storage.getUser(userId);
-  const isPremium = user?.subscriptionTier === "premium";
+  const tier = (user?.subscriptionTier || "free") as SubscriptionTier;
+  const isPremium = isPaidTier(tier);
 
   (req as any).skipStatus = getSkipStatus(userId, isPremium);
   (req as any).isPremium = isPremium;
+  (req as any).tier = tier;
 
   next();
 }
