@@ -47,3 +47,4 @@ integrations = ["javascript_mem_db:1.0.0", "javascript_auth_all_persistance:1.0.
 VAPID_PUBLIC_KEY = "BJWdQQ8a8kG2M3_9fo6ngx3I9eiPEbTwShBynd1q7xt04SuBSZT-OWwuPQ-LHSeCJIYloJwaOTR28B3RbhBZoyw"
 VAPID_PRIVATE_KEY = "RhX-A0WBHL6FIyDGorPdEwy_uEF291kDkSFGgxR_sCQ"
 VITE_VAPID_PUBLIC_KEY = "BJWdQQ8a8kG2M3_9fo6ngx3I9eiPEbTwShBynd1q7xt04SuBSZT-OWwuPQ-LHSeCJIYloJwaOTR28B3RbhBZoyw"
+CUSTOM_DATABASE_URL = "postgresql://neondb_owner:npg_PdZIj65TWkVt@ep-rough-bread-a7hy2uut-pooler.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
