@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,9 +6,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Search, Podcast, Play, Clock, ChevronLeft, ChevronRight, Rss, ExternalLink, Loader2, Star, Calendar, Headphones, TrendingUp } from "lucide-react";
+import { Search, Podcast, Play, Pause, Clock, ChevronLeft, ChevronRight, Rss, ExternalLink, Loader2, Star, Calendar, Headphones, TrendingUp } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAudioContext } from "@/contexts/AudioContext";
 
 interface PodcastFeed {
   id: string;
@@ -295,6 +296,9 @@ export function PodcastDiscovery() {
   const [feedUrlInput, setFeedUrlInput] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const { toast } = useToast();
+  const { audioRef: mainAudioRef } = useAudioContext();
+  const podcastAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingEpisodeId, setPlayingEpisodeId] = useState<string | null>(null);
 
   const { data: feedsData, isLoading } = useQuery<{ feeds: PodcastFeed[] }>({
     queryKey: ["/api/podcasts/feeds", searchQuery],
@@ -345,13 +349,39 @@ export function PodcastDiscovery() {
   });
 
   const handlePlayEpisode = (ep: PodcastEpisode) => {
-    if (ep.audioUrl) {
-      const audio = new Audio(ep.audioUrl);
-      audio.play().catch(() => {
-        toast({ title: "Playback error", description: "Could not play this episode. It may require direct access.", variant: "destructive" });
-      });
-      toast({ title: "Now playing", description: ep.title });
+    if (!ep.audioUrl) return;
+
+    if (playingEpisodeId === ep.id && podcastAudioRef.current) {
+      podcastAudioRef.current.pause();
+      podcastAudioRef.current.src = "";
+      podcastAudioRef.current = null;
+      setPlayingEpisodeId(null);
+      return;
     }
+
+    if (podcastAudioRef.current) {
+      podcastAudioRef.current.pause();
+      podcastAudioRef.current.src = "";
+      podcastAudioRef.current = null;
+    }
+
+    if (mainAudioRef.current && !mainAudioRef.current.paused) {
+      mainAudioRef.current.pause();
+    }
+
+    const audio = new Audio(ep.audioUrl);
+    podcastAudioRef.current = audio;
+    setPlayingEpisodeId(ep.id);
+    audio.addEventListener("ended", () => {
+      setPlayingEpisodeId(null);
+      podcastAudioRef.current = null;
+    });
+    audio.play().catch(() => {
+      setPlayingEpisodeId(null);
+      podcastAudioRef.current = null;
+      toast({ title: "Playback error", description: "Could not play this episode. It may require direct access.", variant: "destructive" });
+    });
+    toast({ title: "Now playing", description: ep.title });
   };
 
   const feeds = feedsData?.feeds || [];

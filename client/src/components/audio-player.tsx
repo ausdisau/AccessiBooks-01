@@ -3,7 +3,6 @@ import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useMonetization } from "@/hooks/use-monetization";
 import { BookmarkList } from "./bookmark-list";
@@ -64,10 +63,14 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     seekTo,
     setSpeed,
     formatTime,
-  } = useAudioPlayer({
-    bookId: book.id,
-    audioUrl: `/api/stream/${book.id}`,
-  });
+    chapters, 
+    currentChapter, 
+    currentChapterIndex,
+    nextChapter,
+    prevChapter,
+    seekToChapter,
+    playBook,
+  } = useAudioContext();
 
   const { 
     skipStatus, 
@@ -79,15 +82,6 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     isPremium,
   } = useMonetization();
   const { bookmarks, addBookmark, removeBookmark, isAtLimit, maxBookmarks } = useBookmarks(book.id, isPremium);
-  
-  const { 
-    chapters, 
-    currentChapter, 
-    currentChapterIndex,
-    nextChapter,
-    prevChapter,
-    seekToChapter,
-  } = useAudioContext();
   
   const [bookmarkName, setBookmarkName] = useState("");
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
