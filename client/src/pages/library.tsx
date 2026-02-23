@@ -19,6 +19,8 @@ import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles } from "luc
 import { useAuth } from "@/hooks/useAuth";
 import { SubmitContent } from "@/components/submit-content";
 import { CommercialAudiobooks } from "@/components/commercial-audiobooks";
+import { PodcastDiscovery } from "@/components/podcast-discovery";
+import { MagazineSection } from "@/components/magazine-section";
 
 interface LibraryProps {
   onSelectBook: (book: Book) => void;
@@ -152,6 +154,16 @@ export function Library({ onSelectBook }: LibraryProps) {
       {/* Commercial Audiobooks - Spotify & Amazon/Audible */}
       {!isLoading && !searchQuery && !selectedGenre && (
         <CommercialAudiobooks />
+      )}
+
+      {/* Podcasts Discovery */}
+      {!isLoading && !searchQuery && !selectedGenre && (
+        <PodcastDiscovery />
+      )}
+
+      {/* Digital Magazines */}
+      {!isLoading && !searchQuery && !selectedGenre && (
+        <MagazineSection />
       )}
 
       {/* Horizontal carousels by source */}
