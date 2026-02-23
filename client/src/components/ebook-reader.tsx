@@ -1,19 +1,36 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Settings, 
-  Bookmark, 
-  BookOpen, 
-  Sun, 
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Settings,
+  Bookmark,
+  BookOpen,
+  Sun,
   Moon,
   Minus,
   Plus,
-  Home
+  Home,
+  Search,
+  X,
+  Maximize,
+  Minimize,
+  List,
+  Highlighter,
+  Clock,
+  BarChart3,
+  MessageSquare,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Palette,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -27,6 +44,7 @@ import { localStorageService } from "@/lib/storage";
 import { PdfViewer } from "./pdf-viewer";
 import { EpubViewer } from "./epub-viewer";
 import { TTSPlayer } from "./tts-player";
+import { useToast } from "@/hooks/use-toast";
 
 interface EbookReaderProps {
   book: Book;
@@ -35,30 +53,62 @@ interface EbookReaderProps {
 
 interface ReadingSettings {
   fontSize: number;
-  darkMode: boolean;
-  fontFamily: "serif" | "sans-serif" | "mono";
+  theme: "light" | "sepia" | "dark";
+  fontFamily: "serif" | "sans-serif" | "mono" | "dyslexia";
   lineHeight: number;
+  margins: "narrow" | "normal" | "wide";
+}
+
+interface Annotation {
+  id: string;
+  page: number;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+  note: string;
+  color: string;
+  createdAt: string;
+}
+
+interface SearchResult {
+  page: number;
+  wordIndex: number;
+  context: string;
+}
+
+interface TocEntry {
+  title: string;
+  page: number;
+  level: number;
 }
 
 const defaultSettings: ReadingSettings = {
   fontSize: 18,
-  darkMode: false,
+  theme: "light",
   fontFamily: "serif",
   lineHeight: 1.8,
+  margins: "normal",
 };
+
+const HIGHLIGHT_COLORS = [
+  { name: "Yellow", value: "#fef08a" },
+  { name: "Green", value: "#bbf7d0" },
+  { name: "Blue", value: "#bfdbfe" },
+  { name: "Pink", value: "#fbcfe8" },
+  { name: "Orange", value: "#fed7aa" },
+];
+
+const WORDS_PER_PAGE = 300;
 
 type ContentFormat = "text" | "pdf" | "epub" | "unknown";
 
 function detectContentFormat(book: Book): ContentFormat {
   const url = book.contentUrl?.toLowerCase() || "";
-  
   if (url.endsWith(".pdf")) return "pdf";
   if (url.endsWith(".epub")) return "epub";
   if (url.endsWith(".txt") || url.endsWith(".html") || url.endsWith(".htm")) return "text";
-  
   if (url.includes("gutenberg.org") && url.includes(".txt")) return "text";
   if (url.includes("archive.org") && url.includes("_djvu.txt")) return "text";
-  
   return "text";
 }
 
@@ -72,21 +122,15 @@ export function EbookReader({ book, onBack }: EbookReaderProps) {
 
   const detectFormat = async () => {
     setIsDetecting(true);
-    
     const urlFormat = detectContentFormat(book);
     if (urlFormat !== "text") {
       setDetectedFormat(urlFormat);
       setIsDetecting(false);
       return;
     }
-
     try {
-      const response = await fetch(`/api/ebook/${book.id}/content`, {
-        method: "HEAD",
-      });
-      
+      const response = await fetch(`/api/ebook/${book.id}/content`, { method: "HEAD" });
       const contentType = response.headers.get("content-type") || "";
-      
       if (contentType.includes("application/pdf")) {
         setDetectedFormat("pdf");
       } else if (contentType.includes("application/epub") || contentType.includes("application/zip")) {
@@ -94,8 +138,7 @@ export function EbookReader({ book, onBack }: EbookReaderProps) {
       } else {
         setDetectedFormat("text");
       }
-    } catch (err) {
-      console.error("Error detecting content type:", err);
+    } catch {
       setDetectedFormat("text");
     } finally {
       setIsDetecting(false);
@@ -112,73 +155,137 @@ export function EbookReader({ book, onBack }: EbookReaderProps) {
       </div>
     );
   }
-  
-  if (detectedFormat === "pdf") {
-    return <PdfViewer book={book} onBack={onBack} />;
-  }
-  
-  if (detectedFormat === "epub") {
-    return <EpubViewer book={book} onBack={onBack} />;
-  }
-  
+
+  if (detectedFormat === "pdf") return <PdfViewer book={book} onBack={onBack} />;
+  if (detectedFormat === "epub") return <EpubViewer book={book} onBack={onBack} />;
   return <TextReader book={book} onBack={onBack} />;
 }
 
 function TextReader({ book, onBack }: EbookReaderProps) {
-  const [content, setContent] = useState<string>("");
+  const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [settings, setSettings] = useState<ReadingSettings>(defaultSettings);
+  const [settings, setSettings] = useState<ReadingSettings>(() => {
+    const saved = localStorage.getItem(`ebook-settings-${book.id}`);
+    return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+  });
   const [bookmarks, setBookmarks] = useState<number[]>([]);
   const [highlightedWordIndex, setHighlightedWordIndex] = useState<number | null>(null);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [currentSearchIdx, setCurrentSearchIdx] = useState(-1);
+  const [showToc, setShowToc] = useState(false);
+  const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showAnnotationPanel, setShowAnnotationPanel] = useState(false);
+  const [selectedText, setSelectedText] = useState("");
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
+  const [highlightColor, setHighlightColor] = useState(HIGHLIGHT_COLORS[0].value);
+  const [annotationNote, setAnnotationNote] = useState("");
+  const [showStats, setShowStats] = useState(false);
+  const [readingStartTime] = useState(() => Date.now());
+  const [pageTransition, setPageTransition] = useState<"none" | "slide-left" | "slide-right">("none");
+
   const contentRef = useRef<HTMLDivElement>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const { toast } = useToast();
+
+  const words = useMemo(() => content.split(/\s+/).filter(Boolean), [content]);
 
   useEffect(() => {
     loadContent();
     loadReadingProgress();
     loadBookmarks();
+    loadAnnotations();
   }, [book.id]);
+
+  useEffect(() => {
+    localStorage.setItem(`ebook-settings-${book.id}`, JSON.stringify(settings));
+  }, [settings, book.id]);
 
   const loadContent = async () => {
     setIsLoading(true);
     setError(null);
-    
     try {
       const response = await fetch(`/api/ebook/${book.id}/content`);
-      if (!response.ok) {
-        throw new Error("Failed to load ebook content");
-      }
-      
+      if (!response.ok) throw new Error("Failed to load ebook content");
       const text = await response.text();
       setContent(text);
-      
-      const wordsPerPage = 300;
-      const wordCount = text.split(/\s+/).length;
-      setTotalPages(Math.max(1, Math.ceil(wordCount / wordsPerPage)));
-    } catch (err) {
+      const wordCount = text.split(/\s+/).filter(Boolean).length;
+      const pages = Math.max(1, Math.ceil(wordCount / WORDS_PER_PAGE));
+      setTotalPages(pages);
+      generateToc(text, pages);
+    } catch {
       setError("Unable to load ebook content. Please try again later.");
-      console.error("Error loading ebook:", err);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const generateToc = (text: string, numPages: number) => {
+    const allWords = text.split(/\s+/).filter(Boolean);
+    const entries: TocEntry[] = [];
+    const chapterPatterns = [
+      /^(CHAPTER|Chapter)\s+[IVXLCDM\d]+/,
+      /^(PART|Part)\s+[IVXLCDM\d]+/,
+      /^(BOOK|Book)\s+[IVXLCDM\d]+/,
+      /^(ACT|Act)\s+[IVXLCDM\d]+/,
+      /^(SECTION|Section)\s+\d+/,
+      /^(PROLOGUE|EPILOGUE|INTRODUCTION|PREFACE|FOREWORD|CONCLUSION)/i,
+    ];
+
+    for (let i = 0; i < allWords.length; i++) {
+      const chunk = allWords.slice(i, i + 6).join(" ");
+      for (const pattern of chapterPatterns) {
+        if (pattern.test(chunk)) {
+          const page = Math.floor(i / WORDS_PER_PAGE) + 1;
+          const title = allWords.slice(i, Math.min(i + 6, allWords.length)).join(" ").replace(/[.,:;!?]$/, "");
+          const level = chunk.match(/^(PART|Part|BOOK|Book)/i) ? 0 : 1;
+          if (entries.length === 0 || entries[entries.length - 1].page !== page) {
+            entries.push({ title, page, level });
+          }
+          break;
+        }
+      }
+    }
+
+    if (entries.length === 0) {
+      const interval = Math.max(1, Math.floor(numPages / 10));
+      for (let p = 1; p <= numPages; p += interval) {
+        entries.push({ title: `Section ${Math.ceil(p / interval)}`, page: p, level: 0 });
+      }
+    }
+
+    setTocEntries(entries);
+  };
+
   const loadReadingProgress = () => {
     const progress = localStorageService.getProgress(book.id);
-    if (progress && progress.currentTime) {
+    if (progress?.currentTime) {
       setCurrentPage(Math.max(1, Math.floor(progress.currentTime)));
     }
   };
 
   const loadBookmarks = () => {
     const saved = localStorage.getItem(`ebook-bookmarks-${book.id}`);
-    if (saved) {
-      setBookmarks(JSON.parse(saved));
-    }
+    if (saved) setBookmarks(JSON.parse(saved));
   };
+
+  const loadAnnotations = () => {
+    const saved = localStorage.getItem(`ebook-annotations-${book.id}`);
+    if (saved) setAnnotations(JSON.parse(saved));
+  };
+
+  const saveAnnotations = useCallback((anns: Annotation[]) => {
+    setAnnotations(anns);
+    localStorage.setItem(`ebook-annotations-${book.id}`, JSON.stringify(anns));
+  }, [book.id]);
 
   const saveProgress = useCallback((page: number) => {
     localStorageService.saveProgress({
@@ -188,48 +295,234 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     });
   }, [book.id]);
 
-  const goToPage = (page: number) => {
+  const goToPage = useCallback((page: number, direction?: "left" | "right") => {
     const newPage = Math.max(1, Math.min(totalPages, page));
-    setCurrentPage(newPage);
-    saveProgress(newPage);
-    contentRef.current?.scrollTo(0, 0);
-  };
+    if (newPage === currentPage) return;
+
+    const dir = direction || (newPage > currentPage ? "left" : "right");
+    setPageTransition(dir === "left" ? "slide-left" : "slide-right");
+
+    setTimeout(() => {
+      setCurrentPage(newPage);
+      saveProgress(newPage);
+      contentRef.current?.scrollTo(0, 0);
+      setTimeout(() => setPageTransition("none"), 300);
+    }, 150);
+  }, [currentPage, totalPages, saveProgress]);
 
   const toggleBookmark = () => {
     const newBookmarks = bookmarks.includes(currentPage)
       ? bookmarks.filter(p => p !== currentPage)
       : [...bookmarks, currentPage].sort((a, b) => a - b);
-    
     setBookmarks(newBookmarks);
     localStorage.setItem(`ebook-bookmarks-${book.id}`, JSON.stringify(newBookmarks));
+    toast({
+      title: bookmarks.includes(currentPage) ? "Bookmark removed" : "Bookmark added",
+      description: `Page ${currentPage}`,
+    });
   };
 
   const updateSetting = <K extends keyof ReadingSettings>(key: K, value: ReadingSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const getPageContent = () => {
-    if (!content) return "";
-    
-    const words = content.split(/\s+/);
-    const wordsPerPage = 300;
-    const startIdx = (currentPage - 1) * wordsPerPage;
-    const endIdx = startIdx + wordsPerPage;
+  const getPageContent = useCallback(() => {
+    if (!words.length) return "";
+    const startIdx = (currentPage - 1) * WORDS_PER_PAGE;
+    const endIdx = startIdx + WORDS_PER_PAGE;
     return words.slice(startIdx, endIdx).join(" ");
+  }, [words, currentPage]);
+
+  const pageContent = useMemo(() => getPageContent(), [getPageContent]);
+
+  const performSearch = useCallback((query: string) => {
+    if (!query.trim() || !content) {
+      setSearchResults([]);
+      setCurrentSearchIdx(-1);
+      return;
+    }
+    const lowerQuery = query.toLowerCase();
+    const results: SearchResult[] = [];
+    const allWords = content.split(/\s+/).filter(Boolean);
+
+    for (let i = 0; i < allWords.length; i++) {
+      const chunk = allWords.slice(i, i + query.split(/\s+/).length).join(" ");
+      if (chunk.toLowerCase().includes(lowerQuery)) {
+        const page = Math.floor(i / WORDS_PER_PAGE) + 1;
+        const contextStart = Math.max(0, i - 5);
+        const contextEnd = Math.min(allWords.length, i + 10);
+        results.push({
+          page,
+          wordIndex: i % WORDS_PER_PAGE,
+          context: "..." + allWords.slice(contextStart, contextEnd).join(" ") + "...",
+        });
+        i += query.split(/\s+/).length - 1;
+      }
+    }
+    setSearchResults(results);
+    setCurrentSearchIdx(results.length > 0 ? 0 : -1);
+    if (results.length > 0) {
+      goToPage(results[0].page);
+    }
+  }, [content, goToPage]);
+
+  const navigateSearch = (direction: "next" | "prev") => {
+    if (searchResults.length === 0) return;
+    const newIdx = direction === "next"
+      ? (currentSearchIdx + 1) % searchResults.length
+      : (currentSearchIdx - 1 + searchResults.length) % searchResults.length;
+    setCurrentSearchIdx(newIdx);
+    goToPage(searchResults[newIdx].page);
   };
 
-  const fontFamilyClass = {
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+      return;
+    }
+    const text = selection.toString().trim();
+    if (text.length > 0) {
+      setSelectedText(text);
+      const pageWords = pageContent.split(/\s+/);
+      const selWords = text.split(/\s+/);
+
+      let startIdx = -1;
+      for (let i = 0; i <= pageWords.length - selWords.length; i++) {
+        const candidate = pageWords.slice(i, i + selWords.length).join(" ");
+        if (candidate.includes(selWords.join(" ")) || selWords[0] === pageWords[i]) {
+          const match = selWords.every((sw, si) => pageWords[i + si]?.includes(sw));
+          if (match) { startIdx = i; break; }
+        }
+      }
+
+      if (startIdx === -1) {
+        startIdx = pageWords.findIndex(w => w.includes(selWords[0]));
+      }
+      if (startIdx === -1) startIdx = 0;
+      const endIdx = Math.min(startIdx + selWords.length, pageWords.length);
+      setSelectionRange({ start: startIdx, end: endIdx });
+      setShowAnnotationPanel(true);
+    }
+  };
+
+  const addAnnotation = () => {
+    if (!selectedText || !selectionRange) return;
+    const ann: Annotation = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      page: currentPage,
+      startOffset: selectionRange.start,
+      endOffset: selectionRange.end,
+      text: selectedText,
+      note: annotationNote,
+      color: highlightColor,
+      createdAt: new Date().toISOString(),
+    };
+    saveAnnotations([...annotations, ann]);
+    setSelectedText("");
+    setSelectionRange(null);
+    setAnnotationNote("");
+    setShowAnnotationPanel(false);
+    toast({ title: "Highlight saved" });
+  };
+
+  const removeAnnotation = (id: string) => {
+    saveAnnotations(annotations.filter(a => a.id !== id));
+    toast({ title: "Highlight removed" });
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      readerContainerRef.current?.requestFullscreen?.().catch(() => {
+        toast({ title: "Fullscreen not available", description: "Your browser blocked fullscreen mode.", variant: "destructive" });
+      });
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    const elapsed = Date.now() - touchStartRef.current.time;
+    touchStartRef.current = null;
+
+    if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5 && elapsed < 500) {
+      if (deltaX < 0 && currentPage < totalPages) {
+        goToPage(currentPage + 1, "left");
+      } else if (deltaX > 0 && currentPage > 1) {
+        goToPage(currentPage - 1, "right");
+      }
+    }
+  };
+
+  const handleReaderKeyDown = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    const isInteractive = target.closest("button, input, select, textarea, [role='slider'], [role='menuitem'], [role='combobox']");
+    if (isInteractive) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown") {
+      e.preventDefault();
+      goToPage(currentPage + 1, "left");
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+      e.preventDefault();
+      goToPage(currentPage - 1, "right");
+    } else if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      setShowSearch(true);
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    } else if (e.key === "Escape") {
+      if (showSearch) setShowSearch(false);
+      if (showToc) setShowToc(false);
+      if (showAnnotationPanel) setShowAnnotationPanel(false);
+    }
+  };
+
+  const currentPageAnnotations = annotations.filter(a => a.page === currentPage);
+
+  const themeStyles = {
+    light: { bg: "bg-amber-50", text: "text-gray-800", headerBg: "bg-white border-gray-200", cardBg: "bg-white", mutedText: "text-gray-600", inputBg: "bg-white border-gray-300 text-gray-800" },
+    sepia: { bg: "bg-[#f4ecd8]", text: "text-[#5b4636]", headerBg: "bg-[#e8dcc8] border-[#d4c4a8]", cardBg: "bg-[#f9f1e1]", mutedText: "text-[#8b7355]", inputBg: "bg-[#f9f1e1] border-[#d4c4a8] text-[#5b4636]" },
+    dark: { bg: "bg-gray-900", text: "text-gray-200", headerBg: "bg-gray-800 border-gray-700", cardBg: "bg-gray-800 border-gray-700", mutedText: "text-gray-400", inputBg: "bg-gray-800 border-gray-600 text-white" },
+  };
+  const theme = themeStyles[settings.theme];
+
+  const fontFamilyClass: Record<string, string> = {
     serif: "font-serif",
     "sans-serif": "font-sans",
     mono: "font-mono",
+    dyslexia: "font-sans",
   };
+
+  const marginClass = { narrow: "max-w-4xl", normal: "max-w-3xl", wide: "max-w-2xl" };
+
+  const readingTimeMinutes = Math.round((Date.now() - readingStartTime) / 60000);
+  const wordsRead = (currentPage - 1) * WORDS_PER_PAGE;
+  const totalWords = words.length;
+  const wordsRemaining = Math.max(0, totalWords - wordsRead);
+  const avgWpm = readingTimeMinutes > 0 ? Math.round(wordsRead / readingTimeMinutes) : 250;
+  const estimatedMinutesLeft = Math.round(wordsRemaining / (avgWpm || 250));
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <BookOpen className="h-12 w-12 animate-pulse text-primary mx-auto mb-4" />
+        <div className="text-center space-y-4">
+          <BookOpen className="h-12 w-12 animate-pulse text-primary mx-auto" />
           <p className="text-muted-foreground">Loading ebook...</p>
+          <div className="w-48 h-2 bg-muted rounded-full mx-auto overflow-hidden">
+            <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "60%" }} />
+          </div>
         </div>
       </div>
     );
@@ -240,74 +533,136 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="max-w-md">
           <CardContent className="p-6 text-center">
+            <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-destructive mb-4">{error}</p>
-            <Button onClick={onBack}>
-              <Home className="h-4 w-4 mr-2" />
-              Back to Library
-            </Button>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={loadContent}>Try Again</Button>
+              <Button onClick={onBack}><Home className="h-4 w-4 mr-2" />Back to Library</Button>
+            </div>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  const handleReaderKeyDown = (e: React.KeyboardEvent) => {
-    const target = e.target as HTMLElement;
-    const isInteractive = target.closest("button, input, select, textarea, [role='slider'], [role='menuitem'], [role='combobox']");
-    if (isInteractive) return;
-    if (e.key === "ArrowRight" || e.key === "PageDown") {
-      e.preventDefault();
-      goToPage(currentPage + 1);
-    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-      e.preventDefault();
-      goToPage(currentPage - 1);
-    }
-  };
-
   return (
     <div
       ref={readerContainerRef}
-      className={`min-h-screen transition-colors ${settings.darkMode ? "bg-gray-900" : "bg-amber-50"}`}
+      className={`min-h-screen transition-colors duration-300 ${theme.bg} relative`}
       role="document"
       aria-label={`Reading ${book.title} by ${book.author}`}
       onKeyDown={handleReaderKeyDown}
       tabIndex={-1}
     >
-      <header className={`sticky top-0 z-10 border-b ${settings.darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`} role="banner">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Button variant="ghost" onClick={onBack} aria-label="Back to library">
-            <ChevronLeft className="h-5 w-5 mr-1" />
-            Back
-          </Button>
-          
-          <div className="flex items-center gap-2 text-sm">
-            <span className={settings.darkMode ? "text-gray-300" : "text-gray-600"}>
-              Page {currentPage} of {totalPages}
-            </span>
+      {showToc && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowToc(false)} />
+          <div className={`relative w-80 max-w-[85vw] h-full ${settings.theme === "dark" ? "bg-gray-900" : "bg-white"} shadow-2xl`}>
+            <div className="p-4 border-b flex items-center justify-between">
+              <h2 className={`font-semibold ${theme.text}`}>Table of Contents</h2>
+              <Button variant="ghost" size="icon" onClick={() => setShowToc(false)}><X className="h-4 w-4" /></Button>
+            </div>
+            <ScrollArea className="h-[calc(100%-60px)]">
+              <div className="p-2">
+                {tocEntries.map((entry, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { goToPage(entry.page); setShowToc(false); }}
+                    className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition-colors hover:bg-primary/10 ${
+                      entry.page === currentPage ? "bg-primary/15 font-medium" : ""
+                    } ${theme.text}`}
+                    style={{ paddingLeft: `${(entry.level + 1) * 12}px` }}
+                  >
+                    <span className="block truncate">{entry.title}</span>
+                    <span className={`text-xs ${theme.mutedText}`}>Page {entry.page}</span>
+                  </button>
+                ))}
+
+                {bookmarks.length > 0 && (
+                  <>
+                    <Separator className="my-3" />
+                    <p className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider ${theme.mutedText}`}>Bookmarks</p>
+                    {bookmarks.map(page => (
+                      <button
+                        key={`bm-${page}`}
+                        onClick={() => { goToPage(page); setShowToc(false); }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:bg-primary/10 flex items-center gap-2 ${theme.text}`}
+                      >
+                        <Bookmark className="h-3.5 w-3.5 fill-primary text-primary flex-shrink-0" />
+                        Page {page}
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {annotations.length > 0 && (
+                  <>
+                    <Separator className="my-3" />
+                    <p className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider ${theme.mutedText}`}>Highlights</p>
+                    {annotations.map(ann => (
+                      <button
+                        key={ann.id}
+                        onClick={() => { goToPage(ann.page); setShowToc(false); }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:bg-primary/10 ${theme.text}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: ann.color }} />
+                          <span className="truncate">{ann.text.slice(0, 40)}...</span>
+                        </span>
+                        <span className={`text-xs ${theme.mutedText}`}>Page {ann.page}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            </ScrollArea>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
+        </div>
+      )}
+
+      <header className={`sticky top-0 z-30 border-b transition-colors duration-300 ${theme.headerBg}`} role="banner">
+        <div className={`${marginClass[settings.margins]} mx-auto px-4 py-2 flex items-center justify-between`}>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back to library">
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowToc(true)} aria-label="Table of contents">
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className={`flex items-center gap-2 text-sm ${theme.mutedText}`}>
+            <span>Page {currentPage} of {totalPages}</span>
+          </div>
+
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setShowSearch(!showSearch); if (!showSearch) setTimeout(() => searchInputRef.current?.focus(), 100); }} aria-label="Search">
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
               size="icon"
+              className="h-8 w-8"
               onClick={toggleBookmark}
               aria-label={bookmarks.includes(currentPage) ? "Remove bookmark" : "Add bookmark"}
             >
-              <Bookmark 
-                className={`h-5 w-5 ${bookmarks.includes(currentPage) ? "fill-primary text-primary" : ""}`} 
-              />
+              <Bookmark className={`h-4 w-4 ${bookmarks.includes(currentPage) ? "fill-primary text-primary" : ""}`} />
             </Button>
-            
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowStats(!showStats)} aria-label="Reading stats">
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+              {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Reading settings">
-                  <Settings className="h-5 w-5" />
-                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Reading settings"><Settings className="h-4 w-4" /></Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuContent align="end" className="w-80">
                 <DropdownMenuLabel>Reading Settings</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                
                 <div className="p-3 space-y-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -315,172 +670,254 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                       <span className="text-sm text-muted-foreground">{settings.fontSize}px</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8"
-                        onClick={() => updateSetting("fontSize", Math.max(12, settings.fontSize - 2))}
-                        aria-label="Decrease font size"
-                      >
-                        <Minus className="h-4 w-4" aria-hidden="true" />
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateSetting("fontSize", Math.max(12, settings.fontSize - 2))} aria-label="Decrease font size">
+                        <Minus className="h-4 w-4" />
                       </Button>
-                      <Slider
-                        value={[settings.fontSize]}
-                        min={12}
-                        max={32}
-                        step={2}
-                        onValueChange={([v]) => updateSetting("fontSize", v)}
-                        className="flex-1"
-                        aria-label="Font size"
-                      />
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8"
-                        onClick={() => updateSetting("fontSize", Math.min(32, settings.fontSize + 2))}
-                        aria-label="Increase font size"
-                      >
-                        <Plus className="h-4 w-4" aria-hidden="true" />
+                      <Slider value={[settings.fontSize]} min={12} max={32} step={2} onValueChange={([v]) => updateSetting("fontSize", v)} className="flex-1" aria-label="Font size" />
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateSetting("fontSize", Math.min(32, settings.fontSize + 2))} aria-label="Increase font size">
+                        <Plus className="h-4 w-4" />
                       </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-sm font-medium block mb-2">Line Spacing</span>
+                    <div className="flex items-center gap-2">
+                      <Slider value={[settings.lineHeight]} min={1.2} max={2.5} step={0.1} onValueChange={([v]) => updateSetting("lineHeight", v)} className="flex-1" aria-label="Line spacing" />
+                      <span className="text-sm text-muted-foreground w-8">{settings.lineHeight.toFixed(1)}</span>
                     </div>
                   </div>
 
                   <div>
                     <span className="text-sm font-medium block mb-2">Theme</span>
                     <div className="flex gap-2">
-                      <Button 
-                        variant={!settings.darkMode ? "default" : "outline"} 
-                        size="sm"
-                        onClick={() => updateSetting("darkMode", false)}
-                      >
-                        <Sun className="h-4 w-4 mr-1" />
-                        Light
+                      <Button variant={settings.theme === "light" ? "default" : "outline"} size="sm" onClick={() => updateSetting("theme", "light")}>
+                        <Sun className="h-4 w-4 mr-1" />Light
                       </Button>
-                      <Button 
-                        variant={settings.darkMode ? "default" : "outline"} 
-                        size="sm"
-                        onClick={() => updateSetting("darkMode", true)}
-                      >
-                        <Moon className="h-4 w-4 mr-1" />
-                        Dark
+                      <Button variant={settings.theme === "sepia" ? "default" : "outline"} size="sm" onClick={() => updateSetting("theme", "sepia")} className="text-[#8b7355]">
+                        <BookOpen className="h-4 w-4 mr-1" />Sepia
+                      </Button>
+                      <Button variant={settings.theme === "dark" ? "default" : "outline"} size="sm" onClick={() => updateSetting("theme", "dark")}>
+                        <Moon className="h-4 w-4 mr-1" />Dark
                       </Button>
                     </div>
                   </div>
 
                   <div>
                     <span className="text-sm font-medium block mb-2">Font</span>
+                    <div className="flex flex-wrap gap-2">
+                      {(["serif", "sans-serif", "mono", "dyslexia"] as const).map(f => (
+                        <Button
+                          key={f}
+                          variant={settings.fontFamily === f ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => updateSetting("fontFamily", f)}
+                          className={f === "serif" ? "font-serif" : f === "mono" ? "font-mono" : ""}
+                        >
+                          {f === "dyslexia" ? "Dyslexia" : f.charAt(0).toUpperCase() + f.slice(1).replace("-", " ")}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-sm font-medium block mb-2">Margins</span>
                     <div className="flex gap-2">
-                      <Button 
-                        variant={settings.fontFamily === "serif" ? "default" : "outline"} 
-                        size="sm"
-                        onClick={() => updateSetting("fontFamily", "serif")}
-                        className="font-serif"
-                      >
-                        Serif
-                      </Button>
-                      <Button 
-                        variant={settings.fontFamily === "sans-serif" ? "default" : "outline"} 
-                        size="sm"
-                        onClick={() => updateSetting("fontFamily", "sans-serif")}
-                      >
-                        Sans
-                      </Button>
-                      <Button 
-                        variant={settings.fontFamily === "mono" ? "default" : "outline"} 
-                        size="sm"
-                        onClick={() => updateSetting("fontFamily", "mono")}
-                        className="font-mono"
-                      >
-                        Mono
-                      </Button>
+                      {(["narrow", "normal", "wide"] as const).map(m => (
+                        <Button key={m} variant={settings.margins === m ? "default" : "outline"} size="sm" onClick={() => updateSetting("margins", m)}>
+                          {m.charAt(0).toUpperCase() + m.slice(1)}
+                        </Button>
+                      ))}
                     </div>
                   </div>
                 </div>
-                
-                {bookmarks.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Bookmarks</DropdownMenuLabel>
-                    {bookmarks.map(page => (
-                      <DropdownMenuItem 
-                        key={page} 
-                        onClick={() => goToPage(page)}
-                      >
-                        <Bookmark className="h-4 w-4 mr-2" />
-                        Page {page}
-                      </DropdownMenuItem>
-                    ))}
-                  </>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
+
+        {showSearch && (
+          <div className={`border-t px-4 py-2 ${theme.headerBg}`}>
+            <div className={`${marginClass[settings.margins]} mx-auto flex items-center gap-2`}>
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  ref={searchInputRef}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") performSearch(searchQuery);
+                    if (e.key === "Escape") setShowSearch(false);
+                  }}
+                  placeholder="Search in book..."
+                  className="pl-8 h-8"
+                />
+              </div>
+              <Button size="sm" variant="outline" onClick={() => performSearch(searchQuery)}>Find</Button>
+              {searchResults.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{currentSearchIdx + 1}/{searchResults.length}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateSearch("prev")}><ArrowUp className="h-3 w-3" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateSearch("next")}><ArrowDown className="h-3 w-3" /></Button>
+                </div>
+              )}
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(""); }}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {showStats && (
+          <div className={`border-t px-4 py-3 ${theme.headerBg}`}>
+            <div className={`${marginClass[settings.margins]} mx-auto flex flex-wrap items-center justify-around gap-4 text-sm`}>
+              <div className="flex items-center gap-1.5">
+                <Clock className={`h-4 w-4 ${theme.mutedText}`} />
+                <span className={theme.text}>{readingTimeMinutes} min reading</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <BarChart3 className={`h-4 w-4 ${theme.mutedText}`} />
+                <span className={theme.text}>{wordsRead.toLocaleString()} words read</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <BookOpen className={`h-4 w-4 ${theme.mutedText}`} />
+                <span className={theme.text}>~{estimatedMinutesLeft} min left</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className={theme.text}>{Math.round((currentPage / totalPages) * 100)}% complete</span>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8">
-        <div className="text-center mb-8">
-          <h1 className={`text-2xl font-bold mb-2 ${settings.darkMode ? "text-white" : "text-gray-900"}`}>
-            {book.title}
-          </h1>
-          <p className={settings.darkMode ? "text-gray-400" : "text-gray-600"}>
-            by {book.author}
-          </p>
+      <main
+        className={`${marginClass[settings.margins]} mx-auto px-4 py-6`}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="text-center mb-6">
+          <h1 className={`text-xl sm:text-2xl font-bold mb-1 ${theme.text}`}>{book.title}</h1>
+          <p className={theme.mutedText}>by {book.author}</p>
         </div>
 
         <div className="mb-4">
           <TTSPlayer
-            text={getPageContent()}
+            text={pageContent}
             bookTitle={book.title}
             currentPage={currentPage}
             totalPages={totalPages}
-            onNextPage={() => goToPage(currentPage + 1)}
-            onPrevPage={() => goToPage(currentPage - 1)}
-            darkMode={settings.darkMode}
+            onNextPage={() => goToPage(currentPage + 1, "left")}
+            onPrevPage={() => goToPage(currentPage - 1, "right")}
+            darkMode={settings.theme === "dark"}
             onWordIndex={setHighlightedWordIndex}
           />
         </div>
 
-        <Card className={settings.darkMode ? "bg-gray-800 border-gray-700" : "bg-white"}>
-          <CardContent className="p-8 md:p-12">
-            <div 
-              ref={contentRef}
-              className={`
-                ${fontFamilyClass[settings.fontFamily]}
-                ${settings.darkMode ? "text-gray-200" : "text-gray-800"}
-                leading-relaxed
-              `}
-              style={{ 
-                fontSize: `${settings.fontSize}px`,
-                lineHeight: settings.lineHeight,
-              }}
-            >
-              {highlightedWordIndex !== null ? (
-                <HighlightedText
-                  text={getPageContent()}
-                  activeWordIndex={highlightedWordIndex}
-                  darkMode={settings.darkMode}
-                />
-              ) : (
-                getPageContent() || (
-                  <p className="text-center text-muted-foreground italic">
-                    Content not available for preview
-                  </p>
-                )
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <div className={`relative overflow-hidden rounded-lg ${pageTransition !== "none" ? "transition-transform duration-300" : ""}`}>
+          <Card className={`${theme.cardBg} transition-colors duration-300 ${pageTransition === "slide-left" ? "animate-slide-in-left" : pageTransition === "slide-right" ? "animate-slide-in-right" : ""}`}>
+            <CardContent className="p-6 sm:p-8 md:p-12">
+              <div
+                ref={contentRef}
+                className={`
+                  ${fontFamilyClass[settings.fontFamily]}
+                  ${theme.text}
+                  leading-relaxed select-text
+                `}
+                style={{
+                  fontSize: `${settings.fontSize}px`,
+                  lineHeight: settings.lineHeight,
+                  letterSpacing: settings.fontFamily === "dyslexia" ? "0.05em" : undefined,
+                  wordSpacing: settings.fontFamily === "dyslexia" ? "0.1em" : undefined,
+                }}
+                onMouseUp={handleTextSelection}
+              >
+                {highlightedWordIndex !== null ? (
+                  <HighlightedText
+                    text={pageContent}
+                    activeWordIndex={highlightedWordIndex}
+                    darkMode={settings.theme === "dark"}
+                    annotations={currentPageAnnotations}
+                    searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
+                  />
+                ) : (
+                  <AnnotatedText
+                    text={pageContent}
+                    annotations={currentPageAnnotations}
+                    searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
+                    darkMode={settings.theme === "dark"}
+                  />
+                )}
+                {!pageContent && (
+                  <p className="text-center text-muted-foreground italic">Content not available for preview</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-        <div className="flex items-center justify-between mt-8">
+        {showAnnotationPanel && selectedText && (
+          <Card className={`mt-4 ${theme.cardBg}`}>
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <Highlighter className={`h-5 w-5 mt-0.5 flex-shrink-0 ${theme.mutedText}`} />
+                <div className="flex-1 space-y-3">
+                  <p className={`text-sm italic border-l-2 pl-3 ${theme.mutedText}`}>"{selectedText.slice(0, 100)}{selectedText.length > 100 ? "..." : ""}"</p>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium ${theme.mutedText}`}>Color:</span>
+                    {HIGHLIGHT_COLORS.map(c => (
+                      <button
+                        key={c.value}
+                        onClick={() => setHighlightColor(c.value)}
+                        className={`w-6 h-6 rounded-full border-2 transition-transform ${highlightColor === c.value ? "border-primary scale-110" : "border-transparent"}`}
+                        style={{ backgroundColor: c.value }}
+                        aria-label={c.name}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    value={annotationNote}
+                    onChange={(e) => setAnnotationNote(e.target.value)}
+                    placeholder="Add a note (optional)..."
+                    className="h-8 text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={addAnnotation}><Highlighter className="h-3.5 w-3.5 mr-1" />Save Highlight</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setShowAnnotationPanel(false); setSelectedText(""); }}><X className="h-3.5 w-3.5 mr-1" />Cancel</Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {currentPageAnnotations.length > 0 && !showAnnotationPanel && (
+          <div className="mt-3 space-y-1.5">
+            {currentPageAnnotations.map(ann => (
+              <div key={ann.id} className={`flex items-start gap-2 px-3 py-2 rounded-md text-sm ${settings.theme === "dark" ? "bg-gray-800/60" : "bg-white/60"}`}>
+                <span className="w-3 h-3 rounded-full mt-0.5 flex-shrink-0" style={{ backgroundColor: ann.color }} />
+                <div className="flex-1 min-w-0">
+                  <span className={`${theme.text} italic`}>"{ann.text.slice(0, 60)}{ann.text.length > 60 ? "..." : ""}"</span>
+                  {ann.note && <p className={`text-xs mt-0.5 ${theme.mutedText}`}>{ann.note}</p>}
+                </div>
+                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => removeAnnotation(ann.id)}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mt-6">
           <Button
             variant="outline"
-            onClick={() => goToPage(currentPage - 1)}
+            onClick={() => goToPage(currentPage - 1, "right")}
             disabled={currentPage <= 1}
             aria-label="Previous page"
+            className="gap-1"
           >
-            <ChevronLeft className="h-4 w-4 mr-1" aria-hidden="true" />
-            Previous
+            <ChevronLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Previous</span>
           </Button>
 
           <div className="flex items-center gap-2">
@@ -488,56 +925,117 @@ function TextReader({ book, onBack }: EbookReaderProps) {
               type="number"
               value={currentPage}
               onChange={(e) => goToPage(parseInt(e.target.value) || 1)}
-              className={`w-16 text-center rounded-md border p-2 text-sm ${
-                settings.darkMode 
-                  ? "bg-gray-800 border-gray-600 text-white" 
-                  : "bg-white border-gray-300"
-              }`}
+              className={`w-14 text-center rounded-md border p-1.5 text-sm ${theme.inputBg}`}
               min={1}
               max={totalPages}
-              aria-label={`Go to page, current page ${currentPage} of ${totalPages}`}
+              aria-label={`Go to page`}
             />
-            <span className={settings.darkMode ? "text-gray-400" : "text-gray-600"}>
-              / {totalPages}
-            </span>
+            <span className={theme.mutedText}>/ {totalPages}</span>
           </div>
 
           <Button
             variant="outline"
-            onClick={() => goToPage(currentPage + 1)}
+            onClick={() => goToPage(currentPage + 1, "left")}
             disabled={currentPage >= totalPages}
             aria-label="Next page"
+            className="gap-1"
           >
-            Next
-            <ChevronRight className="h-4 w-4 ml-1" aria-hidden="true" />
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
 
         <div className="mt-4">
           <div
-            className={`h-2 rounded-full ${settings.darkMode ? "bg-gray-700" : "bg-gray-200"}`}
+            className={`h-1.5 rounded-full ${settings.theme === "dark" ? "bg-gray-700" : settings.theme === "sepia" ? "bg-[#d4c4a8]" : "bg-gray-200"}`}
             role="progressbar"
             aria-valuenow={Math.round((currentPage / totalPages) * 100)}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label={`Reading progress: ${Math.round((currentPage / totalPages) * 100)}%`}
+            aria-label={`Reading progress`}
           >
-            <div 
-              className="h-full bg-primary rounded-full transition-all"
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-300"
               style={{ width: `${(currentPage / totalPages) * 100}%` }}
             />
           </div>
-          <p className={`text-center text-sm mt-2 ${settings.darkMode ? "text-gray-400" : "text-gray-500"}`}>
+          <p className={`text-center text-xs mt-1.5 ${theme.mutedText}`}>
             {Math.round((currentPage / totalPages) * 100)}% complete
           </p>
         </div>
       </main>
+
+      <style>{`
+        @keyframes slideInLeft {
+          from { transform: translateX(30px); opacity: 0.7; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(-30px); opacity: 0.7; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in-left { animation: slideInLeft 0.3s ease-out; }
+        .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
+      `}</style>
     </div>
   );
 }
 
-function HighlightedText({ text, activeWordIndex, darkMode }: { text: string; activeWordIndex: number; darkMode: boolean }) {
-  const words = text.split(/\s+/);
+function AnnotatedText({
+  text,
+  annotations,
+  searchQuery,
+  darkMode,
+}: {
+  text: string;
+  annotations: Annotation[];
+  searchQuery: string;
+  darkMode: boolean;
+}) {
+  const wordsArr = text.split(/\s+/);
+
+  return (
+    <span>
+      {wordsArr.map((word, i) => {
+        const ann = annotations.find(a => i >= a.startOffset && i < a.endOffset);
+        const isSearchMatch = searchQuery && word.toLowerCase().includes(searchQuery.toLowerCase());
+
+        let className = "";
+        let style: React.CSSProperties = {};
+
+        if (ann) {
+          style.backgroundColor = ann.color;
+          style.borderRadius = "2px";
+          style.padding = "0 1px";
+        }
+        if (isSearchMatch) {
+          className = darkMode ? "bg-yellow-500/40 text-white rounded px-0.5" : "bg-yellow-300 rounded px-0.5";
+        }
+
+        return (
+          <span key={i} className={className} style={style} title={ann?.note || undefined}>
+            {word}{" "}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function HighlightedText({
+  text,
+  activeWordIndex,
+  darkMode,
+  annotations,
+  searchQuery,
+}: {
+  text: string;
+  activeWordIndex: number;
+  darkMode: boolean;
+  annotations: Annotation[];
+  searchQuery: string;
+}) {
+  const wordsArr = text.split(/\s+/);
   const activeRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -548,20 +1046,30 @@ function HighlightedText({ text, activeWordIndex, darkMode }: { text: string; ac
 
   return (
     <span>
-      {words.map((word, i) => (
-        <span
-          key={i}
-          ref={i === activeWordIndex ? activeRef : null}
-          className={
-            i === activeWordIndex
-              ? `rounded px-0.5 ${darkMode ? "bg-primary/30 text-white" : "bg-primary/20 text-primary-foreground"}`
-              : ""
-          }
-        >
-          {word}{" "}
-        </span>
-      ))}
+      {wordsArr.map((word, i) => {
+        const isActive = i === activeWordIndex;
+        const ann = annotations.find(a => i >= a.startOffset && i < a.endOffset);
+        const isSearchMatch = searchQuery && word.toLowerCase().includes(searchQuery.toLowerCase());
+
+        let className = "";
+        let style: React.CSSProperties = {};
+
+        if (isActive) {
+          className = `rounded px-0.5 ${darkMode ? "bg-primary/40 text-white font-medium" : "bg-primary/25 font-medium"}`;
+        } else if (ann) {
+          style.backgroundColor = ann.color;
+          style.borderRadius = "2px";
+          style.padding = "0 1px";
+        } else if (isSearchMatch) {
+          className = darkMode ? "bg-yellow-500/40 rounded px-0.5" : "bg-yellow-300 rounded px-0.5";
+        }
+
+        return (
+          <span key={i} ref={isActive ? activeRef : null} className={className} style={style} title={ann?.note || undefined}>
+            {word}{" "}
+          </span>
+        );
+      })}
     </span>
   );
 }
-
