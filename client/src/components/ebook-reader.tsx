@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useSubscription } from "@/hooks/use-subscription";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -277,14 +280,31 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     if (saved) setBookmarks(JSON.parse(saved));
   };
 
-  const loadAnnotations = () => {
+  const loadAnnotations = async () => {
     const saved = localStorage.getItem(`ebook-annotations-${book.id}`);
     if (saved) setAnnotations(JSON.parse(saved));
+
+    try {
+      const res = await fetch(`/api/annotations/${book.id}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.synced && data.annotations?.length > 0) {
+          setAnnotations(data.annotations);
+          localStorage.setItem(`ebook-annotations-${book.id}`, JSON.stringify(data.annotations));
+        }
+      }
+    } catch {}
   };
 
   const saveAnnotations = useCallback((anns: Annotation[]) => {
     setAnnotations(anns);
     localStorage.setItem(`ebook-annotations-${book.id}`, JSON.stringify(anns));
+
+    apiRequest("POST", "/api/annotations/sync", {
+      bookId: book.id,
+      annotations: anns,
+      bookmarks: JSON.parse(localStorage.getItem(`ebook-bookmarks-${book.id}`) || "[]"),
+    }).catch(() => {});
   }, [book.id]);
 
   const saveProgress = useCallback((page: number) => {
@@ -905,6 +925,36 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                 </Button>
               </div>
             ))}
+          </div>
+        )}
+
+        {annotations.length > 0 && (
+          <div className="mt-2 flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/annotations/export", { credentials: "include" });
+                  if (res.status === 403) {
+                    alert("Export Notes requires a Plus or Premium subscription.");
+                    return;
+                  }
+                  if (res.ok) {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "accessibooks-notes.json";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }
+                } catch {}
+              }}
+            >
+              Export All Notes
+            </Button>
           </div>
         )}
 

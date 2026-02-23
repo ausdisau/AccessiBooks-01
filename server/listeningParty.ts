@@ -4,10 +4,17 @@ import type { Server } from "http";
 import type { IncomingMessage } from "http";
 import passport from "passport";
 import { db } from "./db";
-import { listeningRooms, listeningRoomParticipants, listeningRoomMessages } from "@shared/schema";
+import { listeningRooms, listeningRoomParticipants, listeningRoomMessages, users } from "@shared/schema";
 import { eq, desc, and, asc } from "drizzle-orm";
 import { isAuthenticated, getSessionMiddleware } from "./multiAuth";
 import { handleQueueWSMessage, handleQueueWSLeave } from "./streamingQueue";
+import type { SubscriptionTier } from "@shared/schema";
+
+const TIER_ROOM_LIMITS: Record<string, { canCreate: boolean; maxListeners: number; coHost: boolean }> = {
+  free: { canCreate: false, maxListeners: 0, coHost: false },
+  plus: { canCreate: true, maxListeners: 10, coHost: false },
+  premium: { canCreate: true, maxListeners: 50, coHost: true },
+};
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -173,6 +180,14 @@ export function setupListeningPartyWS(server: Server) {
             }
 
             const roomState = activeRooms.get(roomId)!;
+
+            const currentCount = roomState.clients.size;
+            const maxListeners = room.maxListeners || 10;
+            if (room.hostUserId !== userId && currentCount >= maxListeners) {
+              ws.send(JSON.stringify({ type: "error", error: `Room is full (${maxListeners}/${maxListeners} listeners)` }));
+              return;
+            }
+
             const role = room.hostUserId === userId ? "host" : "guest";
             roomState.clients.set(clientId, { ws, userId, displayName, role });
 
@@ -255,8 +270,8 @@ export function setupListeningPartyWS(server: Server) {
             if (!roomState) return;
 
             const client = roomState.clients.get(clientId);
-            if (!client || client.role !== "host") {
-              ws.send(JSON.stringify({ type: "error", error: "Only the host can control playback" }));
+            if (!client || (client.role !== "host" && client.role !== "co-host")) {
+              ws.send(JSON.stringify({ type: "error", error: "Only the host or co-host can control playback" }));
               return;
             }
 
@@ -367,13 +382,38 @@ export function setupListeningPartyWS(server: Server) {
 }
 
 export function registerListeningPartyRoutes(app: Router) {
+  app.get("/api/listening-party/tier-limits", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const user = req.user as any;
+      const [dbUser] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+      const tier = (dbUser?.subscriptionTier || "free") as string;
+      const limits = TIER_ROOM_LIMITS[tier] || TIER_ROOM_LIMITS.free;
+      res.json({ tier, ...limits });
+    } catch (error) {
+      console.error("Error fetching tier limits:", error);
+      res.status(500).json({ message: "Failed to fetch tier limits" });
+    }
+  });
+
   app.post("/api/listening-party/rooms", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const user = req.user as any;
-      const { bookId, bookTitle, bookAuthor, bookCover } = req.body;
+      const { bookId, bookTitle, bookAuthor, bookCover, roomName } = req.body;
 
       if (!bookId || !bookTitle) {
         return res.status(400).json({ message: "bookId and bookTitle are required" });
+      }
+
+      const [dbUser] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+      const tier = (dbUser?.subscriptionTier || "free") as string;
+      const limits = TIER_ROOM_LIMITS[tier] || TIER_ROOM_LIMITS.free;
+
+      if (!limits.canCreate) {
+        return res.status(403).json({
+          message: "Room creation requires a Plus or Premium subscription",
+          requiresUpgrade: true,
+          currentTier: tier,
+        });
       }
 
       let roomCode = generateRoomCode();
@@ -393,6 +433,9 @@ export function registerListeningPartyRoutes(app: Router) {
         bookCover: bookCover || null,
         hostUserId: user.id,
         roomCode,
+        roomName: roomName || null,
+        maxListeners: limits.maxListeners,
+        hostTier: tier,
         status: "active",
       }).returning();
 
@@ -407,6 +450,58 @@ export function registerListeningPartyRoutes(app: Router) {
     } catch (error) {
       console.error("Error creating listening room:", error);
       res.status(500).json({ message: "Failed to create room" });
+    }
+  });
+
+  app.post("/api/listening-party/rooms/:id/co-host", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const user = req.user as any;
+      const { id } = req.params;
+      const { userId: targetUserId } = req.body;
+
+      if (!targetUserId) {
+        return res.status(400).json({ message: "userId is required" });
+      }
+
+      const [room] = await db.select().from(listeningRooms)
+        .where(eq(listeningRooms.id, id!)).limit(1);
+
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+
+      if (room.hostUserId !== user.id) {
+        return res.status(403).json({ message: "Only the host can assign co-hosts" });
+      }
+
+      if (room.hostTier !== "premium") {
+        return res.status(403).json({ message: "Co-host feature requires Premium subscription" });
+      }
+
+      await db.update(listeningRoomParticipants)
+        .set({ role: "co-host" })
+        .where(and(
+          eq(listeningRoomParticipants.roomId, id!),
+          eq(listeningRoomParticipants.userId, targetUserId)
+        ));
+
+      const roomState = activeRooms.get(id!);
+      if (roomState) {
+        roomState.clients.forEach((client) => {
+          if (client.userId === targetUserId) {
+            client.role = "co-host";
+          }
+        });
+        broadcastToRoom(id!, {
+          type: "participant_joined",
+          participants: getRoomParticipantList(id!),
+        });
+      }
+
+      res.json({ message: "Co-host assigned" });
+    } catch (error) {
+      console.error("Error assigning co-host:", error);
+      res.status(500).json({ message: "Failed to assign co-host" });
     }
   });
 

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { db } from "./db";
 import { eq, desc, sql, and, count, sum } from "drizzle-orm";
-import { userSubmissions, authorProfiles, contentAnalytics, users, books } from "@shared/schema";
+import { userSubmissions, authorProfiles, contentAnalytics, users, books, authorEarnings } from "@shared/schema";
 import { isAuthenticated } from "./multiAuth";
 import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
 
@@ -459,4 +459,132 @@ export function registerSelfPublishingRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch content" });
     }
   });
+
+  app.get("/api/author/earnings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [profile] = await db.select().from(authorProfiles).where(eq(authorProfiles.userId, userId));
+      if (!profile) return res.status(404).json({ message: "Author profile not found" });
+
+      const totalResult = await db.select({
+        totalGross: sum(authorEarnings.grossCents),
+        totalCommission: sum(authorEarnings.commissionCents),
+      }).from(authorEarnings).where(eq(authorEarnings.userId, userId));
+
+      const pendingResult = await db.select({
+        pendingAmount: sum(authorEarnings.commissionCents),
+      }).from(authorEarnings).where(and(
+        eq(authorEarnings.userId, userId),
+        eq(authorEarnings.status, "pending"),
+      ));
+
+      const paidResult = await db.select({
+        paidAmount: sum(authorEarnings.commissionCents),
+      }).from(authorEarnings).where(and(
+        eq(authorEarnings.userId, userId),
+        eq(authorEarnings.status, "paid"),
+      ));
+
+      res.json({
+        totalGrossCents: parseInt(totalResult[0]?.totalGross || "0"),
+        totalCommissionCents: parseInt(totalResult[0]?.totalCommission || "0"),
+        pendingCents: parseInt(pendingResult[0]?.pendingAmount || "0"),
+        paidCents: parseInt(paidResult[0]?.paidAmount || "0"),
+      });
+    } catch (error) {
+      console.error("Error fetching author earnings:", error);
+      res.status(500).json({ message: "Failed to fetch earnings" });
+    }
+  });
+
+  app.get("/api/author/earnings/history", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const earnings = await db.select().from(authorEarnings)
+        .where(eq(authorEarnings.userId, userId))
+        .orderBy(desc(authorEarnings.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      const [countResult] = await db.select({ total: count() })
+        .from(authorEarnings)
+        .where(eq(authorEarnings.userId, userId));
+
+      res.json({ earnings, total: countResult?.total || 0 });
+    } catch (error) {
+      console.error("Error fetching earnings history:", error);
+      res.status(500).json({ message: "Failed to fetch earnings history" });
+    }
+  });
+
+  app.post("/api/author/earnings/request-payout", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const updated = await db.update(authorEarnings)
+        .set({ status: "payout_requested" })
+        .where(and(
+          eq(authorEarnings.userId, userId),
+          eq(authorEarnings.status, "pending"),
+        ));
+
+      res.json({ message: "Payout requested for all pending earnings" });
+    } catch (error) {
+      console.error("Error requesting payout:", error);
+      res.status(500).json({ message: "Failed to request payout" });
+    }
+  });
+
+  app.post("/api/author/promote", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { bookId } = req.body;
+      if (!bookId) return res.status(400).json({ message: "bookId required" });
+
+      const [submission] = await db.select().from(userSubmissions)
+        .where(and(
+          eq(userSubmissions.id, bookId),
+          eq(userSubmissions.authorUserId, userId),
+        ));
+
+      if (!submission) return res.status(404).json({ message: "Book not found or not yours" });
+
+      await db.update(userSubmissions)
+        .set({ isPromoted: true })
+        .where(eq(userSubmissions.id, bookId));
+
+      res.json({ message: "Content promoted successfully" });
+    } catch (error) {
+      console.error("Error promoting content:", error);
+      res.status(500).json({ message: "Failed to promote content" });
+    }
+  });
+}
+
+export async function recordAuthorEarning(userId: string, bookId: string, grossCents: number, earningType: string = "sale") {
+  const platformFeePct = 30;
+  const platformCut = Math.round(grossCents * platformFeePct / 100);
+  const authorCut = grossCents - platformCut;
+
+  await db.insert(authorEarnings).values({
+    userId,
+    bookId,
+    earningType,
+    grossCents,
+    commissionCents: authorCut,
+    platformFeePct,
+    status: "pending",
+  });
+
+  return { authorCut, platformCut };
 }

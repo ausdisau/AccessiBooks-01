@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CreditCard, Download, ExternalLink, Crown, DollarSign, Receipt, Clock, ArrowUpRight, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { CreditCard, Download, ExternalLink, Crown, DollarSign, Receipt, Clock, ArrowUpRight, ChevronLeft, ChevronRight, FileText, Gift } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { GiftCards } from "./gift-cards";
 
 function formatCents(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
@@ -403,6 +404,10 @@ export function BillingDashboard() {
           )}
         </CardContent>
       </Card>
+
+      <Separator />
+
+      <GiftCards />
     </div>
   );
 }

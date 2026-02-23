@@ -3,16 +3,18 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useAudioContext } from "@/contexts/AudioContext";
+import { useSubscription } from "@/hooks/use-subscription";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   Users, MessageCircle, Send, Copy, Play, Pause,
   SkipForward, SkipBack, Crown, ArrowLeft, Link2, Volume2,
-  Loader2, X, Radio,
+  Loader2, X, Radio, Lock, Shield, Sparkles, UserPlus,
 } from "lucide-react";
 import type { Book, ListeningRoom, RoomMessage } from "@shared/schema";
 
@@ -34,12 +36,25 @@ interface ListeningPartyProps {
   onBack: () => void;
 }
 
+interface TierLimits {
+  tier: string;
+  canCreate: boolean;
+  maxListeners: number;
+  coHost: boolean;
+}
+
 export function ListeningParty({ book, onBack }: ListeningPartyProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { tier: subscriptionTier, isPaid, upgradeToTier, isUpgrading } = useSubscription();
   const [mode, setMode] = useState<"lobby" | "room">("lobby");
   const [roomId, setRoomId] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
+  const [roomName, setRoomName] = useState("");
+
+  const { data: tierLimits } = useQuery<TierLimits>({
+    queryKey: ["/api/listening-party/tier-limits"],
+  });
 
   const handleRoomCreated = (room: ListeningRoom) => {
     setRoomId(room.id);
@@ -87,32 +102,107 @@ export function ListeningParty({ book, onBack }: ListeningPartyProps) {
             <CardTitle className="text-lg flex items-center gap-2">
               <Play className="h-5 w-5 text-primary" aria-hidden="true" />
               Start a Party
+              {tierLimits && !tierLimits.canCreate && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  <Lock className="h-3 w-3 mr-1" />
+                  Plus+
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Create a listening room for a book and invite others to join. As the host, you control playback for everyone.
-            </p>
-            {book ? (
-              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                {book.coverImage ? (
-                  <img src={book.coverImage} alt="" className="w-10 h-14 object-cover rounded" />
-                ) : (
-                  <div className="w-10 h-14 bg-muted rounded flex items-center justify-center">
-                    <Volume2 className="h-4 w-4 text-muted-foreground" />
+            {tierLimits && !tierLimits.canCreate ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border border-primary/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Lock className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold text-sm">Upgrade to Host Parties</h3>
                   </div>
-                )}
-                <div className="min-w-0">
-                  <p className="font-medium text-sm truncate">{book.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">{book.author}</p>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Free users can join listening parties. Upgrade to Plus or Premium to create and host your own rooms.
+                  </p>
+                  <div className="space-y-2 text-xs text-muted-foreground mb-4">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-3 w-3 text-blue-500" />
+                      <span><strong>Plus:</strong> Host rooms with up to 10 listeners</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-3 w-3 text-yellow-500" />
+                      <span><strong>Premium:</strong> Up to 50 listeners + co-host support</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => upgradeToTier("plus", "monthly")}
+                      disabled={isUpgrading}
+                    >
+                      {isUpgrading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      Get Plus
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => upgradeToTier("premium", "monthly")}
+                      disabled={isUpgrading}
+                    >
+                      {isUpgrading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      Get Premium
+                    </Button>
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  You can still join rooms created by others using a room code.
+                </p>
               </div>
             ) : (
-              <p className="text-sm text-amber-600 dark:text-amber-400">
-                Select a book from your library first, then come back here to start a party.
-              </p>
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Create a listening room for a book and invite others to join. As the host, you control playback for everyone.
+                </p>
+                {tierLimits && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Users className="h-3 w-3" />
+                    <span>Up to {tierLimits.maxListeners} listeners</span>
+                    {tierLimits.coHost && (
+                      <Badge variant="outline" className="text-xs px-1.5 py-0">
+                        <UserPlus className="h-3 w-3 mr-1" />
+                        Co-host
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                {tierLimits?.coHost && (
+                  <Input
+                    placeholder="Custom room name (optional)"
+                    value={roomName}
+                    onChange={(e) => setRoomName(e.target.value)}
+                    maxLength={50}
+                    aria-label="Room name"
+                  />
+                )}
+                {book ? (
+                  <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                    {book.coverImage ? (
+                      <img src={book.coverImage} alt="" className="w-10 h-14 object-cover rounded" />
+                    ) : (
+                      <div className="w-10 h-14 bg-muted rounded flex items-center justify-center">
+                        <Volume2 className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{book.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">{book.author}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    Select a book from your library first, then come back here to start a party.
+                  </p>
+                )}
+                <CreateRoomButton book={book} onCreated={handleRoomCreated} roomName={roomName} />
+              </>
             )}
-            <CreateRoomButton book={book} onCreated={handleRoomCreated} />
           </CardContent>
         </Card>
 
@@ -148,7 +238,8 @@ export function ListeningParty({ book, onBack }: ListeningPartyProps) {
   );
 }
 
-function CreateRoomButton({ book, onCreated }: { book?: Book | null; onCreated: (room: ListeningRoom) => void }) {
+function CreateRoomButton({ book, onCreated, roomName }: { book?: Book | null; onCreated: (room: ListeningRoom) => void; roomName?: string }) {
+  const { toast } = useToast();
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!book) throw new Error("No book selected");
@@ -157,14 +248,27 @@ function CreateRoomButton({ book, onCreated }: { book?: Book | null; onCreated: 
         bookTitle: book.title,
         bookAuthor: book.author,
         bookCover: book.coverImage,
+        roomName: roomName || undefined,
       });
       return res.json();
     },
     onSuccess: (room: ListeningRoom) => {
       onCreated(room);
     },
-    onError: (err: Error) => {
-      console.error("Failed to create room:", err);
+    onError: (err: any) => {
+      if (err?.requiresUpgrade) {
+        toast({
+          title: "Upgrade Required",
+          description: "Room creation requires a Plus or Premium subscription",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Failed to create room",
+          description: err.message || "Something went wrong",
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -257,6 +361,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
   const { user } = useAuth();
   const { toast } = useToast();
   const { audioRef, currentBook, playBook, isPlaying, currentTime, playbackRate, seekTo, togglePlayPause, changeSpeed, skip, formatTime, setCurrentBook } = useAudioContext();
+  const [isCoHost, setIsCoHost] = useState(false);
 
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -329,7 +434,10 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
             if (msg.participants) {
               setParticipants(msg.participants);
               const me = msg.participants.find((p: Participant) => p.userId === user.id);
-              if (me) setIsHost(me.role === "host");
+              if (me) {
+                setIsHost(me.role === "host");
+                setIsCoHost(me.role === "co-host");
+              }
             }
             break;
           case "participant_joined":
@@ -397,8 +505,10 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
     };
   }, [isHost, ws]);
 
+  const canControlPlayback = isHost || isCoHost;
+
   const sendPlaybackUpdate = useCallback(() => {
-    if (!isHost || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!canControlPlayback || !ws || ws.readyState !== WebSocket.OPEN) return;
     lastSyncRef.current = Date.now();
     ws.send(JSON.stringify({
       type: "playback_update",
@@ -409,10 +519,10 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
         updatedAt: Date.now(),
       },
     }));
-  }, [isHost, ws]);
+  }, [canControlPlayback, ws]);
 
   useEffect(() => {
-    if (isHost || !syncedPlayback || !audioRef.current) return;
+    if (canControlPlayback || !syncedPlayback || !audioRef.current) return;
 
     const audio = audioRef.current;
     const elapsed = (Date.now() - syncedPlayback.updatedAt) / 1000;
@@ -434,7 +544,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
     if (audio.playbackRate !== syncedPlayback.playbackRate) {
       audio.playbackRate = syncedPlayback.playbackRate;
     }
-  }, [syncedPlayback, isHost]);
+  }, [syncedPlayback, canControlPlayback]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -450,19 +560,34 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
   };
 
   const handleHostTogglePlay = async () => {
+    if (!canControlPlayback) return;
     await togglePlayPause();
     setTimeout(sendPlaybackUpdate, 100);
   };
 
   const handleHostSkip = (seconds: number) => {
+    if (!canControlPlayback) return;
     skip(seconds);
     setTimeout(sendPlaybackUpdate, 100);
   };
 
   const handleHostSpeed = (delta: number) => {
+    if (!canControlPlayback) return;
     changeSpeed(delta);
     setTimeout(sendPlaybackUpdate, 100);
   };
+
+  const assignCoHost = useMutation({
+    mutationFn: async (targetUserId: string) => {
+      await apiRequest("POST", `/api/listening-party/rooms/${roomId}/co-host`, { userId: targetUserId });
+    },
+    onSuccess: () => {
+      toast({ title: "Co-host assigned" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to assign co-host", description: err.message, variant: "destructive" });
+    },
+  });
 
   const closeMutation = useMutation({
     mutationFn: async () => {
@@ -532,10 +657,20 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
                       <span className="inline-flex items-center gap-1 text-primary font-medium">
                         <Crown className="h-3 w-3" /> You are the host
                       </span>
+                    ) : isCoHost ? (
+                      <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                        <Shield className="h-3 w-3" /> You are a co-host
+                      </span>
                     ) : (
                       <span>Synced with host</span>
                     )}
                   </div>
+                  {room?.maxListeners && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      <Users className="h-3 w-3 inline mr-1" />
+                      {participants.length}/{room.maxListeners} listeners
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -545,8 +680,8 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => isHost ? handleHostSkip(-15) : null}
-                  disabled={!isHost}
+                  onClick={() => canControlPlayback ? handleHostSkip(-15) : null}
+                  disabled={!canControlPlayback}
                   aria-label="Skip back 15 seconds"
                 >
                   <SkipBack className="h-5 w-5" />
@@ -554,8 +689,8 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
                 <Button
                   size="lg"
                   className="rounded-full w-12 h-12"
-                  onClick={isHost ? handleHostTogglePlay : undefined}
-                  disabled={!isHost}
+                  onClick={canControlPlayback ? handleHostTogglePlay : undefined}
+                  disabled={!canControlPlayback}
                   aria-label={isPlaying ? "Pause" : "Play"}
                   data-testid="button-play-pause"
                 >
@@ -564,8 +699,8 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => isHost ? handleHostSkip(15) : null}
-                  disabled={!isHost}
+                  onClick={() => canControlPlayback ? handleHostSkip(15) : null}
+                  disabled={!canControlPlayback}
                   aria-label="Skip forward 15 seconds"
                 >
                   <SkipForward className="h-5 w-5" />
@@ -579,8 +714,8 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs"
-                    onClick={() => isHost ? handleHostSpeed(-0.25) : null}
-                    disabled={!isHost}
+                    onClick={() => canControlPlayback ? handleHostSpeed(-0.25) : null}
+                    disabled={!canControlPlayback}
                   >
                     -
                   </Button>
@@ -589,15 +724,15 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs"
-                    onClick={() => isHost ? handleHostSpeed(0.25) : null}
-                    disabled={!isHost}
+                    onClick={() => canControlPlayback ? handleHostSpeed(0.25) : null}
+                    disabled={!canControlPlayback}
                   >
                     +
                   </Button>
                 </div>
               </div>
 
-              {!isHost && (
+              {!canControlPlayback && (
                 <p className="text-center text-xs text-muted-foreground mt-3">
                   Playback is controlled by the host
                 </p>
@@ -620,9 +755,19 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-full text-sm"
                   >
                     {p.role === "host" && <Crown className="h-3 w-3 text-yellow-500" />}
+                    {p.role === "co-host" && <Shield className="h-3 w-3 text-blue-500" />}
                     <span>{p.displayName}</span>
                     {p.userId === user?.id && (
                       <span className="text-xs text-muted-foreground">(you)</span>
+                    )}
+                    {isHost && room?.hostTier === "premium" && p.role === "guest" && p.userId !== user?.id && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); assignCoHost.mutate(p.userId); }}
+                        className="ml-1 text-xs text-primary hover:text-primary/80"
+                        title="Make co-host"
+                      >
+                        <UserPlus className="h-3 w-3" />
+                      </button>
                     )}
                   </div>
                 ))}

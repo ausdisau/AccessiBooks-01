@@ -618,6 +618,8 @@ export const userSubmissions = pgTable("user_submissions", {
   fileSize: integer("file_size"),
   narrator: text("narrator"),
   tags: text("tags").array().default(sql`'{}'::text[]`),
+  isPromoted: boolean("is_promoted").notNull().default(false),
+  authorUserId: varchar("author_user_id"),
 });
 
 export const insertUserSubmissionSchema = createInsertSchema(userSubmissions).omit({
@@ -804,6 +806,9 @@ export const listeningRooms = pgTable("listening_rooms", {
   bookCover: text("book_cover"),
   hostUserId: varchar("host_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   roomCode: varchar("room_code", { length: 8 }).notNull().unique(),
+  roomName: text("room_name"),
+  maxListeners: integer("max_listeners").notNull().default(10),
+  hostTier: varchar("host_tier", { length: 20 }).notNull().default("plus"),
   status: varchar("status", { length: 20 }).notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
@@ -1064,3 +1069,204 @@ export const expiringRewards = pgTable("expiring_rewards", {
 export const insertExpiringRewardSchema = createInsertSchema(expiringRewards).omit({ id: true, claimedAt: true, createdAt: true });
 export type InsertExpiringReward = z.infer<typeof insertExpiringRewardSchema>;
 export type ExpiringReward = typeof expiringRewards.$inferSelect;
+
+export const authorEarnings = pgTable("author_earnings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull(),
+  earningType: varchar("earning_type").notNull(),
+  grossCents: integer("gross_cents").notNull().default(0),
+  commissionCents: integer("commission_cents").notNull().default(0),
+  platformFeePct: integer("platform_fee_pct").notNull().default(30),
+  status: varchar("status").notNull().default("pending"),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_author_earnings_user").on(table.userId),
+  index("idx_author_earnings_book").on(table.bookId),
+  index("idx_author_earnings_status").on(table.status),
+]);
+
+export const insertAuthorEarningSchema = createInsertSchema(authorEarnings).omit({ id: true, createdAt: true });
+export type InsertAuthorEarning = z.infer<typeof insertAuthorEarningSchema>;
+export type AuthorEarning = typeof authorEarnings.$inferSelect;
+
+export const voicePacks = pgTable("voice_packs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  voices: text("voices").array().notNull(),
+  priceCents: integer("price_cents").notNull().default(0),
+  isPremiumIncluded: boolean("is_premium_included").notNull().default(false),
+  previewUrl: text("preview_url"),
+  systemPrompt: text("system_prompt"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertVoicePackSchema = createInsertSchema(voicePacks).omit({ id: true, createdAt: true });
+export type InsertVoicePack = z.infer<typeof insertVoicePackSchema>;
+export type VoicePack = typeof voicePacks.$inferSelect;
+
+export const voicePackPurchases = pgTable("voice_pack_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  voicePackId: varchar("voice_pack_id").notNull().references(() => voicePacks.id),
+  amountCents: integer("amount_cents").notNull().default(0),
+  stripePaymentId: varchar("stripe_payment_id"),
+  purchasedAt: timestamp("purchased_at").defaultNow(),
+}, (table) => [
+  index("idx_vpp_user").on(table.userId),
+  index("idx_vpp_pack").on(table.voicePackId),
+]);
+
+export const insertVoicePackPurchaseSchema = createInsertSchema(voicePackPurchases).omit({ id: true, purchasedAt: true });
+export type InsertVoicePackPurchase = z.infer<typeof insertVoicePackPurchaseSchema>;
+export type VoicePackPurchase = typeof voicePackPurchases.$inferSelect;
+
+export const battlePasses = pgTable("battle_passes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  seasonName: text("season_name").notNull(),
+  description: text("description"),
+  priceCents: integer("price_cents").notNull().default(299),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBattlePassSchema = createInsertSchema(battlePasses).omit({ id: true, createdAt: true });
+export type InsertBattlePass = z.infer<typeof insertBattlePassSchema>;
+export type BattlePass = typeof battlePasses.$inferSelect;
+
+export const battlePassMilestones = pgTable("battle_pass_milestones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  battlePassId: varchar("battle_pass_id").notNull().references(() => battlePasses.id, { onDelete: "cascade" }),
+  tier: integer("tier").notNull(),
+  xpRequired: integer("xp_required").notNull(),
+  rewardType: varchar("reward_type").notNull(),
+  rewardValue: text("reward_value"),
+  description: text("description"),
+}, (table) => [
+  index("idx_bp_milestones_pass").on(table.battlePassId),
+]);
+
+export const insertBattlePassMilestoneSchema = createInsertSchema(battlePassMilestones).omit({ id: true });
+export type InsertBattlePassMilestone = z.infer<typeof insertBattlePassMilestoneSchema>;
+export type BattlePassMilestone = typeof battlePassMilestones.$inferSelect;
+
+export const battlePassPurchases = pgTable("battle_pass_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  battlePassId: varchar("battle_pass_id").notNull().references(() => battlePasses.id),
+  amountCents: integer("amount_cents").notNull().default(0),
+  purchasedAt: timestamp("purchased_at").defaultNow(),
+  currentTier: integer("current_tier").notNull().default(0),
+  xpEarned: integer("xp_earned").notNull().default(0),
+  claimedMilestones: text("claimed_milestones").notNull().default("[]"),
+}, (table) => [
+  index("idx_bpp_user").on(table.userId),
+  index("idx_bpp_pass").on(table.battlePassId),
+]);
+
+export const insertBattlePassPurchaseSchema = createInsertSchema(battlePassPurchases).omit({ id: true, purchasedAt: true });
+export type InsertBattlePassPurchase = z.infer<typeof insertBattlePassPurchaseSchema>;
+export type BattlePassPurchase = typeof battlePassPurchases.$inferSelect;
+
+export const annotationSync = pgTable("annotation_sync", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull(),
+  annotations: text("annotations").notNull().default("[]"),
+  bookmarks: text("bookmarks").notNull().default("[]"),
+  lastSyncedAt: timestamp("last_synced_at").defaultNow(),
+}, (table) => [
+  index("idx_annotation_sync_user_book").on(table.userId, table.bookId),
+]);
+
+export const insertAnnotationSyncSchema = createInsertSchema(annotationSync).omit({ id: true, lastSyncedAt: true });
+export type InsertAnnotationSync = z.infer<typeof insertAnnotationSyncSchema>;
+export type AnnotationSyncRecord = typeof annotationSync.$inferSelect;
+
+export const giftCards = pgTable("gift_cards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code").notNull().unique(),
+  fromUserId: varchar("from_user_id").references(() => users.id),
+  toEmail: text("to_email"),
+  amountCents: integer("amount_cents").notNull(),
+  balanceRemaining: integer("balance_remaining").notNull(),
+  type: varchar("type").notNull().default("credits"),
+  tierGift: varchar("tier_gift"),
+  monthsGift: integer("months_gift"),
+  message: text("message"),
+  status: varchar("status").notNull().default("active"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  redeemedBy: varchar("redeemed_by").references(() => users.id),
+  redeemedAt: timestamp("redeemed_at"),
+}, (table) => [
+  index("idx_gift_cards_code").on(table.code),
+  index("idx_gift_cards_from").on(table.fromUserId),
+  index("idx_gift_cards_status").on(table.status),
+]);
+
+export const insertGiftCardSchema = createInsertSchema(giftCards).omit({ id: true, createdAt: true, redeemedAt: true });
+export type InsertGiftCard = z.infer<typeof insertGiftCardSchema>;
+export type GiftCard = typeof giftCards.$inferSelect;
+
+export const enterpriseAccounts = pgTable("enterprise_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgName: text("org_name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  tier: varchar("tier").notNull().default("education"),
+  maxSeats: integer("max_seats").notNull().default(50),
+  currentSeats: integer("current_seats").notNull().default(0),
+  amountCents: integer("amount_cents").notNull().default(9900),
+  billingCycle: varchar("billing_cycle").notNull().default("monthly"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_enterprise_email").on(table.contactEmail),
+]);
+
+export const insertEnterpriseAccountSchema = createInsertSchema(enterpriseAccounts).omit({ id: true, createdAt: true });
+export type InsertEnterpriseAccount = z.infer<typeof insertEnterpriseAccountSchema>;
+export type EnterpriseAccount = typeof enterpriseAccounts.$inferSelect;
+
+export const enterpriseMembers = pgTable("enterprise_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  enterpriseId: varchar("enterprise_id").notNull().references(() => enterpriseAccounts.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role").notNull().default("member"),
+  addedAt: timestamp("added_at").defaultNow(),
+}, (table) => [
+  index("idx_ent_members_enterprise").on(table.enterpriseId),
+  index("idx_ent_members_user").on(table.userId),
+]);
+
+export const insertEnterpriseMemberSchema = createInsertSchema(enterpriseMembers).omit({ id: true, addedAt: true });
+export type InsertEnterpriseMember = z.infer<typeof insertEnterpriseMemberSchema>;
+export type EnterpriseMember = typeof enterpriseMembers.$inferSelect;
+
+export const sponsoredQueues = pgTable("sponsored_queues", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sponsorName: text("sponsor_name").notNull(),
+  queueId: varchar("queue_id"),
+  adAudioUrl: text("ad_audio_url"),
+  sponsorLogo: text("sponsor_logo"),
+  impressions: integer("impressions").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  amountCents: integer("amount_cents").notNull().default(0),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_sponsored_queues_active").on(table.isActive),
+  index("idx_sponsored_queues_dates").on(table.startDate, table.endDate),
+])
+
+export const insertSponsoredQueueSchema = createInsertSchema(sponsoredQueues).omit({ id: true, impressions: true, clicks: true, createdAt: true });
+export type InsertSponsoredQueue = z.infer<typeof insertSponsoredQueueSchema>;
+export type SponsoredQueue = typeof sponsoredQueues.$inferSelect;

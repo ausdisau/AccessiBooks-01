@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -12,6 +12,7 @@ import {
   Loader2,
   Headphones,
   ChevronDown,
+  Lock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,6 +24,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useAudioContext } from "@/contexts/AudioContext";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 
 type Voice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 
@@ -36,6 +39,14 @@ interface TTSPlayerProps {
   darkMode?: boolean;
   onWordIndex?: (index: number | null) => void;
 }
+
+interface OwnedVoicePack {
+  id: string;
+  voices: string[];
+  systemPrompt?: string;
+}
+
+const FREE_VOICES: Voice[] = ["alloy", "shimmer"];
 
 const VOICE_OPTIONS: { value: Voice; label: string; description: string }[] = [
   { value: "nova", label: "Nova", description: "Warm, engaging female" },
@@ -58,7 +69,7 @@ export function TTSPlayer({
 }: TTSPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [voice, setVoice] = useState<Voice>("nova");
+  const [voice, setVoice] = useState<Voice>("alloy");
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
@@ -72,6 +83,38 @@ export function TTSPlayer({
   const animationFrameRef = useRef<number | null>(null);
   const { toast } = useToast();
   const { audioRef: mainAudioRef } = useAudioContext();
+
+  const { data: ownedPacks } = useQuery<OwnedVoicePack[]>({
+    queryKey: ["/api/voice-packs/owned"],
+  });
+
+  const unlockedVoices = useMemo(() => {
+    const voices = new Set<string>(FREE_VOICES);
+    if (ownedPacks) {
+      for (const pack of ownedPacks) {
+        if (pack.voices) {
+          for (const v of pack.voices) {
+            voices.add(v);
+          }
+        }
+      }
+    }
+    return voices;
+  }, [ownedPacks]);
+
+  const activeSystemPrompt = useMemo(() => {
+    if (!ownedPacks) return undefined;
+    for (const pack of ownedPacks) {
+      if (pack.voices?.includes(voice) && pack.systemPrompt) {
+        return pack.systemPrompt;
+      }
+    }
+    return undefined;
+  }, [ownedPacks, voice]);
+
+  const isVoiceLocked = useCallback((v: Voice) => {
+    return !unlockedVoices.has(v);
+  }, [unlockedVoices]);
 
   useEffect(() => {
     return () => {
@@ -127,6 +170,8 @@ export function TTSPlayer({
   }, [onWordIndex]);
 
   const synthesizeAndPlay = useCallback(async (textToSpeak: string) => {
+    if (isVoiceLocked(voice)) return;
+
     cleanup();
     setIsLoading(true);
     setProgress(0);
@@ -137,10 +182,15 @@ export function TTSPlayer({
     }
 
     try {
+      const body: Record<string, string> = { text: textToSpeak, voice, format: "mp3" };
+      if (activeSystemPrompt) {
+        body.systemPrompt = activeSystemPrompt;
+      }
+
       const response = await fetch("/api/tts/synthesize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: textToSpeak, voice, format: "mp3" }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -172,7 +222,6 @@ export function TTSPlayer({
         if (autoAdvance && currentPage < totalPages) {
           onNextPage();
           setTimeout(() => {
-            // Will be triggered by text change
           }, 500);
         }
       });
@@ -195,10 +244,11 @@ export function TTSPlayer({
         variant: "destructive",
       });
     }
-  }, [voice, playbackRate, volume, isMuted, autoAdvance, currentPage, totalPages, onNextPage, onWordIndex, cleanup, updateProgress, toast]);
+  }, [voice, playbackRate, volume, isMuted, autoAdvance, currentPage, totalPages, onNextPage, onWordIndex, cleanup, updateProgress, toast, activeSystemPrompt, isVoiceLocked]);
 
   const handlePlayPause = useCallback(() => {
     if (isLoading) return;
+    if (isVoiceLocked(voice)) return;
 
     if (audioRef.current && currentTextRef.current === text) {
       if (isPlaying) {
@@ -216,7 +266,7 @@ export function TTSPlayer({
     } else {
       synthesizeAndPlay(text);
     }
-  }, [isLoading, isPlaying, text, synthesizeAndPlay, updateProgress, onWordIndex]);
+  }, [isLoading, isPlaying, text, voice, synthesizeAndPlay, updateProgress, onWordIndex, isVoiceLocked]);
 
   const handleStop = useCallback(() => {
     cleanup();
@@ -241,6 +291,7 @@ export function TTSPlayer({
   };
 
   const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const currentVoiceLocked = isVoiceLocked(voice);
 
   return (
     <div className={`border rounded-lg p-3 ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-muted/30 border-border"}`}>
@@ -258,7 +309,7 @@ export function TTSPlayer({
             size="sm"
             variant="ghost"
             onClick={handlePlayPause}
-            disabled={isLoading || !text}
+            disabled={isLoading || !text || currentVoiceLocked}
             aria-label={isPlaying ? "Pause" : "Play"}
             className="h-8 w-8 p-0"
           >
@@ -275,6 +326,18 @@ export function TTSPlayer({
 
       {expanded && (
         <div className="space-y-3">
+          {currentVoiceLocked && (
+            <div className={`flex items-center justify-between rounded-md px-3 py-2 text-xs ${darkMode ? "bg-yellow-900/30 text-yellow-300" : "bg-yellow-50 text-yellow-800 border border-yellow-200"}`}>
+              <div className="flex items-center gap-1.5">
+                <Lock className="h-3 w-3" />
+                <span>Unlock with a Voice Pack</span>
+              </div>
+              <Link href="/voice-packs" className="underline font-medium hover:opacity-80">
+                Browse Voice Packs
+              </Link>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -291,7 +354,7 @@ export function TTSPlayer({
               size="sm"
               variant={isPlaying ? "secondary" : "default"}
               onClick={handlePlayPause}
-              disabled={isLoading || !text}
+              disabled={isLoading || !text || currentVoiceLocked}
               aria-label={isPlaying ? "Pause" : "Play"}
               className="h-9 w-9 p-0 rounded-full"
             >
@@ -348,27 +411,42 @@ export function TTSPlayer({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 text-xs">
+                    {currentVoiceLocked && <Lock className="h-3 w-3 mr-1" />}
                     {VOICE_OPTIONS.find(v => v.value === voice)?.label || "Voice"}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuLabel>AI Voice</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {VOICE_OPTIONS.map(v => (
-                    <DropdownMenuItem
-                      key={v.value}
-                      onClick={() => {
-                        setVoice(v.value);
-                        if (isPlaying) handleStop();
-                      }}
-                      className={voice === v.value ? "bg-primary/10" : ""}
-                    >
-                      <div>
-                        <div className="font-medium">{v.label}</div>
-                        <div className="text-xs text-muted-foreground">{v.description}</div>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
+                  {VOICE_OPTIONS.map(v => {
+                    const locked = isVoiceLocked(v.value);
+                    return (
+                      <DropdownMenuItem
+                        key={v.value}
+                        onClick={() => {
+                          setVoice(v.value);
+                          if (isPlaying) handleStop();
+                        }}
+                        className={voice === v.value ? "bg-primary/10" : ""}
+                      >
+                        <div className="flex items-center gap-2 w-full">
+                          <div className="flex-1">
+                            <div className="font-medium flex items-center gap-1">
+                              {v.label}
+                              {locked && <Lock className="h-3 w-3 text-muted-foreground" />}
+                            </div>
+                            <div className="text-xs text-muted-foreground">{v.description}</div>
+                          </div>
+                        </div>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/voice-packs" className="text-xs text-primary cursor-pointer">
+                      Browse Voice Packs
+                    </Link>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
