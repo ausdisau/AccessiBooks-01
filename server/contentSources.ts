@@ -6,7 +6,10 @@ async function fetchWithTimeout(url: string, timeout = 15000): Promise<Response>
   try {
     const response = await fetch(url, { 
       signal: controller.signal,
-      headers: { 'User-Agent': 'AccessiBooks/1.0 (audiobook-platform)' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (compatible; AccessiBooks/1.0; +https://accessibooks.app)',
+        'Accept': 'application/atom+xml, application/xml, text/xml, application/rss+xml, */*',
+      }
     });
     clearTimeout(timeoutId);
     return response;
@@ -82,7 +85,7 @@ function transformLoyalBook(entry: LoyalBooksEntry, index: number): Book {
 
 export async function fetchLoyalBooks(limit = 20): Promise<Book[]> {
   try {
-    const genres = ['Fiction', 'History', 'Science', 'Philosophy', 'Poetry', 'Adventure', 'Children', 'Mystery', 'Romance', 'Humor', 'Drama', 'Short+Stories', 'Travel', 'Religion', 'Biography'];
+    const genres = ['Fiction', 'History', 'Science', 'Philosophy', 'Poetry', 'Adventure', 'Children', 'Mystery', 'Romance', 'Humor', 'Drama', 'Short+Stories', 'Travel', 'Religion', 'Biography', 'Horror', 'Fantasy', 'War', 'Politics', 'Nature', 'Psychology', 'Economics', 'Art', 'Music', 'Education'];
     const perGenre = Math.ceil(limit / genres.length);
     const allBooks: Book[] = [];
     const seenTitles = new Set<string>();
@@ -175,6 +178,47 @@ interface StandardEbookEntry {
   updated: string;
 }
 
+function parseAtomFeed(xml: string): StandardEbookEntry[] {
+  const entries: StandardEbookEntry[] = [];
+  const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+  let match;
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const entry = match[1];
+    const id = entry.match(/<id>(.*?)<\/id>/)?.[1] || 
+               entry.match(/<link[^>]*rel="alternate"[^>]*href="([^"]*)"[^>]*>/)?.[1] || "";
+    const title = entry.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1] || "";
+    const author = entry.match(/<author>[\s\S]*?<name>(.*?)<\/name>/)?.[1] || 
+                   entry.match(/<name>(.*?)<\/name>/)?.[1] || "Unknown Author";
+    const desc = entry.match(/<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] ||
+                 entry.match(/<content[^>]*>([\s\S]*?)<\/content>/)?.[1] || "";
+    const coverUrl = entry.match(/<link[^>]*rel="http:\/\/opds-spec\.org\/image[^"]*"[^>]*href="([^"]*)"[^>]*>/)?.[1] ||
+                     entry.match(/<link[^>]*type="image\/[^"]*"[^>]*href="([^"]*)"[^>]*>/)?.[1] ||
+                     entry.match(/<link[^>]*href="([^"]*\.(jpg|jpeg|png|gif))"[^>]*>/)?.[1] || null;
+    const contentUrl = entry.match(/<link[^>]*type="application\/epub\+zip"[^>]*href="([^"]*)"[^>]*>/)?.[1] ||
+                       entry.match(/<link[^>]*href="([^"]*\.epub[^"]*)"[^>]*>/)?.[1] || null;
+    const language = entry.match(/<dcterms:language>(.*?)<\/dcterms:language>/)?.[1] ||
+                     entry.match(/<dc:language>(.*?)<\/dc:language>/)?.[1] || "en";
+    const subject = entry.match(/<category[^>]*term="([^"]*)"[^>]*>/)?.[1] ||
+                    entry.match(/<dcterms:subject>(.*?)<\/dcterms:subject>/)?.[1] || "Literature";
+    const updated = entry.match(/<updated>(.*?)<\/updated>/)?.[1] || "";
+    
+    if (title.trim()) {
+      entries.push({
+        id: id.replace(/https?:\/\/[^/]+\//g, ''),
+        title: title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/<[^>]*>/g, '').trim(),
+        author: author.replace(/&amp;/g, '&').replace(/<[^>]*>/g, '').trim(),
+        description: desc.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').substring(0, 500),
+        coverUrl,
+        contentUrl,
+        language,
+        subject,
+        updated,
+      });
+    }
+  }
+  return entries;
+}
+
 function parseOPDSFeed(xml: string): StandardEbookEntry[] {
   const entries: StandardEbookEntry[] = [];
   const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
@@ -243,6 +287,8 @@ export async function fetchStandardEbooks(limit = 20): Promise<Book[]> {
     const feeds = [
       'https://standardebooks.org/feeds/opds/new-releases',
       'https://standardebooks.org/feeds/opds/all',
+      'https://standardebooks.org/feeds/rss/new-releases',
+      'https://standardebooks.org/feeds/atom/new-releases',
     ];
     const allBooks: Book[] = [];
     const seenIds = new Set<string>();
@@ -250,22 +296,38 @@ export async function fetchStandardEbooks(limit = 20): Promise<Book[]> {
     for (const feedUrl of feeds) {
       if (allBooks.length >= limit) break;
       try {
-        const response = await fetchWithTimeout(feedUrl, 20000);
-        if (!response.ok) continue;
+        const response = await fetchWithTimeout(feedUrl, 25000);
+        if (!response.ok) {
+          console.warn(`Standard Ebooks feed ${feedUrl} returned ${response.status}`);
+          continue;
+        }
         const xml = await response.text();
         const entries = parseOPDSFeed(xml);
-        entries.forEach(entry => {
-          const book = transformStandardEbook(entry);
-          if (!seenIds.has(book.id) && allBooks.length < limit) {
-            seenIds.add(book.id);
-            allBooks.push(book);
-          }
-        });
-      } catch {
+        if (entries.length === 0) {
+          const altEntries = parseAtomFeed(xml);
+          altEntries.forEach(entry => {
+            const book = transformStandardEbook(entry);
+            if (!seenIds.has(book.id) && allBooks.length < limit) {
+              seenIds.add(book.id);
+              allBooks.push(book);
+            }
+          });
+        } else {
+          entries.forEach(entry => {
+            const book = transformStandardEbook(entry);
+            if (!seenIds.has(book.id) && allBooks.length < limit) {
+              seenIds.add(book.id);
+              allBooks.push(book);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn(`Standard Ebooks feed error for ${feedUrl}:`, err instanceof Error ? err.message : 'Unknown');
         continue;
       }
     }
     
+    console.log(`Standard Ebooks: parsed ${allBooks.length} titles from feeds`);
     return allBooks;
   } catch (error) {
     console.warn('Standard Ebooks fetch failed:', error instanceof Error ? error.message : 'Unknown');
@@ -305,11 +367,19 @@ export async function fetchFeedbooks(limit = 20): Promise<Book[]> {
     
     const promises = feeds.map(async (feedUrl) => {
       try {
-        const response = await fetchWithTimeout(feedUrl, 20000);
-        if (!response.ok) return [];
+        const response = await fetchWithTimeout(feedUrl, 25000);
+        if (!response.ok) {
+          console.warn(`Feedbooks feed ${feedUrl} returned ${response.status}`);
+          return [];
+        }
         const xml = await response.text();
-        return parseOPDSFeed(xml);
-      } catch {
+        const entries = parseOPDSFeed(xml);
+        if (entries.length === 0) {
+          return parseAtomFeed(xml);
+        }
+        return entries;
+      } catch (err) {
+        console.warn(`Feedbooks feed error for ${feedUrl}:`, err instanceof Error ? err.message : 'Unknown');
         return [];
       }
     });
@@ -497,6 +567,9 @@ export async function fetchWikipediaSpokenArticles(limit = 20): Promise<Book[]> 
     const categories = [
       'Category:Spoken_articles',
       'Category:Wikipedia_spoken_articles_in_English',
+      'Category:Spoken_Wikipedia',
+      'Category:Featured_articles_with_spoken_versions',
+      'Category:Good_articles_with_spoken_versions',
     ];
     const perCategory = Math.ceil(limit / categories.length);
     const allBooks: Book[] = [];
@@ -592,7 +665,7 @@ export async function searchWikipediaSpokenArticles(query: string, limit = 10): 
 
 export async function fetchSerializedFictionPodcasts(limit = 15): Promise<Book[]> {
   try {
-    const terms = ['audiobook fiction', 'serialized fiction podcast', 'audio drama', 'fiction podcast', 'storytelling podcast', 'narrative podcast', 'horror fiction podcast', 'comedy podcast drama', 'sci-fi audio drama', 'true crime podcast'];
+    const terms = ['audiobook fiction', 'serialized fiction podcast', 'audio drama', 'fiction podcast', 'storytelling podcast', 'narrative podcast', 'horror fiction podcast', 'comedy podcast drama', 'sci-fi audio drama', 'true crime podcast', 'literary fiction podcast', 'fantasy audio drama', 'mystery thriller podcast', 'history documentary podcast', 'science podcast', 'education podcast lectures', 'philosophy podcast', 'book review podcast', 'writing craft podcast', 'mythology legends podcast'];
     const perTerm = Math.min(Math.ceil(limit / terms.length), 200);
     const allBooks: Book[] = [];
     const seenIds = new Set<string>();

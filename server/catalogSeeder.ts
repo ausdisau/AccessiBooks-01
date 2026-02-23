@@ -5,9 +5,9 @@ import { eq } from "drizzle-orm";
 const LIBRIVOX_API_BASE = "https://librivox.org/api/feed/audiobooks";
 const GUTENBERG_API_BASE = "https://gutendex.com";
 
-const BATCH_SIZE = 50;
-const LIBRIVOX_DELAY_MS = 2000;
-const GUTENBERG_DELAY_MS = 3000;
+const BATCH_SIZE = 100;
+const LIBRIVOX_DELAY_MS = 1500;
+const GUTENBERG_DELAY_MS = 2000;
 const GUTENBERG_PAGE_SIZE = 32;
 
 interface SeederProgress {
@@ -184,6 +184,18 @@ async function seedLibriVox(abortSignal: AbortSignal): Promise<void> {
   progress.estimatedTotal = 18000;
 
   try {
+    // Auto-resume: skip to approximate offset based on existing DB count
+    if (progress.currentOffset === 0) {
+      const countResult = await db.execute<{ count: string }>(
+        `SELECT COUNT(*) as count FROM books WHERE source = 'librivox'`
+      );
+      const existingCount = parseInt(countResult.rows?.[0]?.count || "0");
+      if (existingCount > 0) {
+        progress.currentOffset = existingCount;
+        console.log(`[Seeder] LibriVox: resuming from offset ${existingCount} (${existingCount} existing books)`);
+      }
+    }
+
     let emptyPages = 0;
     while (!abortSignal.aborted && emptyPages < 3) {
       const url = `${LIBRIVOX_API_BASE}?format=json&extended=1&limit=${BATCH_SIZE}&offset=${progress.currentOffset}`;
@@ -244,6 +256,18 @@ async function seedGutenberg(abortSignal: AbortSignal): Promise<void> {
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
   progress.estimatedTotal = 70000;
+
+  // Auto-resume: skip to approximate page based on existing DB count
+  if (progress.currentOffset === 0) {
+    const countResult = await db.execute<{ count: string }>(
+      `SELECT COUNT(*) as count FROM books WHERE source = 'gutenberg'`
+    );
+    const existingCount = parseInt(countResult.rows?.[0]?.count || "0");
+    if (existingCount > 0) {
+      progress.currentOffset = existingCount;
+      console.log(`[Seeder] Gutenberg: resuming from page ~${Math.floor(existingCount / GUTENBERG_PAGE_SIZE) + 1} (${existingCount} existing books)`);
+    }
+  }
 
   const startPage = Math.floor(progress.currentOffset / GUTENBERG_PAGE_SIZE) + 1;
 

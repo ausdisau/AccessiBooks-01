@@ -931,8 +931,8 @@ export class ExternalAPIStorage implements IStorage {
     
     // Parallelize API calls for better performance
     const fetchPromises: Promise<Book[]>[] = [
-      // LibriVox books - multiple pages
-      ...(Array.from({length: 5}, (_, i) => 
+      // LibriVox books - multiple pages (8 pages × 50 = 400 max)
+      ...(Array.from({length: 8}, (_, i) => 
         this.fetchLibriVoxBooks(50, i * 50).then(books => {
           const transformed = books.map(transformLibriVoxBook);
           if (i === 0) console.log(`Fetched LibriVox page ${i+1}: ${transformed.length} books`);
@@ -943,8 +943,8 @@ export class ExternalAPIStorage implements IStorage {
         })
       )),
       
-      // Open Library books - multi-subject
-      this.fetchOpenLibraryBooks(100).then((books: OpenLibraryBook[]) => {
+      // Open Library books - multi-subject (20 subjects × 20 each = 400 max)
+      this.fetchOpenLibraryBooks(400).then((books: OpenLibraryBook[]) => {
         const transformed = books.map(transformOpenLibraryBook);
         console.log(`Fetched ${transformed.length} books from Open Library`);
         return transformed;
@@ -953,8 +953,8 @@ export class ExternalAPIStorage implements IStorage {
         return [] as Book[];
       }),
       
-      // Google Books - multi-subject
-      this.fetchGoogleBooks(200).then((volumes: GoogleBooksVolume[]) => {
+      // Google Books - multi-subject (25 subjects × 20 each = 500 max)
+      this.fetchGoogleBooks(500).then((volumes: GoogleBooksVolume[]) => {
         const transformed = volumes.map(transformGoogleBooksVolume);
         console.log(`Fetched ${transformed.length} books from Google Books`);
         return transformed;
@@ -979,8 +979,8 @@ export class ExternalAPIStorage implements IStorage {
         return [] as Book[];
       }),
       
-      // Project Gutenberg ebooks - multiple pages
-      ...(Array.from({length: 5}, (_, i) => 
+      // Project Gutenberg ebooks - 3 pages (seeder handles bulk import, runtime fetches a few for freshness)
+      ...(Array.from({length: 3}, (_, i) => 
         this.fetchGutenbergBooks(32, i + 1).then(ebooks => {
           const transformed = ebooks.map(transformGutenbergBook);
           if (i === 0) console.log(`Fetched Gutenberg page ${i+1}: ${transformed.length} ebooks`);
@@ -991,20 +991,27 @@ export class ExternalAPIStorage implements IStorage {
         })
       )),
 
-      // Loyal Books audiobooks - multi-genre
-      fetchLoyalBooks(100).then(books => {
+      // Internet Archive - expanded multi-query (200 max)
+      this.fetchInternetArchiveBooks(200).then(docs => {
+        const transformed = docs.map(transformInternetArchiveDoc);
+        console.log(`Fetched ${transformed.length} books from Internet Archive`);
+        return transformed;
+      }).catch(() => [] as Book[]),
+
+      // Loyal Books audiobooks - multi-genre (200 max)
+      fetchLoyalBooks(200).then(books => {
         console.log(`Fetched ${books.length} books from Loyal Books`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // Standard Ebooks - multiple feeds
-      fetchStandardEbooks(200).then(books => {
+      // Standard Ebooks - multiple feeds (400 max)
+      fetchStandardEbooks(400).then(books => {
         console.log(`Fetched ${books.length} ebooks from Standard Ebooks`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // Feedbooks public domain - multiple categories
-      fetchFeedbooks(100).then(books => {
+      // Feedbooks public domain - multiple categories (200 max)
+      fetchFeedbooks(200).then(books => {
         console.log(`Fetched ${books.length} ebooks from Feedbooks`);
         return books;
       }).catch(() => [] as Book[]),
@@ -1015,14 +1022,14 @@ export class ExternalAPIStorage implements IStorage {
         return books;
       }),
 
-      // Wikipedia Spoken Articles - multiple categories
-      fetchWikipediaSpokenArticles(100).then(books => {
+      // Wikipedia Spoken Articles - multiple categories (300 max)
+      fetchWikipediaSpokenArticles(300).then(books => {
         console.log(`Fetched ${books.length} spoken articles from Wikipedia`);
         return books;
       }).catch(() => [] as Book[]),
 
-      // Serialized Fiction Podcasts - expanded
-      fetchSerializedFictionPodcasts(100).then(books => {
+      // Serialized Fiction Podcasts - expanded (200 max)
+      fetchSerializedFictionPodcasts(200).then(books => {
         console.log(`Fetched ${books.length} fiction podcasts`);
         return books;
       }).catch(() => [] as Book[]),
@@ -1650,7 +1657,7 @@ export class ExternalAPIStorage implements IStorage {
   private async fetchOpenLibraryBooks(limit: number = 20): Promise<OpenLibraryBook[]> {
     try {
       console.log(`Fetching Open Library books (limit: ${limit})...`);
-      const subjects = ['fiction', 'science', 'history', 'philosophy', 'biography', 'poetry', 'mystery', 'romance', 'fantasy', 'adventure'];
+      const subjects = ['fiction', 'science', 'history', 'philosophy', 'biography', 'poetry', 'mystery', 'romance', 'fantasy', 'adventure', 'thriller', 'horror', 'humor', 'drama', 'travel', 'psychology', 'economics', 'art', 'music', 'nature'];
       const perSubject = Math.ceil(limit / subjects.length);
       const allBooks: OpenLibraryBook[] = [];
       
@@ -1687,7 +1694,7 @@ export class ExternalAPIStorage implements IStorage {
     
     try {
       console.log(`Fetching Google Books (limit: ${limit})...`);
-      const subjects = ['fiction', 'mystery', 'science+fiction', 'history', 'biography', 'romance', 'fantasy', 'thriller', 'self+help', 'business', 'philosophy', 'poetry', 'adventure', 'horror', 'young+adult'];
+      const subjects = ['fiction', 'mystery', 'science+fiction', 'history', 'biography', 'romance', 'fantasy', 'thriller', 'self+help', 'business', 'philosophy', 'poetry', 'adventure', 'horror', 'young+adult', 'psychology', 'cooking', 'art', 'music', 'travel', 'health', 'education', 'religion', 'humor', 'drama'];
       const perSubject = Math.min(Math.ceil(limit / subjects.length), 40);
       const allVolumes: GoogleBooksVolume[] = [];
       const seenIds = new Set<string>();
@@ -1892,24 +1899,46 @@ export class ExternalAPIStorage implements IStorage {
   }
   
   // Internet Archive API methods
-  private async fetchInternetArchiveBooks(limit: number = 15): Promise<InternetArchiveDoc[]> {
+  private async fetchInternetArchiveBooks(limit: number = 200): Promise<InternetArchiveDoc[]> {
     try {
       console.log(`Fetching Internet Archive books (limit: ${limit})...`);
       
-      // Search for public domain texts in English
-      const query = 'mediatype:texts AND language:eng AND collection:opensource';
-      const url = `${INTERNET_ARCHIVE_API_BASE}/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier,title,creator,description,year,date,subject,language,mediatype&rows=${limit}&output=json`;
+      const queries = [
+        'mediatype:texts AND language:eng AND collection:opensource',
+        'mediatype:texts AND language:eng AND collection:gutenberg',
+        'mediatype:audio AND language:eng AND collection:librivoxaudio',
+        'mediatype:texts AND language:eng AND downloads:[100 TO 999999]',
+      ];
+      const perQuery = Math.ceil(limit / queries.length);
+      const allDocs: InternetArchiveDoc[] = [];
+      const seenIds = new Set<string>();
       
-      const response = await fetchWithTimeout(url, 20000);
+      const promises = queries.map(async (query) => {
+        try {
+          const url = `${INTERNET_ARCHIVE_API_BASE}/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier,title,creator,description,year,date,subject,language,mediatype&rows=${perQuery}&sort[]=downloads+desc&output=json`;
+          const response = await fetchWithTimeout(url, 20000);
+          if (response.ok) {
+            const responseData: InternetArchiveSearchResponse = await response.json();
+            return responseData.response.docs || [];
+          }
+          return [];
+        } catch {
+          return [];
+        }
+      });
       
-      if (response.ok) {
-        const responseData: InternetArchiveSearchResponse = await response.json();
-        console.log(`Internet Archive API response: ${responseData.response.docs.length} books`);
-        return responseData.response.docs || [];
-      } else {
-        console.warn(`Internet Archive API returned status ${response.status}`);
-        return [];
-      }
+      const results = await Promise.all(promises);
+      results.forEach(docs => {
+        docs.forEach(doc => {
+          if (!seenIds.has(doc.identifier)) {
+            seenIds.add(doc.identifier);
+            allDocs.push(doc);
+          }
+        });
+      });
+      
+      console.log(`Internet Archive API response: ${allDocs.length} books`);
+      return allDocs.slice(0, limit);
     } catch (error) {
       console.error('Error fetching Internet Archive books:', error);
       return [];
