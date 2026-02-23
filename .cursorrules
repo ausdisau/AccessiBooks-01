@@ -1,0 +1,126 @@
+# AccessiBooks - Cursor Development Guide
+
+## Project Overview
+AccessiBooks is an accessible multi-format content platform (audiobooks, ebooks, podcasts, magazines) with a 3-tier subscription model, built with React + Express + PostgreSQL.
+
+## Tech Stack
+- **Frontend**: React 18 + TypeScript, Vite, Tailwind CSS + shadcn/ui, TanStack Query v5, wouter (routing)
+- **Backend**: Node.js + Express.js + TypeScript, Passport.js (auth), Drizzle ORM
+- **Database**: PostgreSQL (Neon), with full-text search (tsvector/tsquery + GIN index)
+- **Payments**: Stripe (subscriptions + one-time purchases)
+- **Content**: Aggregated from 10+ external APIs (LibriVox, iTunes, Google Books, Open Library, Gutenberg, etc.)
+
+## Project Structure
+```
+client/src/
+  App.tsx              - Main app with routing, auth, header, player orchestration
+  pages/               - Page components (library.tsx is the main home view)
+  components/          - UI components (book-card, audio-player, ebook-reader, etc.)
+  hooks/               - Custom hooks (useAuth, use-subscription, use-purchases, etc.)
+  lib/                 - Utilities (queryClient.ts sets up default fetcher)
+
+server/
+  index.ts             - Express server entry point
+  routes.ts            - All API route definitions (~3700 lines)
+  storage.ts           - Data access layer (IStorage interface + ExternalAPIStorage)
+  googlePlay.ts        - Google Play Books integration via SerpApi
+  contentSources.ts    - External content source fetchers (LibriVox, Standard Ebooks, etc.)
+  apiCache.ts          - In-memory LRU cache for external API responses
+  vite.ts              - Vite dev server integration (DO NOT MODIFY)
+
+shared/
+  schema.ts            - Drizzle ORM schema, Zod validators, shared types
+```
+
+## Key Conventions
+
+### Import Aliases
+- `@/` → `client/src/` (components, hooks, lib)
+- `@shared/` → `shared/` (schema types)
+- `@assets/` → `attached_assets/` (static assets)
+
+### Data Flow
+1. Schema types defined in `shared/schema.ts` using Drizzle + drizzle-zod
+2. Storage methods in `server/storage.ts` (implements `IStorage` interface)
+3. Express routes in `server/routes.ts` call storage methods
+4. Frontend uses TanStack Query v5 (object syntax only: `useQuery({ queryKey: [...] })`)
+5. Default queryFn is pre-configured - queries only need `queryKey` matching the API path
+6. Mutations use `apiRequest` from `@/lib/queryClient`, then invalidate cache
+
+### Adding a New Content Source
+1. Create fetch/search functions in `server/contentSources.ts`
+2. Add to `searchPromises` array in `storage.ts` `searchBooks()` method
+3. Register in the `getBooks()` fetch pipeline
+4. Create frontend section component or add to existing carousel
+
+### Authentication
+- Passport.js with multiple strategies: local, Google, Facebook, GitHub, Microsoft, Auth0
+- `useAuth()` hook provides `user`, `isLoading`, `login`, `logout`
+- Routes use `isAuthenticated` middleware for protected endpoints
+
+### Subscription Model
+- 3 tiers: Free ($0), Plus ($4.99/mo), Premium ($9.99/mo)
+- `useSubscription()` hook provides `tier`, `isPremium`, `isPlus`, `upgradeToTier()`
+- Individual title purchases: $1.99-$2.99 via `usePurchaseCheckout()`
+
+### Styling
+- Tailwind CSS with shadcn/ui components
+- Dark mode: `darkMode: ["class"]` with CSS variables in `:root` / `.dark`
+- Always use explicit `dark:` variants for colors
+- Icons: `lucide-react` for UI, `react-icons/si` for brand logos
+
+## Database
+
+### Schema Changes
+- Edit `shared/schema.ts` to add/modify Drizzle models
+- Run `npm run db:push` to sync (use `--force` if data-loss warning)
+- NEVER manually write SQL migrations
+- NEVER change primary key column types
+
+### Full-Text Search
+- PostgreSQL tsvector column `search_tsv` with GIN index on `books` table
+- Weighted: title=A, author=B, genre=C, description=D
+- Auto-update trigger maintains the search vector
+- `searchBooksDB()` method in storage for instant search
+
+### Key Tables
+- `users` - auth, profile, subscription tier
+- `books` - content catalog (seeded + API-fetched)
+- `purchases` - individual title purchases
+- `user_progress` - playback position tracking
+- `reviews`, `playlists`, `playlist_items` - social features
+- `referrals`, `referral_credits` - referral system
+- `ad_campaigns`, `ad_impressions` - advertising
+
+## Running the Project
+- `npm run dev` starts both Express backend and Vite frontend on port 5000
+- Backend serves API at `/api/*`, Vite serves frontend
+- DO NOT modify `server/vite.ts` or `vite.config.ts`
+
+## Environment Variables
+Required secrets (set in `.env` or Replit Secrets):
+- `DATABASE_URL` - PostgreSQL connection string
+- `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` - Payments
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` - Google OAuth
+- `SERPAPI_API_KEY` - Google Play Books integration
+- `GOOGLE_BOOKS_API_KEY` - Google Books API
+
+## Performance Optimizations
+- React.lazy() code splitting for 13+ heavy components
+- IntersectionObserver infinite scroll in library grid
+- Cursor-based pagination API: `GET /api/books?cursor=&limit=&search=`
+- In-memory LRU cache (5000 entries, 100MB max) with tiered TTL
+- gzip compression middleware (level 6, 1KB threshold)
+- Database indexes on books (title, author, genre, source, contentType, etc.)
+
+## Testing
+- The app uses Playwright for UI testing
+- Run tests via the testing workflow
+
+## Common Pitfalls
+- TanStack Query v5 requires object syntax: `useQuery({ queryKey: ['key'] })`
+- `useToast` is from `@/hooks/use-toast`, not from shadcn directly
+- Frontend env vars must be prefixed with `VITE_` and accessed via `import.meta.env`
+- `<SelectItem>` must always have a `value` prop
+- Don't explicitly import React (Vite JSX transform handles it)
+- The Vite proxy is already configured - don't add another one

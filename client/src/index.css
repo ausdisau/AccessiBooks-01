@@ -319,6 +319,48 @@ p, li, blockquote, .prose {
 }
 
 /* High Contrast Dark Combination */
+@keyframes premium-border-glow {
+  0%, 100% {
+    border-color: hsl(38, 92%, 50%);
+    box-shadow: 0 0 8px hsla(38, 92%, 50%, 0.3);
+  }
+  50% {
+    border-color: hsl(45, 93%, 58%);
+    box-shadow: 0 0 16px hsla(45, 93%, 58%, 0.4);
+  }
+}
+
+.premium-card-animated {
+  animation: premium-border-glow 3s ease-in-out infinite;
+  border-width: 2px;
+}
+
+@keyframes premium-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.premium-shimmer-bg {
+  background: linear-gradient(
+    110deg,
+    hsl(38, 92%, 50%) 0%,
+    hsl(45, 100%, 65%) 25%,
+    hsl(38, 92%, 50%) 50%,
+    hsl(30, 90%, 45%) 75%,
+    hsl(38, 92%, 50%) 100%
+  );
+  background-size: 200% 100%;
+  animation: premium-shimmer 4s linear infinite;
+}
+
+.premium-hero-gradient {
+  background: linear-gradient(135deg, hsl(38, 92%, 50%) 0%, hsl(25, 95%, 45%) 50%, hsl(15, 90%, 40%) 100%);
+}
+
+.dark .premium-hero-gradient {
+  background: linear-gradient(135deg, hsl(38, 80%, 35%) 0%, hsl(25, 85%, 30%) 50%, hsl(15, 80%, 25%) 100%);
+}
+
 .dark.high-contrast {
   --background: hsl(0, 0%, 0%);
   --foreground: hsl(0, 0%, 100%);

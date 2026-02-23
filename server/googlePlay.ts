@@ -5,12 +5,12 @@ const { SERPAPI_API_KEY } = process.env;
 const googlePlayEnabled = !!SERPAPI_API_KEY;
 
 if (googlePlayEnabled) {
-  console.log("Google Play Audiobooks integration initialized (via SerpApi)");
+  console.log("Google Play Books integration initialized (via SerpApi)");
 } else {
-  console.log("Google Play Audiobooks not configured - missing SERPAPI_API_KEY");
+  console.log("Google Play Books not configured - missing SERPAPI_API_KEY");
 }
 
-export interface GooglePlayAudiobook {
+export interface GooglePlayBook {
   productId: string;
   title: string;
   authors: string[];
@@ -27,7 +27,10 @@ export interface GooglePlayAudiobook {
   categories?: string[];
   link: string;
   source: "google_play";
+  type: "ebook" | "audiobook";
 }
+
+export type GooglePlayAudiobook = GooglePlayBook;
 
 export function isGooglePlayEnabled(): boolean {
   return googlePlayEnabled;
@@ -56,11 +59,17 @@ async function serpApiRequest(params: Record<string, string>): Promise<any> {
   return response.json();
 }
 
-export async function searchGooglePlayAudiobooks(
+export async function searchGooglePlay(
   query: string,
+  type: "ebook" | "audiobook" = "audiobook",
   limit: number = 20
-): Promise<GooglePlayAudiobook[]> {
+): Promise<GooglePlayBook[]> {
   if (!googlePlayEnabled) return [];
+
+  const urlSegment = type === "ebook" ? "/books/" : "/audiobooks/";
+  const categoryKeywords = type === "ebook"
+    ? ["ebook", "book", ""]
+    : ["audiobook", "audio", ""];
 
   try {
     const data = await serpApiRequest({
@@ -70,21 +79,30 @@ export async function searchGooglePlayAudiobooks(
       gl: "us",
     });
 
-    const results: GooglePlayAudiobook[] = [];
+    const results: GooglePlayBook[] = [];
     const organicResults = data.organic_results || [];
 
     for (const section of organicResults) {
       const sectionTitle = (section.title || "").toLowerCase();
-      const isAudiobookSection = sectionTitle.includes("audiobook") || sectionTitle === "";
+      const isMatchingSection = type === "audiobook"
+        ? (sectionTitle.includes("audiobook") || sectionTitle === "")
+        : (!sectionTitle.includes("audiobook") || sectionTitle === "");
       const items = section.items || [];
 
       for (const item of items) {
         if (results.length >= limit) break;
-        const isAudiobook = isAudiobookSection ||
-          (item.link && item.link.includes("/audiobooks/")) ||
-          (item.category && item.category.toLowerCase().includes("audio"));
 
-        if (!isAudiobook) continue;
+        const isMatchingType = type === "audiobook"
+          ? (isMatchingSection ||
+            (item.link && item.link.includes("/audiobooks/")) ||
+            (item.category && item.category.toLowerCase().includes("audio")))
+          : (isMatchingSection ||
+            (item.link && item.link.includes("/books/") && !item.link.includes("/audiobooks/")) ||
+            (item.category && !item.category.toLowerCase().includes("audio")));
+
+        if (!isMatchingType) continue;
+
+        const store = type === "ebook" ? "books" : "audiobooks";
 
         results.push({
           productId: item.product_id || "",
@@ -96,13 +114,15 @@ export async function searchGooglePlayAudiobooks(
           originalPrice: item.original_price || undefined,
           extractedPrice: item.extracted_price ?? undefined,
           categories: item.category ? [item.category] : [],
-          link: item.link || `https://play.google.com/store/audiobooks/details?id=${item.product_id}`,
+          link: item.link || `https://play.google.com/store/${store}/details?id=${item.product_id}`,
           source: "google_play",
+          type,
         });
       }
     }
 
     if (results.length === 0) {
+      const store = type === "ebook" ? "books" : "audiobooks";
       for (const section of organicResults) {
         for (const item of (section.items || [])) {
           if (results.length >= limit) break;
@@ -116,8 +136,9 @@ export async function searchGooglePlayAudiobooks(
             originalPrice: item.original_price || undefined,
             extractedPrice: item.extracted_price ?? undefined,
             categories: item.category ? [item.category] : [],
-            link: item.link || `https://play.google.com/store/books/details?id=${item.product_id}`,
+            link: item.link || `https://play.google.com/store/${store}/details?id=${item.product_id}`,
             source: "google_play",
+            type,
           });
         }
       }
@@ -130,15 +151,33 @@ export async function searchGooglePlayAudiobooks(
   }
 }
 
-export async function getGooglePlayAudiobook(
-  productId: string
-): Promise<GooglePlayAudiobook | null> {
+export async function searchGooglePlayAudiobooks(
+  query: string,
+  limit: number = 20
+): Promise<GooglePlayBook[]> {
+  return searchGooglePlay(query, "audiobook", limit);
+}
+
+export async function searchGooglePlayEbooks(
+  query: string,
+  limit: number = 20
+): Promise<GooglePlayBook[]> {
+  return searchGooglePlay(query, "ebook", limit);
+}
+
+export async function getGooglePlayBook(
+  productId: string,
+  store: "books" | "audiobooks" = "audiobooks"
+): Promise<GooglePlayBook | null> {
   if (!googlePlayEnabled) return null;
+
+  const type: "ebook" | "audiobook" = store === "books" ? "ebook" : "audiobook";
+  const aboutKey = store === "books" ? "about_this_book" : "about_this_audiobook";
 
   try {
     const data = await serpApiRequest({
       engine: "google_play_product",
-      store: "audiobooks",
+      store,
       product_id: productId,
       hl: "en",
       gl: "us",
@@ -148,7 +187,9 @@ export async function getGooglePlayAudiobook(
     if (!info) return null;
 
     const authors = info.authors?.map((a: any) => a.name) || [];
-    const narrator = info.extensions?.find((e: string) => e.startsWith("Narrated by"))?.replace("Narrated by ", "") || undefined;
+    const narrator = store === "audiobooks"
+      ? (info.extensions?.find((e: string) => e.startsWith("Narrated by"))?.replace("Narrated by ", "") || undefined)
+      : undefined;
     const offer = info.offers?.[0];
 
     return {
@@ -161,13 +202,14 @@ export async function getGooglePlayAudiobook(
       price: offer?.price ?? undefined,
       originalPrice: offer?.original_price ?? undefined,
       extractedPrice: offer?.extracted_price ?? undefined,
-      duration: info.unabridged || undefined,
+      duration: store === "audiobooks" ? (info.unabridged || undefined) : undefined,
       narrator,
       released: info.released || undefined,
-      description: data.about_this_audiobook?.snippet || undefined,
+      description: data[aboutKey]?.snippet || data.about_this_audiobook?.snippet || data.about_this_book?.snippet || undefined,
       categories: data.categories?.map((c: any) => c.name) || [],
-      link: info.book_link?.link || `https://play.google.com/store/audiobooks/details?id=${productId}`,
+      link: info.book_link?.link || `https://play.google.com/store/${store}/details?id=${productId}`,
       source: "google_play",
+      type,
     };
   } catch (error) {
     console.error("Google Play product error:", error);
@@ -175,22 +217,37 @@ export async function getGooglePlayAudiobook(
   }
 }
 
+export async function getGooglePlayAudiobook(
+  productId: string
+): Promise<GooglePlayBook | null> {
+  return getGooglePlayBook(productId, "audiobooks");
+}
+
+export async function getGooglePlayEbook(
+  productId: string
+): Promise<GooglePlayBook | null> {
+  return getGooglePlayBook(productId, "books");
+}
+
 export async function getGooglePlaySimilar(
   productId: string,
-  limit: number = 10
-): Promise<GooglePlayAudiobook[]> {
+  limit: number = 10,
+  store: "books" | "audiobooks" = "audiobooks"
+): Promise<GooglePlayBook[]> {
   if (!googlePlayEnabled) return [];
+
+  const type: "ebook" | "audiobook" = store === "books" ? "ebook" : "audiobook";
 
   try {
     const data = await serpApiRequest({
       engine: "google_play_product",
-      store: "audiobooks",
+      store,
       product_id: productId,
       hl: "en",
       gl: "us",
     });
 
-    const results: GooglePlayAudiobook[] = [];
+    const results: GooglePlayBook[] = [];
     const similarSections = data.similar_results || [];
 
     for (const section of similarSections) {
@@ -205,8 +262,9 @@ export async function getGooglePlaySimilar(
           price: item.price ?? undefined,
           originalPrice: item.original_price ?? undefined,
           extractedPrice: item.extracted_price ?? undefined,
-          link: item.link || `https://play.google.com/store/audiobooks/details?id=${item.product_id}`,
+          link: item.link || `https://play.google.com/store/${store}/details?id=${item.product_id}`,
           source: "google_play",
+          type,
         });
       }
     }

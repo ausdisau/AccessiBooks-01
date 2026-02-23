@@ -115,12 +115,14 @@ export function SubscriptionCard() {
           return (
             <Card
               key={t.id}
-              className={`relative transition-all ${isCurrentTier ? `${t.borderColor} border-2 ${t.bgColor}` : "border"} ${t.id === "premium" ? "md:scale-[1.02]" : ""}`}
+              className={`relative transition-all ${isCurrentTier ? `${t.borderColor} border-2 ${t.bgColor}` : "border"} ${t.id === "premium" ? "md:scale-105 premium-card-animated shadow-lg shadow-amber-500/10" : ""}`}
             >
               {t.id === "premium" && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white hover:bg-amber-500">
-                  Most Popular
-                </Badge>
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+                  <Badge className="premium-shimmer-bg text-white border-0 px-3 py-1 text-xs font-bold shadow-md">
+                    ⭐ Best Value
+                  </Badge>
+                </div>
               )}
               <CardHeader className="text-center pb-2">
                 <Icon className={`h-8 w-8 mx-auto mb-1 ${t.color}`} />

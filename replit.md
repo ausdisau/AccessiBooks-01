@@ -38,7 +38,7 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Database**: Neon Database, Drizzle ORM.
 - **UI/Styling**: Radix UI, Tailwind CSS.
 - **Payment Gateways**: Stripe, PayPal, Coinbase Commerce.
-- **Content APIs**: iTunes Search API, LibriVox API, Open Library API, Google Books API, Project Gutenberg API (Gutendex), Internet Archive API, Spotify Web API, Amazon Product Advertising API (PA-API), SoundCloud API, Google Play Books API (via SerpApi).
+- **Content APIs**: iTunes Search API, LibriVox API, Open Library API, Google Books API, Project Gutenberg API (Gutendex), Internet Archive API, Spotify Web API, Amazon Product Advertising API (PA-API), SoundCloud API, Google Play Books API (via SerpApi) — supports both audiobooks and ebooks.
 - **Advertising Platforms**: Google AdSense, Google Ad Manager, AdsWizz, Triton Digital, ad:personam.
 - **Content Catalogs**: Nordic APIs eBooks (14 free ebooks on API topics with PDF, EPUB, MOBI, Kindle, LeanPub downloads).
 - **Utilities**: TanStack Query (data fetching), Zod (validation), SerpApi.

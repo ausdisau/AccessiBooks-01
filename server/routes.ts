@@ -34,7 +34,7 @@ import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabl
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
 import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./amazon";
 import { isSoundCloudEnabled, searchSoundCloudTracks, getSoundCloudTrack, getSoundCloudUser, getSoundCloudUserTracks, getSoundCloudStreamUrl, getSoundCloudGenreTracks, getSoundCloudRelated, SOUNDCLOUD_GENRES } from "./soundcloud";
-import { isGooglePlayEnabled, searchGooglePlayAudiobooks, getGooglePlayAudiobook, getGooglePlaySimilar } from "./googlePlay";
+import { isGooglePlayEnabled, searchGooglePlayAudiobooks, getGooglePlayAudiobook, getGooglePlaySimilar, searchGooglePlayEbooks, getGooglePlayEbook, searchGooglePlay, getGooglePlayBook } from "./googlePlay";
 import { registerListeningPartyRoutes, setupListeningPartyWS } from "./listeningParty";
 import { registerStreamingQueueRoutes } from "./streamingQueue";
 import {
@@ -1992,6 +1992,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Google Play similar error:", error);
       res.status(500).json({ message: "Failed to fetch similar audiobooks" });
+    }
+  });
+
+  app.get("/api/google-play/ebooks/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const limit = parseInt(req.query.limit as string) || 20;
+      if (!q) return res.json({ results: [] });
+      const results = await searchGooglePlayEbooks(q, limit);
+      res.json({ results });
+    } catch (error) {
+      console.error("Google Play ebook search error:", error);
+      res.status(500).json({ message: "Failed to search Google Play ebooks" });
+    }
+  });
+
+  app.get("/api/google-play/ebook/:productId", async (req, res) => {
+    try {
+      const { productId } = req.params;
+      if (!productId) return res.status(400).json({ message: "Product ID required" });
+      const ebook = await getGooglePlayEbook(productId);
+      if (!ebook) return res.status(404).json({ message: "Ebook not found" });
+      res.json(ebook);
+    } catch (error) {
+      console.error("Google Play ebook error:", error);
+      res.status(500).json({ message: "Failed to fetch Google Play ebook" });
     }
   });
 
