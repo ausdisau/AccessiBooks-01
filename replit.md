@@ -20,7 +20,8 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 
 ### Feature Specifications
 - **Core Player**: HTML5 audio player with variable speed, skip, progress tracking, bookmarking, sleep timer, and chapter navigation.
-- **Content Management**: Aggregation from multiple APIs, personalization features (e.g., "Continue Listening," recommendations), and multi-format support for audiobooks and ebooks with an integrated reader.
+- **Content Management**: Aggregation from multiple APIs, personalization features (e.g., "Continue Listening," recommendations), and multi-format support for audiobooks and ebooks with an interactive reader.
+- **Interactive Ebook Reader**: Full-featured text reader with 3 themes (light/sepia/dark), 4 fonts (serif/sans/mono/dyslexia), text highlighting/annotations with 5 colors and notes (localStorage persisted), in-book search with prev/next navigation, auto-detected table of contents sidebar, reading statistics (time/words/ETA), swipe gestures for mobile, smooth page transitions, fullscreen mode, adjustable line spacing and margins, keyboard shortcuts (arrows/PgUp/PgDown/Ctrl+F). Component: `client/src/components/ebook-reader.tsx`.
 - **Monetization**: 3-tier subscription model (Free/$0, Plus/$4.99/mo, Premium/$9.99/mo) with per-title micro-payments ($1.99-$2.99), DRM, ad integration with paid tier exclusion. Plus/Premium get 10%/20% off individual purchases. Database `purchases` table tracks owned titles.
 - **Community & Engagement**: User reviews, ratings, gamification (streaks, XP, achievements), push notifications, referral system with referral codes/credits/tracking, and content recommendation engine.
 - **Content Creation**: A self-publishing portal for authors to upload and manage content, and a catalog seeder for bulk content import.
