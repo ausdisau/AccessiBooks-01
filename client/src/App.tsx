@@ -1261,7 +1261,7 @@ function MainApp() {
         <TrialNudge
           listeningHours={localStorageService.getStats().totalSecondsListened / 3600}
           isPremium={isPremium}
-          onStartTrial={() => upgradeToPremium()}
+          onStartTrial={() => upgradeToPremium("monthly")}
         />
         {currentView === "library" && (
           <div
@@ -1312,7 +1312,7 @@ function MainApp() {
         )}
         {currentView === "usage" && (
           <div id="usage-panel" role="tabpanel" data-testid="panel-usage">
-            <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium()} />
+            <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
           </div>
         )}
         {currentView === "publish" && (
