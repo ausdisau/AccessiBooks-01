@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Search, Podcast, Play, Clock, ChevronLeft, ChevronRight, Rss, ExternalLink, Loader2 } from "lucide-react";
+import { Search, Podcast, Play, Clock, ChevronLeft, ChevronRight, Rss, ExternalLink, Loader2, Star, Calendar, Headphones, TrendingUp } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -21,6 +21,7 @@ interface PodcastFeed {
   websiteUrl: string | null;
   categories: string[] | null;
   episodeCount?: number;
+  lastEpisodeDate?: string | null;
 }
 
 interface PodcastEpisode {
@@ -40,15 +41,37 @@ interface PodcastEpisode {
   };
 }
 
+const CATEGORY_FILTERS = [
+  "All",
+  "True Crime",
+  "Comedy",
+  "News",
+  "Technology",
+  "Science",
+  "History",
+  "Education",
+  "Business",
+  "Health",
+] as const;
+
 const CURATED_FEEDS = [
-  { url: "https://feeds.simplecast.com/54nAGcIl", name: "The Daily" },
-  { url: "https://feeds.megaphone.fm/stuffyoushouldknow", name: "Stuff You Should Know" },
-  { url: "https://rss.art19.com/serial", name: "Serial" },
-  { url: "https://feeds.npr.org/510289/podcast.xml", name: "Planet Money" },
-  { url: "https://feeds.npr.org/344098539/podcast.xml", name: "Hidden Brain" },
-  { url: "https://feeds.megaphone.fm/sciencevs", name: "Science Vs" },
-  { url: "https://rss.art19.com/the-tim-ferriss-show", name: "Tim Ferriss Show" },
-  { url: "https://feeds.simplecast.com/wgl4xEgL", name: "Huberman Lab" },
+  { url: "https://feeds.simplecast.com/54nAGcIl", name: "The Daily", category: "News" },
+  { url: "https://feeds.megaphone.fm/stuffyoushouldknow", name: "Stuff You Should Know", category: "Education" },
+  { url: "https://rss.art19.com/serial", name: "Serial", category: "True Crime" },
+  { url: "https://feeds.npr.org/510289/podcast.xml", name: "Planet Money", category: "Business" },
+  { url: "https://feeds.npr.org/344098539/podcast.xml", name: "Hidden Brain", category: "Science" },
+  { url: "https://feeds.megaphone.fm/sciencevs", name: "Science Vs", category: "Science" },
+  { url: "https://rss.art19.com/the-tim-ferriss-show", name: "Tim Ferriss Show", category: "Business" },
+  { url: "https://feeds.simplecast.com/wgl4xEgL", name: "Huberman Lab", category: "Health" },
+];
+
+const POPULAR_PODCASTS = [
+  { name: "The Daily", author: "The New York Times", category: "News", description: "The biggest stories of our time, told by the best journalists in the world." },
+  { name: "Serial", author: "Serial Productions", category: "True Crime", description: "Serial unfolds one nonfiction story — told week by week — over the course of a season." },
+  { name: "Stuff You Should Know", author: "iHeartPodcasts", category: "Education", description: "If you've ever wanted to know about champagne, satanism, the Stonewall Uprising, or why weeli'teli have jet packs, listen up." },
+  { name: "Planet Money", author: "NPR", category: "Business", description: "The economy explained. Imagine you could call up a friend and say, 'What's going on with the economy?'" },
+  { name: "Science Vs", author: "Spotify Studios", category: "Science", description: "Science Vs takes on fads and trends to find out what's fact, what's not, and what's somewhere in between." },
+  { name: "Huberman Lab", author: "Scicomm Media", category: "Health", description: "Discuss neuroscience — how our brain and its connections with the organs of our body control our perceptions." },
 ];
 
 function formatDuration(seconds: number): string {
@@ -63,6 +86,18 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function formatRelativeDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function PodcastCard({ feed, onSelect }: { feed: PodcastFeed; onSelect: (feed: PodcastFeed) => void }) {
   return (
     <Card
@@ -75,7 +110,7 @@ function PodcastCard({ feed, onSelect }: { feed: PodcastFeed; onSelect: (feed: P
     >
       <CardContent className="p-4">
         <div className="flex gap-4">
-          <div className="w-20 h-20 rounded-lg overflow-hidden bg-orange-100 dark:bg-orange-900/30 flex-shrink-0">
+          <div className="w-20 h-20 rounded-lg overflow-hidden bg-orange-100 dark:bg-orange-900/30 flex-shrink-0 shadow-sm">
             {feed.imageUrl ? (
               <img
                 src={feed.imageUrl}
@@ -99,10 +134,17 @@ function PodcastCard({ feed, onSelect }: { feed: PodcastFeed; onSelect: (feed: P
             {feed.description && (
               <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{feed.description}</p>
             )}
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
               {feed.episodeCount !== undefined && feed.episodeCount > 0 && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  <Headphones className="h-2.5 w-2.5 mr-0.5" />
                   {feed.episodeCount} episodes
+                </Badge>
+              )}
+              {feed.lastEpisodeDate && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-orange-100/50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300">
+                  <Calendar className="h-2.5 w-2.5 mr-0.5" />
+                  {formatRelativeDate(feed.lastEpisodeDate)}
                 </Badge>
               )}
               {feed.categories && Array.isArray(feed.categories) && feed.categories.slice(0, 2).map((cat, i) => (
@@ -115,6 +157,21 @@ function PodcastCard({ feed, onSelect }: { feed: PodcastFeed; onSelect: (feed: P
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PopularPodcastCard({ podcast }: { podcast: typeof POPULAR_PODCASTS[0] }) {
+  return (
+    <div className="flex-shrink-0 w-44">
+      <div className="w-full aspect-square rounded-xl bg-gradient-to-br from-orange-400 to-red-500 dark:from-orange-600 dark:to-red-700 flex items-center justify-center mb-2 shadow-md">
+        <Podcast className="h-12 w-12 text-white/90" />
+      </div>
+      <h4 className="text-sm font-semibold line-clamp-1">{podcast.name}</h4>
+      <p className="text-xs text-muted-foreground line-clamp-1">{podcast.author}</p>
+      <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1 border-orange-300/50">
+        {podcast.category}
+      </Badge>
+    </div>
   );
 }
 
@@ -236,6 +293,7 @@ export function PodcastDiscovery() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFeed, setSelectedFeed] = useState<PodcastFeed | null>(null);
   const [feedUrlInput, setFeedUrlInput] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string>("All");
   const { toast } = useToast();
 
   const { data: feedsData, isLoading } = useQuery<{ feeds: PodcastFeed[] }>({
@@ -298,6 +356,16 @@ export function PodcastDiscovery() {
 
   const feeds = feedsData?.feeds || [];
 
+  const filteredFeeds = useMemo(() => {
+    if (activeCategory === "All") return feeds;
+    return feeds.filter((feed) => {
+      if (!feed.categories || !Array.isArray(feed.categories)) return false;
+      return feed.categories.some((cat) =>
+        typeof cat === "string" && cat.toLowerCase().includes(activeCategory.toLowerCase())
+      );
+    });
+  }, [feeds, activeCategory]);
+
   if (selectedFeed) {
     return (
       <section className="w-full" aria-label="Podcast detail">
@@ -322,12 +390,12 @@ export function PodcastDiscovery() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search podcasts..."
+            placeholder="Search podcasts by name, topic, or host..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -336,35 +404,69 @@ export function PodcastDiscovery() {
         </div>
       </div>
 
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin" role="tablist" aria-label="Filter by category">
+        {CATEGORY_FILTERS.map((category) => (
+          <Button
+            key={category}
+            variant={activeCategory === category ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveCategory(category)}
+            className={`flex-shrink-0 text-xs ${
+              activeCategory === category
+                ? "bg-orange-600 hover:bg-orange-700 text-white"
+                : "border-orange-200/50 hover:border-orange-400/50 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+            }`}
+            role="tab"
+            aria-selected={activeCategory === category}
+          >
+            {category}
+          </Button>
+        ))}
+      </div>
+
       {feeds.length === 0 && !isLoading && !searchQuery && (
-        <Card className="border-dashed border-orange-300/50 mb-6">
-          <CardContent className="p-6 text-center">
-            <Podcast className="h-12 w-12 text-orange-400 mx-auto mb-3" />
-            <h3 className="font-semibold text-lg mb-2">Get Started with Podcasts</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Load popular podcasts to start listening, or add your own RSS feed.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button
-                onClick={() => seedMutation.mutate()}
-                disabled={seedMutation.isPending}
-                className="bg-orange-600 hover:bg-orange-700"
-              >
-                {seedMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Loading Podcasts...
-                  </>
-                ) : (
-                  <>
-                    <Rss className="h-4 w-4 mr-2" />
-                    Load Popular Podcasts
-                  </>
-                )}
-              </Button>
+        <>
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="h-5 w-5 text-orange-500" />
+              <h3 className="text-lg font-semibold">Popular Podcasts</h3>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex gap-4 overflow-x-auto pb-3 scrollbar-thin">
+              {POPULAR_PODCASTS.map((podcast, i) => (
+                <PopularPodcastCard key={i} podcast={podcast} />
+              ))}
+            </div>
+          </div>
+
+          <Card className="border-dashed border-orange-300/50 mb-6">
+            <CardContent className="p-6 text-center">
+              <Podcast className="h-12 w-12 text-orange-400 mx-auto mb-3" />
+              <h3 className="font-semibold text-lg mb-2">Get Started with Podcasts</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Load popular podcasts to start listening, or add your own RSS feed.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  onClick={() => seedMutation.mutate()}
+                  disabled={seedMutation.isPending}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  {seedMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Loading Podcasts...
+                    </>
+                  ) : (
+                    <>
+                      <Rss className="h-4 w-4 mr-2" />
+                      Load Popular Podcasts
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       <div className="flex gap-2 mb-4">
@@ -403,14 +505,33 @@ export function PodcastDiscovery() {
             </Card>
           ))}
         </div>
-      ) : feeds.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {feeds.map((feed) => (
-            <PodcastCard key={feed.id} feed={feed} onSelect={setSelectedFeed} />
-          ))}
-        </div>
+      ) : filteredFeeds.length > 0 ? (
+        <>
+          {activeCategory !== "All" && (
+            <p className="text-sm text-muted-foreground mb-3">
+              Showing {filteredFeeds.length} podcast{filteredFeeds.length !== 1 ? "s" : ""} in {activeCategory}
+            </p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredFeeds.map((feed) => (
+              <PodcastCard key={feed.id} feed={feed} onSelect={setSelectedFeed} />
+            ))}
+          </div>
+        </>
       ) : searchQuery ? (
         <p className="text-center text-muted-foreground py-8">No podcasts found for "{searchQuery}"</p>
+      ) : activeCategory !== "All" && feeds.length > 0 ? (
+        <div className="text-center py-8">
+          <Podcast className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+          <p className="text-muted-foreground">No podcasts found in {activeCategory}</p>
+          <Button
+            variant="link"
+            className="text-orange-600 mt-1"
+            onClick={() => setActiveCategory("All")}
+          >
+            View all podcasts
+          </Button>
+        </div>
       ) : null}
     </section>
   );

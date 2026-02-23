@@ -430,94 +430,119 @@ export async function getLeaderboard(
   period: "weekly" | "monthly" | "alltime",
   limit: number = 10,
 ): Promise<LeaderboardEntry[]> {
-  let dateFilter: string | null = null;
-  const today = new Date();
+  try {
+    let dateFilter: string | null = null;
+    const today = new Date();
 
-  if (period === "weekly") {
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    dateFilter = weekAgo.toISOString().split("T")[0];
-  } else if (period === "monthly") {
-    const monthAgo = new Date(today);
-    monthAgo.setDate(monthAgo.getDate() - 30);
-    dateFilter = monthAgo.toISOString().split("T")[0];
-  }
-
-  if (period === "alltime") {
-    const results = await db
-      .select({
-        userId: userXp.userId,
-        totalXp: userXp.totalXp,
-        level: userXp.level,
-        booksCompleted: userXp.booksCompleted,
-        totalListeningMinutes: userXp.totalListeningMinutes,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        profileImageUrl: users.profileImageUrl,
-      })
-      .from(userXp)
-      .innerJoin(users, eq(users.id, userXp.userId))
-      .orderBy(desc(userXp.totalXp))
-      .limit(limit);
-
-    const streakMap = new Map<string, number>();
-    if (results.length > 0) {
-      const userIds = results.map((r) => r.userId);
-      for (const uid of userIds) {
-        const [s] = await db.select().from(userStreaks).where(eq(userStreaks.userId, uid)).limit(1);
-        streakMap.set(uid, s?.currentStreak ?? 0);
-      }
+    if (period === "weekly") {
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      dateFilter = weekAgo.toISOString().split("T")[0];
+    } else if (period === "monthly") {
+      const monthAgo = new Date(today);
+      monthAgo.setDate(monthAgo.getDate() - 30);
+      dateFilter = monthAgo.toISOString().split("T")[0];
     }
 
-    return results.map((r, i) => ({
-      userId: r.userId,
-      firstName: r.firstName,
-      lastName: r.lastName,
-      profileImageUrl: r.profileImageUrl,
-      totalXp: r.totalXp,
-      level: r.level,
-      booksCompleted: r.booksCompleted,
-      totalListeningMinutes: r.totalListeningMinutes,
-      currentStreak: streakMap.get(r.userId) ?? 0,
-      rank: i + 1,
-    }));
+    if (period === "alltime") {
+      let results: any[] = [];
+      try {
+        results = await db
+          .select({
+            userId: userXp.userId,
+            totalXp: userXp.totalXp,
+            level: userXp.level,
+            booksCompleted: userXp.booksCompleted,
+            totalListeningMinutes: userXp.totalListeningMinutes,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            profileImageUrl: users.profileImageUrl,
+          })
+          .from(userXp)
+          .innerJoin(users, eq(users.id, userXp.userId))
+          .orderBy(desc(userXp.totalXp))
+          .limit(limit);
+      } catch {
+        return [];
+      }
+
+      const streakMap = new Map<string, number>();
+      if (results.length > 0) {
+        const userIds = results.map((r) => r.userId);
+        for (const uid of userIds) {
+          try {
+            const [s] = await db.select().from(userStreaks).where(eq(userStreaks.userId, uid)).limit(1);
+            streakMap.set(uid, s?.currentStreak ?? 0);
+          } catch {
+            streakMap.set(uid, 0);
+          }
+        }
+      }
+
+      return results.map((r, i) => ({
+        userId: r.userId,
+        firstName: r.firstName,
+        lastName: r.lastName,
+        profileImageUrl: r.profileImageUrl,
+        totalXp: r.totalXp,
+        level: r.level,
+        booksCompleted: r.booksCompleted,
+        totalListeningMinutes: r.totalListeningMinutes,
+        currentStreak: streakMap.get(r.userId) ?? 0,
+        rank: i + 1,
+      }));
+    }
+
+    let results: any[] = [];
+    try {
+      results = await db
+        .select({
+          userId: dailyListeningLog.userId,
+          totalMinutes: sql<number>`SUM(${dailyListeningLog.minutesListened})::int`,
+          totalBooks: sql<number>`SUM(${dailyListeningLog.booksCompleted})::int`,
+        })
+        .from(dailyListeningLog)
+        .where(gte(dailyListeningLog.date, dateFilter!))
+        .groupBy(dailyListeningLog.userId)
+        .orderBy(sql`SUM(${dailyListeningLog.minutesListened}) DESC`)
+        .limit(limit);
+    } catch {
+      return [];
+    }
+
+    const entries: LeaderboardEntry[] = [];
+
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      try {
+        const [user] = await db.select().from(users).where(eq(users.id, r.userId)).limit(1);
+        const [xpRec] = await db.select().from(userXp).where(eq(userXp.userId, r.userId)).limit(1);
+        let streakVal = 0;
+        try {
+          const [streakRec] = await db.select().from(userStreaks).where(eq(userStreaks.userId, r.userId)).limit(1);
+          streakVal = streakRec?.currentStreak ?? 0;
+        } catch {}
+
+        entries.push({
+          userId: r.userId,
+          firstName: user?.firstName ?? null,
+          lastName: user?.lastName ?? null,
+          profileImageUrl: user?.profileImageUrl ?? null,
+          totalXp: xpRec?.totalXp ?? 0,
+          level: xpRec?.level ?? 1,
+          booksCompleted: r.totalBooks ?? 0,
+          totalListeningMinutes: r.totalMinutes ?? 0,
+          currentStreak: streakVal,
+          rank: i + 1,
+        });
+      } catch {}
+    }
+
+    return entries;
+  } catch (error) {
+    console.error("Leaderboard query failed:", error);
+    return [];
   }
-
-  const results = await db
-    .select({
-      userId: dailyListeningLog.userId,
-      totalMinutes: sql<number>`SUM(${dailyListeningLog.minutesListened})::int`,
-      totalBooks: sql<number>`SUM(${dailyListeningLog.booksCompleted})::int`,
-    })
-    .from(dailyListeningLog)
-    .where(gte(dailyListeningLog.date, dateFilter!))
-    .groupBy(dailyListeningLog.userId)
-    .orderBy(sql`SUM(${dailyListeningLog.minutesListened}) DESC`)
-    .limit(limit);
-
-  const entries: LeaderboardEntry[] = [];
-
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    const [user] = await db.select().from(users).where(eq(users.id, r.userId)).limit(1);
-    const [xpRec] = await db.select().from(userXp).where(eq(userXp.userId, r.userId)).limit(1);
-    const [streakRec] = await db.select().from(userStreaks).where(eq(userStreaks.userId, r.userId)).limit(1);
-
-    entries.push({
-      userId: r.userId,
-      firstName: user?.firstName ?? null,
-      lastName: user?.lastName ?? null,
-      profileImageUrl: user?.profileImageUrl ?? null,
-      totalXp: xpRec?.totalXp ?? 0,
-      level: xpRec?.level ?? 1,
-      booksCompleted: r.totalBooks ?? 0,
-      totalListeningMinutes: r.totalMinutes ?? 0,
-      currentStreak: streakRec?.currentStreak ?? 0,
-      rank: i + 1,
-    });
-  }
-
-  return entries;
 }
 
 export async function setDailyGoal(userId: string, minutes: number): Promise<UserGoal> {

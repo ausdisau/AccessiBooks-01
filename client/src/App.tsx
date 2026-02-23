@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense, useMemo, useCallback, memo } from "react";
 import { QueryClientProvider, useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -14,7 +14,6 @@ import { useAccessibility } from "@/hooks/use-accessibility";
 import { useContentAccess } from "@/hooks/use-content-access";
 import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
 import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
-import { EbookReader } from "@/components/ebook-reader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,33 +30,48 @@ import { PremiumBadge } from "@/components/premium-badge";
 import { SubscriptionCard } from "@/components/subscription-card";
 import { AccessibilityWidget } from "@/components/accessibility-widget";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AuthorPage } from "@/components/author-page";
 import { SocialFeed } from "@/components/social-feed";
 import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
-import { GamificationDashboard } from "@/components/gamification-dashboard";
 import { SignUpPrompt } from "@/components/sign-up-prompt";
 import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
 import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
-import { ReferralSection } from "@/components/referral-section";
-import { YearInReview } from "./components/year-in-review";
-import { AuthorDashboard } from "@/components/author-dashboard";
 import { NotificationBell } from "@/components/notification-center";
-import { ListeningParty } from "@/components/listening-party";
-import { StreamingQueue } from "@/components/streaming-queue";
-import { AdvertiserDashboard } from "@/components/advertiser-dashboard";
-import { BillingDashboard } from "@/components/billing-dashboard";
 import { Footer } from "@/components/footer";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
 import { TrialNudge } from "@/components/trial-nudge";
 import { localStorageService } from "@/lib/storage";
-import { UsageDashboard } from "@/components/usage-dashboard";
-import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3 } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon } from "lucide-react";
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing";
+const EbookReader = lazy(() => import('@/components/ebook-reader').then(m => ({ default: m.EbookReader })));
+const AuthorPage = lazy(() => import('@/components/author-page').then(m => ({ default: m.AuthorPage })));
+const GamificationDashboard = lazy(() => import('@/components/gamification-dashboard').then(m => ({ default: m.GamificationDashboard })));
+const YearInReview = lazy(() => import('./components/year-in-review').then(m => ({ default: m.YearInReview })));
+const ReferralSection = lazy(() => import('@/components/referral-section').then(m => ({ default: m.ReferralSection })));
+const ReferralsPage = lazy(() => import('@/pages/referrals').then(m => ({ default: m.ReferralsPage })));
+const AuthorDashboard = lazy(() => import('@/components/author-dashboard').then(m => ({ default: m.AuthorDashboard })));
+const ListeningParty = lazy(() => import('@/components/listening-party').then(m => ({ default: m.ListeningParty })));
+const StreamingQueue = lazy(() => import('@/components/streaming-queue').then(m => ({ default: m.StreamingQueue })));
+const AdvertiserDashboard = lazy(() => import('@/components/advertiser-dashboard').then(m => ({ default: m.AdvertiserDashboard })));
+const BillingDashboard = lazy(() => import('@/components/billing-dashboard').then(m => ({ default: m.BillingDashboard })));
+const UsageDashboard = lazy(() => import('@/components/usage-dashboard').then(m => ({ default: m.UsageDashboard })));
+const OfflineDownloads = lazy(() => import('@/components/offline-downloads').then(m => ({ default: m.OfflineDownloads })));
+
+function LoadingSpinner() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div className="text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads";
 
 // Header component with user management
 function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: { 
@@ -72,7 +86,7 @@ function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: {
     window.location.href = "/api/logout";
   };
 
-  const navItems: { view: View; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
+  const navItems = useMemo<{ view: View; label: string; icon: React.ReactNode; disabled?: boolean }[]>(() => [
     { view: "library", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
     { view: "player", label: "Player", icon: <Play className="h-5 w-5" /> },
     { view: "feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
@@ -82,8 +96,10 @@ function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: {
     { view: "party", label: "Party", icon: <Radio className="h-5 w-5" /> },
     { view: "queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
     { view: "advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
+    { view: "downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
     { view: "billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
-  ];
+    { view: "referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
+  ], []);
 
   const currentLabel = navItems.find(i => i.view === currentView)?.label || "Menu";
 
@@ -919,7 +935,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
             <Card className="overflow-hidden hover:border-primary/50 transition-colors cursor-pointer" onClick={onBrowseAsGuest}>
               <CardContent className="p-6 flex gap-6">
                 {featuredBook.coverImage ? (
-                  <img src={featuredBook.coverImage} alt="" className="w-24 h-36 object-cover rounded-lg flex-shrink-0" />
+                  <img src={featuredBook.coverImage} alt="" className="w-24 h-36 object-cover rounded-lg flex-shrink-0" loading="lazy" decoding="async" />
                 ) : (
                   <div className="w-24 h-36 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
                     <BookOpen className="h-8 w-8 text-muted-foreground" />
@@ -962,7 +978,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
                 <div key={book.id} className="group cursor-pointer" onClick={onBrowseAsGuest}>
                   <div className="aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-muted">
                     {book.coverImage ? (
-                      <img src={book.coverImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <img src={book.coverImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" decoding="async" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <BookOpen className="h-8 w-8 text-muted-foreground" />
@@ -1150,7 +1166,7 @@ function MainApp() {
     }
   }, [isPremium]);
 
-  const handleSelectBook = (book: Book) => {
+  const handleSelectBook = useCallback((book: Book) => {
     if (!checkAccess(book)) {
       return;
     }
@@ -1163,27 +1179,27 @@ function MainApp() {
       playBook(book);
       setCurrentView("player");
     }
-  };
+  }, [checkAccess, playBook]);
 
-  const handleBackToLibrary = () => {
+  const handleBackToLibrary = useCallback(() => {
     setCurrentView("library");
-  };
+  }, []);
   
-  const handleExpandPlayer = () => {
+  const handleExpandPlayer = useCallback(() => {
     if (currentBook) {
       setSelectedBook(currentBook);
       setCurrentView("player");
     }
-  };
+  }, [currentBook]);
 
-  const handleViewAuthor = (authorName: string) => {
+  const handleViewAuthor = useCallback((authorName: string) => {
     setSelectedAuthor(authorName);
     setCurrentView("author");
-  };
+  }, []);
 
-  const handleViewFeed = () => {
+  const handleViewFeed = useCallback(() => {
     setCurrentView("feed");
-  };
+  }, []);
 
   // Global keyboard shortcuts
   useKeyboardShortcuts({
@@ -1283,66 +1299,75 @@ function MainApp() {
             <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
           </div>
         )}
-        {currentView === "reader" && selectedBook && (
-          <div
-            id="reader-panel"
-            role="tabpanel"
-            aria-labelledby="reader-tab"
-            data-testid="panel-reader"
-          >
-            <EbookReader book={selectedBook} onBack={handleBackToLibrary} />
-          </div>
-        )}
-        {currentView === "author" && selectedAuthor && (
-          <div id="author-panel" role="tabpanel" data-testid="panel-author">
-            <AuthorPage authorName={selectedAuthor} onBack={handleBackToLibrary} />
-          </div>
-        )}
-        {currentView === "feed" && (
-          <div id="feed-panel" role="tabpanel" data-testid="panel-feed">
-            <SocialFeed />
-          </div>
-        )}
-        {currentView === "stats" && (
-          <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
-            <GamificationDashboard />
-            <YearInReview />
-            <ReferralSection />
-          </div>
-        )}
-        {currentView === "usage" && (
-          <div id="usage-panel" role="tabpanel" data-testid="panel-usage">
-            <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
-          </div>
-        )}
-        {currentView === "publish" && (
-          <div id="publish-panel" role="tabpanel" data-testid="panel-publish">
-            <AuthorDashboard />
-          </div>
-        )}
-        {currentView === "party" && (
-          <div id="party-panel" role="tabpanel" data-testid="panel-party">
-            <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
-          </div>
-        )}
-
-        {currentView === "queue" && (
-          <div id="queue-panel" role="tabpanel" data-testid="panel-queue">
-            <StreamingQueue onBack={handleBackToLibrary} />
-          </div>
-        )}
-
-        {currentView === "advertise" && (
-          <div id="advertise-panel" role="tabpanel" data-testid="panel-advertise">
-            <AdvertiserDashboard />
-          </div>
-        )}
-
-        {currentView === "billing" && (
-          <div id="billing-panel" role="tabpanel" data-testid="panel-billing">
-            <BillingDashboard />
-          </div>
-        )}
+        <Suspense fallback={<LoadingSpinner />}>
+          {currentView === "reader" && selectedBook && (
+            <div
+              id="reader-panel"
+              role="tabpanel"
+              aria-labelledby="reader-tab"
+              data-testid="panel-reader"
+            >
+              <EbookReader book={selectedBook} onBack={handleBackToLibrary} />
+            </div>
+          )}
+          {currentView === "author" && selectedAuthor && (
+            <div id="author-panel" role="tabpanel" data-testid="panel-author">
+              <AuthorPage authorName={selectedAuthor} onBack={handleBackToLibrary} />
+            </div>
+          )}
+          {currentView === "feed" && (
+            <div id="feed-panel" role="tabpanel" data-testid="panel-feed">
+              <SocialFeed />
+            </div>
+          )}
+          {currentView === "stats" && (
+            <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
+              <GamificationDashboard />
+              <YearInReview />
+              <ReferralSection />
+            </div>
+          )}
+          {currentView === "usage" && (
+            <div id="usage-panel" role="tabpanel" data-testid="panel-usage">
+              <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
+            </div>
+          )}
+          {currentView === "publish" && (
+            <div id="publish-panel" role="tabpanel" data-testid="panel-publish">
+              <AuthorDashboard />
+            </div>
+          )}
+          {currentView === "party" && (
+            <div id="party-panel" role="tabpanel" data-testid="panel-party">
+              <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
+            </div>
+          )}
+          {currentView === "queue" && (
+            <div id="queue-panel" role="tabpanel" data-testid="panel-queue">
+              <StreamingQueue onBack={handleBackToLibrary} />
+            </div>
+          )}
+          {currentView === "advertise" && (
+            <div id="advertise-panel" role="tabpanel" data-testid="panel-advertise">
+              <AdvertiserDashboard />
+            </div>
+          )}
+          {currentView === "billing" && (
+            <div id="billing-panel" role="tabpanel" data-testid="panel-billing">
+              <BillingDashboard />
+            </div>
+          )}
+          {currentView === "downloads" && (
+            <div id="downloads-panel" role="tabpanel" data-testid="panel-downloads">
+              <OfflineDownloads />
+            </div>
+          )}
+          {currentView === "referrals" && (
+            <div id="referrals-panel" role="tabpanel" data-testid="panel-referrals">
+              <ReferralsPage />
+            </div>
+          )}
+        </Suspense>
       </main>
 
       <Footer />
@@ -1488,7 +1513,7 @@ function App() {
       }
       const savedRefCode = localStorage.getItem("accessibooks_referral_code");
       if (savedRefCode) {
-        apiRequest("POST", "/api/referrals/redeem", { code: savedRefCode })
+        apiRequest("POST", "/api/referral/apply", { code: savedRefCode })
           .catch(() => {})
           .finally(() => localStorage.removeItem("accessibooks_referral_code"));
       }

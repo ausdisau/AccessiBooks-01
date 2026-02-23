@@ -114,6 +114,8 @@ export const users = pgTable("users", {
   subscriptionEndDate: timestamp("subscription_end_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  referralCode: varchar("referral_code").unique(),
+  referralCredits: integer("referral_credits").notNull().default(0),
   // Legacy columns from NextAuth migration - kept for database compatibility
   passwordHash: varchar("password_hash"),
   name: varchar("name"),
@@ -534,10 +536,9 @@ export const referrals = pgTable("referrals", {
   referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   referredUserId: varchar("referred_user_id").references(() => users.id, { onDelete: "set null" }),
   referralCode: varchar("referral_code").notNull().unique(),
-  status: varchar("status").notNull().default("pending"),
-  rewardGranted: boolean("reward_granted").notNull().default(false),
+  status: text("status").notNull().default("pending"),
+  creditAmount: integer("credit_amount").notNull().default(100),
   createdAt: timestamp("created_at").defaultNow(),
-  convertedAt: timestamp("converted_at"),
 }, (table) => [
   index("idx_referrals_referrer").on(table.referrerId),
   index("idx_referrals_code").on(table.referralCode),
@@ -546,7 +547,6 @@ export const referrals = pgTable("referrals", {
 export const insertReferralSchema = createInsertSchema(referrals).omit({
   id: true,
   createdAt: true,
-  convertedAt: true,
 });
 
 export type InsertReferral = z.infer<typeof insertReferralSchema>;

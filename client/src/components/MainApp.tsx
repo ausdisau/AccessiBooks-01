@@ -93,6 +93,8 @@ export function MainApp() {
                       src={book.coverImage}
                       alt={book.title}
                       className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full">
