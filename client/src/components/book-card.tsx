@@ -1,14 +1,17 @@
-import { Book } from "@shared/schema";
+import { Book, TITLE_PRICING, TIER_DISCOUNTS, type SubscriptionTier } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon } from "lucide-react";
+import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon, ShoppingCart, Check as CheckIcon } from "lucide-react";
 import { BookCover } from "@/components/book-cover";
+import { usePurchaseCheckout } from "@/hooks/use-purchases";
+import { useSubscription } from "@/hooks/use-subscription";
 
 interface BookCardProps {
   book: Book;
   onPlayBook: (book: Book) => void;
   compact?: boolean;
+  owned?: boolean;
 }
 
 const contentTypeConfig = {
@@ -36,7 +39,10 @@ const sourceLabels: Record<string, string> = {
   local: "",
 };
 
-export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
+export function BookCard({ book, onPlayBook, compact = false, owned = false }: BookCardProps) {
+  const { purchaseTitle, isPurchasing } = usePurchaseCheckout();
+  const { tier, discountRate } = useSubscription();
+
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -47,6 +53,10 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
   const typeConfig = contentTypeConfig[contentType] || contentTypeConfig.audiobook;
   const TypeIcon = typeConfig.icon;
   const isEbookOrMagazine = contentType === "ebook" || contentType === "magazine";
+
+  const pricing = TITLE_PRICING[contentType as keyof typeof TITLE_PRICING] || TITLE_PRICING.default;
+  const finalPrice = discountRate > 0 ? Math.round(pricing.base * (1 - discountRate)) : pricing.base;
+  const priceLabel = `$${(finalPrice / 100).toFixed(2)}`;
 
   if (compact) {
     return (
@@ -142,23 +152,50 @@ export function BookCard({ book, onPlayBook, compact = false }: BookCardProps) {
           <p className="text-xs text-muted-foreground/70 mb-3">via {sourceLabels[book.source]}</p>
         )}
         
-        <Button
-          className="w-full"
-          onClick={() => onPlayBook(book)}
-          data-testid={`button-play-${book.id}`}
-        >
-          {isEbookOrMagazine ? (
-            <>
-              <BookOpenIcon className="h-4 w-4 mr-2" aria-hidden="true" />
-              Read Now
-            </>
+        <div className="space-y-2">
+          <Button
+            className="w-full"
+            onClick={() => onPlayBook(book)}
+            data-testid={`button-play-${book.id}`}
+          >
+            {isEbookOrMagazine ? (
+              <>
+                <BookOpenIcon className="h-4 w-4 mr-2" aria-hidden="true" />
+                Read Now
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" aria-hidden="true" />
+                Play Book
+              </>
+            )}
+          </Button>
+
+          {owned ? (
+            <div className="flex items-center justify-center gap-1 text-xs text-green-600 dark:text-green-400">
+              <CheckIcon className="h-3 w-3" />
+              <span>Owned — Ad-free</span>
+            </div>
           ) : (
-            <>
-              <Play className="h-4 w-4 mr-2" aria-hidden="true" />
-              Play Book
-            </>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                purchaseTitle({ bookId: book.id, bookTitle: book.title, contentType });
+              }}
+              disabled={isPurchasing}
+              data-testid={`button-buy-${book.id}`}
+            >
+              <ShoppingCart className="h-3 w-3 mr-1" />
+              Buy for {priceLabel}
+              {discountRate > 0 && (
+                <span className="ml-1 text-green-600 dark:text-green-400">({Math.round(discountRate * 100)}% off)</span>
+              )}
+            </Button>
           )}
-        </Button>
+        </div>
       </CardContent>
     </Card>
   );

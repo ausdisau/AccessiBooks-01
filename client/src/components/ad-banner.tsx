@@ -47,12 +47,12 @@ export function AdBanner({ variant = "library", onClose, useGoogleAds = true }: 
             </div>
           </div>
           <Button
-            onClick={() => upgradeToPremium()}
+            onClick={() => upgradeToPremium("monthly")}
             disabled={isUpgrading}
             className="bg-amber-600 hover:bg-amber-700 text-white"
             size="sm"
           >
-            {isUpgrading ? "Loading..." : "$9.99/mo"}
+            {isUpgrading ? "Loading..." : "From $4.99/mo"}
           </Button>
         </div>
       </div>
@@ -91,12 +91,12 @@ export function AdBanner({ variant = "library", onClose, useGoogleAds = true }: 
         </div>
         
         <Button
-          onClick={() => upgradeToPremium()}
+          onClick={() => upgradeToPremium("monthly")}
           disabled={isUpgrading}
           className="whitespace-nowrap"
           size="lg"
         >
-          {isUpgrading ? "Loading..." : "Upgrade for $9.99/mo"}
+          {isUpgrading ? "Loading..." : "Go Ad-Free from $4.99/mo"}
         </Button>
       </div>
       

@@ -1,4 +1,4 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -50,6 +50,11 @@ export interface IStorage {
     subscriptionEndDate?: Date | null;
   }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
+  
+  // Purchases
+  getUserPurchases(userId: string): Promise<Purchase[]>;
+  getUserPurchase(userId: string, bookId: string): Promise<Purchase | undefined>;
+  createPurchase(purchase: InsertPurchase): Promise<Purchase>;
   
   // Listening history
   getListeningHistory(userId: string, limit?: number): Promise<ListeningHistory[]>;
@@ -2082,6 +2087,32 @@ export class ExternalAPIStorage implements IStorage {
       console.error(`Error looking up user by Stripe customer ID:`, error);
       return undefined;
     }
+  }
+
+  // Purchase methods
+  async getUserPurchases(userId: string): Promise<Purchase[]> {
+    try {
+      return await db.select().from(purchases).where(eq(purchases.userId, userId)).orderBy(desc(purchases.purchasedAt));
+    } catch (error) {
+      console.error(`Error getting purchases for user ${userId}:`, error);
+      return [];
+    }
+  }
+
+  async getUserPurchase(userId: string, bookId: string): Promise<Purchase | undefined> {
+    try {
+      const [purchase] = await db.select().from(purchases)
+        .where(and(eq(purchases.userId, userId), eq(purchases.bookId, bookId)));
+      return purchase;
+    } catch (error) {
+      console.error(`Error checking purchase for user ${userId}, book ${bookId}:`, error);
+      return undefined;
+    }
+  }
+
+  async createPurchase(purchase: InsertPurchase): Promise<Purchase> {
+    const [created] = await db.insert(purchases).values(purchase).returning();
+    return created;
   }
 
   // Listening history methods
