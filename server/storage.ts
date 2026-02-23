@@ -27,8 +27,25 @@ const GOOGLE_BOOKS_API_KEY = process.env.GOOGLE_BOOKS_API_KEY || "";
 const INTERNET_ARCHIVE_API_BASE = "https://archive.org";
 const ITUNES_SEARCH_API_BASE = "https://itunes.apple.com";
 
+export interface PaginatedResult<T> {
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  total?: number;
+}
+
+export interface BookQueryOptions {
+  cursor?: string;
+  limit?: number;
+  source?: string;
+  contentType?: string;
+  genre?: string;
+  search?: string;
+}
+
 export interface IStorage {
   getBooks(): Promise<Book[]>;
+  getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>>;
   getBook(id: string): Promise<Book | undefined>;
   createBook(book: InsertBook): Promise<Book>;
   searchBooks(query: string): Promise<Book[]>;
@@ -368,6 +385,7 @@ function transformExternalBook(externalBook: ExternalBook): Book {
     contentType: "audiobook",
     isPremium: false,
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -400,6 +418,7 @@ function transformOpenLibraryBook(openLibraryBook: OpenLibraryBook): Book {
     contentType: "ebook",
     isPremium: false,
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -446,6 +465,7 @@ function transformGoogleBooksVolume(volume: GoogleBooksVolume): Book {
     contentType: "ebook",
     isPremium: isPremium,
     pageCount: volumeInfo.pageCount || null,
+    searchVector: null,
   };
 }
 
@@ -493,6 +513,7 @@ function transformiTunesAudiobook(itunes: iTunesAudiobook): Book {
     contentType: "audiobook",
     isPremium: true, // iTunes audiobooks are commercial
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -547,6 +568,7 @@ function transformInternetArchiveDoc(doc: InternetArchiveDoc): Book {
     contentType: contentType,
     isPremium: false, // Internet Archive content is free
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -585,6 +607,7 @@ function transformLibriVoxBook(libriVoxBook: LibriVoxBook): Book {
     contentType: "audiobook",
     isPremium: false, // LibriVox is free public domain
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -640,6 +663,7 @@ function transformGutenbergBook(gutenberg: GutenbergBook): Book {
     contentType: "ebook",
     isPremium: false, // Gutenberg is free public domain
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -772,7 +796,7 @@ export class ExternalAPIStorage implements IStorage {
   }
 
   private initializeFallbackData() {
-    const sampleBooks: Omit<Book, 'id'>[] = [
+    const sampleBooks: Omit<Book, 'id' | 'searchVector'>[] = [
       {
         title: "The Great Gatsby",
         author: "F. Scott Fitzgerald",
@@ -891,7 +915,7 @@ export class ExternalAPIStorage implements IStorage {
 
     sampleBooks.forEach(book => {
       const id = randomUUID();
-      this.fallbackBooks.set(id, { ...book, id });
+      this.fallbackBooks.set(id, { ...book, id, searchVector: null });
     });
   }
 
@@ -1204,89 +1228,179 @@ export class ExternalAPIStorage implements IStorage {
       contentType: insertBook.contentType ?? "audiobook",
       isPremium: insertBook.isPremium ?? false,
       pageCount: insertBook.pageCount ?? null,
+      searchVector: null,
     };
     this.fallbackBooks.set(id, book);
     return book;
+  }
+
+  async getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>> {
+    const { cursor, limit = 50, source, contentType, genre, search } = options;
+
+    // If search is provided, use full-text search
+    if (search) {
+      const results = await this.searchBooksDB(search, limit + 1);
+      const hasMore = results.length > limit;
+      const data = hasMore ? results.slice(0, limit) : results;
+      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+      return { data, nextCursor, hasMore };
+    }
+
+    try {
+      const conditions: any[] = [];
+      if (source) conditions.push(sql`source = ${source}`);
+      if (contentType) conditions.push(sql`content_type = ${contentType}`);
+      if (genre) conditions.push(sql`genre = ${genre}`);
+      if (cursor) conditions.push(sql`id > ${cursor}`);
+
+      const whereClause = conditions.length > 0
+        ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+        : sql``;
+
+      const rows = await db.execute(
+        sql`SELECT * FROM books ${whereClause} ORDER BY id ASC LIMIT ${limit + 1}`
+      );
+
+      const allRows = (rows as any).rows || rows;
+      if (!Array.isArray(allRows)) return { data: [], nextCursor: null, hasMore: false };
+
+      const hasMore = allRows.length > limit;
+      const pageRows = hasMore ? allRows.slice(0, limit) : allRows;
+
+      const data: Book[] = pageRows.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        author: row.author,
+        narrator: row.narrator || null,
+        description: row.description || null,
+        duration: row.duration || 0,
+        coverImage: row.cover_image || null,
+        audioUrl: row.audio_url || null,
+        contentUrl: row.content_url || null,
+        genre: row.genre || null,
+        publishedYear: row.published_year || null,
+        source: row.source || "local",
+        sourceId: row.source_id || null,
+        totalTime: row.total_time || null,
+        language: row.language || "English",
+        contentType: row.content_type || "audiobook",
+        isPremium: row.is_premium || false,
+        pageCount: row.page_count || null,
+        searchVector: row.search_vector || null,
+      }));
+
+      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+      return { data, nextCursor, hasMore };
+    } catch (error) {
+      console.warn('Paginated DB query failed, falling back to getBooks:', error);
+      const allBooks = await this.getBooks();
+      let filtered = allBooks;
+      if (source) filtered = filtered.filter(b => b.source === source);
+      if (contentType) filtered = filtered.filter(b => b.contentType === contentType);
+      if (genre) filtered = filtered.filter(b => b.genre === genre);
+      const startIndex = cursor ? filtered.findIndex(b => b.id === cursor) + 1 : 0;
+      const data = filtered.slice(startIndex, startIndex + limit);
+      const hasMore = startIndex + limit < filtered.length;
+      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+      return { data, nextCursor, hasMore };
+    }
   }
 
   async searchBooks(query: string): Promise<Book[]> {
     const allBooks: Book[] = [];
     const searchPromises: Promise<Book[]>[] = [];
     
-    // Parallel search across all sources
+    // Full-text search in PostgreSQL database (instant for millions of rows)
     searchPromises.push(
-      // LibriVox search
+      this.searchBooksDB(query, 50).catch(error => {
+        console.warn('DB full-text search failed:', error);
+        return [] as Book[];
+      }),
+    );
+    
+    // Parallel search across external API sources
+    searchPromises.push(
       this.searchLibriVoxBooks(query, 15).then(books => books.map(transformLibriVoxBook)).catch(error => {
         console.warn('LibriVox search failed:', error);
         return [];
       }),
-      
-      // Open Library search
       this.searchOpenLibraryBooks(query, 10).then(books => books.map(transformOpenLibraryBook)).catch(error => {
         console.warn('Open Library search failed:', error);
         return [];
       }),
-      
-      // Google Books search
       this.searchGoogleBooks(query, 10).then(volumes => volumes.map(transformGoogleBooksVolume)).catch(error => {
         console.warn('Google Books search failed:', error);
         return [];
       }),
-      
-      // iTunes search
       this.searchiTunesAudiobooks(query, 10).then(audiobooks => audiobooks.map(transformiTunesAudiobook)).catch(error => {
         console.warn('iTunes search failed:', error);
         return [];
       }),
-      
-      // Project Gutenberg search
       this.searchGutenbergBooks(query, 10).then(ebooks => ebooks.map(transformGutenbergBook)).catch(error => {
         console.warn('Gutenberg search failed:', error);
         return [];
       }),
-
-      // Loyal Books search
       searchLoyalBooks(query, 5).catch(() => [] as Book[]),
-
-      // Standard Ebooks search
       searchStandardEbooks(query, 5).catch(() => [] as Book[]),
-
-      // Feedbooks search
       searchFeedbooks(query, 5).catch(() => [] as Book[]),
-
-      // OpenStax search (synchronous)
       Promise.resolve(searchOpenStaxBooks(query, 5)),
-
-      // Wikipedia Spoken Articles search
       searchWikipediaSpokenArticles(query, 5).catch(() => [] as Book[]),
-
-      // Serialized Fiction Podcasts search
       searchSerializedFictionPodcasts(query, 5).catch(() => [] as Book[]),
-
-      // BBC Podcasts search
       searchBBCPodcasts(query, 3).catch(() => [] as Book[]),
     );
     
-    // Wait for all searches to complete
     const searchResults = await Promise.all(searchPromises);
-    
-    // Flatten and combine results
     searchResults.forEach(results => allBooks.push(...results));
     
-    // Only add fallback results if they actually match the query
     if (allBooks.length === 0) {
       const fallbackResults = this.searchFallbackBooks(query);
       if (fallbackResults.length > 0) {
         allBooks.push(...fallbackResults);
-        console.log(`Added ${fallbackResults.length} books from fallback search`);
       }
     }
     
-    // Basic deduplication by title + author
     const deduped = this.deduplicateBooks(allBooks);
-    
     console.log(`Search for "${query}" returned ${deduped.length} results`);
     return deduped;
+  }
+
+  async searchBooksDB(query: string, limit: number = 50): Promise<Book[]> {
+    try {
+      const tsQuery = query.split(/\s+/).filter(Boolean).map(w => `${w}:*`).join(' & ');
+      const results = await db.execute(
+        sql`SELECT *, ts_rank(search_tsv, to_tsquery('english', ${tsQuery})) AS rank
+            FROM books
+            WHERE search_tsv @@ to_tsquery('english', ${tsQuery})
+            ORDER BY rank DESC
+            LIMIT ${limit}`
+      );
+      const rows = (results as any).rows || results;
+      if (!Array.isArray(rows)) return [];
+      return rows.map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        author: row.author,
+        narrator: row.narrator || null,
+        description: row.description || null,
+        duration: row.duration || 0,
+        coverImage: row.cover_image || null,
+        audioUrl: row.audio_url || null,
+        contentUrl: row.content_url || null,
+        genre: row.genre || null,
+        publishedYear: row.published_year || null,
+        source: row.source || "local",
+        sourceId: row.source_id || null,
+        totalTime: row.total_time || null,
+        language: row.language || "English",
+        contentType: row.content_type || "audiobook",
+        isPremium: row.is_premium || false,
+        pageCount: row.page_count || null,
+        searchVector: row.search_vector || null,
+      }));
+    } catch (error) {
+      console.warn('Full-text search failed, falling back:', error);
+      return [];
+    }
   }
   
   private async searchExternalAPI(query: string): Promise<Book[]> {

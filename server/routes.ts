@@ -152,9 +152,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/books - Get all books
+  // GET /api/books - Get books with optional pagination
   app.get("/api/books", async (req, res) => {
     try {
+      const { cursor, limit, source, contentType: ct, genre, search } = req.query;
+      const pageLimit = Math.min(parseInt(limit as string) || 100, 500);
+
+      // If paginated DB query requested
+      if (cursor !== undefined || limit || source || ct || genre || search) {
+        const results = await storage.getBooksPaginated({
+          cursor: cursor as string | undefined,
+          limit: pageLimit,
+          source: source as string | undefined,
+          contentType: ct as string | undefined,
+          genre: genre as string | undefined,
+          search: search as string | undefined,
+        });
+        return res.json(results);
+      }
+
+      // Legacy: return all books (for backward compatibility)
       const books = await storage.getBooks();
       res.json(books);
     } catch (error) {

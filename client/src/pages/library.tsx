@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { Book, PlaylistWithCount } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { BookCarousel } from "@/components/book-carousel";
 import { DJSection } from "@/components/dj-section";
 import { PlaylistSection } from "@/components/playlist-section";
 import { PlaylistDetail } from "@/components/playlist-detail";
-import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles } from "lucide-react";
+import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { SubmitContent } from "@/components/submit-content";
 import { CommercialAudiobooks } from "@/components/commercial-audiobooks";
@@ -26,54 +26,76 @@ interface LibraryProps {
   onSelectBook: (book: Book) => void;
 }
 
+const PAGE_SIZE = 48;
+
 export function Library({ onSelectBook }: LibraryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("title");
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
-  const [visibleCount, setVisibleCount] = useState(48);
   const { user } = useAuth();
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const { data: books = [], isLoading, error } = useQuery<Book[]>({
     queryKey: ["/api/books"],
   });
 
-  const filteredAndSortedBooks = books
-    .filter(book => {
-      const matchesSearch = 
-        book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        book.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (book.genre && book.genre.toLowerCase().includes(searchQuery.toLowerCase()));
-      
-      const matchesGenre = !selectedGenre || 
-        (book.genre && book.genre.toLowerCase().includes(selectedGenre.toLowerCase()));
-      
-      const matchesSource = sourceFilter === "all" || book.source === sourceFilter ||
-        (sourceFilter === "podcasts" && (book.source === "podcast" || book.source === "bbc" || book.source === "spotify-podcast"));
-      
-      return matchesSearch && matchesGenre && matchesSource;
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "author":
-          return a.author.localeCompare(b.author);
-        case "duration":
-          return a.duration - b.duration;
-        case "recent":
-          return (b.publishedYear || 0) - (a.publishedYear || 0);
-        default:
-          return a.title.localeCompare(b.title);
-      }
-    });
+  const filteredAndSortedBooks = useMemo(() => {
+    return books
+      .filter(book => {
+        const matchesSearch = 
+          book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          book.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (book.genre && book.genre.toLowerCase().includes(searchQuery.toLowerCase()));
+        
+        const matchesGenre = !selectedGenre || 
+          (book.genre && book.genre.toLowerCase().includes(selectedGenre.toLowerCase()));
+        
+        const matchesSource = sourceFilter === "all" || book.source === sourceFilter ||
+          (sourceFilter === "podcasts" && (book.source === "podcast" || book.source === "bbc" || book.source === "spotify-podcast"));
+        
+        return matchesSearch && matchesGenre && matchesSource;
+      })
+      .sort((a, b) => {
+        switch (sortBy) {
+          case "author":
+            return a.author.localeCompare(b.author);
+          case "duration":
+            return a.duration - b.duration;
+          case "recent":
+            return (b.publishedYear || 0) - (a.publishedYear || 0);
+          default:
+            return a.title.localeCompare(b.title);
+        }
+      });
+  }, [books, searchQuery, selectedGenre, sourceFilter, sortBy]);
+
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [searchQuery, selectedGenre, sourceFilter, sortBy]);
+
+  useEffect(() => {
+    if (!loadMoreRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && visibleCount < filteredAndSortedBooks.length) {
+          setVisibleCount(prev => Math.min(prev + PAGE_SIZE, filteredAndSortedBooks.length));
+        }
+      },
+      { rootMargin: "400px" }
+    );
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [visibleCount, filteredAndSortedBooks.length]);
 
   const handleGenreSelect = (genre: string) => {
     setSelectedGenre(genre || null);
     setSearchQuery("");
-    setVisibleCount(48);
   };
 
-  // Group books by source for carousels
   const booksBySource = useMemo(() => {
     const librivox = books.filter(b => b.source === "librivox").slice(0, 12);
     const itunes = books.filter(b => b.source === "itunes").slice(0, 12);
@@ -101,7 +123,6 @@ export function Library({ onSelectBook }: LibraryProps) {
 
   const showPersonalizedSections = user && !searchQuery && !isLoading && !selectedPlaylist;
 
-  // If a playlist is selected, show the detail view
   if (selectedPlaylist) {
     return (
       <div className="space-y-8">
@@ -116,24 +137,23 @@ export function Library({ onSelectBook }: LibraryProps) {
     );
   }
 
+  const displayedBooks = filteredAndSortedBooks.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredAndSortedBooks.length;
+
   return (
     <div className="space-y-8">
-      {/* Listening Stats for logged in users */}
       {showPersonalizedSections && (
         <ListeningStatsCard />
       )}
 
-      {/* Continue Listening - only show when logged in and not searching */}
       {showPersonalizedSections && (
         <ContinueListening onSelectBook={onSelectBook} books={books} />
       )}
 
-      {/* DJ Section - Personalized recommendations */}
       {showPersonalizedSections && (
         <DJSection onPlayBook={onSelectBook} />
       )}
 
-      {/* Playlists Section */}
       {!searchQuery && !isLoading && (
         <PlaylistSection 
           onSelectPlaylist={setSelectedPlaylist}
@@ -141,32 +161,26 @@ export function Library({ onSelectBook }: LibraryProps) {
         />
       )}
 
-      {/* My Collections - only show when logged in */}
       {showPersonalizedSections && (
         <LibraryCollections books={books} />
       )}
 
-      {/* For You recommendations - only show when logged in and not searching */}
       {showPersonalizedSections && (
         <ForYouSection books={books} onSelectBook={onSelectBook} />
       )}
 
-      {/* Commercial Audiobooks - Spotify & Amazon/Audible */}
       {!isLoading && !searchQuery && !selectedGenre && (
         <CommercialAudiobooks />
       )}
 
-      {/* Podcasts Discovery */}
       {!isLoading && !searchQuery && !selectedGenre && (
         <PodcastDiscovery />
       )}
 
-      {/* Digital Magazines */}
       {!isLoading && !searchQuery && !selectedGenre && (
         <MagazineSection />
       )}
 
-      {/* Horizontal carousels by source */}
       {!isLoading && !searchQuery && !selectedGenre && (
         <div className="space-y-8">
           {booksBySource.newest.length > 0 && (
@@ -253,12 +267,10 @@ export function Library({ onSelectBook }: LibraryProps) {
         </div>
       )}
 
-      {/* Submit Content - for logged in users */}
       {showPersonalizedSections && (
         <SubmitContent />
       )}
 
-      {/* Genre browsing */}
       {!isLoading && books.length > 0 && !searchQuery && (
         <GenreCards 
           books={books} 
@@ -267,10 +279,8 @@ export function Library({ onSelectBook }: LibraryProps) {
         />
       )}
 
-      {/* Ad banner for free users */}
       <AdBanner variant="library" />
 
-      {/* Search and filters */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-4">
           <LibraryIcon className="h-5 w-5 text-primary" />
@@ -292,7 +302,6 @@ export function Library({ onSelectBook }: LibraryProps) {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  setVisibleCount(48);
                   if (e.target.value) setSelectedGenre(null);
                 }}
                 className="pl-10"
@@ -302,7 +311,7 @@ export function Library({ onSelectBook }: LibraryProps) {
           </div>
           
           <div className="flex items-center space-x-4">
-            <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setVisibleCount(48); }}>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
               <SelectTrigger className="w-36" data-testid="select-source">
                 <SelectValue placeholder="All Sources" />
               </SelectTrigger>
@@ -336,7 +345,6 @@ export function Library({ onSelectBook }: LibraryProps) {
         </div>
       </div>
 
-      {/* Books grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -358,7 +366,7 @@ export function Library({ onSelectBook }: LibraryProps) {
       ) : (
         <>
           <p className="text-sm text-muted-foreground mb-4">
-            Showing {Math.min(visibleCount, filteredAndSortedBooks.length)} of {filteredAndSortedBooks.length} titles
+            Showing {displayedBooks.length} of {filteredAndSortedBooks.length} titles
           </p>
           <div 
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" 
@@ -366,7 +374,7 @@ export function Library({ onSelectBook }: LibraryProps) {
             aria-label="Audiobook library"
             data-testid="grid-books"
           >
-            {filteredAndSortedBooks.slice(0, visibleCount).map((book) => (
+            {displayedBooks.map((book) => (
               <BookCard
                 key={book.id}
                 book={book}
@@ -374,15 +382,12 @@ export function Library({ onSelectBook }: LibraryProps) {
               />
             ))}
           </div>
-          {visibleCount < filteredAndSortedBooks.length && (
-            <div className="flex justify-center mt-8">
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={() => setVisibleCount(prev => prev + 48)}
-              >
-                Load More ({filteredAndSortedBooks.length - visibleCount} remaining)
-              </Button>
+          {hasMore && (
+            <div ref={loadMoreRef} className="flex justify-center items-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+              <span className="text-sm text-muted-foreground">
+                Loading more... ({filteredAndSortedBooks.length - visibleCount} remaining)
+              </span>
             </div>
           )}
         </>

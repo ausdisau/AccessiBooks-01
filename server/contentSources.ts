@@ -76,6 +76,7 @@ function transformLoyalBook(entry: LoyalBooksEntry, index: number): Book {
     contentType: "audiobook",
     isPremium: false,
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -147,6 +148,7 @@ export async function searchLoyalBooks(query: string, limit = 10): Promise<Book[
         contentType: "audiobook",
         isPremium: false,
         pageCount: null,
+        searchVector: null,
       });
       idx++;
     }
@@ -232,6 +234,7 @@ function transformStandardEbook(entry: StandardEbookEntry): Book {
     contentType: "ebook",
     isPremium: false,
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -340,6 +343,7 @@ export async function fetchFeedbooks(limit = 20): Promise<Book[]> {
             contentType: "ebook",
             isPremium: false,
             pageCount: null,
+            searchVector: null,
           });
         }
       });
@@ -380,6 +384,7 @@ export async function searchFeedbooks(query: string, limit = 10): Promise<Book[]
       contentType: "ebook",
       isPremium: false,
       pageCount: null,
+      searchVector: null,
     }));
   } catch (error) {
     console.warn('Feedbooks search failed:', error instanceof Error ? error.message : 'Unknown');
@@ -462,6 +467,7 @@ function transformOpenStaxBook(book: OpenStaxBook, index: number): Book {
     contentType: "ebook",
     isPremium: false,
     pageCount: null,
+    searchVector: null,
   };
 }
 
@@ -532,6 +538,7 @@ export async function fetchWikipediaSpokenArticles(limit = 20): Promise<Book[]> 
             contentType: "audiobook",
             isPremium: false,
             pageCount: null,
+            searchVector: null,
           });
         }
       });
@@ -571,6 +578,7 @@ export async function searchWikipediaSpokenArticles(query: string, limit = 10): 
       contentType: "audiobook",
       isPremium: false,
       pageCount: null,
+      searchVector: null,
     }));
   } catch (error) {
     console.warn('Wikipedia search failed:', error instanceof Error ? error.message : 'Unknown');
@@ -626,6 +634,7 @@ export async function fetchSerializedFictionPodcasts(limit = 15): Promise<Book[]
             contentType: "audiobook",
             isPremium: false,
             pageCount: null,
+            searchVector: null,
           });
         }
       });
@@ -664,6 +673,7 @@ export async function searchSerializedFictionPodcasts(query: string, limit = 10)
       contentType: "audiobook",
       isPremium: false,
       pageCount: null,
+      searchVector: null,
     }));
   } catch (error) {
     console.warn('Podcast search failed:', error instanceof Error ? error.message : 'Unknown');
@@ -753,6 +763,7 @@ export async function fetchBBCPodcasts(limit = 12): Promise<Book[]> {
         contentType: "audiobook",
         isPremium: false,
         pageCount: null,
+        searchVector: null,
       } as Book;
     } catch {
       return null;
@@ -798,6 +809,7 @@ export async function searchBBCPodcasts(query: string, limit = 5): Promise<Book[
         contentType: "audiobook",
         isPremium: false,
         pageCount: null,
+        searchVector: null,
       });
     } catch {
       continue;
@@ -835,6 +847,7 @@ export async function fetchSpotifyPodcasts(spotifyClient: any, limit = 10): Prom
       contentType: "audiobook",
       isPremium: false,
       pageCount: null,
+      searchVector: null,
     }));
   } catch (error) {
     console.warn('Spotify podcast fetch failed:', error instanceof Error ? error.message : 'Unknown');
@@ -867,6 +880,7 @@ export async function searchSpotifyPodcasts(spotifyClient: any, query: string, l
       contentType: "audiobook",
       isPremium: false,
       pageCount: null,
+      searchVector: null,
     }));
   } catch (error) {
     console.warn('Spotify podcast search failed:', error instanceof Error ? error.message : 'Unknown');

@@ -26,10 +26,23 @@ export const books = pgTable("books", {
   contentType: text("content_type").notNull().default("audiobook"), // audiobook, ebook, or magazine
   isPremium: boolean("is_premium").notNull().default(false), // Whether content requires premium subscription
   pageCount: integer("page_count"), // For ebooks and magazines
-});
+  searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
+}, (table) => [
+  index("idx_books_title").on(table.title),
+  index("idx_books_author").on(table.author),
+  index("idx_books_genre").on(table.genre),
+  index("idx_books_source").on(table.source),
+  index("idx_books_content_type").on(table.contentType),
+  index("idx_books_published_year").on(table.publishedYear),
+  index("idx_books_language").on(table.language),
+  index("idx_books_premium").on(table.isPremium),
+  index("idx_books_source_content").on(table.source, table.contentType),
+  index("idx_books_genre_content").on(table.genre, table.contentType),
+]);
 
 export const insertBookSchema = createInsertSchema(books).omit({
   id: true,
+  searchVector: true,
 });
 
 export type InsertBook = z.infer<typeof insertBookSchema>;

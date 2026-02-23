@@ -42,6 +42,12 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Advertising Platforms**: Google AdSense, Google Ad Manager, AdsWizz, Triton Digital, ad:personam.
 - **Content Catalogs**: Nordic APIs eBooks (14 free ebooks on API topics with PDF, EPUB, MOBI, Kindle, LeanPub downloads).
 - **Utilities**: TanStack Query (data fetching), Zod (validation), SerpApi.
-- **Caching**: In-memory API cache (server/apiCache.ts) with TTL for external API responses, retry logic with exponential backoff for rate-limited APIs.
-- **Performance**: React.lazy() code splitting for 13 heavy components, image lazy loading, memoized navigation and event handlers.
+- **Caching**: In-memory API cache (server/apiCache.ts) with LRU eviction, tiered TTL for external API responses, retry logic with exponential backoff for rate-limited APIs. Max 5000 entries / 100MB.
+- **Performance**: React.lazy() code splitting for 13 heavy components, image lazy loading, memoized navigation and event handlers. gzip compression middleware (level 6, threshold 1KB).
 - **Offline**: Browser-side IndexedDB-based download manager for Premium users (client/src/hooks/use-offline-downloads.ts).
+- **Scaling Infrastructure** (Feb 2026):
+  - Database indexes on books (title, author, genre, source, contentType, publishedYear, language, isPremium) + composite indexes
+  - PostgreSQL full-text search with tsvector/tsquery, weighted columns (title=A, author=B, genre=C, description=D), GIN index, auto-update trigger
+  - Cursor-based pagination API: `GET /api/books?cursor=&limit=&source=&contentType=&genre=&search=` returns `{data, nextCursor, hasMore}`
+  - Frontend infinite scroll with IntersectionObserver for progressive loading of large catalogs
+  - `searchBooksDB()` method for instant full-text search across millions of database rows
