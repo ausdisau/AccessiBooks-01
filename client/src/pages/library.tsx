@@ -169,59 +169,77 @@ export function Library({ onSelectBook }: LibraryProps) {
   const { isPremium, isPaid, upgradeToTier } = useSubscription();
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  const { data: books = [], isLoading, error } = useQuery<Book[]>({
-    queryKey: ["/api/books"],
-  });
-
-  const filteredAndSortedBooks = useMemo(() => {
-    return books
-      .filter(book => {
-        const matchesSearch = 
-          book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          book.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (book.genre && book.genre.toLowerCase().includes(searchQuery.toLowerCase()));
-        
-        const matchesGenre = !selectedGenre || 
-          (book.genre && book.genre.toLowerCase().includes(selectedGenre.toLowerCase()));
-        
-        const matchesSource = sourceFilter === "all" || book.source === sourceFilter ||
-          (sourceFilter === "podcasts" && (book.source === "podcast" || book.source === "bbc" || book.source === "spotify-podcast"));
-        
-        return matchesSearch && matchesGenre && matchesSource;
-      })
-      .sort((a, b) => {
-        switch (sortBy) {
-          case "author":
-            return a.author.localeCompare(b.author);
-          case "duration":
-            return a.duration - b.duration;
-          case "recent":
-            return (b.publishedYear || 0) - (a.publishedYear || 0);
-          default:
-            return a.title.localeCompare(b.title);
-        }
-      });
-  }, [books, searchQuery, selectedGenre, sourceFilter, sortBy]);
-
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [searchQuery, selectedGenre, sourceFilter, sortBy]);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const buildQueryString = () => {
+    const params = new URLSearchParams();
+    params.set("limit", String(PAGE_SIZE));
+    if (sourceFilter !== "all") params.set("source", sourceFilter);
+    if (selectedGenre) params.set("genre", selectedGenre);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    return params.toString();
+  };
+
+  const {
+    data: paginatedData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    error,
+  } = useInfiniteQuery<{ data: Book[]; nextCursor: string | null; hasMore: boolean; total?: number }>({
+    queryKey: ["/api/books", sourceFilter, selectedGenre, debouncedSearch],
+    queryFn: async ({ pageParam }) => {
+      const qs = buildQueryString();
+      const cursorParam = pageParam ? `&cursor=${pageParam}` : "";
+      const res = await fetch(`/api/books?${qs}${cursorParam}`);
+      if (!res.ok) throw new Error("Failed to fetch books");
+      return res.json();
+    },
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursor : undefined,
+    initialPageParam: undefined as string | undefined,
+  });
+
+  const books = useMemo(() => {
+    if (!paginatedData?.pages) return [];
+    return paginatedData.pages.flatMap(page => page.data);
+  }, [paginatedData]);
+
+  const totalBooks = paginatedData?.pages?.[0]?.total ?? 0;
+
+  const filteredAndSortedBooks = useMemo(() => {
+    return [...books].sort((a, b) => {
+      switch (sortBy) {
+        case "author":
+          return a.author.localeCompare(b.author);
+        case "duration":
+          return a.duration - b.duration;
+        case "recent":
+          return (b.publishedYear || 0) - (a.publishedYear || 0);
+        default:
+          return a.title.localeCompare(b.title);
+      }
+    });
+  }, [books, sortBy]);
 
   useEffect(() => {
     if (!loadMoreRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && visibleCount < filteredAndSortedBooks.length) {
-          setVisibleCount(prev => Math.min(prev + PAGE_SIZE, filteredAndSortedBooks.length));
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
         }
       },
       { rootMargin: "400px" }
     );
     observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
-  }, [visibleCount, filteredAndSortedBooks.length]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const handleGenreSelect = (genre: string) => {
     setSelectedGenre(genre || null);
@@ -269,8 +287,7 @@ export function Library({ onSelectBook }: LibraryProps) {
     );
   }
 
-  const displayedBooks = filteredAndSortedBooks.slice(0, visibleCount);
-  const hasMore = visibleCount < filteredAndSortedBooks.length;
+  const displayedBooks = filteredAndSortedBooks;
 
   return (
     <div className="space-y-8">
@@ -531,12 +548,17 @@ export function Library({ onSelectBook }: LibraryProps) {
               return items;
             })}
           </div>
-          {hasMore && (
+          {(hasNextPage || isFetchingNextPage) && (
             <div ref={loadMoreRef} className="flex justify-center items-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
               <span className="text-sm text-muted-foreground">
-                Loading more... ({filteredAndSortedBooks.length - visibleCount} remaining)
+                Loading more...{totalBooks > 0 ? ` (${totalBooks.toLocaleString()} total titles)` : ''}
               </span>
+            </div>
+          )}
+          {!hasNextPage && !isFetchingNextPage && displayedBooks.length > 0 && (
+            <div className="text-center py-4 text-sm text-muted-foreground">
+              Showing {displayedBooks.length.toLocaleString()} of {totalBooks.toLocaleString()} titles
             </div>
           )}
         </>

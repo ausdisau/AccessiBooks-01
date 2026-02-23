@@ -85,10 +85,16 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const { data: allBooks } = useQuery<Book[]>({
-    queryKey: ["/api/books"],
+  const { data: allBooksResponse } = useQuery<{ data: Book[] }>({
+    queryKey: ["/api/books", "onboarding"],
+    queryFn: async () => {
+      const res = await fetch("/api/books?limit=100");
+      if (!res.ok) throw new Error("Failed to fetch books");
+      return res.json();
+    },
     enabled: open && step >= 5,
   });
+  const allBooks = allBooksResponse?.data;
 
   const recommendedBooks = useCallback(() => {
     if (!allBooks || allBooks.length === 0) return [];

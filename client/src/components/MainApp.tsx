@@ -13,14 +13,17 @@ export function MainApp() {
   const { data: session } = useSession();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: books = [], isLoading } = useQuery<Book[]>({
-    queryKey: ["/api/books"],
+  const { data: booksResponse, isLoading } = useQuery<{ data: Book[] }>({
+    queryKey: ["/api/books", "main"],
+    queryFn: async () => {
+      const res = await fetch(`/api/books?limit=200${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`);
+      if (!res.ok) throw new Error("Failed to fetch books");
+      return res.json();
+    },
   });
+  const books = booksResponse?.data || [];
 
-  const filteredBooks = books.filter((book) =>
-    book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    book.author?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredBooks = books;
 
   return (
     <div className="min-h-screen bg-background">

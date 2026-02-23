@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startNotificationScheduler } from "./notificationTriggers";
 import { setupFullTextSearch } from "./db";
+import { storage } from "./storage";
 
 const app = express();
 
@@ -81,15 +82,35 @@ app.use((req, res, next) => {
     
     setupFullTextSearch().catch(err => console.warn("[FTS] Setup failed:", err));
     
+    // Runtime API ingestion: fetch from external APIs and persist to DB
+    setTimeout(async () => {
+      try {
+        const result = await (storage as any).refreshRuntimeBooks();
+        console.log(`[RuntimeRefresh] Initial: ${result.inserted} inserted, ${result.skipped} skipped`);
+      } catch (err: any) {
+        console.warn("[RuntimeRefresh] Initial refresh failed:", err.message);
+      }
+      
+      // Schedule periodic refresh every 30 minutes
+      setInterval(async () => {
+        try {
+          const result = await (storage as any).refreshRuntimeBooks();
+          console.log(`[RuntimeRefresh] Periodic: ${result.inserted} inserted, ${result.skipped} skipped`);
+        } catch (err: any) {
+          console.warn("[RuntimeRefresh] Periodic refresh failed:", err.message);
+        }
+      }, 30 * 60 * 1000);
+    }, 10000);
+    
     // Auto-start catalog seeder in background (resumes from where it left off)
     import("./catalogSeeder").then(({ startSeeding }) => {
       setTimeout(() => {
-        startSeeding(["librivox", "gutenberg"]).then(result => {
+        startSeeding(["librivox", "gutenberg", "openlibrary", "internetarchive"]).then(result => {
           console.log(`[Auto-Seeder] ${result.message}`);
         }).catch(err => {
           console.warn("[Auto-Seeder] Failed to start:", err);
         });
-      }, 30000); // Wait 30s after startup to let initial API fetches complete
+      }, 30000);
     });
   });
 })();
