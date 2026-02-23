@@ -47,7 +47,9 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Offline**: Browser-side IndexedDB-based download manager for Premium users (client/src/hooks/use-offline-downloads.ts).
 - **Scaling Infrastructure** (Feb 2026):
   - Database indexes on books (title, author, genre, source, contentType, publishedYear, language, isPremium) + composite indexes
-  - PostgreSQL full-text search with tsvector/tsquery, weighted columns (title=A, author=B, genre=C, description=D), GIN index, auto-update trigger
+  - PostgreSQL full-text search with tsvector column (`search_tsv`), weighted columns (title=A, author=B, genre=C, description=D), GIN index (`idx_books_search_tsv`), auto-update trigger (`trg_books_search_tsv`). Setup runs on server startup via `setupFullTextSearch()` in `server/db.ts`.
   - Cursor-based pagination API: `GET /api/books?cursor=&limit=&source=&contentType=&genre=&search=` returns `{data, nextCursor, hasMore}`
   - Frontend infinite scroll with IntersectionObserver for progressive loading of large catalogs
-  - `searchBooksDB()` method for instant full-text search across millions of database rows
+  - `searchBooksDB()` method for instant full-text search across millions of database rows using `ts_rank` and `to_tsquery`
+  - Catalog seeder (`server/catalogSeeder.ts`): auto-starts 30s after server boot, auto-resumes from existing DB count (no re-scanning), seeds LibriVox (~5,000+) and Gutenberg (~4,500+) books. Admin API: `GET /api/admin/seed/status`, `POST /api/admin/seed/start`, `POST /api/admin/seed/stop`.
+  - Total catalog: 9,500+ DB books + ~1,200 runtime API titles = **10,700+ total titles**

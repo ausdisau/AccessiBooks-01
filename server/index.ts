@@ -3,6 +3,7 @@ import compression from "compression";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startNotificationScheduler } from "./notificationTriggers";
+import { setupFullTextSearch } from "./db";
 
 const app = express();
 
@@ -77,5 +78,18 @@ app.use((req, res, next) => {
   }, () => {
     log(`serving on port ${port}`);
     startNotificationScheduler();
+    
+    setupFullTextSearch().catch(err => console.warn("[FTS] Setup failed:", err));
+    
+    // Auto-start catalog seeder in background (resumes from where it left off)
+    import("./catalogSeeder").then(({ startSeeding }) => {
+      setTimeout(() => {
+        startSeeding(["librivox", "gutenberg"]).then(result => {
+          console.log(`[Auto-Seeder] ${result.message}`);
+        }).catch(err => {
+          console.warn("[Auto-Seeder] Failed to start:", err);
+        });
+      }, 30000); // Wait 30s after startup to let initial API fetches complete
+    });
   });
 })();
