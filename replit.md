@@ -54,9 +54,9 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
   - `searchBooksDB()` method for instant full-text search across millions of database rows using `ts_rank` and `to_tsquery`
   - **Background runtime API refresh**: `refreshRuntimeBooks()` fetches from external APIs and upserts to DB every 30 minutes (starts 10s after boot). No runtime merging at request time.
   - **Batch inserts**: Seeder uses chunk-based `INSERT ... ON CONFLICT DO NOTHING` for 50x faster ingestion.
-  - Catalog seeder (`server/catalogSeeder.ts`): auto-starts 30s after server boot. 4 sources: LibriVox (target 18K), Gutenberg (target 70K), Open Library (target 15K), Internet Archive (target 8K). Admin API: `GET /api/admin/seed/status`, `POST /api/admin/seed/start`, `POST /api/admin/seed/stop`, `GET /api/admin/seed/metrics`.
+  - Catalog seeder (`server/catalogSeeder.ts`): auto-starts 30s after server boot. 4 sources: LibriVox (target 30K), Gutenberg (target 100K), Open Library (target 40K), Internet Archive (target 30K). Admin API: `GET /api/admin/seed/status`, `POST /api/admin/seed/start`, `POST /api/admin/seed/stop`, `GET /api/admin/seed/metrics`.
   - **Seeder optimizations**: In-memory Set deduplication per source, per-source AbortControllers for independent start/stop, DB-persisted progress (`seeder_progress` table) for exact resume on restart, data quality filtering (title validation, URL validation, IA non-book filtering), efficiency metrics (rate/min, ETA, dedup rate).
   - Gutenberg seeder: follows API `next` URL pagination, adaptive delays (1-4s based on response time), exponential backoff to 180s with jitter for 429 rate limits, separate rate-limit vs empty-page counters.
-  - Open Library seeder: browses 30 subjects (fiction, science_fiction, mystery, etc.), ~500 titles per subject, cross-subject deduplication.
-  - Internet Archive seeder: 10 queries across texts and audio, ~800 titles per query, non-book subject filtering.
-  - Total catalog target: **100,000+ titles** across all seeder sources + runtime API ingestion
+  - Open Library seeder: browses 60 subjects (fiction, science_fiction, mystery, nature, sports, architecture, business, sociology, computer_science, true_crime, memoir, etc.), cross-subject deduplication.
+  - Internet Archive seeder: 25 queries across texts and audio (fiction, science, history, adventure, fantasy, romance, mystery, horror, children, education, religion, art, music, psychology, economics, law, medicine, poetry audio), non-book subject filtering.
+  - Total catalog target: **200,000+ titles** across all seeder sources + runtime API ingestion
