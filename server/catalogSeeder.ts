@@ -331,7 +331,7 @@ async function seedLibriVox(abortSignal: AbortSignal): Promise<void> {
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
   progress.lastLogTime = Date.now();
-  progress.estimatedTotal = 18000;
+  progress.estimatedTotal = 30000;
 
   try {
     const saved = await loadProgressFromDB("librivox");
@@ -413,7 +413,7 @@ async function seedGutenberg(abortSignal: AbortSignal): Promise<void> {
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
   progress.lastLogTime = Date.now();
-  progress.estimatedTotal = 70000;
+  progress.estimatedTotal = 100000;
 
   const saved = await loadProgressFromDB("gutenberg");
   if (saved) {
@@ -538,6 +538,13 @@ const OL_SUBJECTS = [
   "thriller", "children", "young_adult", "classic_literature", "psychology",
   "economics", "politics", "art", "music", "religion", "mathematics",
   "technology", "medicine", "law", "education", "travel", "cooking",
+  "nature", "sports", "architecture", "business", "sociology", "anthropology",
+  "linguistics", "astronomy", "physics", "chemistry", "biology", "geology",
+  "engineering", "computer_science", "graphic_novels", "humor", "essays",
+  "memoir", "true_crime", "self_help", "spirituality", "mythology",
+  "folk_tales", "war", "journalism", "environment", "agriculture",
+  "crafts", "gardening", "pets", "parenting", "health", "fitness",
+  "dance", "theater", "film", "photography", "design", "fashion",
 ];
 
 async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
@@ -546,7 +553,7 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
   progress.lastLogTime = Date.now();
-  progress.estimatedTotal = 15000;
+  progress.estimatedTotal = 40000;
 
   const saved = await loadProgressFromDB("openlibrary");
   if (saved) {
@@ -569,7 +576,7 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
     }
   }
 
-  const targetPerSubject = Math.ceil(15000 / OL_SUBJECTS.length);
+  const targetPerSubject = Math.ceil(40000 / OL_SUBJECTS.length);
 
   try {
     for (let si = progress.subjectIndex; si < OL_SUBJECTS.length; si++) {
@@ -681,6 +688,21 @@ const IA_QUERIES = [
   "mediatype:texts AND language:English AND subject:mathematics",
   "mediatype:texts AND language:English AND subject:technology",
   "mediatype:audio AND subject:audiobook AND language:English",
+  "mediatype:texts AND language:English AND subject:adventure",
+  "mediatype:texts AND language:English AND subject:fantasy",
+  "mediatype:texts AND language:English AND subject:romance",
+  "mediatype:texts AND language:English AND subject:mystery",
+  "mediatype:texts AND language:English AND subject:horror",
+  "mediatype:texts AND language:English AND subject:children",
+  "mediatype:texts AND language:English AND subject:education",
+  "mediatype:texts AND language:English AND subject:religion",
+  "mediatype:texts AND language:English AND subject:art",
+  "mediatype:texts AND language:English AND subject:music",
+  "mediatype:texts AND language:English AND subject:psychology",
+  "mediatype:texts AND language:English AND subject:economics",
+  "mediatype:texts AND language:English AND subject:law",
+  "mediatype:texts AND language:English AND subject:medicine",
+  "mediatype:audio AND subject:poetry AND language:English",
 ];
 
 const IA_SKIP_SUBJECTS = new Set([
@@ -694,7 +716,7 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
   progress.lastLogTime = Date.now();
-  progress.estimatedTotal = 8000;
+  progress.estimatedTotal = 30000;
 
   const saved = await loadProgressFromDB("internetarchive");
   if (saved) {
@@ -717,7 +739,7 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
     }
   }
 
-  const targetPerQuery = Math.ceil(8000 / IA_QUERIES.length);
+  const targetPerQuery = Math.ceil(30000 / IA_QUERIES.length);
 
   try {
     for (let qi = progress.subjectIndex; qi < IA_QUERIES.length; qi++) {
