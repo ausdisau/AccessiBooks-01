@@ -1604,3 +1604,4 @@ export const moatMetricsSnapshots = pgTable("moat_metrics_snapshots", {
 export const insertMoatMetricsSnapshotSchema = createInsertSchema(moatMetricsSnapshots).omit({ id: true });
 export type InsertMoatMetricsSnapshot = z.infer<typeof insertMoatMetricsSnapshotSchema>;
 export type MoatMetricsSnapshot = typeof moatMetricsSnapshots.$inferSelect;
+
