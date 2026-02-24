@@ -32,6 +32,7 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Podcasts**: RSS feed ingestion with search, curated popular podcasts, episode listing and playback. Backend at `/api/podcasts/feeds` and `/api/ingest`.
 - **Digital Magazines**: Curated catalog of 12 free tech/science/design publications with category filtering (Technology, Web Design, Programming, Science, Engineering).
 - **Content Model**: Ad-supported freemium with 3 tiers. Free: ads + 128kbps + 6 skips/hr + 2 devices. Plus ($4.99/mo): ad-free + 192kbps + unlimited skips + 3 devices + 10 TTS pages/day. Premium ($9.99/mo): 320kbps + offline + 5 devices + unlimited TTS. Individual titles buyable for $1.99-$2.99.
+- **Library Loan System**: Library-style borrow/return with tier-based limits. Free: 1 loan/7 days/2 downloads. Plus: 3 loans/14 days/5 downloads. Premium: 5 loans/21 days/10 downloads. Max 5 concurrent loans per book (limited copies). Waitlist for unavailable titles. Background expiration job every 5 min. Early return awards 25 XP. Backend: `server/loanSystem.ts`. API: `POST /api/loans/borrow`, `POST /api/loans/return/:id`, `GET /api/loans/active`, `GET /api/loans/history`, `POST /api/loans/waitlist/:bookId`, `GET /api/loans/download/:id`, `GET /api/loans/book/:id/status`. Frontend: `client/src/components/my-loans.tsx`. Schema: `book_loans`, `loan_waitlist` tables. Offline: IndexedDB loan downloads with auto-cleanup on expiry via `use-offline-downloads.ts`.
 
 ## External Dependencies
 
