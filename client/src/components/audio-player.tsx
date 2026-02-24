@@ -191,7 +191,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
   if (carMode) {
     return (
-      <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center p-8">
+      <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center p-4 sm:p-8">
         <audio ref={audioRef} preload="metadata" />
         
         <Button
@@ -209,10 +209,10 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             <img
               src={book.coverImage}
               alt={`${book.title} cover`}
-              className="w-32 h-48 object-cover rounded-lg mx-auto mb-4"
+              className="w-24 h-36 sm:w-32 sm:h-48 object-cover rounded-lg mx-auto mb-4"
             />
           )}
-          <h2 className="text-2xl font-bold truncate max-w-md">{book.title}</h2>
+          <h2 className="text-lg sm:text-2xl font-bold truncate max-w-md">{book.title}</h2>
           <p className="text-lg text-muted-foreground">{book.author}</p>
         </div>
         
@@ -233,16 +233,16 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
           </div>
         </div>
         
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-4 sm:gap-8">
           <Button
             size="lg"
             variant="secondary"
             onClick={handleSkipBackward}
-            className="h-20 w-20 rounded-full text-xl"
+            className="h-14 w-14 sm:h-20 sm:w-20 rounded-full text-xl"
             aria-label="Rewind 30 seconds"
           >
             <div className="flex flex-col items-center">
-              <RotateCcw className="h-8 w-8" />
+              <RotateCcw className="h-6 w-6 sm:h-8 sm:w-8" />
               <span className="text-xs mt-1">30</span>
             </div>
           </Button>
@@ -251,15 +251,15 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             size="lg"
             onClick={togglePlayPause}
             disabled={isLoading}
-            className="h-28 w-28 rounded-full"
+            className="h-20 w-20 sm:h-28 sm:w-28 rounded-full"
             aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isLoading ? (
-              <Loader2 className="h-12 w-12 animate-spin" />
+              <Loader2 className="h-8 w-8 sm:h-12 sm:w-12 animate-spin" />
             ) : isPlaying ? (
-              <Pause className="h-12 w-12" />
+              <Pause className="h-8 w-8 sm:h-12 sm:w-12" />
             ) : (
-              <Play className="h-12 w-12 ml-1" />
+              <Play className="h-8 w-8 sm:h-12 sm:w-12 ml-1" />
             )}
           </Button>
           
@@ -267,18 +267,18 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             size="lg"
             variant="secondary"
             onClick={handleSkipForward}
-            className="h-20 w-20 rounded-full text-xl"
+            className="h-14 w-14 sm:h-20 sm:w-20 rounded-full text-xl"
             aria-label="Forward 30 seconds"
             disabled={isUsingSkip}
           >
             <div className="flex flex-col items-center">
-              <RotateCw className="h-8 w-8" />
+              <RotateCw className="h-6 w-6 sm:h-8 sm:w-8" />
               <span className="text-xs mt-1">30</span>
             </div>
           </Button>
         </div>
         
-        <div className="mt-8 text-2xl font-medium">
+        <div className="mt-8 text-lg sm:text-2xl font-medium">
           {playbackRate}x Speed
         </div>
         
@@ -293,26 +293,26 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6" role="region" aria-label={`Audio player: ${book.title} by ${book.author}`}>
+    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6" role="region" aria-label={`Audio player: ${book.title} by ${book.author}`}>
       <audio ref={audioRef} preload="metadata" />
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="flex flex-col md:flex-row gap-6">
             {book.coverImage && (
               <img
                 src={book.coverImage}
                 alt={`${book.title} audiobook cover`}
-                className="w-48 h-72 object-cover rounded-md mx-auto md:mx-0 shadow-lg"
+                className="w-32 h-48 sm:w-40 sm:h-60 md:w-48 md:h-72 object-cover rounded-md mx-auto md:mx-0 shadow-lg"
                 data-testid="img-book-cover"
               />
             )}
             
             <div className="flex-1">
-              <h2 className="text-3xl font-bold mb-2" data-testid="text-book-title">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2" data-testid="text-book-title">
                 {book.title}
               </h2>
-              <p className="text-xl text-muted-foreground mb-4" data-testid="text-book-author">
+              <p className="text-base sm:text-lg md:text-xl text-muted-foreground mb-4" data-testid="text-book-author">
                 by {book.author}
               </p>
               {book.narrator && (
@@ -331,7 +331,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
       </Card>
 
       <Card className="overflow-hidden">
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="mb-6">
             <div className="flex justify-between text-sm text-muted-foreground mb-2">
               <span aria-label="Current time" data-testid="text-current-time">
@@ -362,7 +362,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               <span className="text-sm text-muted-foreground">
                 Chapter {currentChapterIndex + 1} of {chapters.length}
               </span>
-              <p className="text-sm font-medium truncate max-w-xs mx-auto">
+              <p className="text-sm font-medium truncate max-w-[200px] sm:max-w-xs mx-auto">
                 {currentChapter.title}
               </p>
             </div>
@@ -388,7 +388,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               size="lg"
               variant="ghost"
               onClick={handleSkipBackward}
-              className="h-14 w-14 rounded-full relative"
+              className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
               aria-label="Rewind 30 seconds"
               data-testid="button-skip-backward"
             >
@@ -401,7 +401,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               onClick={togglePlayPause}
               disabled={isLoading}
               aria-label={isPlaying ? "Pause audiobook" : "Play audiobook"}
-              className="h-16 w-16 rounded-full shadow-lg"
+              className="h-14 w-14 sm:h-16 sm:w-16 rounded-full shadow-lg"
               data-testid="button-play-pause"
             >
               {isLoading ? (
@@ -417,7 +417,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               size="lg"
               variant="ghost"
               onClick={handleSkipForward}
-              className="h-14 w-14 rounded-full relative"
+              className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
               aria-label="Forward 30 seconds"
               data-testid="button-skip-forward"
               disabled={isUsingSkip}
@@ -447,7 +447,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             )}
           </div>
 
-          <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-2 sm:gap-3">
             <div className="flex items-center gap-2">
               {/* Speed Preset Buttons */}
               <div className="hidden sm:flex items-center gap-1 bg-muted/50 rounded-full p-1" role="group" aria-label="Playback speed">

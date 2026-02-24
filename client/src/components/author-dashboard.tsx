@@ -120,7 +120,7 @@ export function AuthorDashboard() {
         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
           <BookOpen className="h-10 w-10 text-primary" />
         </div>
-        <h2 className="text-3xl font-bold">Become an Author</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold">Become an Author</h2>
         <p className="text-muted-foreground text-lg">
           Share your audiobooks and ebooks with thousands of listeners. Set up your author profile to start publishing.
         </p>
@@ -284,7 +284,7 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-primary/10 text-primary">{icon}</div>
           <div>
-            <p className="text-2xl font-bold">{value.toLocaleString()}</p>
+            <p className="text-xl sm:text-2xl font-bold">{value.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
           </div>
         </div>
@@ -998,7 +998,7 @@ function EarningsView() {
                 <DollarSign className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{formatDollars(totalGross - totalCommission)}</p>
+                <p className="text-xl sm:text-2xl font-bold">{formatDollars(totalGross - totalCommission)}</p>
                 <p className="text-xs text-muted-foreground">Total Earned</p>
               </div>
             </div>
@@ -1011,7 +1011,7 @@ function EarningsView() {
                 <Clock className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{formatDollars(pending)}</p>
+                <p className="text-xl sm:text-2xl font-bold">{formatDollars(pending)}</p>
                 <p className="text-xs text-muted-foreground">Pending</p>
               </div>
             </div>
@@ -1024,7 +1024,7 @@ function EarningsView() {
                 <CheckCircle className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{formatDollars(paid)}</p>
+                <p className="text-xl sm:text-2xl font-bold">{formatDollars(paid)}</p>
                 <p className="text-xs text-muted-foreground">Paid Out</p>
               </div>
             </div>
@@ -1037,7 +1037,7 @@ function EarningsView() {
                 <TrendingUp className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{formatDollars(totalCommission)}</p>
+                <p className="text-xl sm:text-2xl font-bold">{formatDollars(totalCommission)}</p>
                 <p className="text-xs text-muted-foreground">Platform Fee 30%</p>
               </div>
             </div>

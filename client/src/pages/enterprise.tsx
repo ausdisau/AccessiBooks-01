@@ -109,16 +109,16 @@ export default function EnterprisePage() {
 
   if (!account) {
     return (
-      <div className="max-w-4xl mx-auto p-6 space-y-8">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-8">
         <div className="text-center space-y-2">
           <Building2 className="h-12 w-12 mx-auto text-primary" />
-          <h1 className="text-3xl font-bold">Enterprise & Education Plans</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Enterprise & Education Plans</h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
             Give your team or school access to the full AccessiBooks experience with Premium features for every member.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {(Object.entries(TIERS) as [string, typeof TIERS.education][]).map(([key, tier]) => {
             const Icon = tier.icon;
             const isSelected = selectedTier === key;
@@ -194,7 +194,7 @@ export default function EnterprisePage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -280,28 +280,28 @@ export default function EnterprisePage() {
 
         <TabsContent value="analytics" className="space-y-4">
           {analytics ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="pt-4 text-center">
-                  <p className="text-3xl font-bold">{analytics.totalMembers}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">{analytics.totalMembers}</p>
                   <p className="text-sm text-muted-foreground">Total Members</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 text-center">
-                  <p className="text-3xl font-bold">{analytics.maxSeats}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">{analytics.maxSeats}</p>
                   <p className="text-sm text-muted-foreground">Max Seats</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 text-center">
-                  <p className="text-3xl font-bold capitalize">{analytics.tier}</p>
+                  <p className="text-2xl sm:text-3xl font-bold capitalize">{analytics.tier}</p>
                   <p className="text-sm text-muted-foreground">Plan</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4 text-center">
-                  <p className="text-3xl font-bold">${((analytics.amountCents || 0) / 100).toFixed(0)}/mo</p>
+                  <p className="text-2xl sm:text-3xl font-bold">${((analytics.amountCents || 0) / 100).toFixed(0)}/mo</p>
                   <p className="text-sm text-muted-foreground">Monthly Cost</p>
                 </CardContent>
               </Card>

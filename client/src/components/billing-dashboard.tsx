@@ -84,7 +84,7 @@ export function BillingDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
             <Receipt className="h-6 w-6" />
             Billing & Payments
           </h2>
@@ -103,16 +103,16 @@ export function BillingDashboard() {
       </div>
 
       {summaryLoading ? (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
           ))}
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-4">
             <Card>
-              <CardContent className="pt-6">
+              <CardContent className="pt-4 sm:pt-6">
                 <div className="flex items-center gap-3">
                   <div className="rounded-full bg-primary/10 p-2">
                     <Crown className="h-5 w-5 text-primary" />
@@ -134,7 +134,7 @@ export function BillingDashboard() {
             </Card>
 
             <Card>
-              <CardContent className="pt-6">
+              <CardContent className="pt-4 sm:pt-6">
                 <div className="flex items-center gap-3">
                   <div className="rounded-full bg-green-500/10 p-2">
                     <DollarSign className="h-5 w-5 text-green-600" />
@@ -150,7 +150,7 @@ export function BillingDashboard() {
             </Card>
 
             <Card>
-              <CardContent className="pt-6">
+              <CardContent className="pt-4 sm:pt-6">
                 <div className="flex items-center gap-3">
                   <div className="rounded-full bg-blue-500/10 p-2">
                     <CreditCard className="h-5 w-5 text-blue-600" />
@@ -166,7 +166,7 @@ export function BillingDashboard() {
             </Card>
 
             <Card>
-              <CardContent className="pt-6">
+              <CardContent className="pt-4 sm:pt-6">
                 <div className="flex items-center gap-3">
                   <div className="rounded-full bg-purple-500/10 p-2">
                     <ArrowUpRight className="h-5 w-5 text-purple-600" />

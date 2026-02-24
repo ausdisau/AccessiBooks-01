@@ -18,7 +18,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -135,12 +135,14 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
 }) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   
   const handleLogout = () => {
     window.location.href = "/api/logout";
   };
 
   return (
+    <>
     <header className="bg-card border-b border-border h-16 flex items-center px-4 sm:px-6 sticky top-0 z-30" role="banner">
       <div className="flex items-center gap-3 shrink-0">
         <Button
@@ -155,6 +157,9 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
           {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </Button>
         <AccessiBooksLogo />
+        <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden" aria-label="Search">
+          {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
+        </Button>
       </div>
 
       <div className="flex-1 max-w-md mx-4 hidden md:block">
@@ -208,6 +213,12 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
         )}
       </div>
     </header>
+    {mobileSearchOpen && (
+      <div className="md:hidden fixed top-16 left-0 right-0 z-30 bg-card border-b border-border p-3 shadow-lg animate-in slide-in-from-top duration-200">
+        <SearchAutocomplete onSelectBook={() => { navigate("/player"); setMobileSearchOpen(false); }} />
+      </div>
+    )}
+    </>
   );
 }
 
@@ -234,7 +245,7 @@ function AppSidebar({ mobileOpen, onCloseMobile }: {
               key={item.path}
               href={item.path}
               onClick={() => onCloseMobile()}
-              className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
                 isActive(item.path)
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
