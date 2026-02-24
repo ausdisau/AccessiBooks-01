@@ -47,6 +47,7 @@ import { localStorageService } from "@/lib/storage";
 import { PdfViewer } from "./pdf-viewer";
 import { EpubViewer } from "./epub-viewer";
 import { TTSPlayer } from "./tts-player";
+import { VisualReader } from "./visual-reader";
 import { useToast } from "@/hooks/use-toast";
 
 interface EbookReaderProps {
@@ -831,6 +832,18 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             onPrevPage={() => goToPage(currentPage - 1, "right")}
             darkMode={settings.theme === "dark"}
             onWordIndex={setHighlightedWordIndex}
+          />
+        </div>
+
+        <div className="mb-4">
+          <VisualReader
+            bookId={book.id}
+            bookTitle={book.title || ""}
+            bookGenre={book.genre || undefined}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            bookText={content}
+            darkMode={settings.theme === "dark"}
           />
         </div>
 

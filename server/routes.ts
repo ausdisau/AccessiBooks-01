@@ -757,6 +757,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Visual Reading - AI scene extraction and video generation for books
+  const { extractScenes, saveScenesToDB, getBookVisuals, updateVisualVideo } = await import("./visualReading");
+
+  // GET /api/books/:id/visuals - Get generated visual scenes for a book
+  app.get("/api/books/:id/visuals", async (req, res) => {
+    try {
+      const visuals = await getBookVisuals(req.params.id);
+      res.json(visuals);
+    } catch (error) {
+      console.error("Error fetching book visuals:", error);
+      res.status(500).json({ message: "Failed to fetch visuals" });
+    }
+  });
+
+  // POST /api/books/:id/generate-visuals - Extract scenes and generate visual prompts
+  app.post("/api/books/:id/generate-visuals", express.json({ limit: "10mb" }), async (req, res) => {
+    try {
+      const { text, title, genre } = req.body;
+      if (!text || text.length < 100) {
+        return res.status(400).json({ message: "Book text too short for visual generation" });
+      }
+
+      const existing = await getBookVisuals(req.params.id);
+      if (existing.length > 0) {
+        return res.json({ scenes: existing, message: "Visuals already generated" });
+      }
+
+      const scenes = await extractScenes(text, title || "Book", genre);
+      await saveScenesToDB(req.params.id, scenes);
+      const saved = await getBookVisuals(req.params.id);
+      res.json({ scenes: saved, message: `Generated ${scenes.length} scene descriptions` });
+    } catch (error) {
+      console.error("Error generating visuals:", error);
+      res.status(500).json({ message: "Failed to generate visuals" });
+    }
+  });
+
+  // POST /api/books/:id/visuals/:visualId/video - Update a scene with a video URL
+  app.post("/api/books/:id/visuals/:visualId/video", express.json(), async (req, res) => {
+    try {
+      const { videoUrl } = req.body;
+      if (!videoUrl) {
+        return res.status(400).json({ message: "videoUrl required" });
+      }
+      await updateVisualVideo(req.params.visualId, videoUrl);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating visual video:", error);
+      res.status(500).json({ message: "Failed to update visual" });
+    }
+  });
+
   // POST /api/tts/synthesize - Convert text to speech using OpenAI gpt-audio
   app.post("/api/tts/synthesize", express.json({ limit: "10mb" }), async (req, res) => {
     try {
