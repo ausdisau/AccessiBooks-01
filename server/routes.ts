@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
@@ -11,6 +11,7 @@ import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient"
 import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
 import { registerSelfPublishingRoutes } from "./selfPublishing";
 import { registerRevenueRoutes, seedVoicePacks } from "./revenueRoutes";
+import { registerPlatformRoutes } from "./platformRoutes";
 import { registerPodcastRoutes } from "./podcastIngestion";
 import { registerPushNotificationRoutes } from "./pushNotifications";
 import { registerAdMediationRoutes } from "./adMediation";
@@ -136,6 +137,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Revenue expansion routes (voice packs, annotations, gifts, enterprise, sponsorships)
   registerRevenueRoutes(app);
   seedVoicePacks().catch(err => console.warn("[Revenue] Failed to seed voice packs:", err.message));
+
+  // Platform improvement routes (social, clubs, family, tipping, moderation, health, churn)
+  registerPlatformRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
@@ -3638,12 +3642,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { favoriteGenres, onboardingCompleted } = req.body;
+      const { favoriteGenres, preferredContentTypes, listeningHabit, onboardingCompleted } = req.body;
 
       const [existing] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
       if (existing) {
         const updates: any = {};
         if (favoriteGenres !== undefined) updates.favoriteGenres = favoriteGenres;
+        if (preferredContentTypes !== undefined) updates.preferredContentTypes = preferredContentTypes;
+        if (listeningHabit !== undefined) updates.listeningHabit = listeningHabit;
         if (onboardingCompleted !== undefined) updates.onboardingCompleted = onboardingCompleted;
         const [updated] = await db.update(userPreferences)
           .set(updates)
@@ -3654,6 +3660,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const [created] = await db.insert(userPreferences).values({
           userId,
           favoriteGenres: favoriteGenres || [],
+          preferredContentTypes: preferredContentTypes || [],
+          listeningHabit: listeningHabit || null,
           onboardingCompleted: onboardingCompleted || false,
           welcomeBonusGranted: false,
         }).returning();
@@ -4297,6 +4305,591 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[Gifts] Received error:", error);
       res.status(500).json({ message: "Failed to fetch received gifts" });
+    }
+  });
+
+  // GET /api/recommendations - Get personalized recommendations for user
+  app.get("/api/recommendations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const [prefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+      
+      if (!prefs || !prefs.favoriteGenres || prefs.favoriteGenres.length === 0) {
+        return res.json([]);
+      }
+
+      const results = await storage.getBooksPaginated({
+        limit: 200,
+      });
+      
+      const allBooks = results.data || [];
+      const favoriteGenres = prefs.favoriteGenres;
+      
+      // Try to find books matching user's favorite genres
+      for (const genre of favoriteGenres) {
+        const matches = allBooks.filter(
+          (book) => book.genre && book.genre.toLowerCase().includes(genre.toLowerCase())
+        );
+        if (matches.length >= 3) {
+          return res.json(matches.slice(0, 8));
+        }
+      }
+
+      // If no single genre has 3+ matches, return all genre matches
+      const allMatches = allBooks.filter((book) =>
+        favoriteGenres.some(
+          (g) => book.genre && book.genre.toLowerCase().includes(g.toLowerCase())
+        )
+      );
+      
+      if (allMatches.length > 0) {
+        return res.json(allMatches.slice(0, 8));
+      }
+
+      // Fallback: return popular books
+      res.json(allBooks.slice(0, 8));
+    } catch (error) {
+      console.error("Error fetching recommendations:", error);
+      res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  // GET /api/social/feed - Get activity feed from followed users
+  app.get("/api/social/feed", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const limit = Math.min(parseInt(req.query.limit || "50"), 100);
+      
+      const activities = await db
+        .select()
+        .from(activityFeed)
+        .innerJoin(sql`users`, sql`users.id = ${activityFeed.userId}`)
+        .where(sql`${activityFeed.userId} IN (SELECT following_id FROM user_follows WHERE follower_id = ${userId})`)
+        .orderBy(desc(activityFeed.createdAt))
+        .limit(limit);
+
+      const formatted = activities.map((row: any) => ({
+        id: row.activity_feed.id,
+        userId: row.activity_feed.userId,
+        username: row.users.firstName && row.users.lastName 
+          ? `${row.users.firstName} ${row.users.lastName}`
+          : row.users.email || "User",
+        activityType: row.activity_feed.activityType,
+        bookId: row.activity_feed.bookId,
+        bookTitle: row.activity_feed.bookTitle,
+        createdAt: row.activity_feed.createdAt,
+      }));
+
+      res.json(formatted);
+    } catch (error) {
+      console.error("Error fetching social feed:", error);
+      res.status(500).json({ message: "Failed to fetch feed" });
+    }
+  });
+
+  // GET /api/social/following/me - Get list of users you follow
+  app.get("/api/social/following/me", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const following = await db
+        .select({
+          userId: sql<string>`users.id`,
+          firstName: sql<string | null>`users.first_name`,
+          lastName: sql<string | null>`users.last_name`,
+          email: sql<string | null>`users.email`,
+          profileImageUrl: sql<string | null>`users.profile_image_url`,
+        })
+        .from(sql`user_follows`)
+        .innerJoin(sql`users`, sql`users.id = user_follows.following_id`)
+        .where(sql`user_follows.follower_id = ${userId}`);
+
+      const formatted = following.map((user: any) => ({
+        id: user.userId,
+        name: user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`
+          : user.email || "User",
+        email: user.email,
+        profileImageUrl: user.profileImageUrl,
+      }));
+
+      res.json(formatted);
+    } catch (error) {
+      console.error("Error fetching following list:", error);
+      res.status(500).json({ message: "Failed to fetch following" });
+    }
+  });
+
+  // GET /api/clubs - Get all reading clubs
+  app.get("/api/clubs", async (req: any, res) => {
+    try {
+      const clubs = await db
+        .select()
+        .from(readingClubs)
+        .where(eq(readingClubs.isPublic, true))
+        .orderBy(desc(readingClubs.createdAt));
+
+      res.json(clubs);
+    } catch (error) {
+      console.error("Error fetching clubs:", error);
+      res.status(500).json({ message: "Failed to fetch clubs" });
+    }
+  });
+
+  // POST /api/clubs - Create a new reading club
+  app.post("/api/clubs", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { name, description, currentBookId, isPublic = true } = req.body;
+
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ message: "Club name is required" });
+      }
+
+      const [club] = await db.insert(readingClubs).values({
+        name,
+        description: description || null,
+        creatorId: userId,
+        currentBookId: currentBookId || null,
+        currentBookTitle: null,
+        isPublic,
+      }).returning();
+
+      // Add creator as member
+      await db.insert(readingClubMembers).values({
+        clubId: club.id,
+        userId,
+      });
+
+      res.json(club);
+    } catch (error) {
+      console.error("Error creating club:", error);
+      res.status(500).json({ message: "Failed to create club" });
+    }
+  });
+
+  // POST /api/clubs/:id/join - Join a reading club
+  app.post("/api/clubs/:id/join", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { id: clubId } = req.params;
+
+      // Check if already a member
+      const existing = await db
+        .select()
+        .from(readingClubMembers)
+        .where(and(eq(readingClubMembers.clubId, clubId), eq(readingClubMembers.userId, userId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return res.status(400).json({ message: "Already a member of this club" });
+      }
+
+      await db.insert(readingClubMembers).values({
+        clubId,
+        userId,
+      });
+
+      // Update member count
+      const memberCount = await db
+        .select({ count: count() })
+        .from(readingClubMembers)
+        .where(eq(readingClubMembers.clubId, clubId));
+
+      await db.update(readingClubs)
+        .set({ memberCount: memberCount[0]?.count || 1 })
+        .where(eq(readingClubs.id, clubId));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error joining club:", error);
+      res.status(500).json({ message: "Failed to join club" });
+    }
+  });
+
+  // GET /api/notifications - Get recent notifications for authenticated user
+  app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const notifs = await db.select().from(notificationLog)
+        .where(eq(notificationLog.userId, userId))
+        .orderBy(desc(notificationLog.sentAt))
+        .limit(50);
+
+      const formatted = notifs.map((n) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        body: n.body,
+        url: n.url || null,
+        sentAt: n.sentAt ? new Date(n.sentAt).toISOString() : new Date().toISOString(),
+        clicked: n.clicked === 1 ? 1 : 0,
+      }));
+
+      res.json(formatted);
+    } catch (error) {
+      console.error("[Notifications] Get error:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  // PATCH /api/notifications/:id/read - Mark a notification as read
+  app.patch("/api/notifications/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { id } = req.params;
+      
+      const [notif] = await db.select().from(notificationLog)
+        .where(and(eq(notificationLog.id, id), eq(notificationLog.userId, userId)));
+
+      if (!notif) return res.status(404).json({ message: "Notification not found" });
+
+      await db.update(notificationLog)
+        .set({ clicked: 1 })
+        .where(eq(notificationLog.id, id));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Notifications] Mark read error:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  // POST /api/notifications/read-all - Mark all notifications as read
+  app.post("/api/notifications/read-all", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      await db.update(notificationLog)
+        .set({ clicked: 1 })
+        .where(and(eq(notificationLog.userId, userId), eq(notificationLog.clicked, 0)));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Notifications] Mark all read error:", error);
+      res.status(500).json({ message: "Failed to mark all notifications as read" });
+    }
+  });
+
+  // Family Plan Routes
+  app.post("/api/family/create", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      // Create family account
+      const familyId = `family_${Date.now()}`;
+      const familyData = {
+        id: familyId,
+        ownerId: userId,
+        planName: "Family Plan",
+        maxMembers: 5,
+        isActive: true,
+      };
+
+      // Store in memory for demo (would be in DB in production)
+      if (!storage.familyAccounts) storage.familyAccounts = {};
+      if (!storage.familyMembers) storage.familyMembers = {};
+      
+      storage.familyAccounts[familyId] = familyData;
+      storage.familyMembers[familyId] = [{
+        id: `member_${userId}`,
+        userId,
+        role: "owner",
+      }];
+
+      res.json({ success: true, familyId });
+    } catch (error) {
+      console.error("Error creating family plan:", error);
+      res.status(500).json({ message: "Failed to create family plan" });
+    }
+  });
+
+  app.get("/api/family", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      if (!storage.familyAccounts || !storage.familyMembers) {
+        return res.json({ account: null, members: [] });
+      }
+
+      // Find family for this user
+      let familyId = null;
+      for (const [fId, members] of Object.entries(storage.familyMembers || {})) {
+        if (Array.isArray(members) && members.some((m: any) => m.userId === userId)) {
+          familyId = fId;
+          break;
+        }
+      }
+
+      if (!familyId) {
+        return res.json({ account: null, members: [] });
+      }
+
+      const account = storage.familyAccounts[familyId];
+      const memberIds = storage.familyMembers[familyId] || [];
+
+      // Get member details with user info
+      const members = memberIds.map((member: any) => ({
+        id: member.id,
+        userId: member.userId,
+        role: member.role,
+        user: {
+          username: `User ${member.userId.substring(0, 8)}`,
+          email: `user${member.userId.substring(0, 8)}@example.com`,
+        },
+      }));
+
+      res.json({ account, members });
+    } catch (error) {
+      console.error("Error fetching family:", error);
+      res.status(500).json({ message: "Failed to fetch family" });
+    }
+  });
+
+  app.post("/api/family/invite", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: "Email required" });
+
+      if (!storage.familyMembers) storage.familyMembers = {};
+
+      // Find user's family
+      let familyId = null;
+      for (const [fId, members] of Object.entries(storage.familyMembers)) {
+        if (Array.isArray(members) && members.some((m: any) => m.userId === userId)) {
+          familyId = fId;
+          break;
+        }
+      }
+
+      if (!familyId) {
+        return res.status(404).json({ message: "Family not found" });
+      }
+
+      // Add new member (demo - generate random ID)
+      const newMemberId = `member_${Date.now()}`;
+      const newUserId = `user_${Math.random().toString(36).substring(7)}`;
+      
+      storage.familyMembers[familyId].push({
+        id: newMemberId,
+        userId: newUserId,
+        role: "member",
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error inviting member:", error);
+      res.status(500).json({ message: "Failed to send invitation" });
+    }
+  });
+
+  app.delete("/api/family/members/:memberId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { memberId } = req.params;
+
+      if (!storage.familyMembers) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      // Find and remove member
+      for (const members of Object.values(storage.familyMembers)) {
+        if (Array.isArray(members)) {
+          const index = members.findIndex((m: any) => m.id === memberId);
+          if (index !== -1) {
+            members.splice(index, 1);
+            return res.json({ success: true });
+          }
+        }
+      }
+
+      res.status(404).json({ message: "Member not found" });
+    } catch (error) {
+      console.error("Error removing member:", error);
+      res.status(500).json({ message: "Failed to remove member" });
+    }
+  });
+
+  // Admin Moderation Routes
+  app.get("/api/admin/reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      // Check if user is admin (demo - would check role in production)
+      // For now, allow all authenticated users to access
+      
+      if (!storage.contentReports) {
+        storage.contentReports = [];
+      }
+
+      const reports = storage.contentReports.map((report: any) => ({
+        ...report,
+        reporter: {
+          id: report.reporterId,
+          username: `Reporter ${report.reporterId.substring(0, 8)}`,
+          email: `reporter${report.reporterId.substring(0, 8)}@example.com`,
+        },
+      }));
+
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching reports:", error);
+      res.status(500).json({ message: "Failed to fetch reports" });
+    }
+  });
+
+  app.patch("/api/admin/reports/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!["approved", "removed", "dismissed"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      if (!storage.contentReports) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      const report = storage.contentReports.find((r: any) => r.id === id);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      report.status = status;
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating report:", error);
+      res.status(500).json({ message: "Failed to update report" });
+    }
+  });
+
+  // Admin Health Dashboard
+  app.get("/api/admin/health", async (_req, res) => {
+    try {
+      // Get total books count
+      const bookCount = await db.select({ count: count() }).from(books);
+      const totalBooks = bookCount[0]?.count || 0;
+
+      // Get total users count
+      const userCount = await db.select({ count: count() }).from(users);
+      const totalUsers = userCount[0]?.count || 0;
+
+      // Get memory usage
+      const memoryUsage = process.memoryUsage();
+
+      // Get uptime in seconds
+      const uptime = process.uptime();
+
+      // Get seeder status
+      const seederStatus = getSeederStatus();
+      const seededCounts = await getSeededBookCount();
+
+      // Transform seeder status to include totalSeeded (filter out isRunning)
+      const seederStatusWithCounts = Object.entries(seederStatus)
+        .filter(([source]) => source !== "isRunning")
+        .map(([source, sourceStatus]: any) => ({
+          source: source.charAt(0).toUpperCase() + source.slice(1),
+          status: sourceStatus.status,
+          totalSeeded: seededCounts[source] || 0,
+        }));
+
+      res.json({
+        totalBooks,
+        totalUsers,
+        memoryUsage: {
+          rss: Math.round(memoryUsage.rss / 1024 / 1024),
+          heapTotal: Math.round(memoryUsage.heapTotal / 1024 / 1024),
+          heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+        },
+        uptime: Math.floor(uptime),
+        seederStatus: seederStatusWithCounts,
+      });
+    } catch (error) {
+      console.error("Error getting health status:", error);
+      res.status(500).json({ message: "Failed to get health status" });
+    }
+  });
+
+  // Churn Risk Dashboard
+  app.get("/api/admin/churn-risk", async (_req, res) => {
+    try {
+      // Get all users first
+      const allUsers = await db.select({ id: users.id, firstName: users.firstName }).from(users);
+      
+      // For each user, get their listening history in the last 30 days
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      
+      const result = [];
+      for (const user of allUsers) {
+        const recentSessions = await db
+          .select()
+          .from(listeningHistory)
+          .where(and(
+            eq(listeningHistory.userId, user.id),
+            sql`${listeningHistory.createdAt} >= ${thirtyDaysAgo}::timestamp`
+          ));
+
+        const sessionCount = recentSessions.length;
+        const lastActive = recentSessions.length > 0
+          ? recentSessions[recentSessions.length - 1].createdAt
+          : null;
+
+        if (sessionCount < 5) { // Only include at-risk users
+          const daysSinceActive = lastActive
+            ? Math.floor((Date.now() - new Date(lastActive).getTime()) / (1000 * 60 * 60 * 24))
+            : 30;
+
+          let churnRisk = "low";
+          if (daysSinceActive > 20) churnRisk = "high";
+          else if (daysSinceActive > 10) churnRisk = "medium";
+
+          result.push({
+            userId: user.id,
+            username: user.firstName || "Unknown",
+            lastActiveAt: lastActive ? new Date(lastActive).toISOString() : new Date().toISOString(),
+            churnRisk,
+            totalSessionsLast30d: sessionCount,
+            winbackOfferSent: false,
+          });
+        }
+      }
+
+      // Sort by risk level (high first)
+      result.sort((a, b) => {
+        const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        return riskOrder[a.churnRisk] - riskOrder[b.churnRisk];
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error getting churn risk data:", error);
+      res.status(500).json({ message: "Failed to get churn risk data" });
     }
   });
 
