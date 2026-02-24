@@ -1,0 +1,209 @@
+Perfect. With **Vite + Tailwind** you’ll typically run:
+
+* **`apps/web`** = Vite/Tailwind client (Shaka Player, UI, auth calls)
+* **`services/drm`** = standalone Node/TypeScript microservice (tokens, entitlements, Widevine license endpoint)
+* Optional **`packages/shared`** = shared types (JWT claims, API DTOs)
+
+Here’s a **Replit-friendly monorepo folder structure** that stays tidy even as the DRM bits get… spicy 🔥🔑
+
+---
+
+# 🏗 Replit Monorepo Structure (Vite/Tailwind + DRM Microservice)
+
+```txt
+accessibooks/
+├─ README.md
+├─ package.json                 # workspace root (pnpm/npm workspaces)
+├─ pnpm-workspace.yaml          # if using pnpm (recommended)
+├─ .env.example                 # shared env examples + per-app notes
+├─ .replit
+├─ replit.nix                   # optional
+├─ turbo.json                   # optional (build orchestration)
+
+├─ apps/
+│  └─ web/                      # Vite + Tailwind frontend
+│     ├─ index.html
+│     ├─ package.json
+│     ├─ vite.config.ts
+│     ├─ tailwind.config.ts
+│     ├─ postcss.config.js
+│     ├─ tsconfig.json
+│     ├─ public/
+│     │  └─ icons/
+│     └─ src/
+│        ├─ main.tsx
+│        ├─ app.tsx
+│        ├─ styles/
+│        │  └─ tailwind.css
+│        ├─ routes/
+│        │  ├─ Home.tsx
+│        │  ├─ Player.tsx        # DRM playback screen (Shaka)
+│        │  └─ Login.tsx
+│        ├─ components/
+│        │  ├─ Layout.tsx
+│        │  ├─ BookCard.tsx
+│        │  ├─ Button.tsx
+│        │  └─ Toast.tsx
+│        ├─ features/
+│        │  └─ playback/
+│        │     ├─ shakaPlayer.ts  # Shaka setup + DRM config + request filters
+│        │     ├─ tokenClient.ts  # fetch playback token from drm-service
+│        │     └─ types.ts        # frontend-specific playback types
+│        ├─ lib/
+│        │  ├─ api.ts             # fetch wrapper, retry, errors
+│        │  ├─ auth.ts            # whatever auth you use (cookie/JWT/OAuth)
+│        │  └─ env.ts             # VITE_ env parsing
+│        └─ a11y/
+│           ├─ focus.ts
+│           └─ aria.ts
+
+├─ services/
+│  └─ drm/                      # DRM Microservice (Node + TS)
+│     ├─ package.json
+│     ├─ tsconfig.json
+│     ├─ src/
+│     │  ├─ index.ts             # boot server
+│     │  ├─ app.ts               # express/fastify wiring
+│     │  ├─ config/
+│     │  │  ├─ env.ts            # zod env validation
+│     │  │  ├─ logger.ts
+│     │  │  └─ constants.ts
+│     │  ├─ routes/
+│     │  │  ├─ health.routes.ts  # /healthz /readyz
+│     │  │  ├─ playback.routes.ts# /api/playback/token
+│     │  │  ├─ jwks.routes.ts    # /.well-known/jwks.json
+│     │  │  └─ drm.routes.ts     # /drm/widevine/license (+ playready later)
+│     │  ├─ controllers/
+│     │  │  ├─ playback.controller.ts
+│     │  │  ├─ jwks.controller.ts
+│     │  │  └─ widevine.controller.ts
+│     │  ├─ services/
+│     │  │  ├─ entitlement.service.ts
+│     │  │  ├─ session.service.ts       # concurrency + heartbeat
+│     │  │  ├─ token.service.ts         # JWT sign/verify
+│     │  │  ├─ key.service.ts           # fetch + decrypt key
+│     │  │  ├─ widevine.service.ts      # SDK wrapper (the only SDK-touching file)
+│     │  │  └─ audit.service.ts         # append-only logs
+│     │  ├─ db/
+│     │  │  ├─ neon.ts                  # pg client setup
+│     │  │  ├─ migrations/
+│     │  │  │  ├─ 001_init.sql
+│     │  │  │  ├─ 002_entitlements.sql
+│     │  │  │  └─ 003_sessions.sql
+│     │  │  └─ repositories/
+│     │  │     ├─ titles.repo.ts
+│     │  │     ├─ entitlements.repo.ts
+│     │  │     ├─ drmKeys.repo.ts
+│     │  │     └─ sessions.repo.ts
+│     │  ├─ middleware/
+│     │  │  ├─ authToken.middleware.ts  # validates playback token
+│     │  │  ├─ rateLimit.middleware.ts  # protect license endpoints
+│     │  │  ├─ cors.middleware.ts       # strict CORS
+│     │  │  ├─ error.middleware.ts
+│     │  │  └─ requestId.middleware.ts
+│     │  ├─ security/
+│     │  │  ├─ jwkStore.ts              # signing key rotation + JWKS
+│     │  │  ├─ kmsClient.ts             # decrypt key material (stub ok in dev)
+│     │  │  └─ crypto.ts                # hashing helpers
+│     │  ├─ domain/
+│     │  │  ├─ claims.ts                # JWT claims types
+│     │  │  ├─ policy.ts                # max streams, expiry, region rules
+│     │  │  └─ errors.ts
+│     │  └─ jobs/
+│     │     └─ cleanupSessions.job.ts   # mark stale sessions inactive
+│     ├─ scripts/
+│     │  ├─ migrate.ts
+│     │  └─ seed.ts
+│     └─ tests/
+│        ├─ unit/
+│        └─ integration/
+
+├─ packages/
+│  └─ shared/                   # optional but very nice
+│     ├─ package.json
+│     ├─ tsconfig.json
+│     └─ src/
+│        ├─ dto/
+│        │  ├─ playback.ts       # PlaybackTokenResponse, etc.
+│        │  └─ errors.ts
+│        ├─ drm/
+│        │  └─ enums.ts          # DRM types, key systems
+│        └─ auth/
+│           └─ claims.ts         # shared JWT claim typings
+
+├─ infra/
+│  ├─ nginx/                    # optional local reverse-proxy
+│  └─ docker/                   # optional containers if you go that route
+
+└─ docs/
+   ├─ drm-flows.md
+   ├─ api-contracts.md
+   ├─ threat-model.md
+   └─ runbook.md
+```
+
+---
+
+# 🔌 How the pieces talk to each other
+
+### `apps/web` (Vite) calls
+
+* `POST services/drm/api/playback/token` → gets `{ token, manifestUrl, licenseUrl }`
+
+### Vite Shaka Player config
+
+* License requests go to:
+
+  * `POST /drm/widevine/license`
+* Token is attached as `Authorization: Bearer <token>` using a request filter.
+
+---
+
+# ⚙️ Replit run setup (simple and practical)
+
+## Option A: one Replit, run both
+
+Root `package.json` scripts:
+
+```json
+{
+  "scripts": {
+    "dev": "concurrently \"pnpm -C services/drm dev\" \"pnpm -C apps/web dev\"",
+    "build": "pnpm -C services/drm build && pnpm -C apps/web build"
+  }
+}
+```
+
+Then `.replit` runs `pnpm dev`.
+
+## Option B: one Replit for web, one for DRM
+
+Cleaner for prod, but Option A is totally fine for early stage.
+
+---
+
+# 🧠 Small design choice that will save you later
+
+Keep **DRM and tokens** in the DRM microservice, not in the Vite app.
+The web app should only ever see:
+
+* manifest URL
+* license URL
+* short-lived playback token
+
+Not:
+
+* keys
+* KIDs
+* DRM internals
+
+---
+
+If you want, I can turn this into **Replit prompts** that:
+
+1. scaffold this exact structure
+2. wire Neon connection + migrations
+3. implement `/api/playback/token` + JWKS
+4. add a Vite “Player” page with Shaka wired to the license URL
+
+Just say whether you prefer **Express** or **Fastify** for `services/drm` (I’ll pick Express by default if you don’t).
