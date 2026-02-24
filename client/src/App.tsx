@@ -37,7 +37,7 @@ import { SignUpPrompt } from "@/components/sign-up-prompt";
 import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
 import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
-import { NotificationBell } from "@/components/notification-center";
+import { NotificationCenter } from "@/components/notification-center";
 import { Footer } from "@/components/footer";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -61,6 +61,11 @@ const UsageDashboard = lazy(() => import('@/components/usage-dashboard').then(m 
 const OfflineDownloads = lazy(() => import('@/components/offline-downloads').then(m => ({ default: m.OfflineDownloads })));
 const BattlePassComponent = lazy(() => import('@/components/battle-pass').then(m => ({ default: m.BattlePassComponent })));
 const EnterprisePage = lazy(() => import('@/pages/enterprise'));
+const AdminModerationPage = lazy(() => import('@/pages/admin-moderation'));
+const SocialHub = lazy(() => import('@/components/social-hub').then(m => ({ default: m.SocialHub })));
+const FamilyPlan = lazy(() => import('@/components/family-plan').then(m => ({ default: m.FamilyPlan })));
+const AdminHealthDashboard = lazy(() => import('@/components/admin-health').then(m => ({ default: m.AdminHealthDashboard })));
+const ChurnDashboard = lazy(() => import('@/components/churn-dashboard').then(m => ({ default: m.ChurnDashboard })));
 
 function LoadingSpinner() {
   return (
@@ -73,7 +78,7 @@ function LoadingSpinner() {
   );
 }
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads" | "social" | "family" | "enterprise" | "moderation" | "health";
 
 // Header component with user management
 function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: { 
@@ -132,7 +137,7 @@ function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: {
             {user && (
               <div className="flex items-center space-x-2 pl-4 border-l border-border">
                 <PremiumBadge showUpgrade />
-                <NotificationBell />
+                <NotificationCenter />
                 
                 <div className="hidden sm:flex items-center space-x-2">
                   <User className="h-4 w-4 text-muted-foreground" />

@@ -581,6 +581,8 @@ export const userPreferences = pgTable("user_preferences", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
   favoriteGenres: text("favorite_genres").array().default(sql`'{}'::text[]`),
+  preferredContentTypes: text("preferred_content_types").array().default(sql`'{}'::text[]`),
+  listeningHabit: text("listening_habit"),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   welcomeBonusGranted: boolean("welcome_bonus_granted").notNull().default(false),
   premiumTrialEndDate: timestamp("premium_trial_end_date"),
@@ -1270,3 +1272,144 @@ export const sponsoredQueues = pgTable("sponsored_queues", {
 export const insertSponsoredQueueSchema = createInsertSchema(sponsoredQueues).omit({ id: true, impressions: true, clicks: true, createdAt: true });
 export type InsertSponsoredQueue = z.infer<typeof insertSponsoredQueueSchema>;
 export type SponsoredQueue = typeof sponsoredQueues.$inferSelect;
+
+// Family plan accounts
+export const familyAccounts = pgTable("family_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planName: text("plan_name").notNull().default("Family Plan"),
+  maxMembers: integer("max_members").notNull().default(5),
+  amountCents: integer("amount_cents").notNull().default(799),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_family_owner").on(table.ownerId),
+]);
+
+export const insertFamilyAccountSchema = createInsertSchema(familyAccounts).omit({ id: true, createdAt: true });
+export type InsertFamilyAccount = z.infer<typeof insertFamilyAccountSchema>;
+export type FamilyAccount = typeof familyAccounts.$inferSelect;
+
+export const familyMembers = pgTable("family_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  familyId: varchar("family_id").notNull().references(() => familyAccounts.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"),
+  addedAt: timestamp("added_at").defaultNow(),
+}, (table) => [
+  index("idx_family_members_family").on(table.familyId),
+  index("idx_family_members_user").on(table.userId),
+]);
+
+export const insertFamilyMemberSchema = createInsertSchema(familyMembers).omit({ id: true, addedAt: true });
+export type InsertFamilyMember = z.infer<typeof insertFamilyMemberSchema>;
+export type FamilyMember = typeof familyMembers.$inferSelect;
+
+// Author tips / micropayments
+export const authorTips = pgTable("author_tips", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromUserId: varchar("from_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  toAuthorId: varchar("to_author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id"),
+  amountCents: integer("amount_cents").notNull(),
+  stripePaymentId: text("stripe_payment_id"),
+  message: text("message"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_tips_from").on(table.fromUserId),
+  index("idx_tips_to").on(table.toAuthorId),
+]);
+
+export const insertAuthorTipSchema = createInsertSchema(authorTips).omit({ id: true, createdAt: true });
+export type InsertAuthorTip = z.infer<typeof insertAuthorTipSchema>;
+export type AuthorTip = typeof authorTips.$inferSelect;
+
+// Content reports / moderation
+export const contentReports = pgTable("content_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reporterId: varchar("reporter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  contentType: text("content_type").notNull(),
+  contentId: varchar("content_id").notNull(),
+  reason: text("reason").notNull(),
+  details: text("details"),
+  status: text("status").notNull().default("pending"),
+  reviewedBy: varchar("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_reports_status").on(table.status),
+  index("idx_reports_content").on(table.contentType, table.contentId),
+]);
+
+export const insertContentReportSchema = createInsertSchema(contentReports).omit({ id: true, reviewedBy: true, reviewedAt: true, createdAt: true });
+export type InsertContentReport = z.infer<typeof insertContentReportSchema>;
+export type ContentReport = typeof contentReports.$inferSelect;
+
+// Activity feed for social features
+export const activityFeed = pgTable("activity_feed", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  activityType: text("activity_type").notNull(),
+  bookId: varchar("book_id"),
+  bookTitle: text("book_title"),
+  metadata: text("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_activity_user").on(table.userId),
+  index("idx_activity_created").on(table.createdAt),
+]);
+
+export const insertActivityFeedSchema = createInsertSchema(activityFeed).omit({ id: true, createdAt: true });
+export type InsertActivityFeed = z.infer<typeof insertActivityFeedSchema>;
+export type ActivityFeedEntry = typeof activityFeed.$inferSelect;
+
+// Reading clubs
+export const readingClubs = pgTable("reading_clubs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  creatorId: varchar("creator_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  currentBookId: varchar("current_book_id"),
+  currentBookTitle: text("current_book_title"),
+  memberCount: integer("member_count").notNull().default(1),
+  isPublic: boolean("is_public").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_clubs_creator").on(table.creatorId),
+]);
+
+export const insertReadingClubSchema = createInsertSchema(readingClubs).omit({ id: true, memberCount: true, createdAt: true });
+export type InsertReadingClub = z.infer<typeof insertReadingClubSchema>;
+export type ReadingClub = typeof readingClubs.$inferSelect;
+
+export const readingClubMembers = pgTable("reading_club_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clubId: varchar("club_id").notNull().references(() => readingClubs.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  joinedAt: timestamp("joined_at").defaultNow(),
+}, (table) => [
+  index("idx_club_members_club").on(table.clubId),
+  index("idx_club_members_user").on(table.userId),
+]);
+
+export const insertReadingClubMemberSchema = createInsertSchema(readingClubMembers).omit({ id: true, joinedAt: true });
+export type InsertReadingClubMember = z.infer<typeof insertReadingClubMemberSchema>;
+export type ReadingClubMember = typeof readingClubMembers.$inferSelect;
+
+// Churn tracking / engagement metrics
+export const engagementMetrics = pgTable("engagement_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lastActiveAt: timestamp("last_active_at").defaultNow(),
+  totalSessionsLast30d: integer("total_sessions_last_30d").notNull().default(0),
+  totalMinutesLast30d: integer("total_minutes_last_30d").notNull().default(0),
+  churnRisk: text("churn_risk").notNull().default("low"),
+  winbackOfferSent: boolean("winback_offer_sent").notNull().default(false),
+  winbackOfferSentAt: timestamp("winback_offer_sent_at"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_engagement_user").on(table.userId),
+  index("idx_engagement_churn").on(table.churnRisk),
+  index("idx_engagement_active").on(table.lastActiveAt),
+]);

@@ -37,17 +37,39 @@ export function RecommendationEngine({ onSelectBook }: { onSelectBook?: (book: B
   const preferences = useMemo(() => getPreferences(), []);
   const userGenres = preferences?.genres || [];
 
-  const { data: booksResponse, isLoading } = useQuery<{ data: Book[] }>({
+  // Try to fetch from API first, fall back to localStorage strategy
+  const { data: apiRecommendations, isLoading: isApiLoading, isError: isApiError } = useQuery<Book[]>({
+    queryKey: ["/api/recommendations"],
+    queryFn: async () => {
+      const res = await fetch("/api/recommendations", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch recommendations from API");
+      return res.json();
+    },
+    retry: false,
+  });
+
+  // Fallback: fetch books if API fails or returns empty
+  const { data: booksResponse, isLoading: isBooksLoading } = useQuery<{ data: Book[] }>({
     queryKey: ["/api/books", "recommendations"],
     queryFn: async () => {
       const res = await fetch("/api/books?limit=200");
       if (!res.ok) throw new Error("Failed to fetch books");
       return res.json();
     },
+    enabled: (isApiError || !apiRecommendations || apiRecommendations.length === 0) && !isApiLoading,
   });
   const books = booksResponse?.data;
 
   const { recommended, matchedGenre } = useMemo(() => {
+    // Use API recommendations if available and not empty
+    if (apiRecommendations && apiRecommendations.length > 0) {
+      const genre = userGenres.length > 0 ? userGenres[0] : "";
+      return { recommended: apiRecommendations, matchedGenre: genre };
+    }
+
+    // Fallback to client-side filtering of books
     if (!books || books.length === 0) return { recommended: [], matchedGenre: "" };
 
     if (userGenres.length > 0) {
@@ -73,7 +95,9 @@ export function RecommendationEngine({ onSelectBook }: { onSelectBook?: (book: B
     }
 
     return { recommended: shuffleArray(books).slice(0, 8), matchedGenre: "" };
-  }, [books, userGenres]);
+  }, [apiRecommendations, books, userGenres]);
+
+  const isLoading = isApiLoading || isBooksLoading;
 
   const scroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return;
