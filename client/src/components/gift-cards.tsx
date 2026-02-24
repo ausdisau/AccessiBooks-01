@@ -113,7 +113,7 @@ export function GiftCards() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
           <Gift className="h-6 w-6" />
           Gift Cards
         </h2>
@@ -172,7 +172,7 @@ export function GiftCards() {
 
             <TabsContent value="subscription" className="space-y-3 mt-4">
               <p className="text-sm text-muted-foreground">Gift a Plus or Premium subscription</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                 {SUBSCRIPTION_OPTIONS.map((opt) => (
                   <button
                     key={opt.key}
@@ -193,7 +193,7 @@ export function GiftCards() {
 
             <TabsContent value="credits" className="space-y-3 mt-4">
               <p className="text-sm text-muted-foreground">Gift credits for individual title purchases</p>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {CREDIT_OPTIONS.map((opt) => (
                   <button
                     key={opt.key}

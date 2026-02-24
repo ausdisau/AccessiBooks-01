@@ -64,8 +64,8 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
           </div>
         </div>
         
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 py-2 sm:px-4 sm:py-3">
+          <div className="flex items-center gap-2 sm:gap-4">
             <div 
               className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer hover:bg-accent/50 rounded-lg p-1 -m-1 transition-colors"
               onClick={onExpand}
@@ -74,10 +74,10 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
                 <img
                   src={currentBook.coverImage}
                   alt={`Cover of ${currentBook.title}`}
-                  className="h-14 w-14 rounded-md object-cover flex-shrink-0 shadow-md"
+                  className="h-11 w-11 sm:h-14 sm:w-14 rounded-md object-cover flex-shrink-0 shadow-md"
                 />
               ) : (
-                <div className="h-14 w-14 rounded-md bg-secondary flex items-center justify-center flex-shrink-0">
+                <div className="h-11 w-11 sm:h-14 sm:w-14 rounded-md bg-secondary flex items-center justify-center flex-shrink-0">
                   <ListMusic className="h-6 w-6 text-muted-foreground" />
                 </div>
               )}
@@ -123,13 +123,13 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-full"
+                className="h-8 w-8 sm:h-10 sm:w-10 rounded-full"
                 onClick={() => skip(-30)}
                 aria-label="Rewind 30 seconds"
                 data-testid="mini-player-skip-back"
               >
                 <div className="relative">
-                  <RotateCcw className="h-5 w-5" />
+                  <RotateCcw className="h-4 w-4 sm:h-5 sm:w-5" />
                   <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold">30</span>
                 </div>
               </Button>
@@ -137,31 +137,31 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
               <Button
                 variant="default"
                 size="icon"
-                className="h-12 w-12 rounded-full shadow-lg"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full shadow-lg"
                 onClick={togglePlayPause}
                 disabled={isLoading}
                 aria-label={isPlaying ? "Pause" : "Play"}
                 data-testid="mini-player-play-pause"
               >
                 {isLoading ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
                 ) : isPlaying ? (
-                  <Pause className="h-6 w-6" />
+                  <Pause className="h-5 w-5 sm:h-6 sm:w-6" />
                 ) : (
-                  <Play className="h-6 w-6 ml-0.5" />
+                  <Play className="h-5 w-5 sm:h-6 sm:w-6 ml-0.5" />
                 )}
               </Button>
               
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-full"
+                className="h-8 w-8 sm:h-10 sm:w-10 rounded-full"
                 onClick={() => skip(30)}
                 aria-label="Forward 30 seconds"
                 data-testid="mini-player-skip-forward"
               >
                 <div className="relative">
-                  <RotateCw className="h-5 w-5" />
+                  <RotateCw className="h-4 w-4 sm:h-5 sm:w-5" />
                   <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold">30</span>
                 </div>
               </Button>

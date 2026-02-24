@@ -348,7 +348,7 @@ export function MagazineSection() {
           <BookOpen className="h-5 w-5 text-rose-600 dark:text-rose-400" />
         </div>
         <div>
-          <h2 id="magazine-section-heading" className="text-2xl font-bold">Digital Magazines</h2>
+          <h2 id="magazine-section-heading" className="text-xl sm:text-2xl font-bold">Digital Magazines</h2>
           <p className="text-sm text-muted-foreground">
             Curated tech, science, and design publications
             {!isPaid && (
