@@ -2,15 +2,10 @@ import type { Express } from "express";
 import { db } from "./db";
 import { eq, desc, sql, and, count, sum, gte, lte } from "drizzle-orm";
 import {
-  voicePacks, voicePackPurchases, annotationSync, giftCards,
+  voicePacks, voicePackPurchases, annotationSync,
   enterpriseAccounts, enterpriseMembers, sponsoredQueues, users,
 } from "@shared/schema";
 import { isAuthenticated } from "./multiAuth";
-import crypto from "crypto";
-
-function generateGiftCode(): string {
-  return crypto.randomBytes(8).toString("hex").toUpperCase();
-}
 
 export function registerRevenueRoutes(app: Express) {
 
@@ -181,101 +176,7 @@ export function registerRevenueRoutes(app: Express) {
     }
   });
 
-  app.post("/api/gifts/purchase", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const { type, amountCents, toEmail, message, tierGift, monthsGift, stripePaymentId } = req.body;
-      if (!type || !amountCents) return res.status(400).json({ message: "type and amountCents required" });
-
-      const code = generateGiftCode();
-      const expiresAt = new Date();
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
-      const [card] = await db.insert(giftCards).values({
-        code,
-        fromUserId: userId,
-        toEmail: toEmail || null,
-        amountCents,
-        balanceRemaining: type === "credits" ? amountCents : 0,
-        type,
-        tierGift: tierGift || null,
-        monthsGift: monthsGift || null,
-        message: message || null,
-        status: "active",
-        expiresAt,
-      }).returning();
-
-      res.json({ card, code });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to purchase gift card" });
-    }
-  });
-
-  app.post("/api/gifts/redeem", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const { code } = req.body;
-      if (!code) return res.status(400).json({ message: "Gift code required" });
-
-      const [card] = await db.select().from(giftCards).where(eq(giftCards.code, code.toUpperCase()));
-      if (!card) return res.status(404).json({ message: "Gift card not found" });
-      if (card.status !== "active") return res.status(400).json({ message: "Gift card already redeemed or expired" });
-      if (card.expiresAt && new Date(card.expiresAt) < new Date()) {
-        return res.status(400).json({ message: "Gift card has expired" });
-      }
-
-      if (card.type === "subscription" && card.tierGift && card.monthsGift) {
-        const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + card.monthsGift);
-        await db.update(users).set({
-          subscriptionTier: card.tierGift,
-          subscriptionEndDate: endDate,
-        }).where(eq(users.id, userId));
-      }
-
-      await db.update(giftCards).set({
-        status: "redeemed",
-        redeemedBy: userId,
-        redeemedAt: new Date(),
-      }).where(eq(giftCards.id, card.id));
-
-      res.json({ message: "Gift card redeemed successfully", type: card.type, amountCents: card.amountCents });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to redeem gift card" });
-    }
-  });
-
-  app.get("/api/gifts/sent", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const sent = await db.select().from(giftCards)
-        .where(eq(giftCards.fromUserId, userId))
-        .orderBy(desc(giftCards.createdAt));
-      res.json(sent);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch sent gifts" });
-    }
-  });
-
-  app.get("/api/gifts/received", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const received = await db.select().from(giftCards)
-        .where(eq(giftCards.redeemedBy, userId))
-        .orderBy(desc(giftCards.redeemedAt));
-      res.json(received);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch received gifts" });
-    }
-  });
+  // Gift card routes are defined in routes.ts with full Stripe integration
 
   app.post("/api/enterprise/create", isAuthenticated, async (req: any, res) => {
     try {

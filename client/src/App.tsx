@@ -1440,7 +1440,7 @@ function MainApp() {
         detail={engagementUpsell.detail}
         open={engagementUpsell.open}
         onOpenChange={(open) => setEngagementUpsell(prev => ({ ...prev, open }))}
-        onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan); }}
+        onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan || "monthly"); }}
       />
     </div>
   );
