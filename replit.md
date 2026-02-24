@@ -22,7 +22,7 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Core Player**: HTML5 audio player with variable speed, skip, progress tracking, bookmarking, sleep timer, and chapter navigation.
 - **Content Management**: Aggregation from multiple APIs, personalization features (e.g., "Continue Listening," recommendations), and multi-format support for audiobooks and ebooks with an interactive reader.
 - **Interactive Ebook Reader**: Full-featured text reader with 3 themes (light/sepia/dark), 4 fonts (serif/sans/mono/dyslexia), text highlighting/annotations with 5 colors and notes (localStorage persisted), in-book search with prev/next navigation, auto-detected table of contents sidebar, reading statistics (time/words/ETA), swipe gestures for mobile, smooth page transitions, fullscreen mode, adjustable line spacing and margins, keyboard shortcuts (arrows/PgUp/PgDown/Ctrl+F). Component: `client/src/components/ebook-reader.tsx`.
-- **Monetization**: 3-tier subscription model (Free/$0, Plus/$4.99/mo, Premium/$9.99/mo) with per-title micro-payments ($1.99-$2.99), DRM, ad integration with paid tier exclusion. Plus/Premium get 10%/20% off individual purchases. Database `purchases` table tracks owned titles.
+- **Monetization**: 3-tier subscription model (Free/$0, Plus/$4.99/mo, Premium/$9.99/mo) with per-title micro-payments ($1.99-$2.99), DRM, ad integration with paid tier exclusion. Plus/Premium get 10%/20% off individual purchases. Database `purchases` table tracks owned titles. 10 revenue expansion features (Feb 2026): author revenue share (70/30 split, `author_earnings` table, payout requests), 3 premium AI voice packs (Storyteller/Professional/Celebrity, auto-seeded, Premium included), podcast ad insertion (pre-roll + mid-roll for free users), seasonal battle pass ($2.99 with 10 milestones/XP thresholds), annotation sync (Plus/Premium cross-device sync), listening party premium gating (Free=join only, Plus=10 listeners, Premium=50+co-host), gift cards (subscription + credit types via Stripe, 16-char codes), enterprise/education tier ($99/$299 mo with seat management), magazine tier-locking (5 free / all for paid), streaming queue sponsorships (branded banners + impression/click tracking). Schema: `author_earnings`, `voice_packs`, `voice_pack_purchases`, `battle_passes`, `battle_pass_milestones`, `battle_pass_purchases`, `annotation_sync`, `gift_cards`, `enterprise_accounts`, `enterprise_members`, `sponsored_queues`. Routes: `server/revenueRoutes.ts`. Components: `battle-pass.tsx`, `gift-cards.tsx`, `author-dashboard.tsx`, `enterprise.tsx`.
 - **Community & Engagement**: User reviews, ratings, gamification (streaks, XP, achievements), push notifications, referral system with referral codes/credits/tracking, and content recommendation engine.
 - **Content Creation**: A self-publishing portal for authors to upload and manage content, and a catalog seeder for bulk content import.
 - **Advertising**: A programmatic audio ad system with server-side mediation and a self-serve advertising platform for advertisers.
@@ -33,6 +33,18 @@ The application emphasizes accessible design with high contrast, dark mode, dysl
 - **Digital Magazines**: Curated catalog of 12 free tech/science/design publications with category filtering (Technology, Web Design, Programming, Science, Engineering).
 - **Content Model**: Ad-supported freemium with 3 tiers. Free: ads + 128kbps + 6 skips/hr + 2 devices. Plus ($4.99/mo): ad-free + 192kbps + unlimited skips + 3 devices + 10 TTS pages/day. Premium ($9.99/mo): 320kbps + offline + 5 devices + unlimited TTS. Individual titles buyable for $1.99-$2.99.
 - **Library Loan System**: Library-style borrow/return with tier-based limits. Free: 1 loan/7 days/2 downloads. Plus: 3 loans/14 days/5 downloads. Premium: 5 loans/21 days/10 downloads. Max 5 concurrent loans per book (limited copies). Waitlist for unavailable titles. Background expiration job every 5 min. Early return awards 25 XP. Backend: `server/loanSystem.ts`. API: `POST /api/loans/borrow`, `POST /api/loans/return/:id`, `GET /api/loans/active`, `GET /api/loans/history`, `POST /api/loans/waitlist/:bookId`, `GET /api/loans/download/:id`, `GET /api/loans/book/:id/status`. Frontend: `client/src/components/my-loans.tsx`. Schema: `book_loans`, `loan_waitlist` tables. Offline: IndexedDB loan downloads with auto-cleanup on expiry via `use-offline-downloads.ts`.
+
+### Monorepo Structure (Feb 2026)
+The project includes a monorepo scaffold alongside the main app:
+- `pnpm-workspace.yaml`: workspace config for `apps/*`, `services/*`, `packages/*`
+- `packages/shared/`: shared TypeScript types (`src/types.ts`) for cross-service use
+- `apps/web/`: future standalone web app (Vite+React+Tailwind)
+- `services/drm/`: DRM microservice with:
+  - `src/db/neon.ts`: pg Pool for Neon Postgres
+  - `src/db/migrations/`: 5 SQL migrations (schema_migrations, titles, drm_keys, entitlements, stream_sessions)
+  - `scripts/migrate.ts`: transactional migration runner
+  - `scripts/seed.ts`: test data seeder (idempotent)
+  - Run: `pnpm -C services/drm migrate` / `pnpm -C services/drm seed`
 
 ## External Dependencies
 
