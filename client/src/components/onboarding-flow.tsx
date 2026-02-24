@@ -24,6 +24,7 @@ import {
   Library,
   Star,
 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Book } from "@shared/schema";
 
 interface OnboardingFlowProps {
@@ -138,7 +139,7 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
     }
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     const preferences = {
       genres: selectedGenres,
       contentTypes: selectedContentTypes,
@@ -148,6 +149,20 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
     localStorage.setItem("accessibooks-onboarding-preferences", JSON.stringify(preferences));
     localStorage.setItem("onboarding-completed", "true");
     localStorage.setItem("accessibooks_onboarding_done", "true");
+
+    try {
+      await apiRequest("PUT", "/api/user/preferences", {
+        favoriteGenres: selectedGenres,
+        preferredContentTypes: selectedContentTypes,
+        listeningHabit,
+        onboardingCompleted: true,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/user/preferences"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/recommendations"] });
+    } catch (error) {
+      console.error("Failed to sync preferences to backend:", error);
+    }
+
     onComplete();
     onOpenChange(false);
     setStep(1);
