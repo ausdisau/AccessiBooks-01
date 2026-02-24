@@ -3,13 +3,13 @@ import http from "node:http";
 import jwt from "jsonwebtoken";
 import app from "../app";
 import pool from "../db/neon";
+import { publicKey } from "../keys";
 import type { JWTClaims } from "@accessibooks/shared";
 
 const TEST_TITLE_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const TEST_USER_ID = "11111111-2222-3333-4444-555555555555";
 const EXPIRED_USER_ID = "66666666-7777-8888-9999-aaaaaaaaaaaa";
 const NO_ENTITLEMENT_USER_ID = "cccccccc-dddd-eeee-ffff-000000000000";
-const SECRET = process.env.DRM_SIGNING_SECRET || "dev-secret-change-me";
 
 let server: http.Server;
 let baseUrl: string;
@@ -31,6 +31,25 @@ function post(path: string, body: object): Promise<{ status: number; body: any }
     });
     req.on("error", reject);
     req.write(data);
+    req.end();
+  });
+}
+
+function get(path: string, headers?: Record<string, string>): Promise<{ status: number; body: any }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, baseUrl);
+    const req = http.request(url, { method: "GET", headers: headers || {} }, (res) => {
+      let chunks = "";
+      res.on("data", (c) => (chunks += c));
+      res.on("end", () => {
+        try {
+          resolve({ status: res.statusCode!, body: JSON.parse(chunks) });
+        } catch {
+          resolve({ status: res.statusCode!, body: chunks });
+        }
+      });
+    });
+    req.on("error", reject);
     req.end();
   });
 }
@@ -120,13 +139,48 @@ async function run() {
     assert.ok(res.body.expiresAt, "response should have expiresAt");
     assert.strictEqual(res.body.manifestUrl, "https://cdn.example.com/manifest.mpd");
 
-    const decoded = jwt.verify(res.body.token, SECRET) as JWTClaims;
+    const decoded = jwt.verify(res.body.token, publicKey, { algorithms: ["RS256"] }) as JWTClaims;
     assert.strictEqual(decoded.sub, TEST_USER_ID);
     assert.strictEqual(decoded.tid, TEST_TITLE_ID);
     assert.strictEqual(typeof decoded.sid, "number");
     assert.strictEqual(decoded.policy.offline, false);
     assert.strictEqual(decoded.policy.max_concurrent, 1);
     assert.strictEqual(decoded.policy.entitlement_expiry, null);
+  });
+
+  await test("Test 5: JWKS endpoint returns valid JWK", async () => {
+    const res = await get("/.well-known/jwks.json");
+    assert.strictEqual(res.status, 200);
+    assert.ok(Array.isArray(res.body.keys), "body.keys should be an array");
+    assert.strictEqual(res.body.keys.length, 1);
+    assert.strictEqual(res.body.keys[0].kty, "RSA");
+    assert.strictEqual(res.body.keys[0].alg, "RS256");
+    assert.strictEqual(res.body.keys[0].use, "sig");
+    assert.strictEqual(res.body.keys[0].kid, "drm-signing-key-1");
+  });
+
+  await test("Test 6: Verify endpoint rejects missing token", async () => {
+    const res = await get("/api/playback/verify");
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(res.body.error, "MISSING_TOKEN");
+  });
+
+  await test("Test 7: Verify endpoint rejects invalid token", async () => {
+    const res = await get("/api/playback/verify", { Authorization: "Bearer invalid-garbage" });
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(res.body.error, "INVALID_TOKEN");
+  });
+
+  await test("Test 8: Verify endpoint returns parsed claims", async () => {
+    await pool.query(`DELETE FROM stream_sessions WHERE user_id = $1`, [TEST_USER_ID]);
+    const tokenRes = await post("/api/playback/token", { userId: TEST_USER_ID, titleId: TEST_TITLE_ID });
+    assert.strictEqual(tokenRes.status, 200);
+
+    const res = await get("/api/playback/verify", { Authorization: `Bearer ${tokenRes.body.token}` });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.claims.sub, TEST_USER_ID);
+    assert.strictEqual(res.body.claims.tid, TEST_TITLE_ID);
+    assert.strictEqual(typeof res.body.claims.sid, "number");
   });
 
   await cleanup();
