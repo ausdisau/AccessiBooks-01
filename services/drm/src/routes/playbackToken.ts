@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
 import pool from "../db/neon";
+import { privateKey } from "../keys";
 import type { PlaybackTokenResponse, JWTClaims } from "@accessibooks/shared";
 
 const router = Router();
@@ -11,7 +12,6 @@ const PlaybackTokenRequestSchema = z.object({
   titleId: z.string().uuid(),
 });
 
-const DRM_SIGNING_SECRET = process.env.DRM_SIGNING_SECRET || "dev-secret-change-me";
 const DRM_BASE_URL = process.env.DRM_BASE_URL || `http://localhost:${process.env.DRM_PORT || 4000}`;
 
 router.post("/api/playback/token", async (req, res) => {
@@ -89,9 +89,10 @@ router.post("/api/playback/token", async (req, res) => {
       },
     };
 
-    const token = jwt.sign(payload, DRM_SIGNING_SECRET, {
+    const token = jwt.sign(payload, privateKey, {
       expiresIn: "10m",
-      algorithm: "HS256",
+      algorithm: "RS256",
+      keyid: "drm-signing-key-1",
     });
 
     const decoded = jwt.decode(token) as JWTClaims;
