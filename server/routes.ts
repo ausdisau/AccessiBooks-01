@@ -18,6 +18,9 @@ import { registerPushNotificationRoutes } from "./pushNotifications";
 import { registerAdMediationRoutes } from "./adMediation";
 import { registerSelfServeAdRoutes } from "./selfServeAds";
 import { registerBillingRoutes, recordTransaction, updateTransactionStatus } from "./billing";
+import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
+import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
+import { registerMoatScaffoldRoutes } from "./moatScaffold";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -145,6 +148,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Platform improvement routes (social, clubs, family, tipping, moderation, health, churn)
   registerPlatformRoutes(app);
+
+  // Accessibility preferences kernel routes
+  registerAccessibilityKernelRoutes(app);
+
+  // Interactive transcripts routes
+  registerTranscriptRoutes(app);
+  seedSampleTranscript().catch(err => console.warn("[Transcripts] Failed to seed sample:", err.message));
+
+  // Moat scaffold routes (a11y metadata, reviews, institutional, recommendations, metrics)
+  registerMoatScaffoldRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {

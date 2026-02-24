@@ -1476,3 +1476,131 @@ export const loanWaitlist = pgTable("loan_waitlist", {
 export const insertLoanWaitlistSchema = createInsertSchema(loanWaitlist).omit({ id: true, joinedAt: true, position: true });
 export type InsertLoanWaitlist = z.infer<typeof insertLoanWaitlistSchema>;
 export type LoanWaitlist = typeof loanWaitlist.$inferSelect;
+
+// ============================================================
+// ACCESSIBILITY MOAT TABLES
+// ============================================================
+
+export const accessibilityPreferences = pgTable("accessibility_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  profile: jsonb("profile").notNull().default(sql`'{}'::jsonb`),
+  activePreset: text("active_preset"),
+  syncedAt: timestamp("synced_at").defaultNow(),
+}, (table) => [
+  index("idx_a11y_prefs_user").on(table.userId),
+]);
+
+export const insertAccessibilityPreferencesSchema = createInsertSchema(accessibilityPreferences).omit({ id: true, syncedAt: true });
+export type InsertAccessibilityPreferences = z.infer<typeof insertAccessibilityPreferencesSchema>;
+export type AccessibilityPreferences = typeof accessibilityPreferences.$inferSelect;
+
+export const bookTranscripts = pgTable("book_transcripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
+  chapterIndex: integer("chapter_index").notNull().default(0),
+  segments: jsonb("segments").notNull().default(sql`'[]'::jsonb`),
+  language: text("language").notNull().default("en"),
+  source: text("source").notNull().default("manual"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_transcripts_book").on(table.bookId),
+  index("idx_transcripts_book_chapter").on(table.bookId, table.chapterIndex),
+]);
+
+export const insertBookTranscriptSchema = createInsertSchema(bookTranscripts).omit({ id: true, createdAt: true });
+export type InsertBookTranscript = z.infer<typeof insertBookTranscriptSchema>;
+export type BookTranscript = typeof bookTranscripts.$inferSelect;
+
+export const accessibilityMetadata = pgTable("accessibility_metadata", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }).unique(),
+  hasTranscript: boolean("has_transcript").notNull().default(false),
+  hasDyslexiaFont: boolean("has_dyslexia_font").notNull().default(false),
+  hasLargeText: boolean("has_large_text").notNull().default(false),
+  readingLevel: text("reading_level"),
+  contentWarnings: text("content_warnings").array(),
+  accessibilityScore: integer("accessibility_score").default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_a11y_meta_book").on(table.bookId),
+  index("idx_a11y_meta_score").on(table.accessibilityScore),
+]);
+
+export const insertAccessibilityMetadataSchema = createInsertSchema(accessibilityMetadata).omit({ id: true, updatedAt: true });
+export type InsertAccessibilityMetadata = z.infer<typeof insertAccessibilityMetadataSchema>;
+export type AccessibilityMetadata = typeof accessibilityMetadata.$inferSelect;
+
+export const accessibilityReviews = pgTable("accessibility_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(),
+  screenReaderScore: integer("screen_reader_score"),
+  navigationScore: integer("navigation_score"),
+  contrastScore: integer("contrast_score"),
+  comments: text("comments"),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_a11y_reviews_book").on(table.bookId),
+  index("idx_a11y_reviews_user").on(table.userId),
+  index("idx_a11y_reviews_status").on(table.status),
+]);
+
+export const insertAccessibilityReviewSchema = createInsertSchema(accessibilityReviews).omit({ id: true, createdAt: true });
+export type InsertAccessibilityReview = z.infer<typeof insertAccessibilityReviewSchema>;
+export type AccessibilityReview = typeof accessibilityReviews.$inferSelect;
+
+export const institutionalAccounts = pgTable("institutional_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgName: text("org_name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  orgType: text("org_type").notNull().default("school"),
+  maxSeats: integer("max_seats").notNull().default(50),
+  currentSeats: integer("current_seats").notNull().default(0),
+  amountCents: integer("amount_cents").notNull().default(9900),
+  features: jsonb("features").notNull().default(sql`'{"adFree":true,"premiumContent":true,"analytics":true}'::jsonb`),
+  billingCycle: text("billing_cycle").notNull().default("monthly"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_institutional_active").on(table.isActive),
+]);
+
+export const insertInstitutionalAccountSchema = createInsertSchema(institutionalAccounts).omit({ id: true, currentSeats: true, createdAt: true });
+export type InsertInstitutionalAccount = z.infer<typeof insertInstitutionalAccountSchema>;
+export type InstitutionalAccount = typeof institutionalAccounts.$inferSelect;
+
+export const institutionalMembers = pgTable("institutional_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  institutionalId: varchar("institutional_id").notNull().references(() => institutionalAccounts.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"),
+  addedAt: timestamp("added_at").defaultNow(),
+}, (table) => [
+  index("idx_inst_members_org").on(table.institutionalId),
+  index("idx_inst_members_user").on(table.userId),
+]);
+
+export const insertInstitutionalMemberSchema = createInsertSchema(institutionalMembers).omit({ id: true, addedAt: true });
+export type InsertInstitutionalMember = z.infer<typeof insertInstitutionalMemberSchema>;
+export type InstitutionalMember = typeof institutionalMembers.$inferSelect;
+
+export const moatMetricsSnapshots = pgTable("moat_metrics_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: timestamp("date").notNull().defaultNow(),
+  totalA11yReviews: integer("total_a11y_reviews").notNull().default(0),
+  avgA11yScore: integer("avg_a11y_score").notNull().default(0),
+  transcriptCoverage: integer("transcript_coverage").notNull().default(0),
+  prefsSyncedUsers: integer("prefs_synced_users").notNull().default(0),
+  institutionalOrgs: integer("institutional_orgs").notNull().default(0),
+  recommendationClicks: integer("recommendation_clicks").notNull().default(0),
+}, (table) => [
+  index("idx_moat_metrics_date").on(table.date),
+]);
+
+export const insertMoatMetricsSnapshotSchema = createInsertSchema(moatMetricsSnapshots).omit({ id: true });
+export type InsertMoatMetricsSnapshot = z.infer<typeof insertMoatMetricsSnapshotSchema>;
+export type MoatMetricsSnapshot = typeof moatMetricsSnapshots.$inferSelect;
