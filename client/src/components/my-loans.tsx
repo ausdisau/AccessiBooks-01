@@ -89,7 +89,7 @@ function BookCover({ src, alt, size = "sm" }: { src: string | null; alt: string;
   );
 }
 
-export function MyLoans({ onSelectBook }: MyLoansProps) {
+export default function MyLoans({ onSelectBook }: MyLoansProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const { tier } = useSubscription();

@@ -60,7 +60,7 @@ const AdvertiserDashboard = lazy(() => import('@/components/advertiser-dashboard
 const BillingDashboard = lazy(() => import('@/components/billing-dashboard').then(m => ({ default: m.BillingDashboard })));
 const UsageDashboard = lazy(() => import('@/components/usage-dashboard').then(m => ({ default: m.UsageDashboard })));
 const OfflineDownloads = lazy(() => import('@/components/offline-downloads').then(m => ({ default: m.OfflineDownloads })));
-const MyLoans = lazy(() => import('@/components/my-loans').then(m => ({ default: m.MyLoans })));
+const MyLoans = lazy(() => import('@/components/my-loans'));
 const BattlePassComponent = lazy(() => import('@/components/battle-pass').then(m => ({ default: m.BattlePassComponent })));
 const EnterprisePage = lazy(() => import('@/pages/enterprise'));
 const AdminModerationPage = lazy(() => import('@/pages/admin-moderation'));
