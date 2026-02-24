@@ -84,12 +84,55 @@ function LoadingSpinner() {
 
 type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads" | "loans" | "social" | "family" | "enterprise" | "moderation" | "health" | "trust" | "institutional" | "moat-metrics";
 
-// Header component with user management
-function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: { 
-  menuOpen: boolean; 
-  onToggleMenu: () => void; 
-  currentView: string;
-  onNavigate: (view: View) => void;
+const sidebarNavGroups: { label: string; items: { view: View; label: string; icon: React.ReactNode }[] }[] = [
+  {
+    label: "Browse",
+    items: [
+      { view: "library", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
+      { view: "player", label: "Player", icon: <Play className="h-5 w-5" /> },
+      { view: "loans", label: "My Loans", icon: <LibraryBig className="h-5 w-5" /> },
+      { view: "downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
+    ],
+  },
+  {
+    label: "Discover",
+    items: [
+      { view: "feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
+      { view: "queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
+      { view: "party", label: "Party", icon: <Radio className="h-5 w-5" /> },
+      { view: "social", label: "Social", icon: <Users className="h-5 w-5" /> },
+    ],
+  },
+  {
+    label: "Create",
+    items: [
+      { view: "publish", label: "Publish", icon: <Upload className="h-5 w-5" /> },
+      { view: "advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      { view: "stats", label: "Stats", icon: <Trophy className="h-5 w-5" /> },
+      { view: "usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
+      { view: "billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
+      { view: "referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
+      { view: "family", label: "Family", icon: <Heart className="h-5 w-5" /> },
+      { view: "enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { view: "moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
+      { view: "health", label: "Health", icon: <Activity className="h-5 w-5" /> },
+    ],
+  },
+];
+
+function AppHeader({ sidebarOpen, onToggleSidebar }: { 
+  sidebarOpen: boolean; 
+  onToggleSidebar: () => void; 
 }) {
   const { user } = useAuth();
   
@@ -97,137 +140,134 @@ function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: {
     window.location.href = "/api/logout";
   };
 
-  const navItems = useMemo<{ view: View; label: string; icon: React.ReactNode; disabled?: boolean }[]>(() => [
-    { view: "library", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
-    { view: "player", label: "Player", icon: <Play className="h-5 w-5" /> },
-    { view: "feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
-    { view: "stats", label: "Stats", icon: <Trophy className="h-5 w-5" /> },
-    { view: "usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
-    { view: "publish", label: "Publish", icon: <Upload className="h-5 w-5" /> },
-    { view: "party", label: "Party", icon: <Radio className="h-5 w-5" /> },
-    { view: "queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
-    { view: "advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
-    { view: "downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
-    { view: "loans", label: "My Loans", icon: <LibraryBig className="h-5 w-5" /> },
-    { view: "social", label: "Social", icon: <Users className="h-5 w-5" /> },
-    { view: "family", label: "Family", icon: <Heart className="h-5 w-5" /> },
-    { view: "enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
-    { view: "billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
-    { view: "referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
-    { view: "moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
-    { view: "health", label: "Health", icon: <Activity className="h-5 w-5" /> },
-  ], []);
-
-  const currentLabel = navItems.find(i => i.view === currentView)?.label || "Menu";
-
   return (
-    <header className="bg-card border-b border-border relative" role="banner">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center space-x-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleMenu}
-              aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
-              aria-expanded={menuOpen}
-              aria-controls="nav-shelf-menu"
-              data-testid="hamburger-menu-btn"
-              className="p-2"
-            >
-              {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </Button>
-            <AccessiBooksLogo />
-            <span className="text-sm text-muted-foreground hidden sm:inline">/ {currentLabel}</span>
-          </div>
+    <header className="bg-card border-b border-border h-16 flex items-center px-4 sm:px-6 sticky top-0 z-30" role="banner">
+      <div className="flex items-center gap-3 shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleSidebar}
+          aria-label={sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-expanded={sidebarOpen}
+          data-testid="hamburger-menu-btn"
+          className="p-2 lg:hidden"
+        >
+          {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </Button>
+        <AccessiBooksLogo />
+      </div>
 
-          <div className="flex items-center space-x-4">
-            <AccessibilityControls />
+      <div className="flex-1 max-w-md mx-4 hidden md:block">
+        <SearchAutocomplete onSelectBook={() => {}} />
+      </div>
+
+      <div className="flex items-center space-x-2 ml-auto shrink-0">
+        <AccessibilityControls />
+        
+        {user && (
+          <div className="flex items-center space-x-2 pl-4 border-l border-border">
+            <PremiumBadge showUpgrade />
+            <NotificationCenter />
             
-            {user && (
-              <div className="flex items-center space-x-2 pl-4 border-l border-border">
-                <PremiumBadge showUpgrade />
-                <NotificationCenter />
-                
-                <div className="hidden sm:flex items-center space-x-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium" data-testid="text-username">
-                    {user.firstName && user.lastName 
-                      ? `${user.firstName} ${user.lastName}`
-                      : user.email || "User"
-                    }
-                  </span>
-                </div>
-                
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label="Subscription settings"
-                      data-testid="button-subscription"
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <SubscriptionCard />
-                  </DialogContent>
-                </Dialog>
-                
+            <div className="hidden sm:flex items-center space-x-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium" data-testid="text-username">
+                {user.firstName && user.lastName 
+                  ? `${user.firstName} ${user.lastName}`
+                  : user.email || "User"
+                }
+              </span>
+            </div>
+            
+            <Dialog>
+              <DialogTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleLogout}
-                  aria-label="Sign out"
-                  data-testid="button-logout"
+                  aria-label="Subscription settings"
+                  data-testid="button-subscription"
                 >
-                  <LogOut className="h-4 w-4" />
+                  <Settings className="h-4 w-4" />
                 </Button>
-              </div>
-            )}
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <SubscriptionCard />
+              </DialogContent>
+            </Dialog>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              aria-label="Sign out"
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
-        </div>
-      </div>
-
-      {menuOpen && (
-        <div 
-          className="fixed inset-0 top-16 bg-black/20 z-40" 
-          onClick={onToggleMenu}
-          aria-hidden="true"
-        />
-      )}
-
-      <div
-        id="nav-shelf-menu"
-        className={`absolute left-0 right-0 top-full bg-card border-b border-border shadow-lg z-50 transition-all duration-200 ease-in-out overflow-hidden ${
-          menuOpen ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
-        }`}
-        role="menu"
-        aria-label="Main navigation"
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1">
-            {navItems.map(item => (
-              <button
-                key={item.view}
-                onClick={() => onNavigate(item.view)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                  currentView === item.view
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-                role="menuitem"
-                data-testid={`menu-${item.view}`}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
     </header>
+  );
+}
+
+function AppSidebar({ currentView, onNavigate, mobileOpen, onCloseMobile }: {
+  currentView: View;
+  onNavigate: (view: View) => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
+}) {
+  const handleNav = useCallback((view: View) => {
+    onNavigate(view);
+    onCloseMobile();
+  }, [onNavigate, onCloseMobile]);
+
+  const sidebarContent = (
+    <nav className="flex flex-col h-full overflow-y-auto py-4 px-3" aria-label="Main navigation">
+      {sidebarNavGroups.map((group) => (
+        <div key={group.label} className="mb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 mb-1">
+            {group.label}
+          </p>
+          {group.items.map((item) => (
+            <button
+              key={item.view}
+              onClick={() => handleNav(item.view)}
+              className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                currentView === item.view
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              data-testid={`menu-${item.view}`}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ))}
+    </nav>
+  );
+
+  return (
+    <>
+      <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-card border-r border-border h-[calc(100vh-4rem)] sticky top-16">
+        {sidebarContent}
+      </aside>
+
+      {mobileOpen && (
+        <>
+          <div
+            className="fixed inset-0 top-16 bg-black/40 z-40 lg:hidden"
+            onClick={onCloseMobile}
+            aria-hidden="true"
+          />
+          <aside className="fixed left-0 top-16 bottom-0 w-64 bg-card border-r border-border z-50 lg:hidden shadow-xl animate-in slide-in-from-left duration-200">
+            {sidebarContent}
+          </aside>
+        </>
+      )}
+    </>
   );
 }
 
@@ -1218,7 +1258,6 @@ function MainApp() {
     setCurrentView("feed");
   }, []);
 
-  // Global keyboard shortcuts
   useKeyboardShortcuts({
     onHighContrast: toggleHighContrast,
     onPlayPause: togglePlayPause,
@@ -1230,218 +1269,227 @@ function MainApp() {
 
   const hasMiniPlayer = currentBook !== null;
 
+  const currentLabel = sidebarNavGroups.flatMap(g => g.items).find(i => i.view === currentView)?.label || currentView;
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Skip to main content link */}
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
       <a href="#main-content" className="skip-to-content">
         Skip to main content
       </a>
 
-      {/* Header with hamburger menu */}
       <AppHeader 
-        menuOpen={menuOpen} 
-        onToggleMenu={() => setMenuOpen(!menuOpen)} 
-        currentView={currentView}
-        onNavigate={(view) => { setCurrentView(view); setMenuOpen(false); }}
+        sidebarOpen={menuOpen} 
+        onToggleSidebar={() => setMenuOpen(!menuOpen)} 
       />
 
-      {/* Breadcrumbs */}
-      <nav className="bg-muted/50 border-b" aria-label="Breadcrumb">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-          <ol className="flex items-center space-x-2 text-sm">
-            <li>
-              <button 
-                onClick={handleBackToLibrary}
-                className="text-muted-foreground hover:text-primary transition-colors flex items-center"
-              >
-                <Home className="h-4 w-4" />
-                <span className="sr-only">Home</span>
-              </button>
-            </li>
-            <li className="flex items-center">
-              <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            </li>
-            <li>
-              <button 
-                onClick={handleBackToLibrary}
-                className={`${currentView === "library" ? "text-foreground font-medium" : "text-muted-foreground hover:text-primary"} transition-colors`}
-                aria-current={currentView === "library" ? "page" : undefined}
-              >
-                Library
-              </button>
-            </li>
-            {(currentView === "player" || currentView === "reader") && selectedBook && (
-              <>
+      <div className="flex flex-1 min-h-0">
+        <AppSidebar
+          currentView={currentView}
+          onNavigate={(view) => setCurrentView(view)}
+          mobileOpen={menuOpen}
+          onCloseMobile={() => setMenuOpen(false)}
+        />
+
+        <div className={`flex-1 flex flex-col min-w-0 ${hasMiniPlayer ? "pb-20" : ""}`}>
+          <nav className="bg-muted/50 border-b shrink-0" aria-label="Breadcrumb">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+              <ol className="flex items-center space-x-2 text-sm">
+                <li>
+                  <button 
+                    onClick={handleBackToLibrary}
+                    className="text-muted-foreground hover:text-primary transition-colors flex items-center"
+                  >
+                    <Home className="h-4 w-4" />
+                    <span className="sr-only">Home</span>
+                  </button>
+                </li>
                 <li className="flex items-center">
                   <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 </li>
                 <li>
-                  <span className="text-foreground font-medium truncate max-w-[200px] inline-block" aria-current="page">
-                    {selectedBook.title}
-                  </span>
+                  <button 
+                    onClick={handleBackToLibrary}
+                    className={`${currentView === "library" ? "text-foreground font-medium" : "text-muted-foreground hover:text-primary"} transition-colors`}
+                    aria-current={currentView === "library" ? "page" : undefined}
+                  >
+                    Library
+                  </button>
                 </li>
-              </>
-            )}
-          </ol>
+                {currentView !== "library" && (
+                  <>
+                    <li className="flex items-center">
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    </li>
+                    <li>
+                      <span className="text-foreground font-medium truncate max-w-[200px] inline-block" aria-current="page">
+                        {(currentView === "player" || currentView === "reader") && selectedBook
+                          ? selectedBook.title
+                          : currentLabel}
+                      </span>
+                    </li>
+                  </>
+                )}
+              </ol>
+            </div>
+          </nav>
+
+          <main 
+            id="main-content" 
+            className="flex-1 overflow-y-auto"
+          >
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <TrialNudge
+                listeningHours={localStorageService.getStats().totalSecondsListened / 3600}
+                isPremium={isPremium}
+                onStartTrial={() => upgradeToPremium("monthly")}
+              />
+              {currentView === "library" && (
+                <div
+                  id="library-panel"
+                  role="tabpanel"
+                  aria-labelledby="library-tab"
+                  data-testid="panel-library"
+                >
+                  <Library onSelectBook={handleSelectBook} />
+                </div>
+              )}
+              {currentView === "player" && (
+                <div
+                  id="player-panel"
+                  role="tabpanel"
+                  aria-labelledby="player-tab"
+                  data-testid="panel-player"
+                >
+                  <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
+                </div>
+              )}
+              <Suspense fallback={<LoadingSpinner />}>
+                {currentView === "reader" && selectedBook && (
+                  <div
+                    id="reader-panel"
+                    role="tabpanel"
+                    aria-labelledby="reader-tab"
+                    data-testid="panel-reader"
+                  >
+                    <EbookReader book={selectedBook} onBack={handleBackToLibrary} />
+                  </div>
+                )}
+                {currentView === "author" && selectedAuthor && (
+                  <div id="author-panel" role="tabpanel" data-testid="panel-author">
+                    <AuthorPage authorName={selectedAuthor} onBack={handleBackToLibrary} />
+                  </div>
+                )}
+                {currentView === "feed" && (
+                  <div id="feed-panel" role="tabpanel" data-testid="panel-feed">
+                    <SocialFeed />
+                  </div>
+                )}
+                {currentView === "stats" && (
+                  <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
+                    <GamificationDashboard />
+                    <BattlePassComponent />
+                    <YearInReview />
+                    <ReferralSection />
+                  </div>
+                )}
+                {currentView === "usage" && (
+                  <div id="usage-panel" role="tabpanel" data-testid="panel-usage">
+                    <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
+                  </div>
+                )}
+                {currentView === "publish" && (
+                  <div id="publish-panel" role="tabpanel" data-testid="panel-publish">
+                    <AuthorDashboard />
+                  </div>
+                )}
+                {currentView === "party" && (
+                  <div id="party-panel" role="tabpanel" data-testid="panel-party">
+                    <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
+                  </div>
+                )}
+                {currentView === "queue" && (
+                  <div id="queue-panel" role="tabpanel" data-testid="panel-queue">
+                    <StreamingQueue onBack={handleBackToLibrary} />
+                  </div>
+                )}
+                {currentView === "advertise" && (
+                  <div id="advertise-panel" role="tabpanel" data-testid="panel-advertise">
+                    <AdvertiserDashboard />
+                  </div>
+                )}
+                {currentView === "billing" && (
+                  <div id="billing-panel" role="tabpanel" data-testid="panel-billing">
+                    <BillingDashboard />
+                  </div>
+                )}
+                {currentView === "downloads" && (
+                  <div id="downloads-panel" role="tabpanel" data-testid="panel-downloads">
+                    <OfflineDownloads />
+                  </div>
+                )}
+                {currentView === "loans" && (
+                  <div id="loans-panel" role="tabpanel" data-testid="panel-loans">
+                    <MyLoans onSelectBook={handleSelectBook} />
+                  </div>
+                )}
+                {currentView === "referrals" && (
+                  <div id="referrals-panel" role="tabpanel" data-testid="panel-referrals">
+                    <ReferralsPage />
+                  </div>
+                )}
+                {currentView === "social" && (
+                  <div id="social-panel" role="tabpanel" data-testid="panel-social">
+                    <SocialHub />
+                  </div>
+                )}
+                {currentView === "family" && (
+                  <div id="family-panel" role="tabpanel" data-testid="panel-family">
+                    <FamilyPlan />
+                  </div>
+                )}
+                {currentView === "enterprise" && (
+                  <div id="enterprise-panel" role="tabpanel" data-testid="panel-enterprise">
+                    <EnterprisePage />
+                  </div>
+                )}
+                {currentView === "moderation" && (
+                  <div id="moderation-panel" role="tabpanel" data-testid="panel-moderation">
+                    <AdminModerationPage />
+                  </div>
+                )}
+                {currentView === "health" && (
+                  <div id="health-panel" role="tabpanel" data-testid="panel-health" className="space-y-8">
+                    <AdminHealthDashboard />
+                    <ChurnDashboard />
+                  </div>
+                )}
+                {currentView === "trust" && (
+                  <div id="trust-panel" role="tabpanel" data-testid="panel-trust">
+                    <TrustPage />
+                  </div>
+                )}
+                {currentView === "institutional" && (
+                  <div id="institutional-panel" role="tabpanel" data-testid="panel-institutional">
+                    <InstitutionalPage />
+                  </div>
+                )}
+                {currentView === "moat-metrics" && (
+                  <div id="moat-metrics-panel" role="tabpanel" data-testid="panel-moat-metrics">
+                    <MoatDashboard />
+                  </div>
+                )}
+              </Suspense>
+            </div>
+          </main>
+
+          <Footer />
         </div>
-      </nav>
-
-      {/* Main content with bottom padding for mini player */}
-      <main 
-        id="main-content" 
-        className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${hasMiniPlayer ? "pb-24" : ""}`}
-      >
-        <TrialNudge
-          listeningHours={localStorageService.getStats().totalSecondsListened / 3600}
-          isPremium={isPremium}
-          onStartTrial={() => upgradeToPremium("monthly")}
-        />
-        {currentView === "library" && (
-          <div
-            id="library-panel"
-            role="tabpanel"
-            aria-labelledby="library-tab"
-            data-testid="panel-library"
-          >
-            <Library onSelectBook={handleSelectBook} />
-          </div>
-        )}
-        {currentView === "player" && (
-          <div
-            id="player-panel"
-            role="tabpanel"
-            aria-labelledby="player-tab"
-            data-testid="panel-player"
-          >
-            <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
-          </div>
-        )}
-        <Suspense fallback={<LoadingSpinner />}>
-          {currentView === "reader" && selectedBook && (
-            <div
-              id="reader-panel"
-              role="tabpanel"
-              aria-labelledby="reader-tab"
-              data-testid="panel-reader"
-            >
-              <EbookReader book={selectedBook} onBack={handleBackToLibrary} />
-            </div>
-          )}
-          {currentView === "author" && selectedAuthor && (
-            <div id="author-panel" role="tabpanel" data-testid="panel-author">
-              <AuthorPage authorName={selectedAuthor} onBack={handleBackToLibrary} />
-            </div>
-          )}
-          {currentView === "feed" && (
-            <div id="feed-panel" role="tabpanel" data-testid="panel-feed">
-              <SocialFeed />
-            </div>
-          )}
-          {currentView === "stats" && (
-            <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
-              <GamificationDashboard />
-              <BattlePassComponent />
-              <YearInReview />
-              <ReferralSection />
-            </div>
-          )}
-          {currentView === "usage" && (
-            <div id="usage-panel" role="tabpanel" data-testid="panel-usage">
-              <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
-            </div>
-          )}
-          {currentView === "publish" && (
-            <div id="publish-panel" role="tabpanel" data-testid="panel-publish">
-              <AuthorDashboard />
-            </div>
-          )}
-          {currentView === "party" && (
-            <div id="party-panel" role="tabpanel" data-testid="panel-party">
-              <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
-            </div>
-          )}
-          {currentView === "queue" && (
-            <div id="queue-panel" role="tabpanel" data-testid="panel-queue">
-              <StreamingQueue onBack={handleBackToLibrary} />
-            </div>
-          )}
-          {currentView === "advertise" && (
-            <div id="advertise-panel" role="tabpanel" data-testid="panel-advertise">
-              <AdvertiserDashboard />
-            </div>
-          )}
-          {currentView === "billing" && (
-            <div id="billing-panel" role="tabpanel" data-testid="panel-billing">
-              <BillingDashboard />
-            </div>
-          )}
-          {currentView === "downloads" && (
-            <div id="downloads-panel" role="tabpanel" data-testid="panel-downloads">
-              <OfflineDownloads />
-            </div>
-          )}
-          {currentView === "loans" && (
-            <div id="loans-panel" role="tabpanel" data-testid="panel-loans">
-              <MyLoans onSelectBook={handleSelectBook} />
-            </div>
-          )}
-          {currentView === "referrals" && (
-            <div id="referrals-panel" role="tabpanel" data-testid="panel-referrals">
-              <ReferralsPage />
-            </div>
-          )}
-          {currentView === "social" && (
-            <div id="social-panel" role="tabpanel" data-testid="panel-social">
-              <SocialHub />
-            </div>
-          )}
-          {currentView === "family" && (
-            <div id="family-panel" role="tabpanel" data-testid="panel-family">
-              <FamilyPlan />
-            </div>
-          )}
-          {currentView === "enterprise" && (
-            <div id="enterprise-panel" role="tabpanel" data-testid="panel-enterprise">
-              <EnterprisePage />
-            </div>
-          )}
-          {currentView === "moderation" && (
-            <div id="moderation-panel" role="tabpanel" data-testid="panel-moderation">
-              <AdminModerationPage />
-            </div>
-          )}
-          {currentView === "health" && (
-            <div id="health-panel" role="tabpanel" data-testid="panel-health" className="space-y-8">
-              <AdminHealthDashboard />
-              <ChurnDashboard />
-            </div>
-          )}
-          {currentView === "trust" && (
-            <div id="trust-panel" role="tabpanel" data-testid="panel-trust">
-              <TrustPage />
-            </div>
-          )}
-          {currentView === "institutional" && (
-            <div id="institutional-panel" role="tabpanel" data-testid="panel-institutional">
-              <InstitutionalPage />
-            </div>
-          )}
-          {currentView === "moat-metrics" && (
-            <div id="moat-metrics-panel" role="tabpanel" data-testid="panel-moat-metrics">
-              <MoatDashboard />
-            </div>
-          )}
-        </Suspense>
-      </main>
-
-      <Footer />
+      </div>
 
       <div id="a11y-announcements" className="sr-live-region" aria-live="polite" aria-atomic="true" role="status" />
       
-      {/* Persistent mini player */}
       <MiniPlayer onExpand={handleExpandPlayer} />
 
-      {/* Premium preview player */}
       {showPreview && previewBook && (
         <PremiumPreviewPlayer
           book={previewBook}
@@ -1450,7 +1498,6 @@ function MainApp() {
         />
       )}
 
-      {/* Premium upgrade modal */}
       <PremiumUpgradeModal
         open={showUpgradeModal}
         onOpenChange={dismissUpgradeModal}
@@ -1459,7 +1506,6 @@ function MainApp() {
         isUpgrading={isUpgrading}
       />
 
-      {/* Engagement upsell modal */}
       <EngagementUpsell
         type={engagementUpsell.type}
         detail={engagementUpsell.detail}
