@@ -67,6 +67,9 @@ const SocialHub = lazy(() => import('@/components/social-hub').then(m => ({ defa
 const FamilyPlan = lazy(() => import('@/components/family-plan').then(m => ({ default: m.FamilyPlan })));
 const AdminHealthDashboard = lazy(() => import('@/components/admin-health').then(m => ({ default: m.AdminHealthDashboard })));
 const ChurnDashboard = lazy(() => import('@/components/churn-dashboard').then(m => ({ default: m.ChurnDashboard })));
+const TrustPage = lazy(() => import('@/pages/trust'));
+const InstitutionalPage = lazy(() => import('@/pages/institutional'));
+const MoatDashboard = lazy(() => import('@/pages/moat-dashboard'));
 
 function LoadingSpinner() {
   return (
@@ -79,7 +82,7 @@ function LoadingSpinner() {
   );
 }
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads" | "loans" | "social" | "family" | "enterprise" | "moderation" | "health";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads" | "loans" | "social" | "family" | "enterprise" | "moderation" | "health" | "trust" | "institutional" | "moat-metrics";
 
 // Header component with user management
 function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: { 
@@ -1411,6 +1414,21 @@ function MainApp() {
             <div id="health-panel" role="tabpanel" data-testid="panel-health" className="space-y-8">
               <AdminHealthDashboard />
               <ChurnDashboard />
+            </div>
+          )}
+          {currentView === "trust" && (
+            <div id="trust-panel" role="tabpanel" data-testid="panel-trust">
+              <TrustPage />
+            </div>
+          )}
+          {currentView === "institutional" && (
+            <div id="institutional-panel" role="tabpanel" data-testid="panel-institutional">
+              <InstitutionalPage />
+            </div>
+          )}
+          {currentView === "moat-metrics" && (
+            <div id="moat-metrics-panel" role="tabpanel" data-testid="panel-moat-metrics">
+              <MoatDashboard />
             </div>
           )}
         </Suspense>
