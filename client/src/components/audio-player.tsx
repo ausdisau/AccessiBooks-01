@@ -37,6 +37,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/AudioContext";
+import { InteractiveTranscript } from "./interactive-transcript";
 
 interface AudioPlayerProps {
   book: Book;
@@ -87,6 +88,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const [showBookmarkInput, setShowBookmarkInput] = useState(false);
   const [carMode, setCarMode] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -551,6 +553,17 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   <span className="hidden sm:inline">Chapters</span>
                 </Button>
               )}
+              <Button
+                variant={showTranscript ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowTranscript(!showTranscript)}
+                className="gap-1"
+                aria-label="Toggle transcript"
+                data-testid="button-transcript"
+              >
+                <ChevronRight className="h-4 w-4" />
+                <span className="hidden sm:inline">Transcript</span>
+              </Button>
             </div>
             
             <div className="flex items-center gap-2">
@@ -665,6 +678,20 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
         onRemove={removeBookmark}
         formatTime={formatTime}
       />
+
+      {showTranscript && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="h-[300px]">
+              <InteractiveTranscript
+                bookId={book.id}
+                currentTime={currentTime}
+                onSeek={seekTo}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
