@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense, useMemo, useCallback, memo } from "react";
+import { Route, Switch, Link, useLocation, useRoute, Router } from "wouter";
 import { QueryClientProvider, useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -82,50 +83,48 @@ function LoadingSpinner() {
   );
 }
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads" | "loans" | "social" | "family" | "enterprise" | "moderation" | "health" | "trust" | "institutional" | "moat-metrics";
-
-const sidebarNavGroups: { label: string; items: { view: View; label: string; icon: React.ReactNode }[] }[] = [
+const sidebarNavGroups: { label: string; items: { path: string; label: string; icon: React.ReactNode }[] }[] = [
   {
     label: "Browse",
     items: [
-      { view: "library", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
-      { view: "player", label: "Player", icon: <Play className="h-5 w-5" /> },
-      { view: "loans", label: "My Loans", icon: <LibraryBig className="h-5 w-5" /> },
-      { view: "downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
+      { path: "/", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
+      { path: "/player", label: "Player", icon: <Play className="h-5 w-5" /> },
+      { path: "/loans", label: "My Loans", icon: <LibraryBig className="h-5 w-5" /> },
+      { path: "/downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
     ],
   },
   {
     label: "Discover",
     items: [
-      { view: "feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
-      { view: "queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
-      { view: "party", label: "Party", icon: <Radio className="h-5 w-5" /> },
-      { view: "social", label: "Social", icon: <Users className="h-5 w-5" /> },
+      { path: "/feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
+      { path: "/queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
+      { path: "/party", label: "Party", icon: <Radio className="h-5 w-5" /> },
+      { path: "/social", label: "Social", icon: <Users className="h-5 w-5" /> },
     ],
   },
   {
     label: "Create",
     items: [
-      { view: "publish", label: "Publish", icon: <Upload className="h-5 w-5" /> },
-      { view: "advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
+      { path: "/publish", label: "Publish", icon: <Upload className="h-5 w-5" /> },
+      { path: "/advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
     ],
   },
   {
     label: "Account",
     items: [
-      { view: "stats", label: "Stats", icon: <Trophy className="h-5 w-5" /> },
-      { view: "usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
-      { view: "billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
-      { view: "referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
-      { view: "family", label: "Family", icon: <Heart className="h-5 w-5" /> },
-      { view: "enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
+      { path: "/stats", label: "Stats", icon: <Trophy className="h-5 w-5" /> },
+      { path: "/usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
+      { path: "/billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
+      { path: "/referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
+      { path: "/family", label: "Family", icon: <Heart className="h-5 w-5" /> },
+      { path: "/enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
     ],
   },
   {
     label: "Admin",
     items: [
-      { view: "moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
-      { view: "health", label: "Health", icon: <Activity className="h-5 w-5" /> },
+      { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
+      { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
     ],
   },
 ];
@@ -135,6 +134,7 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
   onToggleSidebar: () => void; 
 }) {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
   
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -158,7 +158,7 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
       </div>
 
       <div className="flex-1 max-w-md mx-4 hidden md:block">
-        <SearchAutocomplete onSelectBook={() => {}} />
+        <SearchAutocomplete onSelectBook={() => navigate("/player")} />
       </div>
 
       <div className="flex items-center space-x-2 ml-auto shrink-0">
@@ -211,16 +211,16 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
   );
 }
 
-function AppSidebar({ currentView, onNavigate, mobileOpen, onCloseMobile }: {
-  currentView: View;
-  onNavigate: (view: View) => void;
+function AppSidebar({ mobileOpen, onCloseMobile }: {
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }) {
-  const handleNav = useCallback((view: View) => {
-    onNavigate(view);
-    onCloseMobile();
-  }, [onNavigate, onCloseMobile]);
+  const [location] = useLocation();
+
+  const isActive = (path: string) => {
+    if (path === "/") return location === "/" || location === "";
+    return location === path || location.startsWith(path + "/");
+  };
 
   const sidebarContent = (
     <nav className="flex flex-col h-full overflow-y-auto py-4 px-3" aria-label="Main navigation">
@@ -230,19 +230,20 @@ function AppSidebar({ currentView, onNavigate, mobileOpen, onCloseMobile }: {
             {group.label}
           </p>
           {group.items.map((item) => (
-            <button
-              key={item.view}
-              onClick={() => handleNav(item.view)}
+            <Link
+              key={item.path}
+              href={item.path}
+              onClick={() => onCloseMobile()}
               className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                currentView === item.view
+                isActive(item.path)
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
-              data-testid={`menu-${item.view}`}
+              data-testid={`menu-${item.path.replace("/", "") || "library"}`}
             >
               {item.icon}
               {item.label}
-            </button>
+            </Link>
           ))}
         </div>
       ))}
@@ -1156,9 +1157,8 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
 }
 
 function MainApp() {
-  const [currentView, setCurrentView] = useState<View>("library");
+  const [location, navigate] = useLocation();
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [selectedAuthor, setSelectedAuthor] = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
@@ -1231,32 +1231,31 @@ function MainApp() {
     
     const contentType = book.contentType || "audiobook";
     if (contentType === "ebook" || contentType === "magazine") {
-      setCurrentView("reader");
+      navigate("/reader");
     } else {
       playBook(book);
-      setCurrentView("player");
+      navigate("/player");
     }
-  }, [checkAccess, playBook]);
+  }, [checkAccess, playBook, navigate]);
 
   const handleBackToLibrary = useCallback(() => {
-    setCurrentView("library");
-  }, []);
+    navigate("/");
+  }, [navigate]);
   
   const handleExpandPlayer = useCallback(() => {
     if (currentBook) {
       setSelectedBook(currentBook);
-      setCurrentView("player");
+      navigate("/player");
     }
-  }, [currentBook]);
+  }, [currentBook, navigate]);
 
   const handleViewAuthor = useCallback((authorName: string) => {
-    setSelectedAuthor(authorName);
-    setCurrentView("author");
-  }, []);
+    navigate(`/author/${encodeURIComponent(authorName)}`);
+  }, [navigate]);
 
   const handleViewFeed = useCallback(() => {
-    setCurrentView("feed");
-  }, []);
+    navigate("/feed");
+  }, [navigate]);
 
   useKeyboardShortcuts({
     onHighContrast: toggleHighContrast,
@@ -1269,7 +1268,12 @@ function MainApp() {
 
   const hasMiniPlayer = currentBook !== null;
 
-  const currentLabel = sidebarNavGroups.flatMap(g => g.items).find(i => i.view === currentView)?.label || currentView;
+  const isAtHome = location === "/" || location === "";
+  const currentNavItem = sidebarNavGroups.flatMap(g => g.items).find(i => {
+    if (i.path === "/") return isAtHome;
+    return location === i.path || location.startsWith(i.path + "/");
+  });
+  const currentLabel = currentNavItem?.label || "Library";
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -1284,8 +1288,6 @@ function MainApp() {
 
       <div className="flex flex-1 min-h-0">
         <AppSidebar
-          currentView={currentView}
-          onNavigate={(view) => setCurrentView(view)}
           mobileOpen={menuOpen}
           onCloseMobile={() => setMenuOpen(false)}
         />
@@ -1309,20 +1311,20 @@ function MainApp() {
                 <li>
                   <button 
                     onClick={handleBackToLibrary}
-                    className={`${currentView === "library" ? "text-foreground font-medium" : "text-muted-foreground hover:text-primary"} transition-colors`}
-                    aria-current={currentView === "library" ? "page" : undefined}
+                    className={`${isAtHome ? "text-foreground font-medium" : "text-muted-foreground hover:text-primary"} transition-colors`}
+                    aria-current={isAtHome ? "page" : undefined}
                   >
                     Library
                   </button>
                 </li>
-                {currentView !== "library" && (
+                {!isAtHome && (
                   <>
                     <li className="flex items-center">
                       <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </li>
                     <li>
                       <span className="text-foreground font-medium truncate max-w-[200px] inline-block" aria-current="page">
-                        {(currentView === "player" || currentView === "reader") && selectedBook
+                        {(location === "/player" || location === "/reader") && selectedBook
                           ? selectedBook.title
                           : currentLabel}
                       </span>
@@ -1343,142 +1345,176 @@ function MainApp() {
                 isPremium={isPremium}
                 onStartTrial={() => upgradeToPremium("monthly")}
               />
-              {currentView === "library" && (
-                <div
-                  id="library-panel"
-                  role="tabpanel"
-                  aria-labelledby="library-tab"
-                  data-testid="panel-library"
-                >
-                  <Library onSelectBook={handleSelectBook} />
-                </div>
-              )}
-              {currentView === "player" && (
-                <div
-                  id="player-panel"
-                  role="tabpanel"
-                  aria-labelledby="player-tab"
-                  data-testid="panel-player"
-                >
-                  <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
-                </div>
-              )}
-              <Suspense fallback={<LoadingSpinner />}>
-                {currentView === "reader" && selectedBook && (
-                  <div
-                    id="reader-panel"
-                    role="tabpanel"
-                    aria-labelledby="reader-tab"
-                    data-testid="panel-reader"
-                  >
-                    <EbookReader book={selectedBook} onBack={handleBackToLibrary} />
+              <Switch>
+                <Route path="/">
+                  <div id="library-panel" role="region" data-testid="panel-library">
+                    <Library onSelectBook={handleSelectBook} />
                   </div>
-                )}
-                {currentView === "author" && selectedAuthor && (
-                  <div id="author-panel" role="tabpanel" data-testid="panel-author">
-                    <AuthorPage authorName={selectedAuthor} onBack={handleBackToLibrary} />
+                </Route>
+                <Route path="/player">
+                  <div id="player-panel" role="region" data-testid="panel-player">
+                    <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
                   </div>
-                )}
-                {currentView === "feed" && (
-                  <div id="feed-panel" role="tabpanel" data-testid="panel-feed">
-                    <SocialFeed />
+                </Route>
+                <Route path="/reader">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="reader-panel" role="region" data-testid="panel-reader">
+                      {selectedBook ? <EbookReader book={selectedBook} onBack={handleBackToLibrary} /> : <Library onSelectBook={handleSelectBook} />}
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/author/:name">
+                  {(params) => (
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <div id="author-panel" role="region" data-testid="panel-author">
+                        <AuthorPage authorName={decodeURIComponent(params.name)} onBack={handleBackToLibrary} />
+                      </div>
+                    </Suspense>
+                  )}
+                </Route>
+                <Route path="/feed">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="feed-panel" role="region" data-testid="panel-feed">
+                      <SocialFeed />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/stats">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="stats-panel" role="region" data-testid="panel-stats" className="space-y-8">
+                      <GamificationDashboard />
+                      <BattlePassComponent />
+                      <YearInReview />
+                      <ReferralSection />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/usage">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="usage-panel" role="region" data-testid="panel-usage">
+                      <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/publish">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="publish-panel" role="region" data-testid="panel-publish">
+                      <AuthorDashboard />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/party">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="party-panel" role="region" data-testid="panel-party">
+                      <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/queue">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="queue-panel" role="region" data-testid="panel-queue">
+                      <StreamingQueue onBack={handleBackToLibrary} />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/advertise">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="advertise-panel" role="region" data-testid="panel-advertise">
+                      <AdvertiserDashboard />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/billing">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="billing-panel" role="region" data-testid="panel-billing">
+                      <BillingDashboard />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/downloads">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="downloads-panel" role="region" data-testid="panel-downloads">
+                      <OfflineDownloads />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/loans">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="loans-panel" role="region" data-testid="panel-loans">
+                      <MyLoans onSelectBook={handleSelectBook} />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/referrals">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="referrals-panel" role="region" data-testid="panel-referrals">
+                      <ReferralsPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/social">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="social-panel" role="region" data-testid="panel-social">
+                      <SocialHub />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/family">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="family-panel" role="region" data-testid="panel-family">
+                      <FamilyPlan />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/enterprise">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="enterprise-panel" role="region" data-testid="panel-enterprise">
+                      <EnterprisePage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/moderation">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="moderation-panel" role="region" data-testid="panel-moderation">
+                      <AdminModerationPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/health">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="health-panel" role="region" data-testid="panel-health" className="space-y-8">
+                      <AdminHealthDashboard />
+                      <ChurnDashboard />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/trust">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="trust-panel" role="region" data-testid="panel-trust">
+                      <TrustPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/institutional">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="institutional-panel" role="region" data-testid="panel-institutional">
+                      <InstitutionalPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/moat-metrics">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="moat-metrics-panel" role="region" data-testid="panel-moat-metrics">
+                      <MoatDashboard />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route>
+                  <div id="library-panel" role="region" data-testid="panel-library">
+                    <Library onSelectBook={handleSelectBook} />
                   </div>
-                )}
-                {currentView === "stats" && (
-                  <div id="stats-panel" role="tabpanel" data-testid="panel-stats" className="space-y-8">
-                    <GamificationDashboard />
-                    <BattlePassComponent />
-                    <YearInReview />
-                    <ReferralSection />
-                  </div>
-                )}
-                {currentView === "usage" && (
-                  <div id="usage-panel" role="tabpanel" data-testid="panel-usage">
-                    <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
-                  </div>
-                )}
-                {currentView === "publish" && (
-                  <div id="publish-panel" role="tabpanel" data-testid="panel-publish">
-                    <AuthorDashboard />
-                  </div>
-                )}
-                {currentView === "party" && (
-                  <div id="party-panel" role="tabpanel" data-testid="panel-party">
-                    <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
-                  </div>
-                )}
-                {currentView === "queue" && (
-                  <div id="queue-panel" role="tabpanel" data-testid="panel-queue">
-                    <StreamingQueue onBack={handleBackToLibrary} />
-                  </div>
-                )}
-                {currentView === "advertise" && (
-                  <div id="advertise-panel" role="tabpanel" data-testid="panel-advertise">
-                    <AdvertiserDashboard />
-                  </div>
-                )}
-                {currentView === "billing" && (
-                  <div id="billing-panel" role="tabpanel" data-testid="panel-billing">
-                    <BillingDashboard />
-                  </div>
-                )}
-                {currentView === "downloads" && (
-                  <div id="downloads-panel" role="tabpanel" data-testid="panel-downloads">
-                    <OfflineDownloads />
-                  </div>
-                )}
-                {currentView === "loans" && (
-                  <div id="loans-panel" role="tabpanel" data-testid="panel-loans">
-                    <MyLoans onSelectBook={handleSelectBook} />
-                  </div>
-                )}
-                {currentView === "referrals" && (
-                  <div id="referrals-panel" role="tabpanel" data-testid="panel-referrals">
-                    <ReferralsPage />
-                  </div>
-                )}
-                {currentView === "social" && (
-                  <div id="social-panel" role="tabpanel" data-testid="panel-social">
-                    <SocialHub />
-                  </div>
-                )}
-                {currentView === "family" && (
-                  <div id="family-panel" role="tabpanel" data-testid="panel-family">
-                    <FamilyPlan />
-                  </div>
-                )}
-                {currentView === "enterprise" && (
-                  <div id="enterprise-panel" role="tabpanel" data-testid="panel-enterprise">
-                    <EnterprisePage />
-                  </div>
-                )}
-                {currentView === "moderation" && (
-                  <div id="moderation-panel" role="tabpanel" data-testid="panel-moderation">
-                    <AdminModerationPage />
-                  </div>
-                )}
-                {currentView === "health" && (
-                  <div id="health-panel" role="tabpanel" data-testid="panel-health" className="space-y-8">
-                    <AdminHealthDashboard />
-                    <ChurnDashboard />
-                  </div>
-                )}
-                {currentView === "trust" && (
-                  <div id="trust-panel" role="tabpanel" data-testid="panel-trust">
-                    <TrustPage />
-                  </div>
-                )}
-                {currentView === "institutional" && (
-                  <div id="institutional-panel" role="tabpanel" data-testid="panel-institutional">
-                    <InstitutionalPage />
-                  </div>
-                )}
-                {currentView === "moat-metrics" && (
-                  <div id="moat-metrics-panel" role="tabpanel" data-testid="panel-moat-metrics">
-                    <MoatDashboard />
-                  </div>
-                )}
-              </Suspense>
+                </Route>
+              </Switch>
             </div>
           </main>
 
@@ -1658,22 +1694,24 @@ function App() {
 
   return (
     <TooltipProvider>
-      <AudioProvider>
-        <AudioAdManager />
-        {isAuthenticated ? (
-          <>
-            <MainApp />
-            <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
-            <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
-          </>
-        ) : guestMode ? (
-          <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
-        ) : (
-          <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
-        )}
-        <AccessibilityWidget />
-        <Toaster />
-      </AudioProvider>
+      <Router>
+        <AudioProvider>
+          <AudioAdManager />
+          {isAuthenticated ? (
+            <>
+              <MainApp />
+              <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
+              <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
+            </>
+          ) : guestMode ? (
+            <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
+          ) : (
+            <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
+          )}
+          <AccessibilityWidget />
+          <Toaster />
+        </AudioProvider>
+      </Router>
     </TooltipProvider>
   );
 }
