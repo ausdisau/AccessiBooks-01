@@ -46,7 +46,7 @@ export default function EnterprisePage() {
 
   const analyticsQuery = useQuery({
     queryKey: ["/api/enterprise/analytics"],
-    enabled: !!user && membersQuery.data?.account?.id,
+    enabled: !!user && !!(membersQuery.data as any)?.account?.id,
   });
 
   const createMutation = useMutation({

@@ -44,7 +44,7 @@ import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
 import { TrialNudge } from "@/components/trial-nudge";
 import { localStorageService } from "@/lib/storage";
-import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon, Heart, Building2, Activity } from "lucide-react";
 
 const EbookReader = lazy(() => import('@/components/ebook-reader').then(m => ({ default: m.EbookReader })));
 const AuthorPage = lazy(() => import('@/components/author-page').then(m => ({ default: m.AuthorPage })));
@@ -104,8 +104,13 @@ function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: {
     { view: "queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
     { view: "advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
     { view: "downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
+    { view: "social", label: "Social", icon: <Users className="h-5 w-5" /> },
+    { view: "family", label: "Family", icon: <Heart className="h-5 w-5" /> },
+    { view: "enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
     { view: "billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
     { view: "referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
+    { view: "moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
+    { view: "health", label: "Health", icon: <Activity className="h-5 w-5" /> },
   ], []);
 
   const currentLabel = navItems.find(i => i.view === currentView)?.label || "Menu";
@@ -1373,6 +1378,32 @@ function MainApp() {
           {currentView === "referrals" && (
             <div id="referrals-panel" role="tabpanel" data-testid="panel-referrals">
               <ReferralsPage />
+            </div>
+          )}
+          {currentView === "social" && (
+            <div id="social-panel" role="tabpanel" data-testid="panel-social">
+              <SocialHub />
+            </div>
+          )}
+          {currentView === "family" && (
+            <div id="family-panel" role="tabpanel" data-testid="panel-family">
+              <FamilyPlan />
+            </div>
+          )}
+          {currentView === "enterprise" && (
+            <div id="enterprise-panel" role="tabpanel" data-testid="panel-enterprise">
+              <EnterprisePage />
+            </div>
+          )}
+          {currentView === "moderation" && (
+            <div id="moderation-panel" role="tabpanel" data-testid="panel-moderation">
+              <AdminModerationPage />
+            </div>
+          )}
+          {currentView === "health" && (
+            <div id="health-panel" role="tabpanel" data-testid="panel-health" className="space-y-8">
+              <AdminHealthDashboard />
+              <ChurnDashboard />
             </div>
           )}
         </Suspense>
