@@ -1434,3 +1434,45 @@ export const engagementMetrics = pgTable("engagement_metrics", {
   index("idx_engagement_churn").on(table.churnRisk),
   index("idx_engagement_active").on(table.lastActiveAt),
 ]);
+
+// Book loans system
+export const bookLoans = pgTable("book_loans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
+  loanedAt: timestamp("loaned_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  returnedAt: timestamp("returned_at"),
+  status: text("status").notNull().default("active"),
+  downloadToken: text("download_token").notNull(),
+  downloadCount: integer("download_count").notNull().default(0),
+  maxDownloads: integer("max_downloads").notNull().default(3),
+}, (table) => [
+  index("idx_loans_user").on(table.userId),
+  index("idx_loans_book").on(table.bookId),
+  index("idx_loans_status").on(table.status),
+  index("idx_loans_expires").on(table.expiresAt),
+]);
+
+export const insertBookLoanSchema = createInsertSchema(bookLoans).omit({ id: true, loanedAt: true, downloadCount: true });
+export type InsertBookLoan = z.infer<typeof insertBookLoanSchema>;
+export type BookLoan = typeof bookLoans.$inferSelect;
+
+// Loan waitlist system
+export const loanWaitlist = pgTable("loan_waitlist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
+  position: integer("position").notNull().default(0),
+  joinedAt: timestamp("joined_at").defaultNow(),
+  notifiedAt: timestamp("notified_at"),
+  status: text("status").notNull().default("waiting"),
+}, (table) => [
+  index("idx_waitlist_user").on(table.userId),
+  index("idx_waitlist_book").on(table.bookId),
+  index("idx_waitlist_status").on(table.status),
+]);
+
+export const insertLoanWaitlistSchema = createInsertSchema(loanWaitlist).omit({ id: true, joinedAt: true, position: true });
+export type InsertLoanWaitlist = z.infer<typeof insertLoanWaitlistSchema>;
+export type LoanWaitlist = typeof loanWaitlist.$inferSelect;

@@ -44,7 +44,7 @@ import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
 import { TrialNudge } from "@/components/trial-nudge";
 import { localStorageService } from "@/lib/storage";
-import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon, Heart, Building2, Activity } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon, Heart, Building2, Activity, LibraryBig } from "lucide-react";
 
 const EbookReader = lazy(() => import('@/components/ebook-reader').then(m => ({ default: m.EbookReader })));
 const AuthorPage = lazy(() => import('@/components/author-page').then(m => ({ default: m.AuthorPage })));
@@ -59,6 +59,7 @@ const AdvertiserDashboard = lazy(() => import('@/components/advertiser-dashboard
 const BillingDashboard = lazy(() => import('@/components/billing-dashboard').then(m => ({ default: m.BillingDashboard })));
 const UsageDashboard = lazy(() => import('@/components/usage-dashboard').then(m => ({ default: m.UsageDashboard })));
 const OfflineDownloads = lazy(() => import('@/components/offline-downloads').then(m => ({ default: m.OfflineDownloads })));
+const MyLoans = lazy(() => import('@/components/my-loans').then(m => ({ default: m.MyLoans })));
 const BattlePassComponent = lazy(() => import('@/components/battle-pass').then(m => ({ default: m.BattlePassComponent })));
 const EnterprisePage = lazy(() => import('@/pages/enterprise'));
 const AdminModerationPage = lazy(() => import('@/pages/admin-moderation'));
@@ -78,7 +79,7 @@ function LoadingSpinner() {
   );
 }
 
-type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads" | "social" | "family" | "enterprise" | "moderation" | "health";
+type View = "library" | "player" | "reader" | "author" | "feed" | "stats" | "usage" | "publish" | "party" | "queue" | "advertise" | "billing" | "referrals" | "downloads" | "loans" | "social" | "family" | "enterprise" | "moderation" | "health";
 
 // Header component with user management
 function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: { 
@@ -104,6 +105,7 @@ function AppHeader({ menuOpen, onToggleMenu, currentView, onNavigate }: {
     { view: "queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
     { view: "advertise", label: "Advertise", icon: <Megaphone className="h-5 w-5" /> },
     { view: "downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
+    { view: "loans", label: "My Loans", icon: <LibraryBig className="h-5 w-5" /> },
     { view: "social", label: "Social", icon: <Users className="h-5 w-5" /> },
     { view: "family", label: "Family", icon: <Heart className="h-5 w-5" /> },
     { view: "enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
@@ -1373,6 +1375,11 @@ function MainApp() {
           {currentView === "downloads" && (
             <div id="downloads-panel" role="tabpanel" data-testid="panel-downloads">
               <OfflineDownloads />
+            </div>
+          )}
+          {currentView === "loans" && (
+            <div id="loans-panel" role="tabpanel" data-testid="panel-loans">
+              <MyLoans onSelectBook={handleSelectBook} />
             </div>
           )}
           {currentView === "referrals" && (
