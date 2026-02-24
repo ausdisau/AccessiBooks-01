@@ -14,7 +14,7 @@ Preferred communication style: Simple, everyday language.
 The application emphasizes accessible design with high contrast, dark mode, dyslexia-friendly fonts, responsive layouts, comprehensive keyboard navigation, and screen reader support.
 
 ### Technical Implementations
-- **Frontend**: Built with React and TypeScript, using Tailwind CSS with shadcn/ui for styling, Vite for tooling, and React hooks/TanStack Query for state management.
+- **Frontend**: Built with React and TypeScript, using Tailwind CSS with shadcn/ui for styling, Vite for tooling, and React hooks/TanStack Query for state management. Client-side routing via `wouter` with `<Route>`, `<Switch>`, `<Link>`, and `useLocation`. All views have URL paths (/, /player, /reader, /stats, /billing, /enterprise, etc.) enabling browser back/forward and direct URL access.
 - **Backend**: Developed with Node.js and Express.js in TypeScript, featuring RESTful APIs and Passport.js for authentication (OAuth and local).
 - **Data Storage**: PostgreSQL with Drizzle ORM for main data, and browser-based local storage for user preferences and playback progress.
 
