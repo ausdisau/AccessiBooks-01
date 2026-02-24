@@ -178,20 +178,21 @@ export function AccessibilityWidget() {
 
   return (
     <>
-      <Button
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 left-6 z-50 h-14 w-14 rounded-full shadow-lg"
-        size="icon"
+        style={{ position: 'fixed', bottom: '16px', left: '16px', zIndex: 50, height: '40px', width: '40px', borderRadius: '50%', fontSize: '16px' }}
+        className="shadow-md opacity-70 hover:opacity-100 transition-opacity bg-primary text-primary-foreground flex items-center justify-center border-0 cursor-pointer"
         aria-label="Open accessibility menu"
         aria-expanded={isOpen}
         data-testid="accessibility-widget-toggle"
       >
-        <Accessibility className="h-6 w-6" />
-      </Button>
+        <Accessibility style={{ height: '20px', width: '20px' }} />
+      </button>
 
       {isOpen && (
         <Card 
-          className="fixed bottom-24 left-6 z-50 w-80 md:w-96 shadow-2xl border-2 max-h-[80vh]"
+          style={{ position: 'fixed', bottom: '64px', left: '16px', zIndex: 50, width: '360px', maxHeight: '80vh', fontSize: '14px' }}
+          className="shadow-2xl border-2"
           role="region"
           aria-labelledby="a11y-panel-title"
         >
