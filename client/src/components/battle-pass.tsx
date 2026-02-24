@@ -214,14 +214,14 @@ export function BattlePassComponent() {
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
       <Card className="overflow-hidden">
-        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-6 text-white">
+        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-4 sm:p-6 text-white">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                 <Sparkles className="h-6 w-6" />
               </div>
               <div>
-                <h2 className="text-xl font-bold">{season.seasonName}</h2>
+                <h2 className="text-lg sm:text-xl font-bold">{season.seasonName}</h2>
                 <p className="text-sm text-white/80">{season.description}</p>
               </div>
             </div>

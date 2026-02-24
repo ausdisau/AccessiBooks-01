@@ -234,7 +234,7 @@ function FeedDetail({ feed, onBack, onPlayEpisode }: {
         <ChevronLeft className="h-4 w-4 mr-1" /> Back to Podcasts
       </Button>
 
-      <div className="flex flex-col sm:flex-row gap-6 mb-6">
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mb-4 sm:mb-6">
         <div className="w-32 h-32 rounded-xl overflow-hidden bg-orange-100 dark:bg-orange-900/30 flex-shrink-0">
           {detail.imageUrl ? (
             <img src={detail.imageUrl} alt={detail.title} className="w-full h-full object-cover" />
@@ -245,7 +245,7 @@ function FeedDetail({ feed, onBack, onPlayEpisode }: {
           )}
         </div>
         <div>
-          <h2 className="text-2xl font-bold">{detail.title}</h2>
+          <h2 className="text-xl sm:text-2xl font-bold">{detail.title}</h2>
           {detail.author && <p className="text-muted-foreground">{detail.author}</p>}
           {detail.description && (
             <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{detail.description}</p>
@@ -622,7 +622,7 @@ export function PodcastDiscovery() {
           <Podcast className="h-5 w-5 text-orange-600 dark:text-orange-400" />
         </div>
         <div>
-          <h2 id="podcast-discovery-heading" className="text-2xl font-bold">Podcasts</h2>
+          <h2 id="podcast-discovery-heading" className="text-xl sm:text-2xl font-bold">Podcasts</h2>
           <p className="text-sm text-muted-foreground">Discover and listen to your favorite podcasts</p>
         </div>
       </div>
@@ -641,7 +641,7 @@ export function PodcastDiscovery() {
         </div>
       </div>
 
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-thin" role="tablist" aria-label="Filter by category">
+      <div className="flex flex-wrap gap-2 mb-4 sm:mb-6 overflow-x-auto pb-2 scrollbar-thin" role="tablist" aria-label="Filter by category">
         {CATEGORY_FILTERS.map((category) => (
           <Button
             key={category}
@@ -676,7 +676,7 @@ export function PodcastDiscovery() {
           </div>
 
           <Card className="border-dashed border-orange-300/50 mb-6">
-            <CardContent className="p-6 text-center">
+            <CardContent className="p-4 sm:p-6 text-center">
               <Podcast className="h-12 w-12 text-orange-400 mx-auto mb-3" />
               <h3 className="font-semibold text-lg mb-2">Get Started with Podcasts</h3>
               <p className="text-sm text-muted-foreground mb-4">
@@ -726,7 +726,7 @@ export function PodcastDiscovery() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="p-4">
@@ -749,7 +749,7 @@ export function PodcastDiscovery() {
               Showing {filteredFeeds.length} podcast{filteredFeeds.length !== 1 ? "s" : ""} in {activeCategory}
             </p>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredFeeds.map((feed) => (
               <PodcastCard key={feed.id} feed={feed} onSelect={setSelectedFeed} />
             ))}

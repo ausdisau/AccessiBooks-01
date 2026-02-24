@@ -88,7 +88,7 @@ export function ListeningParty({ book, onBack }: ListeningPartyProps) {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
             <Radio className="h-6 w-6 text-primary" aria-hidden="true" />
             Listening Party
           </h1>
@@ -96,7 +96,7 @@ export function ListeningParty({ book, onBack }: ListeningPartyProps) {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-3xl">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -637,7 +637,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
         </div>
       </div>
 
-      <div className="grid md:grid-cols-[1fr_320px] gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-4">
         <div className="space-y-4">
           <Card>
             <CardContent className="p-4">

@@ -69,14 +69,14 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
         role="button"
         aria-label={`${isEbookOrMagazine ? "Read" : "Play"} ${book.title} by ${book.author}. ${typeConfig.label}`}
       >
-        <CardContent className="p-3">
+        <CardContent className="p-2.5 sm:p-3">
           <div className="relative">
             <BookCover
               bookId={book.id}
               coverImage={book.coverImage}
               title={book.title}
               contentType={contentType}
-              className="w-full h-32 object-cover rounded-md mb-2"
+              className="w-full h-28 sm:h-32 object-cover rounded-md mb-2"
               iconSize="h-8 w-8"
             />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
@@ -114,14 +114,14 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
 
   return (
     <Card className="hover:shadow-lg transition-shadow focus-within:ring-2 focus-within:ring-ring" data-testid={`card-book-${book.id}`}>
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         <div className="relative mb-4">
           <BookCover
             bookId={book.id}
             coverImage={book.coverImage}
             title={book.title}
             contentType={contentType}
-            className="w-full h-48 object-cover rounded-md"
+            className="w-full h-40 sm:h-48 object-cover rounded-md"
             iconSize="h-12 w-12"
           />
           
@@ -136,7 +136,7 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
           
         </div>
         
-        <h3 className="text-lg font-semibold mb-2" data-testid={`text-title-${book.id}`}>
+        <h3 className="text-base sm:text-lg font-semibold mb-2" data-testid={`text-title-${book.id}`}>
           {book.title}
         </h3>
         <p className="text-muted-foreground mb-2" data-testid={`text-author-${book.id}`}>

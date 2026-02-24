@@ -64,7 +64,7 @@ export function StreamingQueue({ onBack }: StreamingQueueProps) {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
             <ListMusic className="h-6 w-6 text-primary" aria-hidden="true" />
             Live Queues
           </h1>
@@ -641,7 +641,7 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
         </CardContent>
       </Card>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Up Next */}
         <Card>
           <CardHeader className="pb-2">
