@@ -129,7 +129,8 @@ export function AccessibilityWidget() {
     root.classList.toggle("highlight-focus", s.highlightFocus);
     root.classList.toggle("pause-animations", s.pauseAnimations);
     root.classList.toggle("larger-cursor", s.largerCursor);
-    root.style.setProperty("--a11y-font-size", `${s.fontSize}%`);
+    const clampedSize = Math.min(150, Math.max(80, s.fontSize));
+    root.style.setProperty("--a11y-font-size", `${clampedSize}%`);
     root.style.setProperty("--a11y-letter-spacing", `${s.letterSpacing * 0.05}em`);
     root.style.setProperty("--a11y-line-height", `${s.lineHeight}%`);
     root.style.setProperty("--a11y-saturation", `${s.saturation}%`);
