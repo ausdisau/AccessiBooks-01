@@ -1,9 +1,10 @@
 import express from "express";
-import type { JWTClaims } from "@accessibooks/shared";
+import playbackTokenRouter from "./routes/playbackToken";
 
 const app = express();
 
 app.use(express.json());
+app.use(playbackTokenRouter);
 
 app.get("/healthz", (_req, res) => {
   res.json({ status: "ok", service: "drm", timestamp: new Date().toISOString() });
