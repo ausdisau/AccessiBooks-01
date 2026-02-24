@@ -13,6 +13,8 @@ interface DownloadRecord {
   audioBlob: Blob;
   downloadedAt: string;
   sizeBytes: number;
+  loanId?: string;
+  loanExpiresAt?: string;
 }
 
 interface DownloadMetadata {
@@ -20,6 +22,8 @@ interface DownloadMetadata {
   author: string;
   coverImage: string;
   duration?: string;
+  loanId?: string;
+  loanExpiresAt?: string;
 }
 
 interface DownloadProgress {
@@ -116,14 +120,32 @@ export function useOfflineDownloads() {
     }
   }, []);
 
+  const cleanupExpiredLoans = useCallback(async () => {
+    try {
+      const records = await dbGetAll();
+      const now = Date.now();
+      for (const rec of records) {
+        if (rec.loanExpiresAt && new Date(rec.loanExpiresAt).getTime() <= now) {
+          await dbDelete(rec.bookId);
+        }
+      }
+      await refreshDownloads();
+    } catch {
+      // IndexedDB not available
+    }
+  }, [refreshDownloads]);
+
   useEffect(() => {
     refreshDownloads();
+    cleanupExpiredLoans();
+    const interval = setInterval(cleanupExpiredLoans, 60_000);
     if (navigator.storage && navigator.storage.estimate) {
       navigator.storage.estimate().then((est) => {
         setStorageEstimate(est.quota || 0);
       });
     }
-  }, [refreshDownloads]);
+    return () => clearInterval(interval);
+  }, [refreshDownloads, cleanupExpiredLoans]);
 
   const processQueue = useCallback(async () => {
     if (processingRef.current || queueRef.current.length === 0) return;
@@ -170,6 +192,8 @@ export function useOfflineDownloads() {
         audioBlob: blob,
         downloadedAt: new Date().toISOString(),
         sizeBytes: blob.size,
+        loanId: item.metadata.loanId,
+        loanExpiresAt: item.metadata.loanExpiresAt,
       };
 
       await dbPut(record);
@@ -202,7 +226,7 @@ export function useOfflineDownloads() {
 
   const downloadBook = useCallback(
     (bookId: string, audioUrl: string, metadata: DownloadMetadata) => {
-      if (!isPremium) return;
+      if (!isPremium && !metadata.loanId) return;
       if (queueRef.current.some((q) => q.bookId === bookId)) return;
 
       setProgressMap((prev) => ({
@@ -245,6 +269,11 @@ export function useOfflineDownloads() {
     [progressMap]
   );
 
+  const getLoanDownloads = useCallback(
+    () => downloads.filter((d) => d.loanId),
+    [downloads]
+  );
+
   return {
     isPremium,
     downloads,
@@ -256,5 +285,7 @@ export function useOfflineDownloads() {
     progressMap,
     storageUsed,
     storageEstimate,
+    getLoanDownloads,
+    cleanupExpiredLoans,
   };
 }
