@@ -198,7 +198,7 @@ export function AccessibilityWidget() {
         >
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle asChild>
+              <CardTitle>
                 <h2 id="a11y-panel-title" className="flex items-center gap-2 text-lg font-semibold">
                   <Accessibility className="h-5 w-5" aria-hidden="true" />
                   Accessibility Options
