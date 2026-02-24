@@ -1397,6 +1397,27 @@ export const insertReadingClubMemberSchema = createInsertSchema(readingClubMembe
 export type InsertReadingClubMember = z.infer<typeof insertReadingClubMemberSchema>;
 export type ReadingClubMember = typeof readingClubMembers.$inferSelect;
 
+// Book Visuals - AI-generated scene videos for Visual Reading mode
+export const bookVisuals = pgTable("book_visuals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull(),
+  sceneIndex: integer("scene_index").notNull(),
+  pageStart: integer("page_start").notNull(),
+  pageEnd: integer("page_end").notNull(),
+  sceneDescription: text("scene_description").notNull(),
+  videoPrompt: text("video_prompt").notNull(),
+  videoUrl: text("video_url"),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_book_visuals_book").on(table.bookId),
+  index("idx_book_visuals_book_scene").on(table.bookId, table.sceneIndex),
+]);
+
+export const insertBookVisualSchema = createInsertSchema(bookVisuals).omit({ id: true, createdAt: true });
+export type InsertBookVisual = z.infer<typeof insertBookVisualSchema>;
+export type BookVisual = typeof bookVisuals.$inferSelect;
+
 // Churn tracking / engagement metrics
 export const engagementMetrics = pgTable("engagement_metrics", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
