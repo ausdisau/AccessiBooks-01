@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
@@ -4591,28 +4591,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user?.id || req.user?.claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      // Create family account
-      const familyId = `family_${Date.now()}`;
-      const familyData = {
-        id: familyId,
+      const existing = await db.select().from(familyMembers).where(eq(familyMembers.userId, userId)).limit(1);
+      if (existing.length > 0) {
+        return res.status(400).json({ message: "Already in a family plan" });
+      }
+
+      const [account] = await db.insert(familyAccounts).values({
         ownerId: userId,
         planName: "Family Plan",
         maxMembers: 5,
+        amountCents: 799,
         isActive: true,
-      };
+      }).returning();
 
-      // Store in memory for demo (would be in DB in production)
-      if (!storage.familyAccounts) storage.familyAccounts = {};
-      if (!storage.familyMembers) storage.familyMembers = {};
-      
-      storage.familyAccounts[familyId] = familyData;
-      storage.familyMembers[familyId] = [{
-        id: `member_${userId}`,
+      await db.insert(familyMembers).values({
+        familyId: account.id,
         userId,
         role: "owner",
-      }];
+      });
 
-      res.json({ success: true, familyId });
+      res.json({ success: true, familyId: account.id });
     } catch (error) {
       console.error("Error creating family plan:", error);
       res.status(500).json({ message: "Failed to create family plan" });
@@ -4624,38 +4622,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user?.id || req.user?.claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      if (!storage.familyAccounts || !storage.familyMembers) {
+      const membership = await db.select().from(familyMembers).where(eq(familyMembers.userId, userId)).limit(1);
+      if (membership.length === 0) {
         return res.json({ account: null, members: [] });
       }
 
-      // Find family for this user
-      let familyId = null;
-      for (const [fId, members] of Object.entries(storage.familyMembers || {})) {
-        if (Array.isArray(members) && members.some((m: any) => m.userId === userId)) {
-          familyId = fId;
-          break;
-        }
-      }
-
-      if (!familyId) {
+      const familyId = membership[0].familyId;
+      const [account] = await db.select().from(familyAccounts).where(eq(familyAccounts.id, familyId));
+      if (!account) {
         return res.json({ account: null, members: [] });
       }
 
-      const account = storage.familyAccounts[familyId];
-      const memberIds = storage.familyMembers[familyId] || [];
-
-      // Get member details with user info
-      const members = memberIds.map((member: any) => ({
-        id: member.id,
-        userId: member.userId,
-        role: member.role,
-        user: {
-          username: `User ${member.userId.substring(0, 8)}`,
-          email: `user${member.userId.substring(0, 8)}@example.com`,
-        },
+      const allMembers = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+      const memberDetails = await Promise.all(allMembers.map(async (m) => {
+        const [user] = await db.select({ id: users.id, firstName: users.firstName, email: users.email }).from(users).where(eq(users.id, m.userId)).limit(1);
+        return {
+          id: m.id,
+          userId: m.userId,
+          role: m.role,
+          user: user ? { username: user.firstName || `User ${m.userId.substring(0, 8)}`, email: user.email || "" } : { username: `User ${m.userId.substring(0, 8)}`, email: "" },
+        };
       }));
 
-      res.json({ account, members });
+      res.json({ account, members: memberDetails });
     } catch (error) {
       console.error("Error fetching family:", error);
       res.status(500).json({ message: "Failed to fetch family" });
@@ -4670,28 +4659,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email } = req.body;
       if (!email) return res.status(400).json({ message: "Email required" });
 
-      if (!storage.familyMembers) storage.familyMembers = {};
+      const membership = await db.select().from(familyMembers).where(eq(familyMembers.userId, userId)).limit(1);
+      if (membership.length === 0) return res.status(404).json({ message: "Family not found" });
 
-      // Find user's family
-      let familyId = null;
-      for (const [fId, members] of Object.entries(storage.familyMembers)) {
-        if (Array.isArray(members) && members.some((m: any) => m.userId === userId)) {
-          familyId = fId;
-          break;
-        }
+      const familyId = membership[0].familyId;
+      const [account] = await db.select().from(familyAccounts).where(eq(familyAccounts.id, familyId));
+      if (!account) return res.status(404).json({ message: "Family not found" });
+
+      const currentMembers = await db.select().from(familyMembers).where(eq(familyMembers.familyId, familyId));
+      if (currentMembers.length >= account.maxMembers) {
+        return res.status(400).json({ message: "Family plan is full" });
       }
 
-      if (!familyId) {
-        return res.status(404).json({ message: "Family not found" });
-      }
+      const invitedUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      const invitedUserId = invitedUser.length > 0 ? invitedUser[0].id : `pending_${Date.now()}`;
 
-      // Add new member (demo - generate random ID)
-      const newMemberId = `member_${Date.now()}`;
-      const newUserId = `user_${Math.random().toString(36).substring(7)}`;
-      
-      storage.familyMembers[familyId].push({
-        id: newMemberId,
-        userId: newUserId,
+      await db.insert(familyMembers).values({
+        familyId,
+        userId: invitedUserId,
         role: "member",
       });
 
@@ -4709,22 +4694,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { memberId } = req.params;
 
-      if (!storage.familyMembers) {
+      const result = await db.delete(familyMembers).where(eq(familyMembers.id, memberId)).returning();
+      if (result.length === 0) {
         return res.status(404).json({ message: "Member not found" });
       }
 
-      // Find and remove member
-      for (const members of Object.values(storage.familyMembers)) {
-        if (Array.isArray(members)) {
-          const index = members.findIndex((m: any) => m.id === memberId);
-          if (index !== -1) {
-            members.splice(index, 1);
-            return res.json({ success: true });
-          }
-        }
-      }
-
-      res.status(404).json({ message: "Member not found" });
+      res.json({ success: true });
     } catch (error) {
       console.error("Error removing member:", error);
       res.status(500).json({ message: "Failed to remove member" });
@@ -4737,23 +4712,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user?.id || req.user?.claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      // Check if user is admin (demo - would check role in production)
-      // For now, allow all authenticated users to access
-      
-      if (!storage.contentReports) {
-        storage.contentReports = [];
-      }
-
-      const reports = storage.contentReports.map((report: any) => ({
-        ...report,
-        reporter: {
-          id: report.reporterId,
-          username: `Reporter ${report.reporterId.substring(0, 8)}`,
-          email: `reporter${report.reporterId.substring(0, 8)}@example.com`,
-        },
+      const reports = await db.select().from(contentReports).orderBy(desc(contentReports.createdAt));
+      const enriched = await Promise.all(reports.map(async (report) => {
+        const [reporter] = await db.select({ id: users.id, firstName: users.firstName, email: users.email }).from(users).where(eq(users.id, report.reporterId)).limit(1);
+        return {
+          ...report,
+          reporter: reporter ? { id: reporter.id, username: reporter.firstName || `Reporter ${report.reporterId.substring(0, 8)}`, email: reporter.email || "" } : { id: report.reporterId, username: `Reporter ${report.reporterId.substring(0, 8)}`, email: "" },
+        };
       }));
 
-      res.json(reports);
+      res.json(enriched);
     } catch (error) {
       console.error("Error fetching reports:", error);
       res.status(500).json({ message: "Failed to fetch reports" });
@@ -4772,16 +4740,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid status" });
       }
 
-      if (!storage.contentReports) {
+      const result = await db.update(contentReports)
+        .set({ status, reviewedBy: userId, reviewedAt: new Date() })
+        .where(eq(contentReports.id, id))
+        .returning();
+
+      if (result.length === 0) {
         return res.status(404).json({ message: "Report not found" });
       }
 
-      const report = storage.contentReports.find((r: any) => r.id === id);
-      if (!report) {
-        return res.status(404).json({ message: "Report not found" });
-      }
-
-      report.status = status;
       res.json({ success: true });
     } catch (error) {
       console.error("Error updating report:", error);
@@ -4852,12 +4819,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(listeningHistory)
           .where(and(
             eq(listeningHistory.userId, user.id),
-            sql`${listeningHistory.createdAt} >= ${thirtyDaysAgo}::timestamp`
+            sql`${listeningHistory.lastPlayedAt} >= ${thirtyDaysAgo}::timestamp`
           ));
 
         const sessionCount = recentSessions.length;
         const lastActive = recentSessions.length > 0
-          ? recentSessions[recentSessions.length - 1].createdAt
+          ? recentSessions[recentSessions.length - 1].lastPlayedAt
           : null;
 
         if (sessionCount < 5) { // Only include at-risk users

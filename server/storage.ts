@@ -1418,6 +1418,10 @@ export class ExternalAPIStorage implements IStorage {
       expires: Date.now() + this.CACHE_TTL
     });
   }
+
+  private invalidateCache(key: string): void {
+    this.cache.delete(key);
+  }
   
   // Security: Validate audio URL against allowed domains (public method for routes)
   validateAudioUrl(url: string): boolean {
