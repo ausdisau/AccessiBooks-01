@@ -1,19 +1,19 @@
 export interface PlaybackTokenResponse {
   token: string;
+  manifestUrl: string;
+  licenseUrl: string;
   expiresAt: number;
-  contentId: string;
-  userId: string;
-  allowedFormats: string[];
 }
 
 export interface JWTClaims {
   sub: string;
-  iss: string;
-  aud: string;
+  tid: string;
+  sid: number;
   exp: number;
   iat: number;
-  contentId: string;
-  userId: string;
-  tier: "free" | "plus" | "premium";
-  allowOffline: boolean;
+  policy: {
+    offline: boolean;
+    max_concurrent: number;
+    entitlement_expiry: number | null;
+  };
 }

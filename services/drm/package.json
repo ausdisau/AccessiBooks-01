@@ -8,15 +8,19 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx scripts/migrate.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "test": "tsx src/__tests__/playbackToken.test.ts"
   },
   "dependencies": {
     "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.0",
+    "zod": "^3.23.0",
     "@accessibooks/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0",
