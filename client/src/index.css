@@ -165,9 +165,9 @@
   --a11y-word-spacing: 0em;
 }
 
-/* Apply adaptive font sizing */
+/* Apply adaptive font sizing — clamped to prevent oversized content */
 html {
-  font-size: var(--a11y-font-size);
+  font-size: clamp(80%, var(--a11y-font-size), 150%);
 }
 
 /* Apply adaptive letter spacing */
