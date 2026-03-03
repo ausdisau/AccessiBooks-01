@@ -12,8 +12,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Users, Play, Pause, SkipForward, ArrowLeft, Volume2,
-  Loader2, Radio, ThumbsUp, Plus, ListMusic, Music, X, Megaphone,
+  Loader2, Radio, ThumbsUp, Plus, ListMusic, Music, X, Megaphone, WifiOff,
 } from "lucide-react";
+import { ConnectionStatus, type ConnectionStatusType } from "@/components/connection-status";
 import type { Book, StreamingQueue as StreamingQueueType, StreamingQueueItem } from "@shared/schema";
 import { AudioAdOverlay } from "@/components/audio-ad-overlay";
 import { audioAdService } from "@/services/audio-ad-service";
@@ -259,8 +260,11 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
   const { isPremium, upgradeToPremium } = useSubscription();
   const { playBook, currentBook, isPlaying, togglePlayPause, currentTime } = useAudioContext();
   const wsRef = useRef<WebSocket | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatusType>("reconnecting");
   const [listenerCount, setListenerCount] = useState(0);
+  const reconnectAttemptsRef = useRef(0);
+  const destroyedRef = useRef(false);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [myVotes, setMyVotes] = useState<string[]>([]);
   const [interstitialAd, setInterstitialAd] = useState<AdResponse | null>(null);
   const [showInterstitial, setShowInterstitial] = useState(false);
@@ -368,22 +372,27 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
     };
   }, []);
 
-  useEffect(() => {
-    if (!user || !queueId) return;
+  const { isOffline } = useAudioContext();
+
+  const connectWS = useCallback(() => {
+    if (destroyedRef.current || !user || !queueId) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/streaming-queue`;
     const socket = new WebSocket(wsUrl);
+    wsRef.current = socket;
 
     socket.onopen = () => {
-      setConnected(true);
+      if (destroyedRef.current) { socket.close(); return; }
+      reconnectAttemptsRef.current = 0;
+      setConnectionStatus("connected");
       socket.send(JSON.stringify({ type: "join_queue", queueId }));
+      socket.send(JSON.stringify({ type: "queue_sync_request" }));
     };
 
     socket.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-
         switch (msg.type) {
           case "queue_state":
             setListenerCount(msg.listenerCount || 0);
@@ -435,18 +444,61 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
       }
     };
 
-    socket.onclose = () => setConnected(false);
-    socket.onerror = () => setConnected(false);
-
-    wsRef.current = socket;
-
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "leave_queue" }));
+    const scheduleReconnect = () => {
+      if (destroyedRef.current) return;
+      const attempt = reconnectAttemptsRef.current;
+      if (attempt >= 5) {
+        setConnectionStatus("disconnected");
+        return;
       }
+      reconnectAttemptsRef.current += 1;
+      setConnectionStatus("reconnecting");
+      const delay = Math.min(30000, 1000 * Math.pow(2, attempt));
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!destroyedRef.current) connectWS();
+      }, delay);
+    };
+
+    socket.onclose = () => {
+      if (!destroyedRef.current) scheduleReconnect();
+    };
+    socket.onerror = () => {
       socket.close();
     };
   }, [user, queueId]);
+
+  useEffect(() => {
+    if (!user || !queueId) return;
+    destroyedRef.current = false;
+    reconnectAttemptsRef.current = 0;
+    connectWS();
+    return () => {
+      destroyedRef.current = true;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      const ws = wsRef.current;
+      if (ws) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "leave_queue" }));
+        }
+        ws.close();
+      }
+    };
+  }, [user, queueId]);
+
+  useEffect(() => {
+    if (!isOffline && connectionStatus !== "connected" && !destroyedRef.current) {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectAttemptsRef.current = 0;
+      connectWS();
+    }
+  }, [isOffline]);
+
+  const manualRetry = useCallback(() => {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    reconnectAttemptsRef.current = 0;
+    setConnectionStatus("reconnecting");
+    connectWS();
+  }, [connectWS]);
 
   const voteMutation = useMutation({
     mutationFn: async (itemId: string) => {
@@ -547,10 +599,11 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
             {queue?.name || "Live Queue"}
           </h2>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-full ${connected ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
-              {connected ? "LIVE" : "Connecting..."}
-            </span>
+            <ConnectionStatus
+              status={isOffline ? "offline" : connectionStatus}
+              attempt={reconnectAttemptsRef.current}
+              onRetry={manualRetry}
+            />
             <span className="flex items-center gap-1">
               <Users className="h-3 w-3" />
               {listenerCount} {listenerCount === 1 ? "listener" : "listeners"}
@@ -584,6 +637,13 @@ function QueuePlayer({ queueId, onLeave, onBack }: { queueId: string; onLeave: (
           </div>
         )}
       </div>
+
+      {isOffline && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs font-medium">
+          <WifiOff className="h-4 w-4 flex-shrink-0" />
+          You're offline — will reconnect automatically when network returns
+        </div>
+      )}
 
       {activeSponsor && (
         <div

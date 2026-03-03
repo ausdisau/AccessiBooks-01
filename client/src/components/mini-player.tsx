@@ -16,6 +16,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
     currentTime,
     duration,
     isLoading,
+    isBuffering,
     togglePlayPause,
     skip,
     seekTo,
@@ -139,11 +140,11 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
                 size="icon"
                 className="h-10 w-10 sm:h-12 sm:w-12 rounded-full shadow-lg"
                 onClick={togglePlayPause}
-                disabled={isLoading}
+                disabled={isLoading || isBuffering}
                 aria-label={isPlaying ? "Pause" : "Play"}
                 data-testid="mini-player-play-pause"
               >
-                {isLoading ? (
+                {isLoading || isBuffering ? (
                   <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
                 ) : isPlaying ? (
                   <Pause className="h-5 w-5 sm:h-6 sm:w-6" />

@@ -19,6 +19,8 @@ interface AudioContextType {
   duration: number;
   playbackRate: number;
   isLoading: boolean;
+  isBuffering: boolean;
+  isOffline: boolean;
   sleepTimer: number | null;
   sleepTimerRemaining: number | null;
   chapters: Chapter[];
@@ -78,9 +80,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     currentAd: null,
     adType: null,
   });
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const pendingBookRef = useRef<Book | null>(null);
   const isPremiumRef = useRef(false);
   const externalChapterEndRef = useRef<(() => void) | null>(null);
+  const stallRecoveryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const networkRetryCountRef = useRef(0);
+  const networkRetryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const wasPlayingBeforeOfflineRef = useRef(false);
 
   useEffect(() => {
     const checkPremium = () => {
@@ -157,11 +165,47 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     if (!audio) return;
 
     const handleLoadStart = () => setIsLoading(true);
-    const handleCanPlay = () => setIsLoading(false);
+    const handleCanPlay = () => {
+      setIsLoading(false);
+      setIsBuffering(false);
+      if (stallRecoveryTimerRef.current) {
+        clearTimeout(stallRecoveryTimerRef.current);
+        stallRecoveryTimerRef.current = null;
+      }
+      networkRetryCountRef.current = 0;
+    };
+    const handlePlaying = () => {
+      setIsBuffering(false);
+      if (stallRecoveryTimerRef.current) {
+        clearTimeout(stallRecoveryTimerRef.current);
+        stallRecoveryTimerRef.current = null;
+      }
+      networkRetryCountRef.current = 0;
+    };
+    const handleWaiting = () => setIsBuffering(true);
+    const handleStalled = () => {
+      setIsBuffering(true);
+      if (stallRecoveryTimerRef.current) clearTimeout(stallRecoveryTimerRef.current);
+      stallRecoveryTimerRef.current = setTimeout(() => {
+        const a = audioRef.current;
+        if (!a) return;
+        const wasPlaying = !a.paused;
+        const pos = a.currentTime;
+        const src = a.src;
+        if (src) {
+          a.src = src;
+          a.load();
+          a.currentTime = pos;
+          if (wasPlaying) a.play().catch(() => {});
+        }
+        stallRecoveryTimerRef.current = null;
+      }, 5000);
+    };
     const handleLoadedMetadata = () => setDuration(audio.duration);
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
     const handleEnded = () => {
       setIsPlaying(false);
+      setIsBuffering(false);
       if (onTrackEndCallback.current) {
         onTrackEndCallback.current();
       }
@@ -169,17 +213,41 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const handleError = (e: Event) => {
       setIsLoading(false);
       const error = (e.target as HTMLAudioElement)?.error;
-      
-      // If stream fails due to auth, continue local playback without disruption
       if (error?.code === MediaError.MEDIA_ERR_NETWORK) {
-        console.log("Network error during playback, will retry on next interaction");
+        const retries = networkRetryCountRef.current;
+        if (retries < 3) {
+          networkRetryCountRef.current += 1;
+          const delay = Math.pow(2, retries) * 2000;
+          setIsBuffering(true);
+          if (networkRetryTimerRef.current) clearTimeout(networkRetryTimerRef.current);
+          networkRetryTimerRef.current = setTimeout(() => {
+            const a = audioRef.current;
+            if (!a) return;
+            const pos = a.currentTime;
+            const src = a.src;
+            if (src) {
+              a.src = src;
+              a.load();
+              a.currentTime = pos;
+              a.play().catch(() => {});
+            }
+          }, delay);
+        } else {
+          setIsBuffering(false);
+          networkRetryCountRef.current = 0;
+          console.error("Audio network error: max retries reached");
+        }
       } else {
+        setIsBuffering(false);
         console.error("Audio failed to load:", error?.message);
       }
     };
 
     audio.addEventListener("loadstart", handleLoadStart);
     audio.addEventListener("canplay", handleCanPlay);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("waiting", handleWaiting);
+    audio.addEventListener("stalled", handleStalled);
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
@@ -188,10 +256,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     return () => {
       audio.removeEventListener("loadstart", handleLoadStart);
       audio.removeEventListener("canplay", handleCanPlay);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("waiting", handleWaiting);
+      audio.removeEventListener("stalled", handleStalled);
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("error", handleError);
+      if (stallRecoveryTimerRef.current) clearTimeout(stallRecoveryTimerRef.current);
+      if (networkRetryTimerRef.current) clearTimeout(networkRetryTimerRef.current);
     };
   }, []);
 
@@ -482,6 +555,36 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsOffline(true);
+      const audio = audioRef.current;
+      if (audio && !audio.paused) {
+        wasPlayingBeforeOfflineRef.current = true;
+        audio.pause();
+        setIsPlaying(false);
+      } else {
+        wasPlayingBeforeOfflineRef.current = false;
+      }
+    };
+    const handleOnline = () => {
+      setIsOffline(false);
+      if (wasPlayingBeforeOfflineRef.current) {
+        wasPlayingBeforeOfflineRef.current = false;
+        const audio = audioRef.current;
+        if (audio && audio.src) {
+          audio.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      }
+    };
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, []);
+
   return (
     <AudioContext.Provider
       value={{
@@ -492,6 +595,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         duration,
         playbackRate,
         isLoading,
+        isBuffering,
+        isOffline,
         sleepTimer,
         sleepTimerRemaining,
         chapters,
