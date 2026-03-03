@@ -59,6 +59,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     duration,
     playbackRate,
     isLoading,
+    isBuffering,
     togglePlayPause,
     skip,
     seekTo,
@@ -337,6 +338,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               <span aria-label="Current time" data-testid="text-current-time">
                 {formatTime(currentTime)}
               </span>
+              {isBuffering && (
+                <span className="flex items-center gap-1 text-amber-500 text-xs font-medium">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Buffering…
+                </span>
+              )}
               <span aria-label="Time remaining" className="text-muted-foreground">
                 -{formatTime(remainingTime)}
               </span>
@@ -399,12 +406,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             <Button
               size="lg"
               onClick={togglePlayPause}
-              disabled={isLoading}
+              disabled={isLoading || isBuffering}
               aria-label={isPlaying ? "Pause audiobook" : "Play audiobook"}
               className="h-14 w-14 sm:h-16 sm:w-16 rounded-full shadow-lg"
               data-testid="button-play-pause"
             >
-              {isLoading ? (
+              {isLoading || isBuffering ? (
                 <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
               ) : isPlaying ? (
                 <Pause className="h-7 w-7" aria-hidden="true" />

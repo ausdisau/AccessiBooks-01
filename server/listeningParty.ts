@@ -149,6 +149,8 @@ export function setupListeningPartyWS(server: Server) {
       ? `${user.firstName} ${user.lastName || ""}`.trim()
       : user.email || "User";
     const clientId = `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    (ws as any).isAlive = true;
+    ws.on("pong", () => { (ws as any).isAlive = true; });
     let currentRoomId: string | null = null;
     let lastChatTime = 0;
 
@@ -326,6 +328,8 @@ export function setupListeningPartyWS(server: Server) {
       ? `${user.firstName} ${user.lastName || ""}`.trim()
       : user.email || "User";
     const clientId = `qclient_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    (ws as any).isAlive = true;
+    ws.on("pong", () => { (ws as any).isAlive = true; });
     let currentQueueId: string | null = null;
 
     ws.on("message", async (raw) => {
@@ -379,6 +383,24 @@ export function setupListeningPartyWS(server: Server) {
       activeRooms.delete(roomId);
     }
   }
+
+  const heartbeatInterval = setInterval(() => {
+    const pingClients = (clientSet: Set<WebSocket>) => {
+      clientSet.forEach((ws) => {
+        const w = ws as any;
+        if (w.isAlive === false) {
+          ws.terminate();
+          return;
+        }
+        w.isAlive = false;
+        ws.ping();
+      });
+    };
+    pingClients(wss.clients);
+    pingClients(queueWss.clients);
+  }, 30000);
+
+  server.on("close", () => clearInterval(heartbeatInterval));
 }
 
 export function registerListeningPartyRoutes(app: Router) {

@@ -14,8 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, MessageCircle, Send, Copy, Play, Pause,
   SkipForward, SkipBack, Crown, ArrowLeft, Link2, Volume2,
-  Loader2, X, Radio, Lock, Shield, Sparkles, UserPlus,
+  Loader2, X, Radio, Lock, Shield, Sparkles, UserPlus, WifiOff,
 } from "lucide-react";
+import { ConnectionStatus, type ConnectionStatusType } from "@/components/connection-status";
 import type { Book, ListeningRoom, RoomMessage } from "@shared/schema";
 
 interface PlaybackState {
@@ -363,8 +364,11 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
   const { audioRef, currentBook, playBook, isPlaying, currentTime, playbackRate, seekTo, togglePlayPause, changeSpeed, skip, formatTime, setCurrentBook } = useAudioContext();
   const [isCoHost, setIsCoHost] = useState(false);
 
-  const [ws, setWs] = useState<WebSocket | null>(null);
-  const [connected, setConnected] = useState(false);
+  const wsRef2 = useRef<WebSocket | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatusType>("reconnecting");
+  const reconnectAttemptsRef = useRef(0);
+  const destroyedRef = useRef(false);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [chatMessages, setChatMessages] = useState<{ id: string; userId: string; displayName: string; content: string; createdAt: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -408,19 +412,22 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
     }
   }, [room]);
 
-  useEffect(() => {
-    if (!user || !roomId) return;
+  const { isOffline } = useAudioContext();
+
+  const connectWS = useCallback(() => {
+    if (destroyedRef.current || !user || !roomId) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/listening-party`;
     const socket = new WebSocket(wsUrl);
+    wsRef2.current = socket;
 
     socket.onopen = () => {
-      setConnected(true);
-      socket.send(JSON.stringify({
-        type: "join_room",
-        roomId,
-      }));
+      if (destroyedRef.current) { socket.close(); return; }
+      reconnectAttemptsRef.current = 0;
+      setConnectionStatus("connected");
+      socket.send(JSON.stringify({ type: "join_room", roomId }));
+      socket.send(JSON.stringify({ type: "sync_request" }));
     };
 
     socket.onmessage = (event) => {
@@ -428,9 +435,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
         const msg = JSON.parse(event.data);
         switch (msg.type) {
           case "playback_sync":
-            if (msg.playback) {
-              setSyncedPlayback(msg.playback);
-            }
+            if (msg.playback) setSyncedPlayback(msg.playback);
             if (msg.participants) {
               setParticipants(msg.participants);
               const me = msg.participants.find((p: Participant) => p.userId === user.id);
@@ -442,9 +447,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
             break;
           case "participant_joined":
           case "participant_left":
-            if (msg.participants) {
-              setParticipants(msg.participants);
-            }
+            if (msg.participants) setParticipants(msg.participants);
             break;
           case "chat_broadcast":
             setChatMessages(prev => [...prev, {
@@ -466,29 +469,70 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
       } catch (e) {}
     };
 
-    socket.onclose = () => {
-      setConnected(false);
+    const scheduleReconnect = () => {
+      if (destroyedRef.current) return;
+      const attempt = reconnectAttemptsRef.current;
+      if (attempt >= 5) {
+        setConnectionStatus("disconnected");
+        return;
+      }
+      reconnectAttemptsRef.current += 1;
+      setConnectionStatus("reconnecting");
+      const delay = Math.min(30000, 1000 * Math.pow(2, attempt));
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!destroyedRef.current) connectWS();
+      }, delay);
     };
 
-    setWs(socket);
-
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "leave_room" }));
-      }
+    socket.onclose = () => {
+      if (!destroyedRef.current) scheduleReconnect();
+    };
+    socket.onerror = () => {
       socket.close();
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
   }, [user, roomId]);
 
   useEffect(() => {
-    if (!isHost || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!user || !roomId) return;
+    destroyedRef.current = false;
+    reconnectAttemptsRef.current = 0;
+    connectWS();
+    return () => {
+      destroyedRef.current = true;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      const ws = wsRef2.current;
+      if (ws) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "leave_room" }));
+        ws.close();
+      }
+    };
+  }, [user, roomId]);
+
+  useEffect(() => {
+    if (!isOffline && connectionStatus !== "connected" && !destroyedRef.current) {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectAttemptsRef.current = 0;
+      connectWS();
+    }
+  }, [isOffline]);
+
+  const manualRetry = useCallback(() => {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    reconnectAttemptsRef.current = 0;
+    setConnectionStatus("reconnecting");
+    connectWS();
+  }, [connectWS]);
+
+  useEffect(() => {
+    if (!isHost || !wsRef2.current || wsRef2.current.readyState !== WebSocket.OPEN) return;
 
     syncIntervalRef.current = setInterval(() => {
       const now = Date.now();
       if (now - lastSyncRef.current < 2000) return;
       lastSyncRef.current = now;
-
+      const ws = wsRef2.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({
         type: "playback_update",
         playback: {
@@ -503,11 +547,12 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
     return () => {
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [isHost, ws]);
+  }, [isHost, connectionStatus]);
 
   const canControlPlayback = isHost || isCoHost;
 
   const sendPlaybackUpdate = useCallback(() => {
+    const ws = wsRef2.current;
     if (!canControlPlayback || !ws || ws.readyState !== WebSocket.OPEN) return;
     lastSyncRef.current = Date.now();
     ws.send(JSON.stringify({
@@ -519,7 +564,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
         updatedAt: Date.now(),
       },
     }));
-  }, [canControlPlayback, ws]);
+  }, [canControlPlayback, connectionStatus]);
 
   useEffect(() => {
     if (canControlPlayback || !syncedPlayback || !audioRef.current) return;
@@ -551,6 +596,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
   }, [chatMessages]);
 
   const handleSendMessage = () => {
+    const ws = wsRef2.current;
     if (!chatInput.trim() || !ws || ws.readyState !== WebSocket.OPEN || !user) return;
     ws.send(JSON.stringify({
       type: "chat_message",
@@ -617,7 +663,11 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
             <h1 className="text-xl font-bold flex items-center gap-2">
               <Radio className="h-5 w-5 text-primary" aria-hidden="true" />
               Listening Party
-              {connected && <span className="inline-block w-2 h-2 rounded-full bg-green-500" title="Connected" />}
+              <ConnectionStatus
+                status={isOffline ? "offline" : connectionStatus}
+                attempt={reconnectAttemptsRef.current}
+                onRetry={manualRetry}
+              />
             </h1>
             {room && (
               <p className="text-sm text-muted-foreground">{room.bookTitle}</p>
@@ -636,6 +686,13 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
           )}
         </div>
       </div>
+
+      {isOffline && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs font-medium">
+          <WifiOff className="h-4 w-4 flex-shrink-0" />
+          You're offline — will reconnect automatically when network returns
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-4">
         <div className="space-y-4">
@@ -824,7 +881,7 @@ function ListeningRoom({ roomId, onLeave, onBack }: { roomId: string; onLeave: (
               <Button
                 type="submit"
                 size="sm"
-                disabled={!chatInput.trim() || !connected}
+                disabled={!chatInput.trim() || connectionStatus !== "connected"}
                 aria-label="Send message"
                 data-testid="button-send-message"
               >
