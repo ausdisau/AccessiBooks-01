@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Eye, Plus, Zap, DollarSign, TrendingUp, Globe, LogOut, Wallet,
-  ChevronRight, ToggleLeft, ToggleRight, MousePointer,
+  ToggleLeft, ToggleRight, MousePointer, Edit2, Trash2, Copy, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AD_CATEGORIES, type AdSlot, type PublisherEarning } from "@shared/schema";
@@ -33,10 +33,25 @@ type SlotForm = z.infer<typeof slotSchema>;
 function formatMoney(cents: number) { return `$${(cents / 100).toFixed(2)}`; }
 function formatNum(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString(); }
 
+function embedSnippet(slotId: string) {
+  return `<script src="https://adbid.io/serve.js"\n  data-slot="${slotId}"\n  async>\n</script>`;
+}
+
+const AD_SIZES = [
+  { label: "Leaderboard (728×90)", w: 728, h: 90 },
+  { label: "Medium Rectangle (300×250)", w: 300, h: 250 },
+  { label: "Wide Skyscraper (160×600)", w: 160, h: 600 },
+  { label: "Billboard (970×250)", w: 970, h: 250 },
+  { label: "Custom", w: 0, h: 0 },
+];
+
 export default function PublisherDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [slotOpen, setSlotOpen] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<AdSlot | null>(null);
+  const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<AdSlot[]>({
     queryKey: ["/api/ad/slots"],
@@ -62,10 +77,31 @@ export default function PublisherDashboard() {
     onError: () => toast({ title: "Failed to create slot", variant: "destructive" }),
   });
 
+  const updateSlotMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<SlotForm> }) =>
+      apiRequest("PATCH", `/api/ad/slots/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/slots"] });
+      setEditingSlot(null);
+      toast({ title: "Slot updated!" });
+    },
+    onError: () => toast({ title: "Failed to update slot", variant: "destructive" }),
+  });
+
   const toggleSlotMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       apiRequest("PATCH", `/api/ad/slots/${id}`, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/ad/slots"] }),
+  });
+
+  const deleteSlotMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/ad/slots/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/slots"] });
+      setDeleteConfirm(null);
+      toast({ title: "Slot deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete slot", variant: "destructive" }),
   });
 
   const logoutMutation = useMutation({
@@ -78,13 +114,16 @@ export default function PublisherDashboard() {
   const pending = earnings?.pendingCents ?? 0;
   const paidOut = earnings?.paidOutCents ?? 0;
 
-  const AD_SIZES = [
-    { label: "Leaderboard (728×90)", w: 728, h: 90 },
-    { label: "Medium Rectangle (300×250)", w: 300, h: 250 },
-    { label: "Wide Skyscraper (160×600)", w: 160, h: 600 },
-    { label: "Billboard (970×250)", w: 970, h: 250 },
-    { label: "Custom", w: 0, h: 0 },
-  ];
+  function openEditSlot(slot: AdSlot) {
+    setEditingSlot(slot);
+    slotForm.reset({ name: slot.name, websiteUrl: slot.websiteUrl, category: slot.category, width: slot.width, height: slot.height, minCpmCents: slot.minCpmCents ?? 0 });
+  }
+
+  function copyEmbed(slotId: string) {
+    navigator.clipboard.writeText(embedSnippet(slotId)).then(() => {
+      toast({ title: "Embed snippet copied to clipboard!" });
+    });
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] text-white flex">
@@ -133,7 +172,9 @@ export default function PublisherDashboard() {
               <h1 className="text-2xl font-bold">Dashboard</h1>
               <p className="text-white/40 text-sm mt-1">Welcome back, {user?.firstName || "Publisher"}</p>
             </div>
-            <Dialog open={slotOpen} onOpenChange={setSlotOpen}>
+
+            {/* Create Slot dialog */}
+            <Dialog open={slotOpen && !editingSlot} onOpenChange={(v) => { if (!v) { setSlotOpen(false); slotForm.reset(); } else setSlotOpen(true); }}>
               <DialogTrigger asChild>
                 <Button size="sm" className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
                   <Plus className="h-4 w-4" /> New Ad Slot
@@ -143,73 +184,53 @@ export default function PublisherDashboard() {
                 <DialogHeader>
                   <DialogTitle className="text-white">Create Ad Slot</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={slotForm.handleSubmit((d) => createSlotMutation.mutate(d))} className="space-y-4 mt-2">
-                  <div>
-                    <Label className="text-white/70 text-sm">Slot Name</Label>
-                    <Input {...slotForm.register("name")} placeholder="Homepage Banner" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
-                    {slotForm.formState.errors.name && <p className="text-red-400 text-xs mt-1">{slotForm.formState.errors.name.message}</p>}
-                  </div>
-                  <div>
-                    <Label className="text-white/70 text-sm">Website URL</Label>
-                    <Input {...slotForm.register("websiteUrl")} type="url" placeholder="https://yoursite.com" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
-                    {slotForm.formState.errors.websiteUrl && <p className="text-red-400 text-xs mt-1">{slotForm.formState.errors.websiteUrl.message}</p>}
-                  </div>
-                  <div>
-                    <Label className="text-white/70 text-sm">Content Category</Label>
-                    <Select onValueChange={(v) => slotForm.setValue("category", v)} defaultValue="other">
-                      <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-[#0d1527] border-white/10 text-white">
-                        {AD_CATEGORIES.map((c) => (
-                          <SelectItem key={c} value={c} className="capitalize focus:bg-white/10">{c.replace(/_/g, " ")}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-white/70 text-sm">Ad Size</Label>
-                    <Select
-                      onValueChange={(v) => {
-                        const size = AD_SIZES.find((s) => `${s.w}x${s.h}` === v);
-                        if (size && size.w > 0) {
-                          slotForm.setValue("width", size.w);
-                          slotForm.setValue("height", size.h);
-                        }
-                      }}
-                      defaultValue="728x90"
-                    >
-                      <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-[#0d1527] border-white/10 text-white">
-                        {AD_SIZES.map((s) => (
-                          <SelectItem key={s.label} value={`${s.w}x${s.h}`} className="focus:bg-white/10">{s.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-white/70 text-sm">Width (px)</Label>
-                      <Input {...slotForm.register("width")} type="number" className="mt-1 bg-white/5 border-white/10 text-white" />
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Height (px)</Label>
-                      <Input {...slotForm.register("height")} type="number" className="mt-1 bg-white/5 border-white/10 text-white" />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-white/70 text-sm">Floor CPM Price ($) — min bid to win</Label>
-                    <Input {...slotForm.register("minCpmCents")} type="number" step="0.1" placeholder="0.50" className="mt-1 bg-white/5 border-white/10 text-white" />
-                  </div>
-                  <Button type="submit" disabled={createSlotMutation.isPending} className="w-full bg-violet-600 hover:bg-violet-500 text-white">
-                    {createSlotMutation.isPending ? "Creating..." : "Create Ad Slot"}
-                  </Button>
-                </form>
+                <SlotFormFields
+                  form={slotForm}
+                  onSubmit={(d) => createSlotMutation.mutate(d)}
+                  isPending={createSlotMutation.isPending}
+                  submitLabel="Create Ad Slot"
+                />
               </DialogContent>
             </Dialog>
           </div>
+
+          {/* Edit Slot dialog */}
+          <Dialog open={!!editingSlot} onOpenChange={(v) => { if (!v) setEditingSlot(null); }}>
+            <DialogContent className="bg-[#0d1527] border-white/10 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-white">Edit Ad Slot</DialogTitle>
+              </DialogHeader>
+              <SlotFormFields
+                form={slotForm}
+                onSubmit={(d) => editingSlot && updateSlotMutation.mutate({ id: editingSlot.id, data: d })}
+                isPending={updateSlotMutation.isPending}
+                submitLabel="Save Changes"
+              />
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete confirm dialog */}
+          <Dialog open={!!deleteConfirm} onOpenChange={(v) => { if (!v) setDeleteConfirm(null); }}>
+            <DialogContent className="bg-[#0d1527] border-white/10 text-white max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="text-white">Delete Ad Slot?</DialogTitle>
+              </DialogHeader>
+              <p className="text-white/60 text-sm mt-2">This will permanently delete this ad slot and its impression history. This cannot be undone.</p>
+              <div className="flex gap-3 mt-4">
+                <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white/10 flex-1" onClick={() => setDeleteConfirm(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-500 text-white flex-1"
+                  onClick={() => deleteConfirm && deleteSlotMutation.mutate(deleteConfirm)}
+                  disabled={deleteSlotMutation.isPending}
+                >
+                  Delete
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Earnings stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
@@ -262,26 +283,26 @@ export default function PublisherDashboard() {
             ) : (
               <div className="space-y-3">
                 {slots.map((slot) => (
-                  <Card key={slot.id} className="bg-white/5 border-white/10 hover:bg-white/8 transition-colors">
+                  <Card key={slot.id} className="bg-white/5 border-white/10 hover:bg-white/[0.07] transition-colors">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-lg bg-violet-600/20 flex items-center justify-center">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="h-8 w-8 rounded-lg bg-violet-600/20 flex items-center justify-center flex-shrink-0">
                             <Globe className="h-4 w-4 text-violet-400" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <div className="font-medium text-sm">{slot.name}</div>
                             <div className="text-xs text-white/40">
                               {slot.width}×{slot.height} · {slot.category?.replace(/_/g, " ")} · Floor: {formatMoney(slot.minCpmCents ?? 0)}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right text-xs">
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <div className="text-right text-xs hidden sm:block">
                             <div className="text-white/40">Impressions</div>
                             <div className="font-medium">{formatNum(slot.totalImpressions ?? 0)}</div>
                           </div>
-                          <div className="text-right text-xs">
+                          <div className="text-right text-xs hidden sm:block">
                             <div className="text-white/40">Earned</div>
                             <div className="font-medium text-violet-400">{formatMoney(slot.totalEarningsCents ?? 0)}</div>
                           </div>
@@ -292,34 +313,135 @@ export default function PublisherDashboard() {
                           >
                             {slot.isActive ? <ToggleRight className="h-6 w-6" /> : <ToggleLeft className="h-6 w-6" />}
                           </button>
+                          <button
+                            onClick={() => openEditSlot(slot)}
+                            className="p-1.5 rounded hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                            title="Edit slot"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(slot.id)}
+                            className="p-1.5 rounded hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
+                            title="Delete slot"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setExpandedSlot(expandedSlot === slot.id ? null : slot.id)}
+                            className="p-1.5 rounded hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                            title="Show embed snippet"
+                          >
+                            {expandedSlot === slot.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </button>
                         </div>
                       </div>
+
+                      {/* Per-slot embed snippet */}
+                      {expandedSlot === slot.id && (
+                        <div className="mt-4 pt-4 border-t border-white/10">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs text-white/50">Integration snippet — paste into your site's HTML:</p>
+                            <button
+                              onClick={() => copyEmbed(slot.id)}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-violet-400 hover:bg-violet-500/10 transition-colors"
+                            >
+                              <Copy className="h-3 w-3" /> Copy
+                            </button>
+                          </div>
+                          <pre className="bg-black/40 rounded p-3 text-xs text-green-300 overflow-x-auto whitespace-pre">
+                            {embedSnippet(slot.id)}
+                          </pre>
+                          <div className="mt-2 sm:hidden grid grid-cols-2 gap-2 text-xs">
+                            <div><div className="text-white/40">Impressions</div><div className="font-medium">{formatNum(slot.totalImpressions ?? 0)}</div></div>
+                            <div><div className="text-white/40">Earned</div><div className="font-medium text-violet-400">{formatMoney(slot.totalEarningsCents ?? 0)}</div></div>
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
               </div>
             )}
           </div>
-
-          {/* Integration snippet */}
-          {slots.length > 0 && (
-            <div className="mt-8">
-              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-4">Integration</h2>
-              <Card className="bg-white/5 border-white/10">
-                <CardContent className="p-4">
-                  <p className="text-sm text-white/50 mb-3">Add this script tag to your site to display ads in your slot:</p>
-                  <pre className="bg-black/40 rounded p-3 text-xs text-green-300 overflow-x-auto whitespace-pre-wrap">
-{`<script src="https://adbid.io/serve.js"
-  data-slot="${slots[0].id}"
-  async>
-</script>`}
-                  </pre>
-                </CardContent>
-              </Card>
-            </div>
-          )}
         </div>
       </main>
     </div>
+  );
+}
+
+function SlotFormFields({ form, onSubmit, isPending, submitLabel }: {
+  form: ReturnType<typeof useForm<SlotForm>>;
+  onSubmit: (d: SlotForm) => void;
+  isPending: boolean;
+  submitLabel: string;
+}) {
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-2">
+      <div>
+        <Label className="text-white/70 text-sm">Slot Name</Label>
+        <Input {...form.register("name")} placeholder="Homepage Banner" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
+        {form.formState.errors.name && <p className="text-red-400 text-xs mt-1">{form.formState.errors.name.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Website URL</Label>
+        <Input {...form.register("websiteUrl")} type="url" placeholder="https://yoursite.com" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
+        {form.formState.errors.websiteUrl && <p className="text-red-400 text-xs mt-1">{form.formState.errors.websiteUrl.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Content Category</Label>
+        <Select onValueChange={(v) => form.setValue("category", v)} defaultValue={form.getValues("category") || "other"}>
+          <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-[#0d1527] border-white/10 text-white">
+            {AD_CATEGORIES.map((c) => (
+              <SelectItem key={c} value={c} className="capitalize focus:bg-white/10">{c.replace(/_/g, " ")}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Ad Size</Label>
+        <Select
+          onValueChange={(v) => {
+            const size = AD_SIZES.find((s) => `${s.w}x${s.h}` === v);
+            if (size && size.w > 0) {
+              form.setValue("width", size.w);
+              form.setValue("height", size.h);
+            }
+          }}
+          defaultValue="728x90"
+        >
+          <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-[#0d1527] border-white/10 text-white">
+            {AD_SIZES.map((s) => (
+              <SelectItem key={s.label} value={`${s.w}x${s.h}`} className="focus:bg-white/10">{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-white/70 text-sm">Width (px)</Label>
+          <Input {...form.register("width")} type="number" className="mt-1 bg-white/5 border-white/10 text-white" />
+          {form.formState.errors.width && <p className="text-red-400 text-xs mt-1">{form.formState.errors.width.message}</p>}
+        </div>
+        <div>
+          <Label className="text-white/70 text-sm">Height (px)</Label>
+          <Input {...form.register("height")} type="number" className="mt-1 bg-white/5 border-white/10 text-white" />
+          {form.formState.errors.height && <p className="text-red-400 text-xs mt-1">{form.formState.errors.height.message}</p>}
+        </div>
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Floor CPM Price ($) — min bid to win</Label>
+        <Input {...form.register("minCpmCents")} type="number" step="0.1" placeholder="0.50" className="mt-1 bg-white/5 border-white/10 text-white" />
+      </div>
+      <Button type="submit" disabled={isPending} className="w-full bg-violet-600 hover:bg-violet-500 text-white">
+        {isPending ? "Saving..." : submitLabel}
+      </Button>
+    </form>
   );
 }
