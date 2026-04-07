@@ -180,15 +180,24 @@ export function AccessibilityWidget() {
     const defaults = getDefaultSettings();
 
     if (serverPrefs.hasStoredRecord !== false) {
-      // A real stored user profile exists — restore widget-owned fields
+      // A real stored user profile exists — validate shape before applying
       const serverProfile = serverPrefs.profile;
       const widgetKeys = Object.keys(defaults) as (keyof AccessibilitySettings)[];
       const hasWidgetFields = widgetKeys.some((k) => k in serverProfile);
-      if (hasWidgetFields) {
+
+      // Schema compatibility guard: reject profiles whose numeric fields are
+      // clearly on a different scale (e.g. raw px fontSize like 16 vs % like 100)
+      const fontSize = (serverProfile as Record<string, unknown>).fontSize;
+      const lineHeight = (serverProfile as Record<string, unknown>).lineHeight;
+      const fontSizeOk = fontSize === undefined || (typeof fontSize === "number" && fontSize >= 80 && fontSize <= 200);
+      const lineHeightOk = lineHeight === undefined || (typeof lineHeight === "number" && lineHeight >= 100 && lineHeight <= 250);
+
+      if (hasWidgetFields && fontSizeOk && lineHeightOk) {
         const merged: AccessibilitySettings = { ...defaults, ...serverProfile };
         setSettings(merged);
         localStorageService.saveSettings(merged);
         setSyncStatus("saved");
+        setTimeout(() => setSyncStatus("idle"), 2500);
       }
       return;
     }
