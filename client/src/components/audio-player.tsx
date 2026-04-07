@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -119,41 +119,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const canGoPrev = currentChapterIndex > 0;
   const canGoNext = currentChapterIndex < chapters.length - 1;
 
-  useEffect(() => {
-    const handleToggleCaptions = () => {
-      updateProfile({ captionsOn: !profile.captionsOn });
-    };
-    const handleToggleTranscript = () => {
-      setShowTranscript(prev => !prev);
-    };
-    document.addEventListener("accessibooks:toggle-captions", handleToggleCaptions);
-    document.addEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
-    return () => {
-      document.removeEventListener("accessibooks:toggle-captions", handleToggleCaptions);
-      document.removeEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
-    };
-  }, [profile.captionsOn, updateProfile]);
-
-  useEffect(() => {
-    const TOAST_KEY = "accessibooks_shortcuts_tip_shown";
-    if (isPlaying && !localStorage.getItem(TOAST_KEY)) {
-      localStorage.setItem(TOAST_KEY, "1");
-      toast({
-        title: "Tip: Keyboard shortcuts",
-        description: 'Press ? anywhere to see all keyboard shortcuts.',
-        duration: 6000,
-      });
-    }
-  }, [isPlaying]);
-
-  useEffect(() => {
-    startSession(book.id);
-    return () => {
-      endSession();
-    };
-  }, [book.id]);
-
-  const captionsOnRef = { current: captionsOn };
+  const captionsOnRef = useRef(captionsOn);
   captionsOnRef.current = captionsOn;
 
   useEffect(() => {
@@ -167,7 +133,14 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
       document.removeEventListener("accessibooks:toggle-captions", handleToggleCaptions);
       document.removeEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
     };
-  }, []);
+  }, [updateProfile]);
+
+  useEffect(() => {
+    startSession(book.id);
+    return () => {
+      endSession();
+    };
+  }, [book.id]);
 
   const handleSkipForward = async () => {
     if (!isPremium && skipStatus && !skipStatus.unlimited) {
