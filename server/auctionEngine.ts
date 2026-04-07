@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, sql, gte, lte, or, isNull } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import {
   adSlots,
   adCampaigns,
@@ -13,6 +13,7 @@ import {
   type DisplayAd,
   type AdAuction,
   type SlotImpression,
+  type AdCampaign,
 } from "@shared/schema";
 
 export interface AuctionWinner {
@@ -38,7 +39,8 @@ export interface AuctionResult {
  *  5. Campaign must be within its scheduled date range (if set)
  *  6. Ad's maxCpmCents must meet or exceed slot's minCpmCents floor
  *
- * Winner pays max(secondBid + 1 cent, slotFloor).
+ * Winner pays the second-highest bid price (or the slot floor, whichever is higher).
+ * This is strict Vickrey semantics — no +1 cent inflation.
  */
 export async function runAuction(slotId: string): Promise<AuctionResult> {
   const [slot] = await db
@@ -49,10 +51,8 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
   if (!slot) return { noFill: true };
 
   const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setUTCHours(0, 0, 0, 0);
 
-  // Fetch all approved ads with their campaigns in one join to keep hot-path lean
+  // Fetch all approved ads with their campaigns in one join
   const candidates = await db
     .select({
       ad: displayAds,
@@ -64,13 +64,12 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
       and(
         eq(displayAds.status, "approved"),
         eq(adCampaigns.status, "active"),
-        // Ad bid must meet slot floor
         sql`${displayAds.maxCpmCents} >= ${slot.minCpmCents}`
       )
     );
 
-  // Filter eligibility in JS (date range + budget checks)
-  const eligible = candidates.filter(({ campaign }) => {
+  // Filter eligibility in JS (date range + budget checks, fully typed)
+  const eligible = candidates.filter(({ campaign }: { campaign: AdCampaign }) => {
     // Date range
     if (campaign.startDate && new Date(campaign.startDate) > now) return false;
     if (campaign.endDate && new Date(campaign.endDate) < now) return false;
@@ -80,7 +79,7 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
 
     // Daily budget exhausted
     const dailyBudget = campaign.dailyBudgetCents ?? 0;
-    const dailySpend = (campaign as any).dailySpendCents ?? 0;
+    const dailySpend = campaign.dailySpendCents;
     if (dailyBudget > 0 && dailySpend >= dailyBudget) return false;
 
     return true;
@@ -88,10 +87,9 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
 
   // Record no-fill auction
   if (eligible.length === 0) {
-    const [auction] = await db
+    await db
       .insert(adAuctions)
-      .values({ slotId, noFill: true, bidsConsidered: 0 })
-      .returning();
+      .values({ slotId, noFill: true, bidsConsidered: 0 });
     return { noFill: true };
   }
 
@@ -104,9 +102,11 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
   const secondEntry = sorted[1];
 
   const winningCpmCents = winnerEntry.ad.maxCpmCents ?? 0;
+  // Strict Vickrey: winner pays the second-highest bid price.
+  // If only one bidder, they pay the slot floor.
   const secondPriceCpmCents = secondEntry?.ad.maxCpmCents ?? slot.minCpmCents;
-  // Advertiser pays second-price + 1 cent (or slot floor, whichever is higher)
-  const chargedCpmCents = Math.max(secondPriceCpmCents + 1, slot.minCpmCents);
+  // Charged price is the second-price, but never below the slot floor.
+  const chargedCpmCents = Math.max(secondPriceCpmCents, slot.minCpmCents);
 
   // Insert auction record
   const [auction] = await db
@@ -122,7 +122,7 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
     .returning();
 
   // Record all bids
-  const bidRows = eligible.map(({ ad, campaign }) => ({
+  const bidRows = eligible.map(({ ad, campaign }: { ad: DisplayAd; campaign: AdCampaign }) => ({
     auctionId: auction.id,
     adId: ad.id,
     advertiserId: campaign.advertiserId,
@@ -144,8 +144,10 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
     })
     .returning();
 
-  // Decrement advertiser wallet (CPM / 1000 = cost per impression)
+  // Decrement advertiser wallet (chargedCPM / 1000 = cost per single impression)
   const costCents = Math.ceil(chargedCpmCents / 1000);
+  const publisherCutCents = Math.floor(costCents * 0.7);
+
   await Promise.all([
     // Wallet debit
     db
@@ -157,7 +159,7 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
       })
       .where(eq(advertiserWallets.advertiserId, winnerEntry.campaign.advertiserId)),
 
-    // Publisher earnings (70% revenue share)
+    // Publisher earnings (70% revenue share) — upsert then update
     db
       .insert(publisherEarnings)
       .values({ publisherId: slot.publisherId })
@@ -165,18 +167,18 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
     db
       .update(publisherEarnings)
       .set({
-        totalEarnedCents: sql`${publisherEarnings.totalEarnedCents} + ${Math.floor(costCents * 0.7)}`,
-        pendingCents: sql`${publisherEarnings.pendingCents} + ${Math.floor(costCents * 0.7)}`,
+        totalEarnedCents: sql`${publisherEarnings.totalEarnedCents} + ${publisherCutCents}`,
+        pendingCents: sql`${publisherEarnings.pendingCents} + ${publisherCutCents}`,
         updatedAt: new Date(),
       })
       .where(eq(publisherEarnings.publisherId, slot.publisherId)),
 
-    // Update campaign spend counters
+    // Update campaign spend counters (pacing)
     db
       .update(adCampaigns)
       .set({
         spentCents: sql`${adCampaigns.spentCents} + ${costCents}`,
-        dailySpendCents: sql`COALESCE(${adCampaigns.dailySpendCents}, 0) + ${costCents}`,
+        dailySpendCents: sql`${adCampaigns.dailySpendCents} + ${costCents}`,
         impressions: sql`${adCampaigns.impressions} + 1`,
         updatedAt: new Date(),
       })
@@ -193,7 +195,7 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
       .update(adSlots)
       .set({
         totalImpressions: sql`${adSlots.totalImpressions} + 1`,
-        totalEarningsCents: sql`${adSlots.totalEarningsCents} + ${Math.floor(costCents * 0.7)}`,
+        totalEarningsCents: sql`${adSlots.totalEarningsCents} + ${publisherCutCents}`,
       })
       .where(eq(adSlots.id, slotId)),
   ]);

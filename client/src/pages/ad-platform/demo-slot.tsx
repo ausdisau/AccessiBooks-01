@@ -20,13 +20,12 @@ interface ServedAd {
   };
 }
 
-interface AdSlot {
+interface DemoSlot {
   id: string;
   name: string;
   category: string;
   width: number;
   height: number;
-  minCpmCents: number;
 }
 
 function AdSlotPreview({ slotId, width, height }: { slotId: string; width: number; height: number }) {
@@ -162,8 +161,9 @@ function AdSlotPreview({ slotId, width, height }: { slotId: string; width: numbe
 export default function DemoSlotPage() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
-  const { data: slots, isLoading: slotsLoading } = useQuery<AdSlot[]>({
-    queryKey: ["/api/ad/slots"],
+  // Public endpoint — no auth required
+  const { data: slots, isLoading: slotsLoading } = useQuery<DemoSlot[]>({
+    queryKey: ["/api/ad/demo-slots"],
     retry: false,
   });
 
@@ -228,7 +228,7 @@ export default function DemoSlotPage() {
                     {!slotsLoading && !activeSlotId && (
                       <div className="border-2 border-dashed border-slate-700 rounded-lg p-8 text-center">
                         <p className="text-slate-500 text-sm">
-                          No publisher slots found. Create a slot in the{" "}
+                          No active publisher slots found. A publisher needs to create a slot in the{" "}
                           <Link href="/ad-platform">
                             <span className="text-blue-400 underline cursor-pointer">Publisher Dashboard</span>
                           </Link>{" "}
@@ -265,7 +265,7 @@ export default function DemoSlotPage() {
               <CardContent>
                 {slotsLoading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
                 {!slotsLoading && (!slots || slots.length === 0) && (
-                  <p className="text-slate-500 text-sm">No slots available</p>
+                  <p className="text-slate-500 text-sm">No active slots available</p>
                 )}
                 {slots && slots.length > 0 && (
                   <div className="space-y-2">
