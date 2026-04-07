@@ -503,7 +503,7 @@ export function Library({ onSelectBook }: LibraryProps) {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-card border border-border rounded-lg p-6 animate-pulse">
               <div className="w-full h-48 bg-muted rounded-md mb-4" />
@@ -526,7 +526,7 @@ export function Library({ onSelectBook }: LibraryProps) {
             Showing {displayedBooks.length} of {filteredAndSortedBooks.length} titles
           </p>
           <div 
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6" 
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6" 
             role="list" 
             aria-label="Audiobook library"
             data-testid="grid-books"

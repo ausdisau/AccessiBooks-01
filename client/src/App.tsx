@@ -3,7 +3,7 @@ import { Route, Switch, Link, useLocation, useRoute, Router } from "wouter";
 import { QueryClientProvider, useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AccessibilityControls } from "@/components/accessibility-controls";
 import { AccessiBooksLogo } from "@/components/accessibooks-logo";
 import { useAuth } from "@/hooks/useAuth";
@@ -129,8 +129,10 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
   },
 ];
 
-function AppHeader({ sidebarOpen, onToggleSidebar }: { 
-  sidebarOpen: boolean; 
+type SidebarMode = "full" | "rail" | "hidden";
+
+function AppHeader({ sidebarMode, onToggleSidebar }: { 
+  sidebarMode: SidebarMode; 
   onToggleSidebar: () => void; 
 }) {
   const { user } = useAuth();
@@ -141,6 +143,15 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
     window.location.href = "/api/logout";
   };
 
+  useEffect(() => {
+    if (!mobileSearchOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileSearchOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mobileSearchOpen]);
+
   return (
     <>
     <header className="bg-card border-b border-border h-16 flex items-center px-4 sm:px-6 sticky top-0 z-30" role="banner">
@@ -149,12 +160,11 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
           variant="ghost"
           size="sm"
           onClick={onToggleSidebar}
-          aria-label={sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
-          aria-expanded={sidebarOpen}
+          aria-label="Toggle navigation menu"
           data-testid="hamburger-menu-btn"
-          className="p-2 lg:hidden"
+          className="p-2"
         >
-          {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          <Menu className="h-6 w-6" />
         </Button>
         <AccessiBooksLogo />
         <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden" aria-label="Search">
@@ -214,7 +224,11 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
       </div>
     </header>
     {mobileSearchOpen && (
-      <div className="md:hidden fixed top-16 left-0 right-0 z-30 bg-card border-b border-border p-3 shadow-lg animate-in slide-in-from-top duration-200">
+      <div
+        className="md:hidden fixed top-16 left-0 right-0 z-30 bg-card border-b border-border p-3 shadow-lg animate-in slide-in-from-top duration-200"
+        role="search"
+        aria-label="Search audiobooks"
+      >
         <SearchAutocomplete onSelectBook={() => { navigate("/player"); setMobileSearchOpen(false); }} />
       </div>
     )}
@@ -222,9 +236,9 @@ function AppHeader({ sidebarOpen, onToggleSidebar }: {
   );
 }
 
-function AppSidebar({ mobileOpen, onCloseMobile }: {
-  mobileOpen: boolean;
-  onCloseMobile: () => void;
+function AppSidebar({ mode, onCloseDrawer }: {
+  mode: SidebarMode;
+  onCloseDrawer: () => void;
 }) {
   const [location] = useLocation();
 
@@ -233,7 +247,7 @@ function AppSidebar({ mobileOpen, onCloseMobile }: {
     return location === path || location.startsWith(path + "/");
   };
 
-  const sidebarContent = (
+  const makeFullNav = (onLinkClick?: () => void) => (
     <nav className="flex flex-col h-full overflow-y-auto py-4 px-3" aria-label="Main navigation">
       {sidebarNavGroups.map((group) => (
         <div key={group.label} className="mb-4">
@@ -244,7 +258,7 @@ function AppSidebar({ mobileOpen, onCloseMobile }: {
             <Link
               key={item.path}
               href={item.path}
-              onClick={() => onCloseMobile()}
+              onClick={onLinkClick}
               className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
                 isActive(item.path)
                   ? "bg-primary/10 text-primary"
@@ -261,21 +275,60 @@ function AppSidebar({ mobileOpen, onCloseMobile }: {
     </nav>
   );
 
+  const railNav = (
+    <nav className="flex flex-col h-full overflow-y-auto py-4 items-center" aria-label="Main navigation">
+      {sidebarNavGroups.map((group) => (
+        <div key={group.label} className="mb-2 w-full flex flex-col items-center">
+          {group.items.map((item) => (
+            <Tooltip key={item.path} delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Link
+                  href={item.path}
+                  className={`flex items-center justify-center w-11 h-11 rounded-md transition-colors mb-0.5 ${
+                    isActive(item.path)
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                  aria-label={item.label}
+                  data-testid={`menu-${item.path.replace("/", "") || "library"}`}
+                >
+                  {item.icon}
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="font-medium">
+                {item.label}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+          <div className="w-8 h-px bg-border my-1.5" />
+        </div>
+      ))}
+    </nav>
+  );
+
   return (
     <>
-      <aside className="hidden lg:flex flex-col w-60 shrink-0 bg-card border-r border-border h-[calc(100vh-4rem)] sticky top-16">
-        {sidebarContent}
-      </aside>
+      {/* Persistent sidebar — visible on md+ only, hidden on mobile */}
+      {mode !== "hidden" && (
+        <aside
+          className={`hidden md:flex flex-col shrink-0 bg-card border-r border-border h-[calc(100vh-4rem)] sticky top-16 transition-all duration-200 ${
+            mode === "full" ? "w-60" : "w-12"
+          }`}
+        >
+          {mode === "full" ? makeFullNav() : railNav}
+        </aside>
+      )}
 
-      {mobileOpen && (
+      {/* Slide-in drawer — used on all screen sizes when hidden */}
+      {mode === "hidden" && (
         <>
           <div
-            className="fixed inset-0 top-16 bg-black/40 z-40 lg:hidden"
-            onClick={onCloseMobile}
+            className="fixed inset-0 top-16 bg-black/40 z-40"
+            onClick={onCloseDrawer}
             aria-hidden="true"
           />
-          <aside className="fixed left-0 top-16 bottom-0 w-64 bg-card border-r border-border z-50 lg:hidden shadow-xl animate-in slide-in-from-left duration-200">
-            {sidebarContent}
+          <aside className="fixed left-0 top-16 bottom-0 w-64 bg-card border-r border-border z-50 shadow-xl animate-in slide-in-from-left duration-200">
+            {makeFullNav(onCloseDrawer)}
           </aside>
         </>
       )}
@@ -1167,10 +1220,28 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
   );
 }
 
+function useBreakpoint(breakpoint: number) {
+  const [matches, setMatches] = useState(() => window.innerWidth >= breakpoint);
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${breakpoint}px)`);
+    setMatches(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [breakpoint]);
+  return matches;
+}
+
 function MainApp() {
   const [location, navigate] = useLocation();
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const isMd = useBreakpoint(768);
+  const isLg = useBreakpoint(1024);
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
+    if (window.innerWidth >= 1024) return "full";
+    if (window.innerWidth >= 768) return "rail";
+    return "full";
+  });
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
   const { 
@@ -1293,14 +1364,24 @@ function MainApp() {
       </a>
 
       <AppHeader 
-        sidebarOpen={menuOpen} 
-        onToggleSidebar={() => setMenuOpen(!menuOpen)} 
+        sidebarMode={sidebarMode}
+        onToggleSidebar={() => {
+          if (!isMd) {
+            setSidebarMode(prev => prev === "hidden" ? "full" : "hidden");
+          } else {
+            setSidebarMode(prev => {
+              if (prev === "full") return "rail";
+              if (prev === "rail") return "hidden";
+              return isLg ? "full" : "rail";
+            });
+          }
+        }}
       />
 
       <div className="flex flex-1 min-h-0">
         <AppSidebar
-          mobileOpen={menuOpen}
-          onCloseMobile={() => setMenuOpen(false)}
+          mode={sidebarMode}
+          onCloseDrawer={() => setSidebarMode(isMd ? "rail" : "full")}
         />
 
         <div className={`flex-1 flex flex-col min-w-0 ${hasMiniPlayer ? "pb-20" : ""}`}>

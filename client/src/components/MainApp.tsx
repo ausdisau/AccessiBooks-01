@@ -66,7 +66,7 @@ export function MainApp() {
         <h1 className="text-3xl font-bold mb-6">Your Library</h1>
         
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
             {[...Array(8)].map((_, i) => (
               <Card key={i} className="animate-pulse">
                 <div className="h-48 bg-muted rounded-t-lg" />
@@ -87,7 +87,7 @@ export function MainApp() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
             {filteredBooks.map((book) => (
               <Card key={book.id} className="cursor-pointer hover:shadow-lg transition-shadow">
                 <div className="relative h-48 bg-gradient-to-br from-primary/20 to-secondary/20 rounded-t-lg overflow-hidden">
