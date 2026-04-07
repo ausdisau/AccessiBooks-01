@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { localStorageService } from "@/lib/storage";
+import { applyA11ySettings, getDefaultA11ySettings } from "@/lib/a11y-utils";
 import type { Book } from "@shared/schema";
 import type { AccessibilitySettings } from "@/lib/storage";
 
@@ -332,7 +333,17 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
           {step === 5 && (
             <AccessibilityStep
               selected={selectedA11yProfile}
-              onSelect={setSelectedA11yProfile}
+              onSelect={(profileId) => {
+                setSelectedA11yProfile(profileId);
+                // Apply immediately so the user sees the effect right away
+                const profile = A11Y_ONBOARDING_PROFILES.find((p) => p.id === profileId);
+                const base = getDefaultA11ySettings();
+                const merged: AccessibilitySettings = profile
+                  ? { ...base, ...profile.settings, activeProfile: profileId }
+                  : base;
+                localStorageService.saveSettings(merged);
+                applyA11ySettings(merged);
+              }}
               onNext={handleNext}
               onBack={handleBack}
             />
