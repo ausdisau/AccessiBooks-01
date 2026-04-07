@@ -52,4 +52,4 @@ CUSTOM_DATABASE_URL = "postgresql://neondb_owner:npg_PdZIj65TWkVt@ep-rough-bread
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 20000
+timeoutMs = 90000

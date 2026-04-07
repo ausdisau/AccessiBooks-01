@@ -6,7 +6,14 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { localStorageService, AccessibilitySettings } from "@/lib/storage";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { localStorageService, AccessibilitySettings, ColorVisionMode } from "@/lib/storage";
 import {
   Accessibility,
   X,
@@ -25,7 +32,35 @@ import {
   BookOpen,
   Pause,
   Layers,
+  Palette,
 } from "lucide-react";
+
+const CVD_SVG_ID = "a11y-cvd-filters";
+
+const CVD_FILTER_DEFS = `
+<defs>
+  <filter id="a11y-cvd-protanopia" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/>
+  </filter>
+  <filter id="a11y-cvd-deuteranopia" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/>
+  </filter>
+  <filter id="a11y-cvd-tritanopia" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/>
+  </filter>
+  <filter id="a11y-cvd-achromatopsia" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0 0 0 1 0"/>
+  </filter>
+</defs>
+`;
+
+const COLOR_VISION_OPTIONS: { value: ColorVisionMode; label: string; description: string }[] = [
+  { value: "none", label: "None", description: "Normal color vision" },
+  { value: "protanopia", label: "Protanopia", description: "Red-blind (most common)" },
+  { value: "deuteranopia", label: "Deuteranopia", description: "Green-blind" },
+  { value: "tritanopia", label: "Tritanopia", description: "Blue-blind" },
+  { value: "achromatopsia", label: "Achromatopsia", description: "Full grayscale" },
+];
 
 interface AccessibilityProfile {
   id: string;
@@ -47,6 +82,7 @@ const accessibilityProfiles: AccessibilityProfile[] = [
       lineHeight: 150,
       highlightFocus: true,
       largerCursor: true,
+      colorVisionMode: "protanopia" as ColorVisionMode,
     },
   },
   {
@@ -106,6 +142,20 @@ export function AccessibilityWidget() {
   const [readingGuideY, setReadingGuideY] = useState(0);
 
   useEffect(() => {
+    if (!document.getElementById(CVD_SVG_ID)) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("id", CVD_SVG_ID);
+      svg.setAttribute("aria-hidden", "true");
+      svg.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;pointer-events:none";
+      svg.innerHTML = CVD_FILTER_DEFS;
+      document.body.appendChild(svg);
+    }
+    return () => {
+      document.getElementById(CVD_SVG_ID)?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     applySettings(settings);
   }, [settings]);
 
@@ -133,8 +183,10 @@ export function AccessibilityWidget() {
     root.style.setProperty("--a11y-font-size", `${clampedSize}%`);
     root.style.setProperty("--a11y-letter-spacing", `${s.letterSpacing * 0.05}em`);
     root.style.setProperty("--a11y-line-height", `${s.lineHeight}%`);
-    root.style.setProperty("--a11y-saturation", `${s.saturation}%`);
     root.style.setProperty("--a11y-word-spacing", `${(s.wordSpacing || 0) * 0.05}em`);
+    const satFilter = `saturate(${s.saturation}%)`;
+    const cvdMode = s.colorVisionMode && s.colorVisionMode !== "none" ? s.colorVisionMode : null;
+    root.style.filter = cvdMode ? `${satFilter} url(#a11y-cvd-${cvdMode})` : satFilter;
   };
 
   const updateSettings = (partial: Partial<AccessibilitySettings>) => {
@@ -169,6 +221,8 @@ export function AccessibilityWidget() {
     largerCursor: false,
     readingMask: false,
     activeProfile: null,
+    wordSpacing: 0,
+    colorVisionMode: "none",
   });
 
   const resetSettings = () => {
@@ -309,6 +363,37 @@ export function AccessibilityWidget() {
                       onCheckedChange={(checked) => updateSettings({ largerCursor: checked })}
                     />
                   </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Palette className="h-4 w-4" /> Color Vision
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="color-vision-mode" className="text-sm text-muted-foreground">
+                    Simulate or compensate for color vision deficiency
+                  </Label>
+                  <Select
+                    value={settings.colorVisionMode ?? "none"}
+                    onValueChange={(value) =>
+                      updateSettings({ colorVisionMode: value as ColorVisionMode })
+                    }
+                  >
+                    <SelectTrigger id="color-vision-mode" className="w-full" aria-label="Select color vision mode">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COLOR_VISION_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">{opt.description}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
