@@ -1274,7 +1274,19 @@ function MainApp() {
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
   const { toast } = useToast();
+
+  const toggleFocusMode = useCallback(() => {
+    setFocusModeState((prev) => {
+      const next = !prev;
+      const s = localStorageService.getSettings();
+      const updated = { ...s, focusMode: next };
+      localStorageService.saveSettings(updated);
+      document.documentElement.classList.toggle("focus-mode", next);
+      return next;
+    });
+  }, []);
   const { 
     checkAccess, 
     showUpgradeModal, 
@@ -1353,8 +1365,8 @@ function MainApp() {
         localStorage.setItem("accessibooks_shortcut_tip_shown", "true");
         setTimeout(() => {
           toast({
-            title: "Tip: Keyboard shortcuts available",
-            description: "Press ? to see all keyboard shortcuts.",
+            title: "Tip: Press ? for shortcuts",
+            description: "Press ? anywhere to see keyboard shortcuts.",
             duration: 6000,
           });
         }, 1500);
@@ -1710,9 +1722,11 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const { toggleHighContrast } = useAccessibility();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   useKeyboardShortcuts({
     onHighContrast: toggleHighContrast,
+    onOpenShortcuts: () => setShortcutsOpen(true),
   });
 
   const promptSignUp = (action: string) => {
@@ -1793,6 +1807,8 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
         isRegistering={isRegistering}
         setIsRegistering={setIsRegistering}
       />
+
+      <KeyboardShortcutsOverlay open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

@@ -15,6 +15,7 @@ interface KeyboardShortcutHandlers {
   onNextChapter?: () => void;
   onPrevChapter?: () => void;
   onOpenShortcuts?: () => void;
+  onToggleFocusMode?: () => void;
 }
 
 export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
@@ -94,6 +95,11 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         case "?":
           event.preventDefault();
           handlers.onOpenShortcuts?.();
+          break;
+        case "f":
+        case "F":
+          event.preventDefault();
+          handlers.onToggleFocusMode?.();
           break;
       }
     };

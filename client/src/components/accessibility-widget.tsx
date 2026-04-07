@@ -105,6 +105,7 @@ const accessibilityProfiles: AccessibilityProfile[] = [
       readingGuide: true,
       lineHeight: 130,
       letterSpacing: 2,
+      focusMode: true,
     },
   },
   {
@@ -619,6 +620,17 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                       id="pause-animations"
                       checked={settings.pauseAnimations}
                       onCheckedChange={(checked) => updateSettings({ pauseAnimations: checked })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="focus-mode" className="flex items-center gap-2 text-sm">
+                      <Focus className="h-3 w-3" /> Focus Mode
+                      <span className="text-xs text-muted-foreground font-normal ml-1">(hide distractions)</span>
+                    </Label>
+                    <Switch
+                      id="focus-mode"
+                      checked={!!settings.focusMode}
+                      onCheckedChange={(checked) => updateSettings({ focusMode: checked })}
                     />
                   </div>
                 </div>

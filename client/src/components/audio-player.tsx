@@ -751,7 +751,9 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   data-testid="button-keyboard-shortcuts-hint"
                 >
                   <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
-                  <kbd className="text-[10px] font-mono">?</kbd>
+                  <span>Press</span>
+                  <kbd className="text-[10px] font-mono border border-current rounded px-0.5">?</kbd>
+                  <span>for shortcuts</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">

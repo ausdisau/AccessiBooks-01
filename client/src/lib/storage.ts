@@ -46,6 +46,7 @@ export interface AccessibilitySettings {
   colorVisionMode?: ColorVisionMode;
   captionsOn?: boolean;
   captionPosition?: "above" | "below";
+  focusMode?: boolean;
 }
 
 export const localStorageService = {
