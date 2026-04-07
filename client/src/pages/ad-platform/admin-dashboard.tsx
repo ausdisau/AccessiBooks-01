@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
 interface PendingAd {
@@ -77,6 +77,13 @@ export default function AdminPlatformDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [days, setDays] = useState(30);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  function buildAnalyticsUrl(base: string) {
+    if (customFrom && customTo) return `${base}?from=${customFrom}&to=${customTo}`;
+    return `${base}?days=${days}`;
+  }
 
   const { data: pendingAds = [], refetch: refetchAds } = useQuery<PendingAd[]>({
     queryKey: ["/api/ad/admin/pending-ads"],
@@ -101,8 +108,8 @@ export default function AdminPlatformDashboard() {
     topPublishers: Array<{ publisherId: string; email: string | null; companyName: string | null; totalEarnedCents: number; pendingCents: number }>;
     pendingPayouts: Array<{ id: string; publisherId: string; amountCents: number; status: string; createdAt: Date | null; email: string | null }>;
   }>({
-    queryKey: ["/api/analytics/admin", days],
-    queryFn: () => fetch(`/api/analytics/admin?days=${days}`).then(r => r.json()),
+    queryKey: ["/api/analytics/admin", days, customFrom, customTo],
+    queryFn: () => fetch(buildAnalyticsUrl("/api/analytics/admin")).then(r => r.json()),
     refetchInterval: 30000,
     staleTime: 25000,
   });
@@ -206,22 +213,35 @@ export default function AdminPlatformDashboard() {
 
           {/* Analytics */}
           <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider">Analytics</h2>
-              <div className="flex items-center gap-2">
-                {[7, 30, 90].map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setDays(d)}
-                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${days === d ? "bg-red-600/20 text-red-300 border border-red-500/30" : "text-white/40 hover:text-white/70"}`}
-                  >
-                    {d}d
-                  </button>
-                ))}
-                <button onClick={() => refetchAnalytics()} className="p-1 text-white/30 hover:text-white/60">
-                  <RefreshCw className="h-3.5 w-3.5" />
+            <div className="flex items-center flex-wrap gap-2 mb-4">
+              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider flex-shrink-0 mr-2">Analytics</h2>
+              {[7, 30, 90].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => { setDays(d); setCustomFrom(""); setCustomTo(""); }}
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${days === d && !customFrom ? "bg-red-600/20 text-red-300 border border-red-500/30" : "text-white/40 hover:text-white/70"}`}
+                >
+                  {d}d
                 </button>
+              ))}
+              <div className="flex items-center gap-1 ml-1">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="px-1.5 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-white/60 focus:border-red-500/50 focus:outline-none w-28"
+                />
+                <span className="text-white/30 text-xs">–</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="px-1.5 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-white/60 focus:border-red-500/50 focus:outline-none w-28"
+                />
               </div>
+              <button onClick={() => refetchAnalytics()} className="p-1 text-white/30 hover:text-white/60 ml-auto">
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
             </div>
 
             {/* GMV summary */}
@@ -243,7 +263,7 @@ export default function AdminPlatformDashboard() {
             {/* Daily volume line chart */}
             <Card className="bg-white/5 border-white/10 mb-4">
               <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-xs text-white/50 font-medium">Daily GMV & Revenue</CardTitle>
+                <CardTitle className="text-xs text-white/50 font-medium">Daily Auction Volume & GMV</CardTitle>
               </CardHeader>
               <CardContent className="px-2 pb-4">
                 {analyticsLoading ? (
@@ -252,16 +272,20 @@ export default function AdminPlatformDashboard() {
                   <div className="h-36 flex items-center justify-center text-white/20 text-xs">No data yet</div>
                 ) : (
                   <ResponsiveContainer width="100%" height={140}>
-                    <LineChart data={analytics.daily} margin={{ top: 0, right: 4, left: -20, bottom: 0 }}>
+                    <LineChart data={analytics.daily} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0d" />
                       <XAxis dataKey="date" tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: string) => v.slice(5)} />
-                      <YAxis tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                      <YAxis yAxisId="vol" orientation="left" tick={{ fill: "#ffffff33", fontSize: 9 }} />
+                      <YAxis yAxisId="gmv" orientation="right" tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`} />
                       <Tooltip
                         contentStyle={{ background: "#0d1527", border: "1px solid #ffffff14", borderRadius: 6 }}
                         labelStyle={{ color: "#ffffff80", fontSize: 11 }}
-                        formatter={(v: number) => [`$${(v / 100).toFixed(2)}`, "GMV"]}
+                        itemStyle={{ fontSize: 11 }}
+                        formatter={(v: number, name: string) => name === "Auctions" ? [v, "Auctions"] : [`$${(v / 100).toFixed(2)}`, "GMV"]}
                       />
-                      <Line type="monotone" dataKey="gmvCents" name="GMV" stroke="#ffffff50" strokeWidth={1.5} dot={false} />
+                      <Legend wrapperStyle={{ fontSize: 10, color: "#ffffff50" }} />
+                      <Line yAxisId="vol" type="monotone" dataKey="auctions" name="Auctions" stroke="#60a5fa" strokeWidth={1.5} dot={false} />
+                      <Line yAxisId="gmv" type="monotone" dataKey="gmvCents" name="GMV" stroke="#22c55e" strokeWidth={1.5} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
