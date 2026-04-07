@@ -78,6 +78,7 @@
     "express-rate-limit": "^8.2.2",
     "express-session": "^1.18.2",
     "fast-xml-parser": "^5.5.6",
+    "form-data": "^2.5.5",
     "framer-motion": "^11.13.1",
     "google-auth-library": "^10.5.0",
     "helmet": "^8.1.0",
@@ -85,9 +86,11 @@
     "iron-session": "^8.0.4",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^3.2.1",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.453.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
+    "minimatch": "^9.0.7",
     "next": "^16.1.4",
     "next-auth": "^4.24.13",
     "next-themes": "^0.4.6",
@@ -101,6 +104,8 @@
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",
     "passport-microsoft": "^2.1.0",
+    "path-to-regexp": "^0.1.13",
+    "picomatch": "^4.0.4",
     "range-parser": "^1.2.1",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
@@ -136,7 +141,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.5.13",
-    "@vitejs/plugin-react": "^4.3.2",
+    "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.30.4",
     "esbuild": "^0.25.0",
@@ -144,7 +149,7 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
     "typescript": "5.6.3",
-    "vite": "^5.4.19"
+    "vite": "^6.4.2"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
