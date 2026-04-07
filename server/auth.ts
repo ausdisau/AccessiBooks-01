@@ -74,43 +74,43 @@ export function setupAuth(app: Express) {
   passport.use(
     new LocalStrategy(async (username, password, done) => {
       try {
-        console.log(`Attempting login for username: ${username}`);
+        console.log(`Attempting login`);
         const user = await storage.getUserByUsername(username);
         
         if (user && user.password === 'EXTERNAL_USER') {
           // This is an external user, delegate authentication to external API
-          console.log(`External user ${username}, delegating to external API`);
+          console.log(`External user found, delegating to external API`);
           const authenticatedUser = await storage.authenticateExternalUser(username, password);
           
           if (authenticatedUser) {
-            console.log(`External authentication successful for ${username}`);
+            console.log(`External authentication successful`);
             return done(null, authenticatedUser);
           } else {
-            console.log(`External authentication failed for ${username}`);
+            console.log(`External authentication failed`);
             return done(null, false, { message: 'Invalid credentials' });
           }
         } else if (user) {
           // This is a local user, use local password verification
-          console.log(`Local user ${username}, checking password`);
+          console.log(`Local user found, checking password`);
           const isValidPassword = await comparePasswords(password, user.password || '');
           
           if (!isValidPassword) {
-            console.log(`Invalid password for local user ${username}`);
+            console.log(`Invalid password for local user`);
             return done(null, false, { message: 'Invalid password' });
           }
           
-          console.log(`Local login successful for user ${username}`);
+          console.log(`Local login successful`);
           return done(null, user);
         } else {
           // User not found, try external authentication as a fallback
-          console.log(`User ${username} not found locally, trying external authentication`);
+          console.log(`User not found locally, trying external authentication`);
           const authenticatedUser = await storage.authenticateExternalUser(username, password);
           
           if (authenticatedUser) {
-            console.log(`External authentication successful for new user ${username}`);
+            console.log(`External authentication successful for new user`);
             return done(null, authenticatedUser);
           } else {
-            console.log(`User ${username} not found`);
+            console.log(`User not found`);
             return done(null, false, { message: 'User not found' });
           }
         }
@@ -139,10 +139,7 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      console.log('Registration attempt:', { 
-        username: req.body.username, 
-        email: req.body.email 
-      });
+      console.log('Registration attempt received');
       
       // Check if user already exists
       const existingUserByUsername = await storage.getUserByUsername(req.body.username);
@@ -163,7 +160,7 @@ export function setupAuth(app: Express) {
         password: hashedPassword,
       });
 
-      console.log('User registered successfully:', user.username);
+      console.log('User registered successfully:', user.id);
 
       req.login(user, (err) => {
         if (err) {
@@ -182,7 +179,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    console.log('Login attempt for:', req.body.username);
+    console.log('Login attempt received');
     
     passport.authenticate("local", (err: any, user: SelectUser, info: any) => {
       if (err) {
@@ -201,7 +198,7 @@ export function setupAuth(app: Express) {
           return res.status(500).json({ message: "Login failed" });
         }
         
-        console.log('Login successful for:', user.username);
+        console.log('Login successful for user:', user.id);
         // Don't send password in response
         const { password, ...userWithoutPassword } = user;
         res.status(200).json(userWithoutPassword);
@@ -210,15 +207,13 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/logout", (req, res, next) => {
-    const username = req.user?.username;
-    
     req.logout((err) => {
       if (err) {
         console.error('Logout error:', err);
         return next(err);
       }
       
-      console.log('Logout successful for:', username);
+      console.log('Logout successful');
       res.sendStatus(200);
     });
   });
@@ -229,7 +224,7 @@ export function setupAuth(app: Express) {
       return res.sendStatus(401);
     }
     
-    console.log('Returning current user:', req.user?.username);
+    console.log('Returning current user:', req.user?.id);
     // Don't send password in response
     const { password, ...userWithoutPassword } = req.user!;
     res.json(userWithoutPassword);
