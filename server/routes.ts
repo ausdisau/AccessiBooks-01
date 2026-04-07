@@ -4198,6 +4198,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       .replace(/'/g, "&#039;");
   }
 
+  function safeJsonLd(obj: object): string {
+    return JSON.stringify(obj).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
+  }
+
   function truncate(str: string, len: number): string {
     if (str.length <= len) return str;
     return str.slice(0, len - 3) + "...";
@@ -4222,7 +4226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const url = escapeHtml(`https://${host}/book/${id}`);
       const rawDescription = book.description || `Listen to ${book.title} by ${book.author} on AccessiBooks.`;
 
-      const jsonLd = JSON.stringify({
+      const jsonLd = safeJsonLd({
         "@context": "https://schema.org",
         "@type": "Audiobook",
         "name": book.title,
@@ -4273,7 +4277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const url = escapeHtml(`https://${host}/author/${encodeURIComponent(decodedName)}`);
       const description = escapeHtml(truncate(`Browse audiobooks and ebooks by ${decodedName} on AccessiBooks. Discover their complete collection.`, 160));
 
-      const jsonLd = JSON.stringify({
+      const jsonLd = safeJsonLd({
         "@context": "https://schema.org",
         "@type": "Person",
         "name": decodedName,

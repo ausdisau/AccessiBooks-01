@@ -1473,7 +1473,7 @@ export class ExternalAPIStorage implements IStorage {
 
   async upsertUser(userData: UpsertUser): Promise<User> {
     try {
-      console.log(`Upserting user ${userData.id || 'new'} (${userData.email})`);
+      console.log(`Upserting user ${userData.id || 'new'}`);
       const [user] = await db
         .insert(users)
         .values(userData)
@@ -1535,7 +1535,7 @@ export class ExternalAPIStorage implements IStorage {
         }
       }
     } catch (error) {
-      console.warn(`Failed to search for user by email ${email}:`, error);
+      console.warn(`Failed to search for user by email:`, error);
     }
     
     return undefined;
@@ -1543,7 +1543,7 @@ export class ExternalAPIStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     try {
-      console.log('Creating user in database...', { email: insertUser.email });
+      console.log('Creating user in database...');
       
       // Create user in PostgreSQL database
       const [user] = await db
