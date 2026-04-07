@@ -12,9 +12,10 @@ interface SkipStatus {
 }
 
 interface AudioQuality {
-  quality: "low" | "high";
+  quality: "low" | "mid" | "high" | "ultra";
   bitrate: number;
   isPremium: boolean;
+  tier?: string;
   upgradeMessage: string | null;
 }
 
@@ -34,7 +35,7 @@ interface DevicesResponse {
 interface PlaybackSession {
   success: boolean;
   sessionId?: string;
-  quality: "low" | "high";
+  quality: "low" | "mid" | "high" | "ultra";
   bitrate: number;
   isPremium: boolean;
   message?: string;
@@ -43,7 +44,7 @@ interface PlaybackSession {
 interface PlaybackRules {
   isPremium: boolean;
   skipStatus: SkipStatus;
-  quality: "low" | "high";
+  quality: "low" | "mid" | "high" | "ultra";
   bitrate: number;
   shuffleRequired: boolean;
   showAds: boolean;

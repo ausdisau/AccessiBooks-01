@@ -39,7 +39,7 @@ interface PlaybackSession {
   bookId: string;
   startedAt: number;
   lastHeartbeat: number;
-  quality: "low" | "mid" | "high";
+  quality: "low" | "mid" | "high" | "ultra";
 }
 
 const skipTrackers = new Map<string, SkipTracker>();
@@ -105,16 +105,22 @@ export function getAudioQuality(isPremium: boolean): "low" | "mid" | "high" {
   return isPremium ? "high" : "low";
 }
 
-export function getAudioQualityForTier(tier: SubscriptionTier): "low" | "mid" | "high" {
-  if (tier === "premium") return "high";
+export function getAudioQualityForTier(tier: SubscriptionTier): "low" | "mid" | "high" | "ultra" {
+  if (tier === "premium") return "ultra";
   if (tier === "plus") return "mid";
   return "low";
 }
 
-export function getQualityBitrate(quality: "low" | "mid" | "high"): number {
-  if (quality === "high") return 320;
+export function getQualityBitrate(quality: "low" | "mid" | "high" | "ultra"): number {
+  if (quality === "ultra" || quality === "high") return 320;
   if (quality === "mid") return 192;
   return 128;
+}
+
+export function getQualityDisplayInfo(quality: "low" | "mid" | "high" | "ultra"): { label: string; tier: "uhq" | "hd" | "sd" } {
+  if (quality === "ultra") return { label: "UHQ · 320 kbps", tier: "uhq" };
+  if (quality === "high" || quality === "mid") return { label: quality === "high" ? "HD · 320 kbps" : "HD · 192 kbps", tier: "hd" };
+  return { label: "SD · 128 kbps", tier: "sd" };
 }
 
 export function registerDevice(
