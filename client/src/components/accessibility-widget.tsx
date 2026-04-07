@@ -174,6 +174,7 @@ export function AccessibilityWidget() {
     root.classList.toggle("high-contrast", s.highContrast);
     root.classList.toggle("dyslexia-font", s.dyslexiaFont);
     root.classList.toggle("dark", s.darkMode);
+    // Keep .invert-colors class for child rules (img/video/svg counter-invert)
     root.classList.toggle("invert-colors", s.invertColors);
     root.classList.toggle("highlight-links", s.highlightLinks);
     root.classList.toggle("highlight-focus", s.highlightFocus);
@@ -184,9 +185,14 @@ export function AccessibilityWidget() {
     root.style.setProperty("--a11y-letter-spacing", `${s.letterSpacing * 0.05}em`);
     root.style.setProperty("--a11y-line-height", `${s.lineHeight}%`);
     root.style.setProperty("--a11y-word-spacing", `${(s.wordSpacing || 0) * 0.05}em`);
-    const satFilter = `saturate(${s.saturation}%)`;
+    // Compose all root-level filters into a single inline style so they never conflict:
+    // invert (if on) → saturation → CVD simulation (if active)
+    const filters: string[] = [];
+    if (s.invertColors) filters.push("invert(1) hue-rotate(180deg)");
+    filters.push(`saturate(${s.saturation}%)`);
     const cvdMode = s.colorVisionMode && s.colorVisionMode !== "none" ? s.colorVisionMode : null;
-    root.style.filter = cvdMode ? `${satFilter} url(#a11y-cvd-${cvdMode})` : satFilter;
+    if (cvdMode) filters.push(`url(#a11y-cvd-${cvdMode})`);
+    root.style.filter = filters.join(" ");
   };
 
   const updateSettings = (partial: Partial<AccessibilitySettings>) => {
