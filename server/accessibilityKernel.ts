@@ -81,8 +81,9 @@ export function registerAccessibilityKernelRoutes(app: Express) {
         }
       }
 
-      // No stored record — return null so the client knows no preferences have been saved yet
-      return res.json({ profile: null, hasStoredRecord: false });
+      // No stored record — return DEFAULT_PROFILE for backward compat with existing consumers,
+      // but set hasStoredRecord: false so the widget can distinguish "never saved" from "saved"
+      return res.json({ profile: DEFAULT_PROFILE, hasStoredRecord: false });
     } catch (error) {
       console.error("[A11y Kernel] Error fetching preferences:", error);
       res.status(500).json({ message: "Failed to fetch accessibility preferences" });
