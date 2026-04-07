@@ -2531,6 +2531,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/reviews/generate-title - AI-generate a review title
+  app.post("/api/reviews/generate-title", isAuthenticated, async (req: any, res) => {
+    try {
+      const { content, bookTitle } = req.body;
+      if (!content || typeof content !== "string" || content.trim().length === 0) {
+        return res.status(400).json({ message: "Review content is required" });
+      }
+
+      const { openai } = await import("./replit_integrations/image/client");
+
+      const bookContext = typeof bookTitle === "string" && bookTitle.trim() ? ` for the book "${bookTitle.trim()}"` : "";
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "user",
+            content: `Write a short, punchy review title (6 words or fewer)${bookContext} based on this review:\n\n${content.slice(0, 1000)}\n\nRespond with only the title, no quotes.`,
+          },
+        ],
+        max_completion_tokens: 30,
+      });
+
+      const title = completion.choices[0]?.message?.content?.trim() ?? "";
+      if (!title) {
+        return res.status(500).json({ message: "Failed to generate title" });
+      }
+
+      res.json({ title });
+    } catch (error) {
+      console.error("Error generating review title:", error);
+      res.status(500).json({ message: "Failed to generate title" });
+    }
+  });
+
   // POST /api/reviews - Create a new review
   app.post("/api/reviews", isAuthenticated, async (req: any, res) => {
     try {
