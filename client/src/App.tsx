@@ -1400,7 +1400,7 @@ function MainApp() {
     if (window.innerWidth >= 768) return "rail";
     return "full";
   });
-  const { settings: a11ySettings, toggleHighContrast } = useAccessibility();
+  const { settings: a11ySettings, toggleHighContrast, toggleDarkMode } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
@@ -1541,7 +1541,14 @@ function MainApp() {
     onToggleFocusMode: toggleFocusMode,
   });
 
+  const stopListeningRef = useRef<() => void>(() => {});
+
   const voiceCommands = useMemo<VoiceCommand[]>(() => [
+    {
+      patterns: ["stop", "stop listening", "cancel", "never mind"],
+      handler: () => stopListeningRef.current(),
+      description: "Stop listening",
+    },
     {
       patterns: ["play", "resume", "start"],
       handler: () => togglePlayPause(),
@@ -1604,7 +1611,7 @@ function MainApp() {
     },
     {
       patterns: ["dark mode", "dark theme", "night mode"],
-      handler: () => document.dispatchEvent(new CustomEvent("accessibooks:settings-changed")),
+      handler: () => toggleDarkMode(),
       description: "Toggle dark mode",
     },
     {
@@ -1632,7 +1639,7 @@ function MainApp() {
       },
       description: "Search for a book by name",
     },
-  ], [togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, navigate]);
+  ], [togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate]);
 
   const voiceControl = useVoiceControl({
     commands: voiceCommands,
@@ -1644,6 +1651,10 @@ function MainApp() {
       });
     },
   });
+
+  useEffect(() => {
+    stopListeningRef.current = voiceControl.stopListening;
+  }, [voiceControl.stopListening]);
 
   useEffect(() => {
     const handler = () => setShortcutsOpen(true);
@@ -1953,7 +1964,7 @@ function MainApp() {
         onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan || "monthly"); }}
       />
 
-      {a11ySettings.voiceControlEnabled && (
+      {a11ySettings.voiceControlEnabled && voiceControl.isSupported && (
         <VoiceControlButton voiceControl={voiceControl} />
       )}
 

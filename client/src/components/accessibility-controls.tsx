@@ -8,16 +8,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAccessibility } from "@/hooks/use-accessibility";
+import { isSpeechRecognitionSupported } from "@/hooks/use-voice-control";
 import { Accessibility, Contrast, Type, Moon, Check, Settings, Mic, MicOff } from "lucide-react";
 import { PreferencesKernel } from "./preferences-kernel";
-
-function isSpeechRecognitionSupported() {
-  return typeof window !== "undefined" &&
-    !!(
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition
-    );
-}
 
 export function AccessibilityControls() {
   const { settings, toggleHighContrast, toggleDyslexiaFont, toggleDarkMode, toggleVoiceControl } = useAccessibility();
@@ -46,7 +39,7 @@ export function AccessibilityControls() {
             )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem
             onClick={toggleHighContrast}
             data-testid="button-high-contrast"
@@ -80,7 +73,7 @@ export function AccessibilityControls() {
             </span>
             {settings.darkMode && <Check className="h-4 w-4 text-primary" />}
           </DropdownMenuItem>
-          {speechSupported && (
+          {speechSupported ? (
             <DropdownMenuItem
               onClick={toggleVoiceControl}
               data-testid="button-voice-control"
@@ -95,6 +88,19 @@ export function AccessibilityControls() {
                 Voice Control
               </span>
               {settings.voiceControlEnabled && <Check className="h-4 w-4 text-primary" />}
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              disabled
+              data-testid="button-voice-control"
+              className="flex items-center opacity-50 cursor-not-allowed"
+              title="Voice control requires Chrome or Edge"
+            >
+              <MicOff className="h-4 w-4 mr-2" aria-hidden="true" />
+              <span className="flex flex-col">
+                <span>Voice Control</span>
+                <span className="text-[10px] text-muted-foreground font-normal">Not supported in this browser</span>
+              </span>
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
