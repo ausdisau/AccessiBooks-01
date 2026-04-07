@@ -52,6 +52,20 @@ export function registerAdPlatformRoutes(app: Express) {
     }
   });
 
+  // GET /api/ad/campaigns/:id — single campaign (owner or admin)
+  app.get("/api/ad/campaigns/:id", requireAnyRole("advertiser", "admin"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const [row] = user.role === "admin"
+        ? await db.select().from(adCampaigns).where(eq(adCampaigns.id, req.params.id))
+        : await db.select().from(adCampaigns).where(and(eq(adCampaigns.id, req.params.id), eq(adCampaigns.advertiserId, user.id)));
+      if (!row) return res.status(404).json({ message: "Campaign not found" });
+      res.json(row);
+    } catch (e) {
+      res.status(500).json({ message: "Failed to fetch campaign" });
+    }
+  });
+
   // POST /api/ad/campaigns
   app.post("/api/ad/campaigns", requireRole("advertiser"), async (req: Request, res: Response) => {
     try {
@@ -138,6 +152,20 @@ export function registerAdPlatformRoutes(app: Express) {
     }
   });
 
+  // GET /api/ad/display-ads/:id — single ad (owner or admin)
+  app.get("/api/ad/display-ads/:id", requireAnyRole("advertiser", "admin"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const [row] = user.role === "admin"
+        ? await db.select().from(displayAds).where(eq(displayAds.id, req.params.id))
+        : await db.select().from(displayAds).where(and(eq(displayAds.id, req.params.id), eq(displayAds.advertiserId, user.id)));
+      if (!row) return res.status(404).json({ message: "Ad not found" });
+      res.json(row);
+    } catch (e) {
+      res.status(500).json({ message: "Failed to fetch ad" });
+    }
+  });
+
   app.post("/api/ad/display-ads", requireRole("advertiser"), async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req)!;
@@ -218,6 +246,20 @@ export function registerAdPlatformRoutes(app: Express) {
       res.json(rows.map(withEmbedSnippet));
     } catch (e) {
       res.status(500).json({ message: "Failed to fetch slots" });
+    }
+  });
+
+  // GET /api/ad/slots/:id — single slot (owner or admin)
+  app.get("/api/ad/slots/:id", requireAnyRole("publisher", "admin"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const [row] = user.role === "admin"
+        ? await db.select().from(adSlots).where(eq(adSlots.id, req.params.id))
+        : await db.select().from(adSlots).where(and(eq(adSlots.id, req.params.id), eq(adSlots.publisherId, user.id)));
+      if (!row) return res.status(404).json({ message: "Slot not found" });
+      res.json(withEmbedSnippet(row));
+    } catch (e) {
+      res.status(500).json({ message: "Failed to fetch slot" });
     }
   });
 
