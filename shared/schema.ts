@@ -136,6 +136,7 @@ export const users = pgTable("users", {
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   subscriptionEndDate: timestamp("subscription_end_date"),
+  stripeEasyEnglishSubscriptionItemId: varchar("stripe_easy_english_subscription_item_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   referralCode: varchar("referral_code").unique(),
@@ -1643,4 +1644,36 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
 });
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
+
+// === EASY ENGLISH ADD-ON ===
+
+export const FREE_EASY_ENGLISH_MONTHLY_ALLOWANCE = 3;
+
+export const easyEnglishCache = pgTable("easy_english_cache", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull(),
+  chapterNumber: integer("chapter_number").notNull(),
+  originalText: text("original_text").notNull(),
+  convertedText: text("converted_text").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_easy_english_cache_book_chapter").on(table.bookId, table.chapterNumber),
+]);
+
+export const insertEasyEnglishCacheSchema = createInsertSchema(easyEnglishCache).omit({ id: true, createdAt: true });
+export type InsertEasyEnglishCache = z.infer<typeof insertEasyEnglishCacheSchema>;
+export type EasyEnglishCache = typeof easyEnglishCache.$inferSelect;
+
+export const easyEnglishUsage = pgTable("easy_english_usage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  yearMonth: varchar("year_month").notNull(), // e.g. "2026-04"
+  chaptersConverted: integer("chapters_converted").notNull().default(0),
+}, (table) => [
+  index("idx_easy_english_usage_user_month").on(table.userId, table.yearMonth),
+]);
+
+export const insertEasyEnglishUsageSchema = createInsertSchema(easyEnglishUsage).omit({ id: true });
+export type InsertEasyEnglishUsage = z.infer<typeof insertEasyEnglishUsageSchema>;
+export type EasyEnglishUsage = typeof easyEnglishUsage.$inferSelect;
 

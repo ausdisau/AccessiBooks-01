@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useSubscription } from "@/hooks/use-subscription";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,8 @@ import {
   ArrowUp,
   ArrowDown,
   Palette,
+  Sparkles,
+  Lock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -193,6 +195,9 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [showStats, setShowStats] = useState(false);
   const [readingStartTime] = useState(() => Date.now());
   const [pageTransition, setPageTransition] = useState<"none" | "slide-left" | "slide-right">("none");
+  const [easyEnglishMode, setEasyEnglishMode] = useState(false);
+  const [easyEnglishText, setEasyEnglishText] = useState<string | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
@@ -200,7 +205,86 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const { toast } = useToast();
 
+  const { data: easyEnglishStatus, refetch: refetchEasyEnglishStatus } = useQuery<{
+    freeChaptersRemaining: number | null;
+    hasAddonSubscription: boolean;
+    chaptersConvertedThisMonth: number;
+    monthlyAllowance: number;
+  }>({
+    queryKey: ["/api/easy-english/status"],
+    retry: false,
+  });
+
+  const convertMutation = useMutation({
+    mutationFn: async ({ bookId, chapterNumber }: { bookId: string; chapterNumber: number }) => {
+      const res = await apiRequest("POST", "/api/easy-english/convert", { bookId, chapterNumber });
+      if (res.status === 402) {
+        const data = await res.json();
+        throw Object.assign(new Error("paywall"), { paywall: true, data });
+      }
+      if (!res.ok) throw new Error("Conversion failed");
+      return res.json() as Promise<{ convertedText: string; fromCache: boolean }>;
+    },
+    onSuccess: (data) => {
+      setEasyEnglishText(data.convertedText);
+      setEasyEnglishMode(true);
+      setShowPaywall(false);
+      refetchEasyEnglishStatus();
+    },
+    onError: (err: any) => {
+      if (err.paywall) {
+        setShowPaywall(true);
+        setEasyEnglishMode(false);
+      } else {
+        toast({ title: "Conversion failed", description: "Could not convert to Easy English. Try again.", variant: "destructive" });
+      }
+    },
+  });
+
+  const subscribeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/easy-english/subscribe");
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Subscribe failed");
+      }
+      return res.json() as Promise<{ checkoutUrl: string }>;
+    },
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Subscription failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleEasyEnglishToggle = () => {
+    if (easyEnglishMode) {
+      setEasyEnglishMode(false);
+      setEasyEnglishText(null);
+      setShowPaywall(false);
+      return;
+    }
+    if (easyEnglishText) {
+      setEasyEnglishMode(true);
+      return;
+    }
+    if (!pageContent) {
+      toast({ title: "No content to convert", variant: "destructive" });
+      return;
+    }
+    convertMutation.mutate({ bookId: book.id, chapterNumber: currentPage });
+  };
+
   const words = useMemo(() => content.split(/\s+/).filter(Boolean), [content]);
+
+  useEffect(() => {
+    setEasyEnglishMode(false);
+    setEasyEnglishText(null);
+    setShowPaywall(false);
+  }, [currentPage]);
 
   useEffect(() => {
     loadContent();
@@ -673,6 +757,21 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowStats(!showStats)} aria-label="Reading stats">
               <BarChart3 className="h-4 w-4" />
             </Button>
+            <Button
+              variant={easyEnglishMode ? "default" : "ghost"}
+              size="icon"
+              className={`h-8 w-8 ${easyEnglishMode ? "bg-purple-600 text-white hover:bg-purple-700" : ""}`}
+              onClick={handleEasyEnglishToggle}
+              disabled={convertMutation.isPending}
+              aria-label="Easy English mode"
+              title="Easy English"
+            >
+              {convertMutation.isPending ? (
+                <span className="h-4 w-4 block rounded-full border-2 border-current border-t-transparent animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+            </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
             </Button>
@@ -822,6 +921,37 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           <p className={theme.mutedText}>by {book.author}</p>
         </div>
 
+        {easyEnglishStatus && !easyEnglishStatus.hasAddonSubscription && (
+          <div className={`mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm ${settings.theme === "dark" ? "bg-purple-900/30 border border-purple-700/40" : "bg-purple-50 border border-purple-200"}`}>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0" />
+              <span className={settings.theme === "dark" ? "text-purple-200" : "text-purple-800"}>
+                Easy English:{" "}
+                <span className="font-semibold">
+                  {easyEnglishStatus.freeChaptersRemaining} free chapter{easyEnglishStatus.freeChaptersRemaining !== 1 ? "s" : ""} remaining this month
+                </span>
+              </span>
+            </div>
+            {easyEnglishMode && (
+              <Badge variant="secondary" className="bg-purple-100 text-purple-800 border-purple-300 text-xs">
+                Easy English ON
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {easyEnglishStatus?.hasAddonSubscription && easyEnglishMode && (
+          <div className={`mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${settings.theme === "dark" ? "bg-purple-900/30 border border-purple-700/40" : "bg-purple-50 border border-purple-200"}`}>
+            <Sparkles className="h-4 w-4 text-purple-500" />
+            <span className={settings.theme === "dark" ? "text-purple-200" : "text-purple-800"}>
+              Easy English mode active
+            </span>
+            <Badge variant="secondary" className="ml-auto bg-purple-100 text-purple-800 border-purple-300 text-xs">
+              Add-on Active
+            </Badge>
+          </div>
+        )}
+
         <div className="mb-4">
           <TTSPlayer
             text={pageContent}
@@ -850,41 +980,84 @@ function TextReader({ book, onBack }: EbookReaderProps) {
         <div className={`relative overflow-hidden rounded-lg ${pageTransition !== "none" ? "transition-transform duration-300" : ""}`}>
           <Card className={`${theme.cardBg} transition-colors duration-300 ${pageTransition === "slide-left" ? "animate-slide-in-left" : pageTransition === "slide-right" ? "animate-slide-in-right" : ""}`}>
             <CardContent className="p-6 sm:p-8 md:p-12">
-              <div
-                ref={contentRef}
-                className={`
-                  ${fontFamilyClass[settings.fontFamily]}
-                  ${theme.text}
-                  leading-relaxed select-text
-                `}
-                style={{
-                  fontSize: `${settings.fontSize}px`,
-                  lineHeight: settings.lineHeight,
-                  letterSpacing: settings.fontFamily === "dyslexia" ? "0.05em" : undefined,
-                  wordSpacing: settings.fontFamily === "dyslexia" ? "0.1em" : undefined,
-                }}
-                onMouseUp={handleTextSelection}
-              >
-                {highlightedWordIndex !== null ? (
-                  <HighlightedText
-                    text={pageContent}
-                    activeWordIndex={highlightedWordIndex}
-                    darkMode={settings.theme === "dark"}
-                    annotations={currentPageAnnotations}
-                    searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
-                  />
-                ) : (
-                  <AnnotatedText
-                    text={pageContent}
-                    annotations={currentPageAnnotations}
-                    searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
-                    darkMode={settings.theme === "dark"}
-                  />
-                )}
-                {!pageContent && (
-                  <p className="text-center text-muted-foreground italic">Content not available for preview</p>
-                )}
-              </div>
+              {showPaywall ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto">
+                    <Lock className="h-8 w-8 text-purple-500" />
+                  </div>
+                  <div>
+                    <h3 className={`text-lg font-semibold mb-1 ${theme.text}`}>Free Easy English allowance used up</h3>
+                    <p className={`text-sm ${theme.mutedText}`}>
+                      You've used your {easyEnglishStatus?.monthlyAllowance ?? 3} free Easy English chapters this month. Subscribe to the add-on to convert unlimited chapters.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                    <Button
+                      onClick={() => subscribeMutation.mutate()}
+                      disabled={subscribeMutation.isPending}
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      {subscribeMutation.isPending ? "Subscribing..." : "Subscribe — $0.49/chapter"}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setShowPaywall(false); setEasyEnglishMode(false); }}>
+                      Continue with original text
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  ref={contentRef}
+                  className={`
+                    ${fontFamilyClass[settings.fontFamily]}
+                    ${theme.text}
+                    leading-relaxed select-text
+                  `}
+                  style={{
+                    fontSize: `${settings.fontSize}px`,
+                    lineHeight: settings.lineHeight,
+                    letterSpacing: settings.fontFamily === "dyslexia" ? "0.05em" : undefined,
+                    wordSpacing: settings.fontFamily === "dyslexia" ? "0.1em" : undefined,
+                  }}
+                  onMouseUp={handleTextSelection}
+                >
+                  {easyEnglishMode && easyEnglishText ? (
+                    <div>
+                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-purple-200/50">
+                        <Sparkles className="h-4 w-4 text-purple-500" />
+                        <span className={`text-xs font-medium ${settings.theme === "dark" ? "text-purple-300" : "text-purple-600"}`}>
+                          Easy English version
+                        </span>
+                        <button
+                          onClick={() => { setEasyEnglishMode(false); }}
+                          className={`ml-auto text-xs underline ${theme.mutedText}`}
+                        >
+                          Show original
+                        </button>
+                      </div>
+                      <span>{easyEnglishText}</span>
+                    </div>
+                  ) : highlightedWordIndex !== null ? (
+                    <HighlightedText
+                      text={pageContent}
+                      activeWordIndex={highlightedWordIndex}
+                      darkMode={settings.theme === "dark"}
+                      annotations={currentPageAnnotations}
+                      searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
+                    />
+                  ) : (
+                    <AnnotatedText
+                      text={pageContent}
+                      annotations={currentPageAnnotations}
+                      searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
+                      darkMode={settings.theme === "dark"}
+                    />
+                  )}
+                  {!pageContent && !easyEnglishMode && (
+                    <p className="text-center text-muted-foreground italic">Content not available for preview</p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -22,6 +22,14 @@ import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
 import { registerMoatScaffoldRoutes } from "./moatScaffold";
 import { registerChatRoutes } from "./replit_integrations/chat";
+import {
+  convertToEasyEnglish,
+  getUserEasyEnglishStatus,
+  incrementUserUsage,
+  reportStripeUsage,
+  fetchCanonicalPageText,
+} from "./easyEnglish";
+import { easyEnglishCache } from "@shared/schema";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -163,6 +171,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI conversational chat routes (conversations, messages, streaming AI responses)
   registerChatRoutes(app);
+
+  // === EASY ENGLISH ADD-ON ROUTES ===
+
+  // GET /api/easy-english/status - Returns free chapters remaining and subscription status
+  app.get("/api/easy-english/status", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const status = await getUserEasyEnglishStatus(userId);
+      res.json(status);
+    } catch (error) {
+      console.error("[EasyEnglish] Error getting status:", error);
+      res.status(500).json({ message: "Failed to get Easy English status" });
+    }
+  });
+
+  // POST /api/easy-english/convert - Convert page text to Easy English
+  app.post("/api/easy-english/convert", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      // chapterNumber = the 1-based reading segment (page slice of ~300 words)
+      // For text ebooks that have no discrete chapters, each ~300-word page IS the billable unit.
+      const { bookId, chapterNumber } = req.body;
+      if (!bookId || typeof chapterNumber !== "number" || chapterNumber < 1) {
+        return res.status(400).json({ message: "bookId and chapterNumber are required" });
+      }
+
+      // Check if already cached (cache hit is free — no usage counted)
+      const cached = await db.select().from(easyEnglishCache)
+        .where(and(eq(easyEnglishCache.bookId, bookId), eq(easyEnglishCache.chapterNumber, chapterNumber)))
+        .limit(1);
+
+      if (cached.length > 0) {
+        return res.json({ convertedText: cached[0].convertedText, fromCache: true });
+      }
+
+      // Cache miss — check limits before doing any work
+      const status = await getUserEasyEnglishStatus(userId);
+
+      if (!status.hasAddonSubscription && (status.freeChaptersRemaining ?? 0) <= 0) {
+        return res.status(402).json({
+          message: "Free Easy English allowance exhausted",
+          requiresSubscription: true,
+          freeChaptersRemaining: 0,
+          hasAddonSubscription: false,
+        });
+      }
+
+      // Fetch canonical page text server-side (prevents cache poisoning)
+      const baseUrl = `http://localhost:${process.env.PORT || 5000}`;
+      const canonicalText = await fetchCanonicalPageText(bookId, chapterNumber, baseUrl);
+      if (!canonicalText) {
+        return res.status(404).json({ message: "Page content not found or book has no text content" });
+      }
+
+      // Convert using OpenAI
+      const convertedText = await convertToEasyEnglish(bookId, chapterNumber, canonicalText);
+
+      // Increment monthly usage counter
+      await incrementUserUsage(userId);
+
+      // Report to Stripe for paid add-on subscribers
+      if (status.hasAddonSubscription) {
+        const userRow = await db.select({ stripeCustomerId: users.stripeCustomerId })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        const customerId = userRow[0]?.stripeCustomerId;
+        if (customerId) {
+          await reportStripeUsage(customerId);
+        }
+      }
+
+      res.json({ convertedText, fromCache: false });
+    } catch (error) {
+      console.error("[EasyEnglish] Error converting text:", error);
+      res.status(500).json({ message: "Failed to convert text to Easy English" });
+    }
+  });
+
+  // POST /api/easy-english/subscribe - Subscribe user to the Easy English metered add-on
+  app.post("/api/easy-english/subscribe", async (req: any, res) => {
+    try {
+      if (!req.isAuthenticated || !req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      if (!stripe) {
+        return res.status(503).json({ message: "Stripe not configured" });
+      }
+
+      const userRow = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!userRow.length) return res.status(404).json({ message: "User not found" });
+
+      const user = userRow[0];
+
+      // Guard against duplicate subscriptions — webhook must confirm activation
+      if (user.stripeEasyEnglishSubscriptionItemId) {
+        return res.status(409).json({ message: "Already subscribed to Easy English add-on" });
+      }
+
+      // Ensure Stripe customer exists
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email || undefined,
+          name: [user.firstName, user.lastName].filter(Boolean).join(" ") || undefined,
+          metadata: { userId },
+        });
+        customerId = customer.id;
+        await db.update(users).set({ stripeCustomerId: customerId }).where(eq(users.id, userId));
+      }
+
+      // Retrieve or lazily create the per-chapter metered price
+      let priceId = process.env.STRIPE_EASY_ENGLISH_PRICE_ID;
+      if (!priceId) {
+        const product = await stripe.products.create({
+          name: "Easy English Add-on",
+          description: "Per-chapter Easy English text simplification",
+          metadata: { type: "easy_english_addon" },
+        });
+        const price = await stripe.prices.create({
+          product: product.id,
+          currency: "usd",
+          unit_amount: 49,
+          recurring: {
+            interval: "month",
+            usage_type: "metered",
+          },
+          billing_scheme: "per_unit",
+        });
+        priceId = price.id;
+      }
+
+      // Build absolute origin for redirect URLs
+      const origin = req.headers.origin || `https://${req.headers.host}`;
+
+      // Create a Stripe Checkout Session — access is granted only after
+      // checkout.session.completed + customer.subscription.updated webhooks confirm payment.
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: "subscription",
+        line_items: [{ price: priceId, quantity: 1 }],
+        subscription_data: {
+          metadata: { userId, type: "easy_english_addon" },
+        },
+        metadata: { userId, type: "easy_english_addon" },
+        success_url: `${origin}/?ee_subscribed=1`,
+        cancel_url: `${origin}/`,
+      });
+
+      res.json({ checkoutUrl: session.url });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("[EasyEnglish] Subscribe error:", msg);
+      res.status(500).json({ message: msg || "Failed to create Easy English checkout session" });
+    }
+  });
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {
@@ -1434,6 +1611,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           case "checkout.session.completed": {
             const session = event.data.object as any;
             const userId = session.metadata?.userId;
+
+            // Handle Easy English add-on checkout completion
+            if (session.mode === "subscription" && session.metadata?.type === "easy_english_addon" && userId) {
+              try {
+                const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+                const itemId = (sub as any).items?.data?.[0]?.id || null;
+                await db.update(users)
+                  .set({ stripeEasyEnglishSubscriptionItemId: itemId })
+                  .where(eq(users.id, userId));
+                console.log(`[EasyEnglish] Activated add-on for user ${userId}, item ${itemId}`);
+              } catch (e) {
+                console.warn("[EasyEnglish] Could not retrieve subscription after checkout:", e);
+              }
+              break;
+            }
             
             if (session.mode === "subscription" && userId) {
               await storage.updateUserSubscription(userId, {
@@ -1472,6 +1664,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           case "customer.subscription.updated": {
             const subscription = event.data.object as any;
             const customerId = subscription.customer;
+
+            // Handle Easy English add-on subscription updates
+            if (subscription.metadata?.type === "easy_english_addon") {
+              const eeUser = await storage.getUserByStripeCustomerId(customerId);
+              if (eeUser) {
+                const isActive = subscription.status === "active" || subscription.status === "trialing";
+                const itemId = subscription.items?.data?.[0]?.id || null;
+                await db.update(users)
+                  .set({ stripeEasyEnglishSubscriptionItemId: isActive ? itemId : null })
+                  .where(eq(users.id, eeUser.id));
+                console.log(`[EasyEnglish] Subscription updated for user ${eeUser.id}: ${subscription.status}`);
+              }
+              break;
+            }
             
             const user = await storage.getUserByStripeCustomerId(customerId);
             if (user) {
@@ -1492,6 +1698,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           case "customer.subscription.deleted": {
             const subscription = event.data.object as any;
             const customerId = subscription.customer;
+
+            // Handle Easy English add-on subscription deletion
+            if (subscription.metadata?.type === "easy_english_addon") {
+              const eeUser = await storage.getUserByStripeCustomerId(customerId);
+              if (eeUser) {
+                await db.update(users)
+                  .set({ stripeEasyEnglishSubscriptionItemId: null })
+                  .where(eq(users.id, eeUser.id));
+                console.log(`[EasyEnglish] Subscription deleted for user ${eeUser.id}`);
+              }
+              break;
+            }
             
             const user = await storage.getUserByStripeCustomerId(customerId);
             if (user) {
@@ -1669,6 +1887,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const userId = session.metadata?.userId;
         const subscriptionId = session.subscription;
         const customerId = session.customer;
+
+        // Handle Easy English add-on checkout completion
+        if (session.mode === "subscription" && session.metadata?.type === "easy_english_addon" && userId) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(subscriptionId as string);
+            const itemId = (sub as any).items?.data?.[0]?.id || null;
+            await db.update(users)
+              .set({ stripeEasyEnglishSubscriptionItemId: itemId })
+              .where(eq(users.id, userId));
+            console.log(`[EasyEnglish] Activated add-on for user ${userId}, item ${itemId}`);
+          } catch (e) {
+            console.warn("[EasyEnglish] Could not retrieve subscription after checkout:", e);
+          }
+          break;
+        }
         
         if (userId && subscriptionId) {
           let subscriptionEndDate: Date | null = null;
@@ -1707,6 +1940,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       case "customer.subscription.deleted": {
         const subscription = event.data.object as any;
+
+        // Handle Easy English add-on subscription deletion
+        if (subscription.metadata?.type === "easy_english_addon") {
+          const eeUser = subscription.customer
+            ? await storage.getUserByStripeCustomerId(subscription.customer)
+            : null;
+          if (eeUser) {
+            await db.update(users)
+              .set({ stripeEasyEnglishSubscriptionItemId: null })
+              .where(eq(users.id, eeUser.id));
+            console.log(`[EasyEnglish] Subscription deleted for user ${eeUser.id}`);
+          }
+          break;
+        }
+
         let userId = subscription.metadata?.userId;
         
         if (!userId && subscription.customer) {
@@ -1740,6 +1988,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       case "customer.subscription.updated": {
         const subUpdated = event.data.object as any;
+
+        // Handle Easy English add-on subscription updates
+        if (subUpdated.metadata?.type === "easy_english_addon") {
+          const eeUser = subUpdated.customer
+            ? await storage.getUserByStripeCustomerId(subUpdated.customer)
+            : null;
+          if (eeUser) {
+            const isActive = subUpdated.status === "active" || subUpdated.status === "trialing";
+            const itemId = subUpdated.items?.data?.[0]?.id || null;
+            await db.update(users)
+              .set({ stripeEasyEnglishSubscriptionItemId: isActive ? itemId : null })
+              .where(eq(users.id, eeUser.id));
+            console.log(`[EasyEnglish] Subscription updated for user ${eeUser.id}: ${subUpdated.status}`);
+          }
+          break;
+        }
+
         let userId = subUpdated.metadata?.userId;
         
         // Fallback: lookup user by Stripe customer ID if userId not in metadata

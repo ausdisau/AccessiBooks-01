@@ -379,6 +379,7 @@ function transformExternalUser(externalUser: ExternalUser): User {
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     subscriptionEndDate: null,
+    stripeEasyEnglishSubscriptionItemId: null,
     createdAt: externalUser.createdAt ? new Date(externalUser.createdAt) : new Date(),
     updatedAt: externalUser.updatedAt ? new Date(externalUser.updatedAt) : new Date(),
     referralCode: null,
