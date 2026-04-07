@@ -244,6 +244,10 @@ export default function AdvertiserDashboard() {
   const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00";
   const totalSpentCents = analytics?.totals.spentCents ?? 0;
 
+  // Budget burn rate: sum of (spent / budget) across active campaigns, capped at 100%
+  const totalBudgetCents = (analytics?.campaigns ?? []).reduce((s, c) => s + c.budgetCents, 0);
+  const burnRatePct = totalBudgetCents > 0 ? Math.min(100, (totalSpentCents / totalBudgetCents) * 100) : 0;
+
   function openEditCampaign(c: AdCampaign) {
     setEditingCampaign(c);
     campaignForm.reset({
@@ -582,9 +586,9 @@ export default function AdvertiserDashboard() {
             </div>
 
             {/* Summary row */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: "Total Spend", value: formatMoney(totalSpentCents), icon: DollarSign, color: "text-red-400" },
+                { label: "Period Spend", value: formatMoney(totalSpentCents), icon: DollarSign, color: "text-red-400" },
                 { label: "Wallet Loaded", value: liveWallet ? formatMoney(liveWallet.totalTopupCents) : "$0.00", icon: CreditCard, color: "text-blue-400" },
                 { label: "Balance", value: liveWallet ? formatMoney(liveWallet.balanceCents) : "$0.00", icon: Wallet, color: liveWallet && liveWallet.balanceCents < 500 ? "text-red-400" : "text-green-400" },
               ].map(({ label, value, icon: Icon, color }) => (
@@ -598,6 +602,25 @@ export default function AdvertiserDashboard() {
                   </CardContent>
                 </Card>
               ))}
+              {/* Budget burn rate card */}
+              <Card className="bg-white/5 border-white/10">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <TrendingUp className={`h-3.5 w-3.5 ${burnRatePct > 80 ? "text-red-400" : burnRatePct > 50 ? "text-yellow-400" : "text-blue-400"}`} />
+                    <span className="text-xs text-white/40">Budget Burn</span>
+                  </div>
+                  <div className={`text-lg font-bold ${burnRatePct > 80 ? "text-red-400" : burnRatePct > 50 ? "text-yellow-400" : "text-blue-400"}`}>
+                    {burnRatePct.toFixed(1)}%
+                  </div>
+                  <div className="h-1.5 bg-white/10 rounded-full mt-1.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${burnRatePct > 80 ? "bg-red-500" : burnRatePct > 50 ? "bg-yellow-500" : "bg-blue-500"}`}
+                      style={{ width: `${burnRatePct}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-white/30 mt-1">{formatMoney(totalSpentCents)} / {formatMoney(totalBudgetCents)}</div>
+                </CardContent>
+              </Card>
             </div>
           </div>
 
