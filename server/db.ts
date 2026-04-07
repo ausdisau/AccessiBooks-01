@@ -148,6 +148,11 @@ export async function setupAdPlatformTables(): Promise<void> {
         clicked_at timestamp DEFAULT now()
       )
     `;
+    // Unique constraint enforces exactly one click per impression (idempotency)
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_slot_clicks_impression_unique
+      ON slot_clicks (impression_id)
+    `;
 
     // Advertiser wallets
     await sql`

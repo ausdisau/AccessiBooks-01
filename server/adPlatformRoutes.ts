@@ -411,6 +411,29 @@ export function registerAdPlatformRoutes(app: Express) {
     }
   });
 
+  // GET /api/ad/demo-slots — public, no auth required
+  // Returns a minimal list of active slots for the /demo-slot test page.
+  // Only exposes id, name, width, height, category — no sensitive data.
+  app.get("/api/ad/demo-slots", async (_req: Request, res: Response) => {
+    try {
+      const rows = await db
+        .select({
+          id: adSlots.id,
+          name: adSlots.name,
+          category: adSlots.category,
+          width: adSlots.width,
+          height: adSlots.height,
+        })
+        .from(adSlots)
+        .where(eq(adSlots.isActive, true))
+        .orderBy(desc(adSlots.createdAt))
+        .limit(20);
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ message: "Failed to fetch demo slots" });
+    }
+  });
+
   // GET /api/serve/:slotId — public endpoint for publisher embed script
   // Runs a Vickrey auction and returns the winning creative + click tracking URL.
   // No auth required (called by third-party publisher sites).
@@ -449,60 +472,60 @@ export function registerAdPlatformRoutes(app: Express) {
   });
 
   // GET /api/click/:impressionId — idempotent click tracking + redirect
-  // Records a click row if none exists yet, increments counters, redirects.
+  // Atomically inserts a click row using ON CONFLICT DO NOTHING (unique constraint on impression_id).
+  // Only increments counters when the insert actually succeeded (rowCount > 0).
   app.get("/api/click/:impressionId", async (req: Request, res: Response) => {
     try {
       const { impressionId } = req.params;
 
-      const [impression] = await db
-        .select()
+      // Fetch impression and ad destination in one shot
+      const [row] = await db
+        .select({
+          impressionId: slotImpressions.id,
+          adId: slotImpressions.adId,
+          advertiserId: slotImpressions.advertiserId,
+          destinationUrl: displayAds.destinationUrl,
+        })
         .from(slotImpressions)
+        .innerJoin(displayAds, eq(displayAds.id, slotImpressions.adId))
         .where(eq(slotImpressions.id, impressionId));
 
-      if (!impression) {
-        return res.status(404).send("Impression not found");
-      }
+      if (!row) return res.status(404).send("Impression not found");
 
-      // Fetch destination URL from the ad
-      const [ad] = await db
-        .select({ destinationUrl: displayAds.destinationUrl })
-        .from(displayAds)
-        .where(eq(displayAds.id, impression.adId));
+      // Atomic insert — unique index on impression_id means concurrent
+      // double-clicks conflict and only one row is ever inserted.
+      const insertResult = await db
+        .insert(slotClicks)
+        .values({ impressionId, adId: row.adId })
+        .onConflictDoNothing()
+        .returning({ id: slotClicks.id });
 
-      if (!ad) return res.status(404).send("Ad not found");
-
-      // Idempotency: only record click if not already clicked
-      if (!impression.clicked) {
+      // Only update counters if this was the first click (insert succeeded)
+      if (insertResult.length > 0) {
         await Promise.all([
           db
             .update(slotImpressions)
             .set({ clicked: true })
             .where(eq(slotImpressions.id, impressionId)),
 
-          db.insert(slotClicks).values({
-            impressionId,
-            adId: impression.adId,
-          }),
-
           db
             .update(displayAds)
             .set({ clickCount: sql`${displayAds.clickCount} + 1`, updatedAt: new Date() })
-            .where(eq(displayAds.id, impression.adId)),
+            .where(eq(displayAds.id, row.adId)),
 
           db
             .update(adCampaigns)
             .set({ clicks: sql`${adCampaigns.clicks} + 1`, updatedAt: new Date() })
             .where(
-              and(
-                eq(adCampaigns.advertiserId, impression.advertiserId),
-                sql`${adCampaigns.id} = (SELECT campaign_id FROM display_ads WHERE id = ${impression.adId})`
-              )
+              sql`${adCampaigns.id} = (SELECT campaign_id FROM display_ads WHERE id = ${row.adId})`
             ),
         ]);
       }
 
-      // Redirect to destination URL
-      const dest = ad.destinationUrl.startsWith("http") ? ad.destinationUrl : `https://${ad.destinationUrl}`;
+      // Redirect to destination URL regardless of whether this is a duplicate click
+      const dest = row.destinationUrl.startsWith("http")
+        ? row.destinationUrl
+        : `https://${row.destinationUrl}`;
       return res.redirect(302, dest);
     } catch (e) {
       console.error("[Click] Error:", e);
