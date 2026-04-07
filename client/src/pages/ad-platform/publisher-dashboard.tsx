@@ -60,6 +60,13 @@ export default function PublisherDashboard() {
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [days, setDays] = useState(30);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  function buildAnalyticsUrl(base: string) {
+    if (customFrom && customTo) return `${base}?from=${customFrom}&to=${customTo}`;
+    return `${base}?days=${days}`;
+  }
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<AdSlotWithEmbed[]>({
     queryKey: ["/api/ad/slots"],
@@ -74,8 +81,8 @@ export default function PublisherDashboard() {
     slots: Array<{ id: string; name: string; totalImpressions: number; totalEarningsCents: number }>;
     daily: Array<{ date: string; impressions: number; earningsCents: number }>;
   }>({
-    queryKey: ["/api/analytics/publisher", days],
-    queryFn: () => fetch(`/api/analytics/publisher?days=${days}`).then(r => r.json()),
+    queryKey: ["/api/analytics/publisher", days, customFrom, customTo],
+    queryFn: () => fetch(buildAnalyticsUrl("/api/analytics/publisher")).then(r => r.json()),
     refetchInterval: 30000,
     staleTime: 25000,
   });
@@ -288,22 +295,35 @@ export default function PublisherDashboard() {
 
           {/* Analytics Section */}
           <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider">Analytics</h2>
-              <div className="flex items-center gap-2">
-                {[7, 30, 90].map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setDays(d)}
-                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${days === d ? "bg-violet-600/30 text-violet-300 border border-violet-500/30" : "text-white/40 hover:text-white/70"}`}
-                  >
-                    {d}d
-                  </button>
-                ))}
-                <button onClick={() => refetchAnalytics()} className="p-1 text-white/30 hover:text-white/60" title="Refresh">
-                  <RefreshCw className="h-3.5 w-3.5" />
+            <div className="flex items-center flex-wrap gap-2 mb-4">
+              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider flex-shrink-0 mr-2">Analytics</h2>
+              {[7, 30, 90].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => { setDays(d); setCustomFrom(""); setCustomTo(""); }}
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${days === d && !customFrom ? "bg-violet-600/30 text-violet-300 border border-violet-500/30" : "text-white/40 hover:text-white/70"}`}
+                >
+                  {d}d
                 </button>
+              ))}
+              <div className="flex items-center gap-1 ml-1">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="px-1.5 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-white/60 focus:border-violet-500/50 focus:outline-none w-28"
+                />
+                <span className="text-white/30 text-xs">–</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="px-1.5 py-0.5 rounded text-xs bg-white/5 border border-white/10 text-white/60 focus:border-violet-500/50 focus:outline-none w-28"
+                />
               </div>
+              <button onClick={() => refetchAnalytics()} className="p-1 text-white/30 hover:text-white/60 ml-auto" title="Refresh">
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4 mb-4">

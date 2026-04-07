@@ -642,30 +642,64 @@ export function registerAdPlatformRoutes(app: Express) {
       const user = getAuthUser(req)!;
       const { from, to } = parseDateRange(req.query);
 
-      // Summary totals
+      // Summary totals — date-filtered from impressions table
       const [totals] = await db
         .select({
-          impressions: sql<number>`coalesce(sum(${adCampaigns.impressions}), 0)`,
-          clicks: sql<number>`coalesce(sum(${adCampaigns.clicks}), 0)`,
-          spentCents: sql<number>`coalesce(sum(${adCampaigns.spentCents}), 0)`,
+          impressions: sql<number>`coalesce(count(*), 0)`,
+          clicks: sql<number>`coalesce(sum(case when ${slotImpressions.clicked} then 1 else 0 end), 0)`,
+          spentCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0)`,
         })
-        .from(adCampaigns)
-        .where(eq(adCampaigns.advertiserId, user.id));
+        .from(slotImpressions)
+        .where(
+          and(
+            eq(slotImpressions.advertiserId, user.id),
+            gte(slotImpressions.servedAt, from),
+            lte(slotImpressions.servedAt, to)
+          )
+        );
 
-      // Per-campaign breakdown
-      const campaigns = await db
+      // Per-campaign breakdown — also date-filtered
+      const campaignRows = await db
+        .select({
+          campaignId: slotImpressions.campaignId,
+          impressions: sql<number>`count(*)`,
+          clicks: sql<number>`coalesce(sum(case when ${slotImpressions.clicked} then 1 else 0 end), 0)`,
+          spentCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0)`,
+        })
+        .from(slotImpressions)
+        .where(
+          and(
+            eq(slotImpressions.advertiserId, user.id),
+            gte(slotImpressions.servedAt, from),
+            lte(slotImpressions.servedAt, to)
+          )
+        )
+        .groupBy(slotImpressions.campaignId);
+
+      // Join with campaign metadata
+      const allCampaigns = await db
         .select({
           id: adCampaigns.id,
           name: adCampaigns.name,
           status: adCampaigns.status,
-          impressions: adCampaigns.impressions,
-          clicks: adCampaigns.clicks,
-          spentCents: adCampaigns.spentCents,
           budgetCents: adCampaigns.budgetCents,
         })
         .from(adCampaigns)
         .where(eq(adCampaigns.advertiserId, user.id))
         .orderBy(desc(adCampaigns.spentCents));
+
+      const campaigns = allCampaigns.map((c) => {
+        const row = campaignRows.find((r) => r.campaignId === c.id);
+        return {
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          budgetCents: c.budgetCents,
+          impressions: Number(row?.impressions ?? 0),
+          clicks: Number(row?.clicks ?? 0),
+          spentCents: Number(row?.spentCents ?? 0),
+        };
+      });
 
       // Daily spend series from slot_impressions
       const daily = await db
@@ -714,17 +748,37 @@ export function registerAdPlatformRoutes(app: Express) {
       const user = getAuthUser(req)!;
       const { from, to } = parseDateRange(req.query);
 
-      // Per-slot breakdown
-      const slots = await db
-        .select({
-          id: adSlots.id,
-          name: adSlots.name,
-          totalImpressions: adSlots.totalImpressions,
-          totalEarningsCents: adSlots.totalEarningsCents,
-        })
+      // Per-slot breakdown — date-filtered from impressions table
+      const allSlots = await db
+        .select({ id: adSlots.id, name: adSlots.name })
         .from(adSlots)
-        .where(eq(adSlots.publisherId, user.id))
-        .orderBy(desc(adSlots.totalEarningsCents));
+        .where(eq(adSlots.publisherId, user.id));
+
+      const slotRows = await db
+        .select({
+          slotId: slotImpressions.slotId,
+          totalImpressions: sql<number>`count(*)`,
+          totalEarningsCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) * 0.7 / 1000, 0)`,
+        })
+        .from(slotImpressions)
+        .where(
+          and(
+            eq(slotImpressions.publisherId, user.id),
+            gte(slotImpressions.servedAt, from),
+            lte(slotImpressions.servedAt, to)
+          )
+        )
+        .groupBy(slotImpressions.slotId);
+
+      const slots = allSlots.map((s) => {
+        const row = slotRows.find((r) => r.slotId === s.id);
+        return {
+          id: s.id,
+          name: s.name,
+          totalImpressions: Number(row?.totalImpressions ?? 0),
+          totalEarningsCents: Number(row?.totalEarningsCents ?? 0),
+        };
+      }).sort((a, b) => b.totalEarningsCents - a.totalEarningsCents);
 
       // Daily earnings series from slot_impressions (publisher gets 70%)
       const daily = await db
@@ -769,14 +823,20 @@ export function registerAdPlatformRoutes(app: Express) {
     try {
       const { from, to } = parseDateRange(req.query);
 
-      // Platform totals
+      // Platform totals — date-range scoped
       const [totals] = await db
         .select({
           gmvCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0)`,
           totalImpressions: sql<number>`count(*)`,
           totalClicks: sql<number>`coalesce(sum(case when ${slotImpressions.clicked} then 1 else 0 end), 0)`,
         })
-        .from(slotImpressions);
+        .from(slotImpressions)
+        .where(
+          and(
+            gte(slotImpressions.servedAt, from),
+            lte(slotImpressions.servedAt, to)
+          )
+        );
 
       // Platform revenue (30% platform take)
       const platformRevenueCents = Math.floor(Number(totals?.gmvCents ?? 0) * 0.3);
@@ -985,6 +1045,22 @@ export function registerAdPlatformRoutes(app: Express) {
         .values({ publisherId: user.id, amountCents: pendingCents, paymentDetails })
         .returning();
 
+      // Notify admin(s) — find all admin users and log notification
+      try {
+        const admins = await db
+          .select({ id: users.id, email: users.email })
+          .from(users)
+          .where(eq(users.role, "admin"));
+        for (const admin of admins) {
+          console.log(
+            `[PAYOUT NOTIFICATION] Admin ${admin.email} — Publisher ${user.email} (${user.id}) ` +
+            `requested payout of $${(pendingCents / 100).toFixed(2)} [payout #${payout.id}]`
+          );
+        }
+      } catch (notifyErr) {
+        console.warn("[Payout/notify] Could not notify admins:", notifyErr);
+      }
+
       res.json(payout);
     } catch (e: any) {
       console.error("[Payout/request]", e);
@@ -992,7 +1068,7 @@ export function registerAdPlatformRoutes(app: Express) {
     }
   });
 
-  // PATCH /api/ad/admin/payouts/:id — admin marks payout as paid
+  // PATCH /api/ad/admin/payouts/:id — admin marks payout as paid or rejected
   app.patch("/api/ad/admin/payouts/:id", requireRole("admin"), async (req: Request, res: Response) => {
     try {
       const { status, adminNotes } = z.object({
@@ -1006,18 +1082,27 @@ export function registerAdPlatformRoutes(app: Express) {
         .where(eq(payoutRequests.id, req.params.id));
       if (!payout) return res.status(404).json({ message: "Payout request not found" });
 
+      // Guard: only pending payouts can be actioned (idempotency + no double-apply)
+      if (payout.status !== "pending") {
+        return res.status(409).json({ message: `Payout is already ${payout.status} — cannot update again` });
+      }
+
       const [updated] = await db
         .update(payoutRequests)
         .set({ status, adminNotes: adminNotes || null, resolvedAt: new Date() })
-        .where(eq(payoutRequests.id, req.params.id))
+        .where(and(eq(payoutRequests.id, req.params.id), eq(payoutRequests.status, "pending")))
         .returning();
 
-      // If paid, reduce pendingCents and increase paidOutCents
+      if (!updated) {
+        return res.status(409).json({ message: "Payout was already resolved by another admin" });
+      }
+
+      // Only apply balance changes when transitioning pending -> paid
       if (status === "paid") {
         await db
           .update(publisherEarnings)
           .set({
-            pendingCents: sql`${publisherEarnings.pendingCents} - ${payout.amountCents}`,
+            pendingCents: sql`greatest(0, ${publisherEarnings.pendingCents} - ${payout.amountCents})`,
             paidOutCents: sql`${publisherEarnings.paidOutCents} + ${payout.amountCents}`,
             updatedAt: new Date(),
           })
@@ -1029,5 +1114,11 @@ export function registerAdPlatformRoutes(app: Express) {
       console.error("[Payout/admin]", e);
       res.status(400).json({ message: e.message || "Failed to update payout" });
     }
+  });
+
+  // POST /api/billing/checkout — alias for /api/billing/ad-topup (backward compat)
+  app.post("/api/billing/checkout", requireRole("advertiser"), async (req: Request, res: Response) => {
+    // Forward to ad-topup logic
+    res.redirect(307, "/api/billing/ad-topup");
   });
 }
