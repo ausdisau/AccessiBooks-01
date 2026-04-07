@@ -990,7 +990,13 @@ export function registerAdPlatformRoutes(app: Express) {
       if (!stripe) return res.status(503).json({ message: "Stripe not configured" });
 
       const user = getAuthUser(req)!;
-      const { amountCents } = z.object({ amountCents: z.number().int().min(500) }).parse(req.body);
+      const { amountCents } = z.object({ amountCents: z.number().int() }).parse(req.body);
+
+      // Enforce server-side preset whitelist
+      const validAmounts = TOPUP_AMOUNTS.map((a) => a.cents);
+      if (!validAmounts.includes(amountCents)) {
+        return res.status(400).json({ message: `Invalid top-up amount. Valid amounts: ${validAmounts.map((c) => `$${(c / 100).toFixed(0)}`).join(", ")}` });
+      }
 
       // Ensure Stripe customer
       const [userRow] = await db.select().from(users).where(eq(users.id, user.id));
