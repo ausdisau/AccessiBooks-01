@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
@@ -1621,6 +1621,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const amountCents = parseInt(session.metadata?.amountCents || "0");
               if (amountCents > 0) {
                 try {
+                  // Idempotency guard: check if this Stripe session ID was already processed
+                  const [alreadyProcessed] = await db
+                    .select({ id: paymentTransactions.id })
+                    .from(paymentTransactions)
+                    .where(eq(paymentTransactions.providerTransactionId, session.id))
+                    .limit(1);
+                  if (alreadyProcessed) {
+                    console.log(`[AdWallet] Skipping duplicate webhook for session ${session.id}`);
+                    break;
+                  }
+                  // Record transaction first (idempotency anchor)
+                  await db.insert(paymentTransactions).values({
+                    userId,
+                    provider: "stripe",
+                    providerTransactionId: session.id,
+                    type: "ad_wallet_topup",
+                    status: "completed",
+                    amountCents,
+                    currency: "USD",
+                    description: `Ad wallet top-up via Stripe`,
+                  });
+                  // Now credit the wallet
                   await db
                     .insert(advertiserWallets)
                     .values({ advertiserId: userId, balanceCents: 0, totalTopupCents: 0 })
@@ -1633,7 +1655,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       updatedAt: new Date(),
                     })
                     .where(eq(advertiserWallets.advertiserId, userId));
-                  console.log(`[AdWallet] Credited $${(amountCents / 100).toFixed(2)} to advertiser ${userId}`);
+                  console.log(`[AdWallet] Credited $${(amountCents / 100).toFixed(2)} to advertiser ${userId} (session ${session.id})`);
                 } catch (e) {
                   console.error("[AdWallet] Failed to credit wallet:", e);
                 }

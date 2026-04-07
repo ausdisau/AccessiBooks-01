@@ -546,36 +546,36 @@ export default function AdvertiserDashboard() {
                 </CardContent>
               </Card>
 
-              {/* Campaign spend breakdown */}
+              {/* Campaign spend breakdown bar chart */}
               <Card className="bg-white/5 border-white/10">
                 <CardHeader className="pb-2 pt-4 px-4">
                   <CardTitle className="text-xs text-white/50 font-medium">Campaign Spend</CardTitle>
                 </CardHeader>
-                <CardContent className="px-4 pb-4">
+                <CardContent className="px-2 pb-4">
                   {analyticsLoading ? (
                     <div className="h-32 flex items-center justify-center text-white/20 text-xs">Loading...</div>
                   ) : !analytics?.campaigns?.length ? (
                     <div className="h-32 flex items-center justify-center text-white/20 text-xs">No campaigns yet</div>
                   ) : (
-                    <div className="space-y-2 mt-1 max-h-32 overflow-y-auto">
-                      {analytics.campaigns.map((c) => {
-                        const burnPct = c.budgetCents > 0 ? Math.min(100, (c.spentCents / c.budgetCents) * 100) : 0;
-                        return (
-                          <div key={c.id}>
-                            <div className="flex items-center justify-between text-xs mb-0.5">
-                              <span className="text-white/60 truncate max-w-[120px]">{c.name}</span>
-                              <span className="text-white/40">{formatMoney(c.spentCents)} / {formatMoney(c.budgetCents)}</span>
-                            </div>
-                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${burnPct > 80 ? "bg-red-500" : burnPct > 50 ? "bg-yellow-500" : "bg-blue-500"}`}
-                                style={{ width: `${burnPct}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <ResponsiveContainer width="100%" height={128}>
+                      <BarChart
+                        data={analytics.campaigns.slice(0, 6).map((c) => ({
+                          name: c.name.length > 12 ? c.name.slice(0, 12) + "…" : c.name,
+                          spentCents: c.spentCents,
+                        }))}
+                        margin={{ top: 0, right: 4, left: -20, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0d" />
+                        <XAxis dataKey="name" tick={{ fill: "#ffffff33", fontSize: 8 }} />
+                        <YAxis tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                        <Tooltip
+                          contentStyle={{ background: "#0d1527", border: "1px solid #ffffff14", borderRadius: 6 }}
+                          labelStyle={{ color: "#ffffff80", fontSize: 11 }}
+                          formatter={(v: number) => [`$${(v / 100).toFixed(2)}`, "Spent"]}
+                        />
+                        <Bar dataKey="spentCents" name="Spent" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   )}
                 </CardContent>
               </Card>
