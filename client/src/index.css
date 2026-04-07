@@ -188,10 +188,8 @@ body {
   filter: invert(1) hue-rotate(180deg);
 }
 
-/* Saturation adjustment */
-html {
-  filter: saturate(var(--a11y-saturation));
-}
+/* Saturation + color vision deficiency filters are applied inline via JS
+   in the accessibility widget's applySettings() to allow combining them */
 
 /* Highlight Links Mode */
 .highlight-links a,

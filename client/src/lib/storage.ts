@@ -24,6 +24,8 @@ export interface Collection {
   createdAt: string;
 }
 
+export type ColorVisionMode = "none" | "protanopia" | "deuteranopia" | "tritanopia" | "achromatopsia";
+
 export interface AccessibilitySettings {
   highContrast: boolean;
   dyslexiaFont: boolean;
@@ -41,6 +43,7 @@ export interface AccessibilitySettings {
   readingMask: boolean;
   activeProfile: string | null;
   wordSpacing?: number;
+  colorVisionMode?: ColorVisionMode;
 }
 
 export const localStorageService = {
@@ -132,6 +135,7 @@ export const localStorageService = {
       readingMask: false,
       activeProfile: null,
       wordSpacing: 0,
+      colorVisionMode: "none",
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);
