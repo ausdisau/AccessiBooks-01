@@ -18,7 +18,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1284,6 +1284,7 @@ function MainApp() {
       const updated = { ...s, focusMode: next };
       localStorageService.saveSettings(updated);
       document.documentElement.classList.toggle("focus-mode", next);
+      document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
       return next;
     });
   }, []);
@@ -1408,12 +1409,21 @@ function MainApp() {
     onToggleCaptions: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-captions")),
     onOpenAccessibility: () => document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility")),
     onToggleTranscript: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-transcript")),
+    onToggleFocusMode: toggleFocusMode,
   });
 
   useEffect(() => {
     const handler = () => setShortcutsOpen(true);
     document.addEventListener("accessibooks:open-shortcuts", handler);
     return () => document.removeEventListener("accessibooks:open-shortcuts", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      setFocusModeState(!!localStorageService.getSettings().focusMode);
+    };
+    document.addEventListener("accessibooks:settings-changed", handler);
+    return () => document.removeEventListener("accessibooks:settings-changed", handler);
   }, []);
 
   const hasMiniPlayer = currentBook !== null;
@@ -1888,10 +1898,66 @@ function App() {
             <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
           )}
           <AccessibilityWidget />
+          <FocusModeExitButton />
           <Toaster />
         </AudioProvider>
       </Router>
     </TooltipProvider>
+  );
+}
+
+function FocusModeExitButton() {
+  const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
+
+  useEffect(() => {
+    const syncState = () => {
+      setFocusModeState(!!localStorageService.getSettings().focusMode);
+    };
+    document.addEventListener("accessibooks:settings-changed", syncState);
+    document.addEventListener("accessibooks:toggle-focus-mode", syncState);
+    return () => {
+      document.removeEventListener("accessibooks:settings-changed", syncState);
+      document.removeEventListener("accessibooks:toggle-focus-mode", syncState);
+    };
+  }, []);
+
+  if (!focusMode) return null;
+
+  const exitFocusMode = () => {
+    const s = localStorageService.getSettings();
+    const updated = { ...s, focusMode: false };
+    localStorageService.saveSettings(updated);
+    document.documentElement.classList.remove("focus-mode");
+    document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
+    setFocusModeState(false);
+  };
+
+  return (
+    <button
+      onClick={exitFocusMode}
+      aria-label="Exit Focus Mode"
+      data-testid="exit-focus-mode-btn"
+      style={{
+        position: "fixed",
+        bottom: "80px",
+        right: "16px",
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "8px 14px",
+        borderRadius: "9999px",
+        fontSize: "13px",
+        fontWeight: 500,
+        cursor: "pointer",
+        border: "none",
+        opacity: 0.75,
+      }}
+      className="bg-primary text-primary-foreground shadow-lg hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      <Focus className="h-4 w-4" aria-hidden="true" />
+      Exit Focus Mode
+    </button>
   );
 }
 
