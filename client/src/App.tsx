@@ -18,7 +18,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus, Zap } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -387,6 +387,26 @@ function LoginModal({
     firstName: "",
     lastName: "",
   });
+  const [magicLinkMode, setMagicLinkMode] = useState(false);
+  const [magicLinkEmail, setMagicLinkEmail] = useState("");
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
+
+  const magicLinkMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const response = await apiRequest("POST", "/api/auth/magic-link/request", { email });
+      return response.json();
+    },
+    onSuccess: () => {
+      setMagicLinkSent(true);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not send magic link",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
   
   const { data: providers } = useQuery<AuthProviders>({
     queryKey: ["/api/auth/providers"],
@@ -497,7 +517,7 @@ function LoginModal({
   const hasSocialProviders = providers?.google || providers?.facebook || providers?.microsoft;
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (!val) setShowEmailForm(false); onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (!val) { setShowEmailForm(false); setMagicLinkMode(false); setMagicLinkSent(false); setMagicLinkEmail(""); } onOpenChange(val); }}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden">
         <DialogTitle className="sr-only">
           {isRegistering ? "Create Account" : "Sign In"}
@@ -508,17 +528,17 @@ function LoginModal({
               <Headphones className="h-6 w-6 text-primary" />
             </div>
             <h2 className="text-2xl font-bold">
-              {isRegistering ? "Create Account" : "Welcome Back"}
+              {magicLinkMode ? (magicLinkSent ? "Check Your Inbox" : "Magic Link Sign In") : (isRegistering ? "Create Account" : "Welcome Back")}
             </h2>
             <p className="text-muted-foreground mt-1 text-sm">
-              {isRegistering 
-                ? "Join thousands of audiobook lovers"
-                : "Sign in to continue listening"
+              {magicLinkMode
+                ? (magicLinkSent ? `We sent a sign-in link to ${magicLinkEmail}` : "Enter your email and we'll send you a sign-in link")
+                : (isRegistering ? "Join thousands of audiobook lovers" : "Sign in to continue listening")
               }
             </p>
           </div>
           
-          {hasSocialProviders && (
+          {!magicLinkMode && hasSocialProviders && (
             <div className="space-y-3 mb-4">
               {providers?.google && (
                 <Button
@@ -571,128 +591,229 @@ function LoginModal({
             </div>
           )}
           
-          {hasSocialProviders && (
-            <div className="relative my-5">
-              <div className="absolute inset-0 flex items-center">
-                <Separator className="w-full" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
-                  Or use email
-                </span>
-              </div>
-            </div>
-          )}
-          
-          {!hasSocialProviders || showEmailForm ? (
-            <>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {isRegistering && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="firstName">First Name</Label>
-                      <Input
-                        id="firstName"
-                        placeholder="John"
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        data-testid="input-first-name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName">Last Name</Label>
-                      <Input
-                        id="lastName"
-                        placeholder="Doe"
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        data-testid="input-last-name"
-                      />
-                    </div>
-                  </div>
-                )}
-                
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="you@example.com"
-                      className="pl-10"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      required
-                      data-testid="input-email"
-                    />
-                  </div>
+          {/* Magic link mode */}
+          {magicLinkMode ? (
+            magicLinkSent ? (
+              <div className="text-center space-y-4">
+                <div className="mx-auto w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <Mail className="h-8 w-8 text-green-600 dark:text-green-400" />
                 </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      className="pl-10 pr-10"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
-                      data-testid="input-password"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </div>
-                
+                <p className="text-sm text-muted-foreground">
+                  The link expires in 15 minutes. Check your spam folder if you don't see it.
+                </p>
                 <Button
-                  type="submit"
+                  variant="ghost"
                   className="w-full"
-                  size="lg"
-                  disabled={loginMutation.isPending || registerMutation.isPending}
-                  data-testid="button-submit-auth"
+                  onClick={() => { setMagicLinkSent(false); setMagicLinkEmail(""); }}
                 >
-                  {(loginMutation.isPending || registerMutation.isPending) && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  {isRegistering ? "Create Account" : "Sign In"}
+                  Send to a different email
                 </Button>
-              </form>
-              
-              <div className="text-center mt-4">
                 <Button
                   variant="link"
-                  onClick={() => setIsRegistering(!isRegistering)}
-                  data-testid="button-toggle-auth-mode"
+                  className="w-full text-muted-foreground"
+                  onClick={() => { setMagicLinkMode(false); setMagicLinkSent(false); setMagicLinkEmail(""); }}
                 >
-                  {isRegistering 
-                    ? "Already have an account? Sign in"
-                    : "Don't have an account? Create one"
-                  }
+                  Back to sign in
                 </Button>
               </div>
-            </>
+            ) : (
+              <>
+                <form
+                  onSubmit={(e) => { e.preventDefault(); if (magicLinkEmail) magicLinkMutation.mutate(magicLinkEmail); }}
+                  className="space-y-4"
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="magic-email">Email address</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="magic-email"
+                        type="email"
+                        placeholder="you@example.com"
+                        className="pl-10"
+                        value={magicLinkEmail}
+                        onChange={(e) => setMagicLinkEmail(e.target.value)}
+                        required
+                        autoFocus
+                        data-testid="input-magic-link-email"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    size="lg"
+                    disabled={magicLinkMutation.isPending || !magicLinkEmail}
+                    data-testid="button-send-magic-link"
+                  >
+                    {magicLinkMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="mr-2 h-4 w-4" />
+                    )}
+                    Send Magic Link
+                  </Button>
+                </form>
+                <div className="text-center mt-3">
+                  <Button
+                    variant="link"
+                    className="text-muted-foreground text-sm"
+                    onClick={() => setMagicLinkMode(false)}
+                  >
+                    Back to sign in
+                  </Button>
+                </div>
+              </>
+            )
           ) : (
-            <Button
-              variant="ghost"
-              className="w-full text-muted-foreground hover:text-foreground"
-              onClick={() => setShowEmailForm(true)}
-              data-testid="button-show-email-form"
-            >
-              <Mail className="mr-2 h-4 w-4" />
-              Sign in with email instead
-            </Button>
+            <>
+              {hasSocialProviders && (
+                <div className="relative my-5">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator className="w-full" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or use email
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {!hasSocialProviders || showEmailForm ? (
+                <>
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    {isRegistering && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="firstName">First Name</Label>
+                          <Input
+                            id="firstName"
+                            placeholder="John"
+                            value={formData.firstName}
+                            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                            data-testid="input-first-name"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="lastName">Last Name</Label>
+                          <Input
+                            id="lastName"
+                            placeholder="Doe"
+                            value={formData.lastName}
+                            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                            data-testid="input-last-name"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="you@example.com"
+                          className="pl-10"
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          required
+                          data-testid="input-email"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••"
+                          className="pl-10 pr-10"
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          required
+                          data-testid="input-password"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                          onClick={() => setShowPassword(!showPassword)}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      size="lg"
+                      disabled={loginMutation.isPending || registerMutation.isPending}
+                      data-testid="button-submit-auth"
+                    >
+                      {(loginMutation.isPending || registerMutation.isPending) && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      {isRegistering ? "Create Account" : "Sign In"}
+                    </Button>
+                  </form>
+
+                  {!isRegistering && (
+                    <Button
+                      variant="ghost"
+                      className="w-full mt-2 text-muted-foreground hover:text-foreground"
+                      onClick={() => { setMagicLinkMode(true); setMagicLinkEmail(formData.email); }}
+                      data-testid="button-magic-link"
+                    >
+                      <Zap className="mr-2 h-4 w-4" />
+                      Sign in with a magic link instead
+                    </Button>
+                  )}
+
+                  <div className="text-center mt-2">
+                    <Button
+                      variant="link"
+                      onClick={() => setIsRegistering(!isRegistering)}
+                      data-testid="button-toggle-auth-mode"
+                    >
+                      {isRegistering
+                        ? "Already have an account? Sign in"
+                        : "Don't have an account? Create one"
+                      }
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowEmailForm(true)}
+                    data-testid="button-show-email-form"
+                  >
+                    <Mail className="mr-2 h-4 w-4" />
+                    Sign in with email & password
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground hover:text-foreground"
+                    onClick={() => setMagicLinkMode(true)}
+                    data-testid="button-magic-link"
+                  >
+                    <Zap className="mr-2 h-4 w-4" />
+                    Send me a magic link
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </DialogContent>
@@ -1861,6 +1982,19 @@ function App() {
           description: "We couldn't sign you in with that account. Please try again or use a different method.",
           variant: "destructive",
         });
+      }, 300);
+    }
+    const magicStatus = params.get("magic");
+    if (magicStatus) {
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => {
+        if (magicStatus === "success") {
+          toast({ title: "Welcome back!", description: "You've been signed in via magic link." });
+        } else if (magicStatus === "expired") {
+          toast({ title: "Link expired", description: "Your sign-in link has expired. Please request a new one.", variant: "destructive" });
+        } else if (magicStatus === "invalid" || magicStatus === "error") {
+          toast({ title: "Invalid link", description: "This sign-in link is not valid. Please request a new one.", variant: "destructive" });
+        }
       }, 300);
     }
   }, []);

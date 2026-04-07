@@ -7,6 +7,21 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
+import { sendEmail } from "./mailer";
+
+interface MagicLinkRecord {
+  email: string;
+  expiresAt: number;
+}
+
+const magicLinkTokens = new Map<string, MagicLinkRecord>();
+
+function pruneMagicLinkTokens() {
+  const now = Date.now();
+  for (const [token, record] of magicLinkTokens.entries()) {
+    if (record.expiresAt < now) magicLinkTokens.delete(token);
+  }
+}
 
 declare global {
   namespace Express {
@@ -228,5 +243,59 @@ export function setupAuth(app: Express) {
     // Don't send password in response
     const { password, ...userWithoutPassword } = req.user!;
     res.json(userWithoutPassword);
+  });
+
+  // Magic link: request
+  app.post("/api/auth/magic-link/request", async (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email is required" });
+    }
+    pruneMagicLinkTokens();
+    const token = randomBytes(32).toString("hex");
+    magicLinkTokens.set(token, { email: email.toLowerCase().trim(), expiresAt: Date.now() + 15 * 60 * 1000 });
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const link = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
+    console.log(`[MagicLink] Generated link for ${email}: ${link}`);
+    await sendEmail({
+      to: email,
+      subject: "Your AccessiBooks sign-in link",
+      text: `Click this link to sign in (expires in 15 minutes):\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
+      html: `<p>Click the button below to sign in to AccessiBooks. This link expires in 15 minutes.</p>
+<p style="margin:24px 0"><a href="${link}" style="background:#6d28d9;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Sign In to AccessiBooks</a></p>
+<p style="color:#888;font-size:12px">Or copy this URL into your browser:<br>${link}</p>
+<p style="color:#888;font-size:12px">If you didn't request this link, you can safely ignore this email.</p>`,
+    });
+    res.json({ message: "Magic link sent — check your inbox" });
+  });
+
+  // Magic link: verify
+  app.get("/api/auth/magic-link/verify", async (req, res) => {
+    const { token } = req.query;
+    if (!token || typeof token !== "string") {
+      return res.redirect("/?magic=invalid");
+    }
+    pruneMagicLinkTokens();
+    const record = magicLinkTokens.get(token);
+    if (!record || record.expiresAt < Date.now()) {
+      magicLinkTokens.delete(token);
+      return res.redirect("/?magic=expired");
+    }
+    magicLinkTokens.delete(token);
+    const email = record.email;
+    let user = await storage.getUserByEmail(email);
+    if (!user) {
+      const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") + "_" + randomBytes(3).toString("hex");
+      user = await storage.createUser({ email, username, password: "MAGIC_LINK_USER", firstName: "", lastName: "" });
+      console.log(`[MagicLink] Created new user for ${email}: ${user.id}`);
+    }
+    req.login(user, (err) => {
+      if (err) {
+        console.error("[MagicLink] Login error:", err);
+        return res.redirect("/?magic=error");
+      }
+      console.log(`[MagicLink] Logged in user: ${user!.id}`);
+      res.redirect("/?magic=success");
+    });
   });
 }
