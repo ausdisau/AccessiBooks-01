@@ -176,12 +176,14 @@ export function useVoiceControl({
         setInterimTranscript("");
         setLastTranscript(final);
         const matched = matchCommand(final, commandsRef.current);
-        if (matched) {
-          matched.handler(matched.arg);
-        } else {
-          onNoMatchRef.current?.(final.trim());
-        }
-        setIsProcessing(false);
+        requestAnimationFrame(() => {
+          if (matched) {
+            matched.handler(matched.arg);
+          } else {
+            onNoMatchRef.current?.(final.trim());
+          }
+          setIsProcessing(false);
+        });
       }
     };
 

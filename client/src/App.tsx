@@ -184,7 +184,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
       </div>
 
       <div className="flex-1 max-w-md mx-4 hidden md:block">
-        <SearchAutocomplete onSelectBook={() => navigate("/player")} />
+        <SearchAutocomplete onSelectBook={() => navigate("/player")} inputTestId="main-search-input" />
       </div>
 
       <div className="flex items-center space-x-2 ml-auto shrink-0">
@@ -1628,7 +1628,7 @@ function MainApp() {
       patterns: [/^search\s+(.+)$/],
       handler: (arg?: string) => {
         if (arg) {
-          const searchInput = document.querySelector<HTMLInputElement>('[data-testid="search-input"], input[placeholder*="earch"]');
+          const searchInput = document.querySelector<HTMLInputElement>('[data-testid="main-search-input"]');
           if (searchInput) {
             const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
             nativeInputValueSetter?.call(searchInput, arg);

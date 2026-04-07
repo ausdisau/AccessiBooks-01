@@ -9,6 +9,7 @@ import type { Book } from "@shared/schema";
 interface SearchAutocompleteProps {
   onSelectBook?: (book: Book) => void;
   placeholder?: string;
+  inputTestId?: string;
 }
 
 const GENRES = ["Fiction", "Mystery", "Sci-Fi", "Romance", "History", "Biography", "Self-Help", "Fantasy", "Thriller", "Science", "Technology", "Business"];
@@ -47,7 +48,7 @@ const contentTypeLabel = (type?: string | null) => {
   }
 };
 
-export function SearchAutocomplete({ onSelectBook, placeholder = "Search audiobooks..." }: SearchAutocompleteProps) {
+export function SearchAutocomplete({ onSelectBook, placeholder = "Search audiobooks...", inputTestId }: SearchAutocompleteProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -175,6 +176,7 @@ export function SearchAutocomplete({ onSelectBook, placeholder = "Search audiobo
         <Input
           ref={inputRef}
           type="search"
+          data-testid={inputTestId}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
