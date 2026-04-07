@@ -75,14 +75,23 @@ export function registerAdPlatformRoutes(app: Express) {
         description: z.string().optional(),
         category: z.string().optional(),
         budgetCents: z.number().min(0).optional(),
+        dailyBudgetCents: z.number().min(0).optional(),
         cpmBidCents: z.number().min(0).optional(),
+        startDate: z.string().datetime({ offset: true }).optional().nullable(),
+        endDate: z.string().datetime({ offset: true }).optional().nullable(),
         status: z.enum(["draft", "pending_review", "active", "paused", "completed", "rejected"]).optional(),
       });
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+      const { startDate, endDate, ...rest } = parsed.data;
       const [row] = await db
         .update(adCampaigns)
-        .set({ ...parsed.data, updatedAt: new Date() })
+        .set({
+          ...rest,
+          ...(startDate !== undefined ? { startDate: startDate ? new Date(startDate) : null } : {}),
+          ...(endDate !== undefined ? { endDate: endDate ? new Date(endDate) : null } : {}),
+          updatedAt: new Date(),
+        })
         .where(and(eq(adCampaigns.id, req.params.id), eq(adCampaigns.advertiserId, user.id)))
         .returning();
       if (!row) return res.status(404).json({ message: "Campaign not found" });

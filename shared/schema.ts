@@ -946,6 +946,7 @@ export const adCampaigns = pgTable("ad_campaigns", {
   description: text("description"),
   status: varchar("status", { length: 20 }).notNull().default("draft"),
   budgetCents: integer("budget_cents").notNull().default(0),
+  dailyBudgetCents: integer("daily_budget_cents").default(0),
   spentCents: integer("spent_cents").notNull().default(0),
   cpmBidCents: integer("cpm_bid_cents").notNull().default(500),
   targetGenres: text("target_genres").array(),

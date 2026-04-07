@@ -27,7 +27,10 @@ const campaignSchema = z.object({
   name: z.string().min(1, "Campaign name required"),
   category: z.string().min(1, "Category required"),
   budgetCents: z.coerce.number().min(500, "Minimum $5 total budget"),
+  dailyBudgetCents: z.coerce.number().min(0).default(0),
   cpmBidCents: z.coerce.number().min(50, "Minimum $0.50 CPM"),
+  startDate: z.string().optional().or(z.literal("")),
+  endDate: z.string().optional().or(z.literal("")),
 });
 
 const adSchema = z.object({
@@ -90,7 +93,7 @@ export default function AdvertiserDashboard() {
 
   const campaignForm = useForm<CampaignForm>({
     resolver: zodResolver(campaignSchema),
-    defaultValues: { name: "", category: "other", budgetCents: 10000, cpmBidCents: 200 },
+    defaultValues: { name: "", category: "other", budgetCents: 10000, dailyBudgetCents: 0, cpmBidCents: 200, startDate: "", endDate: "" },
   });
 
   const adForm = useForm<AdForm>({
@@ -98,8 +101,16 @@ export default function AdvertiserDashboard() {
     defaultValues: { campaignId: "", headline: "", body: "", imageUrl: "", destinationUrl: "https://", maxCpmCents: 200 },
   });
 
+  function prepareCampaignPayload(data: CampaignForm) {
+    return {
+      ...data,
+      startDate: data.startDate ? new Date(data.startDate).toISOString() : null,
+      endDate: data.endDate ? new Date(data.endDate).toISOString() : null,
+    };
+  }
+
   const createCampaignMutation = useMutation({
-    mutationFn: (data: CampaignForm) => apiRequest("POST", "/api/ad/campaigns", data),
+    mutationFn: (data: CampaignForm) => apiRequest("POST", "/api/ad/campaigns", prepareCampaignPayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ad/campaigns"] });
       campaignForm.reset();
@@ -111,7 +122,7 @@ export default function AdvertiserDashboard() {
 
   const updateCampaignMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CampaignForm> }) =>
-      apiRequest("PATCH", `/api/ad/campaigns/${id}`, data),
+      apiRequest("PATCH", `/api/ad/campaigns/${id}`, prepareCampaignPayload(data as CampaignForm)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ad/campaigns"] });
       setEditingCampaign(null);
@@ -190,7 +201,15 @@ export default function AdvertiserDashboard() {
 
   function openEditCampaign(c: AdCampaign) {
     setEditingCampaign(c);
-    campaignForm.reset({ name: c.name, category: c.category ?? "other", budgetCents: c.budgetCents ?? 0, cpmBidCents: c.cpmBidCents ?? 0 });
+    campaignForm.reset({
+      name: c.name,
+      category: c.category ?? "other",
+      budgetCents: c.budgetCents ?? 0,
+      dailyBudgetCents: c.dailyBudgetCents ?? 0,
+      cpmBidCents: c.cpmBidCents ?? 0,
+      startDate: c.startDate ? new Date(c.startDate).toISOString().slice(0, 10) : "",
+      endDate: c.endDate ? new Date(c.endDate).toISOString().slice(0, 10) : "",
+    });
   }
 
   function openEditAd(ad: DisplayAd) {
@@ -313,6 +332,7 @@ export default function AdvertiserDashboard() {
               <AdFormFields
                 form={adForm}
                 campaigns={campaigns}
+                showCampaignSelect={false}
                 onSubmit={(d) => editingAd && updateAdMutation.mutate({ id: editingAd.id, data: { ...d, status: "pending_review" } })}
                 isPending={updateAdMutation.isPending}
                 submitLabel="Save & Resubmit"
@@ -563,15 +583,31 @@ function CampaignForm({ form, onSubmit, isPending, submitLabel }: {
           </SelectContent>
         </Select>
       </div>
-      <div>
-        <Label className="text-white/70 text-sm">Total Budget ($)</Label>
-        <Input {...form.register("budgetCents")} type="number" placeholder="100" className="mt-1 bg-white/5 border-white/10 text-white" />
-        {form.formState.errors.budgetCents && <p className="text-red-400 text-xs mt-1">{form.formState.errors.budgetCents.message}</p>}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-white/70 text-sm">Total Budget ($)</Label>
+          <Input {...form.register("budgetCents")} type="number" placeholder="500" className="mt-1 bg-white/5 border-white/10 text-white" />
+          {form.formState.errors.budgetCents && <p className="text-red-400 text-xs mt-1">{form.formState.errors.budgetCents.message}</p>}
+        </div>
+        <div>
+          <Label className="text-white/70 text-sm">Daily Budget ($) <span className="text-white/30 text-xs">optional</span></Label>
+          <Input {...form.register("dailyBudgetCents")} type="number" placeholder="0" className="mt-1 bg-white/5 border-white/10 text-white" />
+        </div>
       </div>
       <div>
         <Label className="text-white/70 text-sm">Max CPM Bid ($)</Label>
         <Input {...form.register("cpmBidCents")} type="number" step="0.1" placeholder="2.00" className="mt-1 bg-white/5 border-white/10 text-white" />
         {form.formState.errors.cpmBidCents && <p className="text-red-400 text-xs mt-1">{form.formState.errors.cpmBidCents.message}</p>}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-white/70 text-sm">Start Date <span className="text-white/30 text-xs">optional</span></Label>
+          <Input {...form.register("startDate")} type="date" className="mt-1 bg-white/5 border-white/10 text-white" />
+        </div>
+        <div>
+          <Label className="text-white/70 text-sm">End Date <span className="text-white/30 text-xs">optional</span></Label>
+          <Input {...form.register("endDate")} type="date" className="mt-1 bg-white/5 border-white/10 text-white" />
+        </div>
       </div>
       <Button type="submit" disabled={isPending} className="w-full bg-blue-600 hover:bg-blue-500 text-white">
         {isPending ? "Saving..." : submitLabel}
@@ -580,29 +616,32 @@ function CampaignForm({ form, onSubmit, isPending, submitLabel }: {
   );
 }
 
-function AdFormFields({ form, campaigns, onSubmit, isPending, submitLabel }: {
+function AdFormFields({ form, campaigns, onSubmit, isPending, submitLabel, showCampaignSelect = true }: {
   form: ReturnType<typeof useForm<AdForm>>;
   campaigns: AdCampaign[];
   onSubmit: (d: AdForm) => void;
   isPending: boolean;
   submitLabel: string;
+  showCampaignSelect?: boolean;
 }) {
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-2">
-      <div>
-        <Label className="text-white/70 text-sm">Campaign</Label>
-        <Select onValueChange={(v) => form.setValue("campaignId", v)} defaultValue={form.getValues("campaignId")}>
-          <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
-            <SelectValue placeholder="Select a campaign" />
-          </SelectTrigger>
-          <SelectContent className="bg-[#0d1527] border-white/10 text-white">
-            {campaigns.map((c) => (
-              <SelectItem key={c.id} value={c.id} className="focus:bg-white/10">{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {form.formState.errors.campaignId && <p className="text-red-400 text-xs mt-1">{form.formState.errors.campaignId.message}</p>}
-      </div>
+      {showCampaignSelect && (
+        <div>
+          <Label className="text-white/70 text-sm">Campaign</Label>
+          <Select onValueChange={(v) => form.setValue("campaignId", v)} defaultValue={form.getValues("campaignId")}>
+            <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
+              <SelectValue placeholder="Select a campaign" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#0d1527] border-white/10 text-white">
+              {campaigns.map((c) => (
+                <SelectItem key={c.id} value={c.id} className="focus:bg-white/10">{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {form.formState.errors.campaignId && <p className="text-red-400 text-xs mt-1">{form.formState.errors.campaignId.message}</p>}
+        </div>
+      )}
       <div>
         <Label className="text-white/70 text-sm">Headline</Label>
         <Input {...form.register("headline")} placeholder="Discover something amazing" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
