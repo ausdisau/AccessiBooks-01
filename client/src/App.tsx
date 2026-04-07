@@ -73,6 +73,10 @@ const ChurnDashboard = lazy(() => import('@/components/churn-dashboard').then(m 
 const TrustPage = lazy(() => import('@/pages/trust'));
 const InstitutionalPage = lazy(() => import('@/pages/institutional'));
 const MoatDashboard = lazy(() => import('@/pages/moat-dashboard'));
+const AdPlatformLanding = lazy(() => import('@/pages/ad-platform/landing'));
+const AdvertiserDashboard = lazy(() => import('@/pages/ad-platform/advertiser-dashboard'));
+const PublisherDashboard = lazy(() => import('@/pages/ad-platform/publisher-dashboard'));
+const AdminPlatformDashboard = lazy(() => import('@/pages/ad-platform/admin-dashboard'));
 
 function LoadingSpinner() {
   return (
@@ -1833,7 +1837,7 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
 }
 
 function App() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const { toast } = useToast();
   const [guestMode, setGuestMode] = useState(false);
   const [showWelcomeBonus, setShowWelcomeBonus] = useState(false);
@@ -1902,22 +1906,73 @@ function App() {
     );
   }
 
+  // Ad platform role-based routing
+  const adRole = (user as any)?.role;
+
+  if (isAuthenticated && adRole === "advertiser") {
+    return (
+      <TooltipProvider>
+        <Router>
+          <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>}>
+            <AdvertiserDashboard />
+          </Suspense>
+          <Toaster />
+        </Router>
+      </TooltipProvider>
+    );
+  }
+
+  if (isAuthenticated && adRole === "publisher") {
+    return (
+      <TooltipProvider>
+        <Router>
+          <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-violet-500" /></div>}>
+            <PublisherDashboard />
+          </Suspense>
+          <Toaster />
+        </Router>
+      </TooltipProvider>
+    );
+  }
+
+  if (isAuthenticated && adRole === "admin") {
+    return (
+      <TooltipProvider>
+        <Router>
+          <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-red-500" /></div>}>
+            <AdminPlatformDashboard />
+          </Suspense>
+          <Toaster />
+        </Router>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider>
       <Router>
         <AudioProvider>
           <AudioAdManager />
-          {isAuthenticated ? (
-            <>
-              <MainApp />
-              <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
-              <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
-            </>
-          ) : guestMode ? (
-            <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
-          ) : (
-            <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
-          )}
+          <Switch>
+            <Route path="/ad-platform">
+              <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
+                <AdPlatformLanding />
+              </Suspense>
+            </Route>
+            <Route>
+              {isAuthenticated ? (
+                <>
+                  <MainApp />
+                  <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
+                  <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
+                </>
+              ) : guestMode ? (
+                <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
+              ) : (
+                <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
+              )}
+            </Route>
+          </Switch>
           <AccessibilityWidget />
           <FocusModeExitButton />
           <Toaster />

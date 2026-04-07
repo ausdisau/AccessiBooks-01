@@ -266,10 +266,16 @@ export function setupMultiAuth(app: Express) {
   // Local registration
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
-      const { email, password, firstName, lastName } = req.body;
+      const { email, password, firstName, lastName, role, companyName, website } = req.body;
 
       if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required" });
+      }
+
+      // Validate role if provided
+      const VALID_ROLES = ["advertiser", "publisher", "admin"];
+      if (role && !VALID_ROLES.includes(role)) {
+        return res.status(400).json({ message: "Invalid role. Must be advertiser or publisher." });
       }
 
       // Check if user exists
@@ -294,6 +300,9 @@ export function setupMultiAuth(app: Express) {
           firstName: firstName || null,
           lastName: lastName || null,
           authProvider: "local",
+          role: role || null,
+          companyName: companyName || null,
+          website: website || null,
         })
         .returning();
 

@@ -21,6 +21,7 @@ import { registerBillingRoutes, recordTransaction, updateTransactionStatus } fro
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
 import { registerMoatScaffoldRoutes } from "./moatScaffold";
+import { registerAdPlatformRoutes } from "./adPlatformRoutes";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import {
   convertToEasyEnglish,
@@ -144,6 +145,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Self-serve advertising platform (campaign management, CPM bidding, audio upload)
   registerSelfServeAdRoutes(app);
+
+  // Ad bidding platform (advertisers, publishers, real-time auctions, admin review)
+  registerAdPlatformRoutes(app);
 
   // Centralized billing platform (transactions, invoices, billing portal)
   registerBillingRoutes(app);

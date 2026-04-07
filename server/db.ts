@@ -58,6 +58,137 @@ export async function setupFullTextSearch(): Promise<void> {
   }
 }
 
+export async function setupAdPlatformTables(): Promise<void> {
+  try {
+    // Add role-related columns to users
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS role varchar`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name varchar`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS website varchar`;
+
+    // Add category to ad_campaigns if not present
+    await sql`ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS category varchar DEFAULT 'other'`;
+
+    // Display ads
+    await sql`
+      CREATE TABLE IF NOT EXISTS display_ads (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+        advertiser_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        headline text NOT NULL,
+        body text,
+        image_url text,
+        destination_url text NOT NULL,
+        status varchar NOT NULL DEFAULT 'pending_review',
+        max_cpm_cents integer NOT NULL DEFAULT 0,
+        rejection_reason text,
+        impression_count integer NOT NULL DEFAULT 0,
+        click_count integer NOT NULL DEFAULT 0,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `;
+
+    // Ad slots
+    await sql`
+      CREATE TABLE IF NOT EXISTS ad_slots (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        publisher_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        website_url text NOT NULL,
+        width integer NOT NULL DEFAULT 728,
+        height integer NOT NULL DEFAULT 90,
+        category varchar NOT NULL DEFAULT 'other',
+        min_cpm_cents integer NOT NULL DEFAULT 0,
+        is_active boolean NOT NULL DEFAULT true,
+        total_impressions integer NOT NULL DEFAULT 0,
+        total_earnings_cents integer NOT NULL DEFAULT 0,
+        created_at timestamp DEFAULT now()
+      )
+    `;
+
+    // Ad auctions
+    await sql`
+      CREATE TABLE IF NOT EXISTS ad_auctions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        slot_id varchar NOT NULL REFERENCES ad_slots(id) ON DELETE CASCADE,
+        winning_ad_id varchar REFERENCES display_ads(id),
+        winning_cpm_cents integer NOT NULL DEFAULT 0,
+        second_price_cpm_cents integer NOT NULL DEFAULT 0,
+        bids_considered integer NOT NULL DEFAULT 0,
+        no_fill boolean NOT NULL DEFAULT false,
+        created_at timestamp DEFAULT now()
+      )
+    `;
+
+    // Slot impressions
+    await sql`
+      CREATE TABLE IF NOT EXISTS slot_impressions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        auction_id varchar NOT NULL REFERENCES ad_auctions(id) ON DELETE CASCADE,
+        ad_id varchar NOT NULL REFERENCES display_ads(id) ON DELETE CASCADE,
+        slot_id varchar NOT NULL REFERENCES ad_slots(id) ON DELETE CASCADE,
+        advertiser_id varchar NOT NULL,
+        publisher_id varchar NOT NULL,
+        cpm_cents integer NOT NULL DEFAULT 0,
+        clicked boolean NOT NULL DEFAULT false,
+        served_at timestamp DEFAULT now()
+      )
+    `;
+
+    // Slot clicks
+    await sql`
+      CREATE TABLE IF NOT EXISTS slot_clicks (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        impression_id varchar NOT NULL REFERENCES slot_impressions(id) ON DELETE CASCADE,
+        ad_id varchar NOT NULL REFERENCES display_ads(id) ON DELETE CASCADE,
+        clicked_at timestamp DEFAULT now()
+      )
+    `;
+
+    // Advertiser wallets
+    await sql`
+      CREATE TABLE IF NOT EXISTS advertiser_wallets (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        advertiser_id varchar NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        balance_cents integer NOT NULL DEFAULT 0,
+        total_topup_cents integer NOT NULL DEFAULT 0,
+        total_spend_cents integer NOT NULL DEFAULT 0,
+        updated_at timestamp DEFAULT now()
+      )
+    `;
+
+    // Publisher earnings
+    await sql`
+      CREATE TABLE IF NOT EXISTS publisher_earnings (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        publisher_id varchar NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        total_earned_cents integer NOT NULL DEFAULT 0,
+        pending_cents integer NOT NULL DEFAULT 0,
+        paid_out_cents integer NOT NULL DEFAULT 0,
+        updated_at timestamp DEFAULT now()
+      )
+    `;
+
+    // Payout requests
+    await sql`
+      CREATE TABLE IF NOT EXISTS payout_requests (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        publisher_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount_cents integer NOT NULL,
+        status varchar NOT NULL DEFAULT 'pending',
+        payment_details text,
+        admin_notes text,
+        created_at timestamp DEFAULT now(),
+        resolved_at timestamp
+      )
+    `;
+
+    console.log("[AdPlatform] Tables set up successfully");
+  } catch (error: any) {
+    console.warn("[AdPlatform] Table setup warning:", error.message);
+  }
+}
+
 export async function setupEasyEnglishTables(): Promise<void> {
   try {
     await sql`
