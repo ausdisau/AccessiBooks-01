@@ -27,6 +27,7 @@ import {
   Bookmark as BookmarkIcon,
   Loader2,
   Gauge,
+  Gem,
   Car,
   ListMusic,
   ChevronDown,
@@ -72,6 +73,8 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     prevChapter,
     seekToChapter,
     playBook,
+    streamQuality,
+    bufferedAhead,
   } = useAudioContext();
 
   const { 
@@ -338,16 +341,40 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               <span aria-label="Current time" data-testid="text-current-time">
                 {formatTime(currentTime)}
               </span>
-              {isBuffering && (
-                <span className="flex items-center gap-1 text-amber-500 text-xs font-medium">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Buffering…
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {isBuffering && (
+                  <span className="flex items-center gap-1 text-amber-500 text-xs font-medium">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Buffering…
+                  </span>
+                )}
+                {streamQuality.tier === "uhq" ? (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <Gem className="h-3 w-3" />
+                    UHQ
+                  </span>
+                ) : streamQuality.tier === "hd" ? (
+                  <span className="text-xs font-medium text-blue-500 dark:text-blue-400">HD</span>
+                ) : null}
+              </div>
               <span aria-label="Time remaining" className="text-muted-foreground">
                 -{formatTime(remainingTime)}
               </span>
             </div>
+
+            {/* Buffer health bar — shows how much audio is cached ahead */}
+            {duration > 0 && (
+              <div className="relative h-1 rounded-full bg-muted overflow-hidden mb-1" aria-hidden="true">
+                <div
+                  className="absolute inset-y-0 left-0 bg-primary/20 rounded-full transition-all duration-1000 ease-linear"
+                  style={{ width: `${Math.min(100, ((currentTime + bufferedAhead) / duration) * 100)}%` }}
+                />
+                <div
+                  className="absolute inset-y-0 left-0 bg-primary/50 rounded-full"
+                  style={{ width: `${progressPercentage}%` }}
+                />
+              </div>
+            )}
             
             <Slider
               value={[progressPercentage]}
@@ -628,7 +655,21 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
         onOpenChange={setShowPlaylistDialog}
       />
 
-      {!isPremium && (skipStatus || audioQuality) && (
+      {isPremium ? (
+        <Card className="border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20">
+          <CardContent className="p-3 flex items-center gap-3">
+            <Gem className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                {streamQuality.label}
+              </span>
+              <span className="text-xs text-emerald-600/70 dark:text-emerald-400/70 ml-2">
+                Premium · byte-range proxy · eager buffering
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (skipStatus || audioQuality) ? (
         <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30">
           <CardContent className="p-3 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-4 text-sm">
@@ -640,14 +681,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   </span>
                 </div>
               )}
-              {audioQuality && (
-                <div className="flex items-center gap-2">
-                  <Gauge className="h-4 w-4 text-amber-600" />
-                  <span className="text-amber-700 dark:text-amber-300">
-                    {audioQuality.bitrate}kbps audio
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <Gauge className="h-4 w-4 text-amber-600" />
+                <span className="text-amber-700 dark:text-amber-300">
+                  {streamQuality.label}
+                </span>
+              </div>
             </div>
             <Button 
               variant="ghost" 
@@ -660,7 +699,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             </Button>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       <div
         className="sr-only"

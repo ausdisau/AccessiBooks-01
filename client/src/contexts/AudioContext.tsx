@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback } from "react";
+import { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { Book, Progress, Chapter } from "@shared/schema";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
@@ -9,6 +9,15 @@ interface AudioAdState {
   isAdPlaying: boolean;
   currentAd: AdResponse | null;
   adType: "pre-roll" | "mid-roll" | null;
+}
+
+export type StreamQualityTier = "uhq" | "hd" | "sd";
+
+export interface StreamQualityInfo {
+  quality: "low" | "mid" | "high" | "ultra";
+  bitrate: number;
+  label: string;
+  tier: StreamQualityTier;
 }
 
 interface AudioContextType {
@@ -28,6 +37,8 @@ interface AudioContextType {
   currentChapterIndex: number;
   adState: AudioAdState;
   skipAfterMs: number;
+  streamQuality: StreamQualityInfo;
+  bufferedAhead: number;
   setCurrentBook: (book: Book | null) => void;
   togglePlayPause: () => Promise<void>;
   skip: (seconds: number) => void;
@@ -82,6 +93,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   });
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [subscriptionTier, setSubscriptionTier] = useState<"free" | "plus" | "premium">("free");
+  const [bufferedAhead, setBufferedAhead] = useState(0);
   const pendingBookRef = useRef<Book | null>(null);
   const isPremiumRef = useRef(false);
   const externalChapterEndRef = useRef<(() => void) | null>(null);
@@ -91,20 +104,27 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const wasPlayingBeforeOfflineRef = useRef(false);
 
   useEffect(() => {
-    const checkPremium = () => {
+    const checkSubscription = () => {
       if (user) {
         fetch("/api/subscription/status", { credentials: "include" })
           .then(r => r.ok ? r.json() : null)
           .then(data => {
             isPremiumRef.current = data?.isPremium || false;
+            const tier: "free" | "plus" | "premium" = data?.subscriptionTier || "free";
+            setSubscriptionTier(tier);
+            const audio = audioRef.current;
+            if (audio) {
+              audio.preload = tier !== "free" ? "auto" : "metadata";
+            }
           })
           .catch(() => {});
       } else {
         isPremiumRef.current = false;
+        setSubscriptionTier("free");
       }
     };
-    checkPremium();
-    const interval = setInterval(checkPremium, 60000);
+    checkSubscription();
+    const interval = setInterval(checkSubscription, 60000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -274,6 +294,37 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audioRef.current.load();
     }
   }, [currentBook?.id]);
+
+  // Poll audio.buffered every second to compute how many seconds are cached ahead
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const poll = () => {
+      try {
+        if (audio.buffered.length > 0) {
+          const end = audio.buffered.end(audio.buffered.length - 1);
+          setBufferedAhead(Math.max(0, end - audio.currentTime));
+        } else {
+          setBufferedAhead(0);
+        }
+      } catch {
+        setBufferedAhead(0);
+      }
+    };
+    const id = setInterval(poll, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Compute stream quality info from subscription tier
+  const streamQuality = useMemo<StreamQualityInfo>(() => {
+    if (subscriptionTier === "premium") {
+      return { quality: "ultra", bitrate: 320, label: "UHQ · 320 kbps", tier: "uhq" };
+    }
+    if (subscriptionTier === "plus") {
+      return { quality: "mid", bitrate: 192, label: "HD · 192 kbps", tier: "hd" };
+    }
+    return { quality: "low", bitrate: 128, label: "SD · 128 kbps", tier: "sd" };
+  }, [subscriptionTier]);
 
   // Fetch chapters when book changes
   useEffect(() => {
@@ -604,6 +655,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         currentChapterIndex,
         adState,
         skipAfterMs: audioAdService.skipAfterMs,
+        streamQuality,
+        bufferedAhead,
         setCurrentBook,
         togglePlayPause,
         skip,
@@ -623,7 +676,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         onAdUpgrade,
       }}
     >
-      <audio ref={audioRef} preload="metadata" />
+      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
       {children}
     </AudioContext.Provider>
   );

@@ -47,6 +47,7 @@ import {
   getSkipStatus,
   useSkip,
   getAudioQuality,
+  getAudioQualityForTier,
   getQualityBitrate,
   registerDevice,
   removeDevice,
@@ -595,7 +596,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/stream/:id - Stream audio (redirect to actual audio URL)
+  // HEAD /api/stream/:id - Probe audio file size and type for byte-range readiness
+  app.head("/api/stream/:id", rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const book = await storage.getBook(id);
+      if (!book || !book.audioUrl) return res.status(404).end();
+      if (!storage.validateAudioUrl(book.audioUrl)) return res.status(403).end();
+
+      const headRes = await fetch(book.audioUrl, {
+        method: "HEAD",
+        headers: { "User-Agent": "AccessiBooks/2.0 AudioProxy" },
+        signal: AbortSignal.timeout(8000),
+      }).catch(() => null);
+
+      if (headRes && headRes.ok) {
+        const ct = headRes.headers.get("content-type");
+        const cl = headRes.headers.get("content-length");
+        if (ct) res.setHeader("Content-Type", ct);
+        if (cl) res.setHeader("Content-Length", cl);
+      }
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.status(headRes?.status ?? 200).end();
+    } catch {
+      res.status(500).end();
+    }
+  });
+
+  // GET /api/stream/:id - Byte-range streaming proxy (replaces 302 redirect)
   // Protected by rate limiting, DRM guard, and premium content check
   app.get("/api/stream/:id", rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, async (req, res) => {
     try {
@@ -622,12 +651,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: "INVALID_AUDIO_SOURCE"
         });
       }
-      
-      // Redirect to the validated audio URL
-      res.redirect(302, book.audioUrl);
+
+      // Build upstream request headers, forwarding Range for seek support
+      const upstreamHeaders: Record<string, string> = {
+        "User-Agent": "AccessiBooks/2.0 AudioProxy",
+      };
+      if (req.headers.range) {
+        upstreamHeaders["Range"] = req.headers.range;
+      }
+
+      const upstreamRes = await fetch(book.audioUrl, {
+        headers: upstreamHeaders,
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!upstreamRes.ok && upstreamRes.status !== 206) {
+        console.error(`Upstream audio ${upstreamRes.status} for book ${id}`);
+        return res.status(502).json({ message: "Failed to fetch audio from source" });
+      }
+
+      // Forward content headers from upstream
+      const forwardHeaders = ["content-type", "content-length", "content-range"];
+      for (const h of forwardHeaders) {
+        const v = upstreamRes.headers.get(h);
+        if (v) res.setHeader(h, v);
+      }
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.status(upstreamRes.status);
+
+      if (!upstreamRes.body) {
+        return res.end();
+      }
+
+      // Pipe upstream web stream to Express response
+      const { Readable } = await import("stream");
+      const nodeStream = Readable.fromWeb(upstreamRes.body as Parameters<typeof Readable.fromWeb>[0]);
+      nodeStream.pipe(res);
+      req.on("close", () => nodeStream.destroy());
     } catch (error) {
       console.error('Streaming error:', error);
-      res.status(500).json({ message: "Failed to stream book" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to stream book" });
+      }
     }
   });
 
@@ -2146,15 +2213,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = await storage.getUser(userId);
-      const isPremium = user?.subscriptionTier === "premium";
-      const quality = getAudioQuality(isPremium);
+      const tier = (user?.subscriptionTier ?? "free") as SubscriptionTier;
+      const isPremium = tier === "premium";
+      const quality = getAudioQualityForTier(tier);
       const bitrate = getQualityBitrate(quality);
 
       res.json({
         quality,
         bitrate,
         isPremium,
-        upgradeMessage: !isPremium ? "Upgrade to Premium for 320kbps high-quality audio" : null,
+        tier,
+        upgradeMessage: tier !== "premium" ? "Upgrade to Premium for UHQ 320kbps audio" : null,
       });
     } catch (error) {
       console.error("Error getting audio quality:", error);
