@@ -1956,9 +1956,11 @@ function App() {
               </Suspense>
             </Route>
             <Route path="/ad-platform/slots/:id">
-              {(params) => (
+              {() => (
                 <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
-                  <SlotDetailPage />
+                  <AuthGatedRoute redirectTo="/ad-platform">
+                    <SlotDetailPage />
+                  </AuthGatedRoute>
                 </Suspense>
               )}
             </Route>
@@ -1983,6 +1985,17 @@ function App() {
       </Router>
     </TooltipProvider>
   );
+}
+
+function AuthGatedRoute({ children, redirectTo }: { children: React.ReactNode; redirectTo: string }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) navigate(redirectTo);
+  }, [isAuthenticated, isLoading, redirectTo, navigate]);
+  if (isLoading) return <div className="min-h-screen bg-[#0a0f1e]" />;
+  if (!isAuthenticated) return null;
+  return <>{children}</>;
 }
 
 function FocusModeExitButton() {
