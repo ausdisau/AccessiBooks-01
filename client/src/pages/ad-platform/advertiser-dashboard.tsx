@@ -15,12 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
+  type LucideIcon,
   BarChart3, Plus, Zap, TrendingUp, Eye, MousePointer, DollarSign,
   LogOut, Settings, Target, Play, Pause, ChevronRight, Wallet, Building2,
   Clock, CheckCircle, XCircle, AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { AD_CATEGORIES } from "@shared/schema";
+import { AD_CATEGORIES, type AdCampaign, type DisplayAd, type AdvertiserWallet } from "@shared/schema";
 
 const campaignSchema = z.object({
   name: z.string().min(1, "Campaign name required"),
@@ -43,7 +44,7 @@ type AdForm = z.infer<typeof adSchema>;
 function formatMoney(cents: number) { return `$${(cents / 100).toFixed(2)}`; }
 function formatNum(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString(); }
 
-const STATUS_CONFIG: Record<string, { color: string; icon: any; label: string }> = {
+const STATUS_CONFIG: Record<string, { color: string; icon: LucideIcon; label: string }> = {
   draft: { color: "text-white/50 bg-white/10", icon: Clock, label: "Draft" },
   pending_review: { color: "text-yellow-400 bg-yellow-400/10", icon: AlertCircle, label: "In Review" },
   approved: { color: "text-green-400 bg-green-400/10", icon: CheckCircle, label: "Approved" },
@@ -70,15 +71,15 @@ export default function AdvertiserDashboard() {
   const [adOpen, setAdOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
 
-  const { data: campaigns = [], isLoading: campaignsLoading } = useQuery<any[]>({
+  const { data: campaigns = [], isLoading: campaignsLoading } = useQuery<AdCampaign[]>({
     queryKey: ["/api/ad/campaigns"],
   });
 
-  const { data: displayAds = [] } = useQuery<any[]>({
+  const { data: displayAds = [] } = useQuery<DisplayAd[]>({
     queryKey: ["/api/ad/display-ads"],
   });
 
-  const { data: wallet } = useQuery<any>({
+  const { data: wallet } = useQuery<AdvertiserWallet>({
     queryKey: ["/api/ad/wallet"],
   });
 
@@ -119,8 +120,8 @@ export default function AdvertiserDashboard() {
     onSuccess: () => { queryClient.clear(); window.location.href = "/"; },
   });
 
-  const totalImpressions = displayAds.reduce((s: number, a: any) => s + (a.impressionCount ?? 0), 0);
-  const totalClicks = displayAds.reduce((s: number, a: any) => s + (a.clickCount ?? 0), 0);
+  const totalImpressions = displayAds.reduce((s, a) => s + (a.impressionCount ?? 0), 0);
+  const totalClicks = displayAds.reduce((s, a) => s + (a.clickCount ?? 0), 0);
   const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00";
 
   return (
@@ -234,7 +235,7 @@ export default function AdvertiserDashboard() {
                           <SelectValue placeholder="Select a campaign" />
                         </SelectTrigger>
                         <SelectContent className="bg-[#0d1527] border-white/10 text-white">
-                          {campaigns.map((c: any) => (
+                          {campaigns.map((c) => (
                             <SelectItem key={c.id} value={c.id} className="focus:bg-white/10">{c.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -315,7 +316,7 @@ export default function AdvertiserDashboard() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {campaigns.map((c: any) => (
+                {campaigns.map((c) => (
                   <Card key={c.id} className="bg-white/5 border-white/10 hover:bg-white/8 transition-colors cursor-pointer" onClick={() => setSelectedCampaign(c.id === selectedCampaign ? null : c.id)}>
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
@@ -362,7 +363,7 @@ export default function AdvertiserDashboard() {
               </Card>
             ) : (
               <div className="grid sm:grid-cols-2 gap-4">
-                {displayAds.map((ad: any) => (
+                {displayAds.map((ad) => (
                   <Card key={ad.id} className="bg-white/5 border-white/10">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-2 mb-3">

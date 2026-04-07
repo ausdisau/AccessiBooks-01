@@ -57,12 +57,12 @@ export default function AdAuthModal({ mode, defaultRole = "advertiser", onClose,
       onClose();
       if (user.role === "advertiser") navigate("/advertiser");
       else if (user.role === "publisher") navigate("/publisher");
-      else if (user.role === "admin") navigate("/ad-admin");
+      else if (user.role === "admin") navigate("/admin");
       else navigate("/");
     },
-    onError: async (err: any) => {
+    onError: async (err: unknown) => {
       let msg = "Login failed";
-      try { const j = await err.response?.json(); msg = j?.message || msg; } catch {}
+      try { const r = (err as { response?: { json: () => Promise<{ message?: string }> } }).response; if (r) { const j = await r.json(); msg = j?.message || msg; } } catch {}
       toast({ title: "Sign-in failed", description: msg, variant: "destructive" });
     },
   });
@@ -75,9 +75,9 @@ export default function AdAuthModal({ mode, defaultRole = "advertiser", onClose,
       if (selectedRole === "advertiser") navigate("/advertiser");
       else navigate("/publisher");
     },
-    onError: async (err: any) => {
+    onError: async (err: unknown) => {
       let msg = "Registration failed";
-      try { const j = await err.response?.json(); msg = j?.message || msg; } catch {}
+      try { const r = (err as { response?: { json: () => Promise<{ message?: string }> } }).response; if (r) { const j = await r.json(); msg = j?.message || msg; } } catch {}
       toast({ title: "Registration failed", description: msg, variant: "destructive" });
     },
   });
