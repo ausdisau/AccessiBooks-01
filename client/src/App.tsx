@@ -1401,7 +1401,7 @@ function MainApp() {
     return "full";
   });
   const { settings: a11ySettings, toggleHighContrast, toggleDarkMode } = useAccessibility();
-  const { currentBook, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
+  const { currentBook, isPlaying, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
   const { toast } = useToast();
@@ -1551,12 +1551,12 @@ function MainApp() {
     },
     {
       patterns: ["play", "resume", "start"],
-      handler: () => togglePlayPause(),
+      handler: () => { if (!isPlaying) togglePlayPause(); },
       description: "Play / resume audio",
     },
     {
       patterns: ["pause", "stop playing"],
-      handler: () => togglePlayPause(),
+      handler: () => { if (isPlaying) togglePlayPause(); },
       description: "Pause audio",
     },
     {
@@ -1639,7 +1639,7 @@ function MainApp() {
       },
       description: "Search for a book by name",
     },
-  ], [togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate]);
+  ], [isPlaying, togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate]);
 
   const voiceControl = useVoiceControl({
     commands: voiceCommands,

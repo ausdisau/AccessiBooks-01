@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { localStorageService, AccessibilitySettings } from "@/lib/storage";
 
-function dispatch() {
-  document.dispatchEvent(new CustomEvent("accessibooks:settings-changed", { detail: { source: "use-accessibility" } }));
-}
+let instanceCounter = 0;
 
 export function useAccessibility() {
+  const instanceId = useRef(`a11y-${++instanceCounter}`);
+
   const [settings, setSettings] = useState<AccessibilitySettings>(() =>
     localStorageService.getSettings()
   );
@@ -17,12 +17,17 @@ export function useAccessibility() {
   }, [settings]);
 
   useEffect(() => {
+    const id = instanceId.current;
     const handler = (e: Event) => {
-      if ((e as CustomEvent).detail?.source === "use-accessibility") return;
+      if ((e as CustomEvent).detail?.source === id) return;
       const stored = localStorageService.getSettings();
       setSettings((prev) => {
         const keys = Object.keys(stored) as (keyof AccessibilitySettings)[];
-        const changed = keys.some((k) => (stored as Record<string, unknown>)[k] !== (prev as Record<string, unknown>)[k]);
+        const changed = keys.some(
+          (k) =>
+            (stored as Record<string, unknown>)[k] !==
+            (prev as Record<string, unknown>)[k]
+        );
         return changed ? stored : prev;
       });
     };
@@ -30,41 +35,49 @@ export function useAccessibility() {
     return () => document.removeEventListener("accessibooks:settings-changed", handler);
   }, []);
 
+  const dispatch = useCallback(() => {
+    document.dispatchEvent(
+      new CustomEvent("accessibooks:settings-changed", {
+        detail: { source: instanceId.current },
+      })
+    );
+  }, []);
+
   const toggleHighContrast = useCallback(() => {
     setSettings((prev) => {
       const next = { ...prev, highContrast: !prev.highContrast };
       localStorageService.saveSettings(next);
-      dispatch();
       return next;
     });
-  }, []);
+    dispatch();
+  }, [dispatch]);
 
   const toggleDyslexiaFont = useCallback(() => {
     setSettings((prev) => {
       const next = { ...prev, dyslexiaFont: !prev.dyslexiaFont };
       localStorageService.saveSettings(next);
-      dispatch();
       return next;
     });
-  }, []);
+    dispatch();
+  }, [dispatch]);
 
   const toggleDarkMode = useCallback(() => {
     setSettings((prev) => {
       const next = { ...prev, darkMode: !prev.darkMode };
       localStorageService.saveSettings(next);
-      dispatch();
       return next;
     });
-  }, []);
+    dispatch();
+  }, [dispatch]);
 
   const toggleVoiceControl = useCallback(() => {
     setSettings((prev) => {
       const next = { ...prev, voiceControlEnabled: !prev.voiceControlEnabled };
       localStorageService.saveSettings(next);
-      dispatch();
       return next;
     });
-  }, []);
+    dispatch();
+  }, [dispatch]);
 
   return {
     settings,
