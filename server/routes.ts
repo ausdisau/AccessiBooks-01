@@ -676,6 +676,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const v = upstreamRes.headers.get(h);
         if (v) res.setHeader(h, v);
       }
+      // Ensure Content-Type is always set (some sources omit it)
+      if (!upstreamRes.headers.get("content-type")) {
+        res.setHeader("Content-Type", "audio/mpeg");
+      }
       res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.setHeader("X-Content-Type-Options", "nosniff");
