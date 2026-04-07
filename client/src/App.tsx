@@ -58,7 +58,7 @@ const ReferralsPage = lazy(() => import('@/pages/referrals').then(m => ({ defaul
 const AuthorDashboard = lazy(() => import('@/components/author-dashboard').then(m => ({ default: m.AuthorDashboard })));
 const ListeningParty = lazy(() => import('@/components/listening-party').then(m => ({ default: m.ListeningParty })));
 const StreamingQueue = lazy(() => import('@/components/streaming-queue').then(m => ({ default: m.StreamingQueue })));
-const AdvertiserDashboard = lazy(() => import('@/components/advertiser-dashboard').then(m => ({ default: m.AdvertiserDashboard })));
+const AudioAdvertiserDashboard = lazy(() => import('@/components/advertiser-dashboard').then(m => ({ default: m.AdvertiserDashboard })));
 const BillingDashboard = lazy(() => import('@/components/billing-dashboard').then(m => ({ default: m.BillingDashboard })));
 const UsageDashboard = lazy(() => import('@/components/usage-dashboard').then(m => ({ default: m.UsageDashboard })));
 const OfflineDownloads = lazy(() => import('@/components/offline-downloads').then(m => ({ default: m.OfflineDownloads })));
@@ -1594,7 +1594,7 @@ function MainApp() {
                 <Route path="/advertise">
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="advertise-panel" role="region" data-testid="panel-advertise">
-                      <AdvertiserDashboard />
+                      <AudioAdvertiserDashboard />
                     </div>
                   </Suspense>
                 </Route>
@@ -1909,38 +1909,33 @@ function App() {
   // Ad platform role-based routing
   const adRole = (user as any)?.role;
 
-  if (isAuthenticated && adRole === "advertiser") {
+  if (isAuthenticated && (adRole === "advertiser" || adRole === "publisher" || adRole === "admin")) {
     return (
       <TooltipProvider>
         <Router>
           <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>}>
-            <AdvertiserDashboard />
-          </Suspense>
-          <Toaster />
-        </Router>
-      </TooltipProvider>
-    );
-  }
-
-  if (isAuthenticated && adRole === "publisher") {
-    return (
-      <TooltipProvider>
-        <Router>
-          <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-violet-500" /></div>}>
-            <PublisherDashboard />
-          </Suspense>
-          <Toaster />
-        </Router>
-      </TooltipProvider>
-    );
-  }
-
-  if (isAuthenticated && adRole === "admin") {
-    return (
-      <TooltipProvider>
-        <Router>
-          <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-red-500" /></div>}>
-            <AdminPlatformDashboard />
+            <Switch>
+              {adRole === "advertiser" && (
+                <Route path="/advertiser">
+                  <AdvertiserDashboard />
+                </Route>
+              )}
+              {adRole === "publisher" && (
+                <Route path="/publisher">
+                  <PublisherDashboard />
+                </Route>
+              )}
+              {adRole === "admin" && (
+                <Route path="/admin">
+                  <AdminPlatformDashboard />
+                </Route>
+              )}
+              <Route>
+                {adRole === "advertiser" && <AdvertiserDashboard />}
+                {adRole === "publisher" && <PublisherDashboard />}
+                {adRole === "admin" && <AdminPlatformDashboard />}
+              </Route>
+            </Switch>
           </Suspense>
           <Toaster />
         </Router>
