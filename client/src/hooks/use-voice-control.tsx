@@ -49,6 +49,13 @@ interface ISpeechRecognition extends EventTarget {
   abort(): void;
 }
 
+export function isSpeechRecognitionSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  );
+}
+
 export type VoiceCommandHandler = (arg?: string) => void;
 
 export interface VoiceCommand {
@@ -66,6 +73,7 @@ export interface UseVoiceControlOptions {
 export interface UseVoiceControlReturn {
   isSupported: boolean;
   isListening: boolean;
+  isProcessing: boolean;
   interimTranscript: string;
   lastTranscript: string;
   startListening: () => void;
@@ -115,6 +123,7 @@ export function useVoiceControl({
   const isSupported = SpeechRecognitionCtor !== null;
 
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [lastTranscript, setLastTranscript] = useState("");
 
@@ -146,6 +155,7 @@ export function useVoiceControl({
 
     recognition.onstart = () => {
       setIsListening(true);
+      setIsProcessing(false);
       setInterimTranscript("");
     };
 
@@ -162,6 +172,7 @@ export function useVoiceControl({
       }
       if (interim) setInterimTranscript(interim);
       if (final) {
+        setIsProcessing(true);
         setInterimTranscript("");
         setLastTranscript(final);
         const matched = matchCommand(final, commandsRef.current);
@@ -170,6 +181,7 @@ export function useVoiceControl({
         } else {
           onNoMatchRef.current?.(final.trim());
         }
+        setIsProcessing(false);
       }
     };
 
@@ -178,11 +190,13 @@ export function useVoiceControl({
         console.warn("[VoiceControl] SpeechRecognition error:", event.error);
       }
       setIsListening(false);
+      setIsProcessing(false);
       setInterimTranscript("");
     };
 
     recognition.onend = () => {
       setIsListening(false);
+      setIsProcessing(false);
       setInterimTranscript("");
     };
 
@@ -209,6 +223,7 @@ export function useVoiceControl({
   return {
     isSupported,
     isListening,
+    isProcessing,
     interimTranscript,
     lastTranscript,
     startListening,
