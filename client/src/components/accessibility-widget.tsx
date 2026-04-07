@@ -155,7 +155,7 @@ export function AccessibilityWidget() {
   const isLoggedIn = !!user;
   const { toast } = useToast();
 
-  const { data: serverPrefs } = useQuery<{ profile: AccessibilitySettings | null; hasStoredRecord?: boolean }>({
+  const { data: serverPrefs } = useQuery<{ profile: AccessibilitySettings; hasStoredRecord?: boolean }>({
     queryKey: ["/api/a11y/preferences"],
     enabled: isLoggedIn,
     staleTime: Infinity,
@@ -177,11 +177,11 @@ export function AccessibilityWidget() {
   useEffect(() => {
     if (!isLoggedIn || serverPrefs === undefined) return;
 
-    const serverProfile = serverPrefs.profile;
     const defaults = getDefaultSettings();
 
-    if (serverProfile !== null) {
-      // A stored user profile exists — only restore widget-owned fields
+    if (serverPrefs.hasStoredRecord !== false) {
+      // A real stored user profile exists — restore widget-owned fields
+      const serverProfile = serverPrefs.profile;
       const widgetKeys = Object.keys(defaults) as (keyof AccessibilitySettings)[];
       const hasWidgetFields = widgetKeys.some((k) => k in serverProfile);
       if (hasWidgetFields) {
@@ -193,7 +193,7 @@ export function AccessibilityWidget() {
       return;
     }
 
-    // profile === null means no record has been stored yet — check for local custom settings
+    // hasStoredRecord === false: no record saved yet — check for local custom settings
     const localSettings = localStorageService.getSettings();
     const isLocalDefault = Object.keys(defaults).every(
       (k) =>
@@ -273,6 +273,7 @@ export function AccessibilityWidget() {
     const defaultSettings = getDefaultSettings();
     setSettings(defaultSettings);
     localStorageService.saveSettings(defaultSettings);
+    if (isLoggedIn) saveMutation.mutate(defaultSettings);
   };
 
   return (
