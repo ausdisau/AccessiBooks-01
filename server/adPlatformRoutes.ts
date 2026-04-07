@@ -1,6 +1,6 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { stripe } from "./stripe";
 import {
@@ -10,6 +10,7 @@ import {
   type User,
 } from "@shared/schema";
 import { runAuction } from "./auctionEngine";
+import { sendEmail } from "./mailer";
 
 type AuthenticatedUser = Pick<User, "id" | "email" | "role" | "firstName" | "lastName" | "companyName">;
 
@@ -859,33 +860,81 @@ export function registerAdPlatformRoutes(app: Express) {
         .groupBy(sql`to_char(${adAuctions.createdAt}, 'YYYY-MM-DD')`)
         .orderBy(sql`to_char(${adAuctions.createdAt}, 'YYYY-MM-DD')`);
 
-      // Top advertisers by spend
-      const topAdvertisers = await db
+      // Top advertisers by spend — date-scoped from slot_impressions
+      const topAdvertiserRows = await db
         .select({
-          advertiserId: advertiserWallets.advertiserId,
-          email: users.email,
-          companyName: users.companyName,
-          totalSpendCents: advertiserWallets.totalSpendCents,
-          balanceCents: advertiserWallets.balanceCents,
+          advertiserId: slotImpressions.advertiserId,
+          totalSpendCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0)`,
         })
-        .from(advertiserWallets)
-        .leftJoin(users, eq(advertiserWallets.advertiserId, users.id))
-        .orderBy(desc(advertiserWallets.totalSpendCents))
+        .from(slotImpressions)
+        .where(and(gte(slotImpressions.servedAt, from), lte(slotImpressions.servedAt, to)))
+        .groupBy(slotImpressions.advertiserId)
+        .orderBy(sql`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0) desc`)
         .limit(10);
 
-      // Top publishers by earnings
-      const topPublishers = await db
+      const topAdvertiserIds = topAdvertiserRows.map((r) => r.advertiserId);
+      const advertiserUserRows = topAdvertiserIds.length > 0
+        ? await db.select({ id: users.id, email: users.email, companyName: users.companyName }).from(users).where(inArray(users.id, topAdvertiserIds))
+        : [];
+
+      // Build user map manually for correct joins
+      const advertiserUserMap: Record<string, { email: string | null; companyName: string | null }> = {};
+      for (const u of advertiserUserRows) {
+        advertiserUserMap[u.id] = { email: u.email, companyName: u.companyName ?? null };
+      }
+
+      // Fetch wallet balances
+      const advertiserWalletRows = topAdvertiserIds.length > 0
+        ? await db
+            .select({ advertiserId: advertiserWallets.advertiserId, balanceCents: advertiserWallets.balanceCents })
+            .from(advertiserWallets)
+        : [];
+      const walletMap: Record<string, number> = {};
+      for (const w of advertiserWalletRows) walletMap[w.advertiserId] = w.balanceCents;
+
+      const topAdvertisers = topAdvertiserRows.map((r) => ({
+        advertiserId: r.advertiserId,
+        email: advertiserUserMap[r.advertiserId]?.email ?? null,
+        companyName: advertiserUserMap[r.advertiserId]?.companyName ?? null,
+        totalSpendCents: Number(r.totalSpendCents),
+        balanceCents: walletMap[r.advertiserId] ?? 0,
+      }));
+
+      // Top publishers by earnings — date-scoped from slot_impressions (publisher gets 70%)
+      const topPublisherRows = await db
         .select({
-          publisherId: publisherEarnings.publisherId,
-          email: users.email,
-          companyName: users.companyName,
-          totalEarnedCents: publisherEarnings.totalEarnedCents,
-          pendingCents: publisherEarnings.pendingCents,
+          publisherId: slotImpressions.publisherId,
+          totalEarnedCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) * 0.7 / 1000, 0)`,
         })
-        .from(publisherEarnings)
-        .leftJoin(users, eq(publisherEarnings.publisherId, users.id))
-        .orderBy(desc(publisherEarnings.totalEarnedCents))
+        .from(slotImpressions)
+        .where(and(gte(slotImpressions.servedAt, from), lte(slotImpressions.servedAt, to)))
+        .groupBy(slotImpressions.publisherId)
+        .orderBy(sql`coalesce(sum(${slotImpressions.cpmCents}) * 0.7 / 1000, 0) desc`)
         .limit(10);
+
+      const topPublisherIds = topPublisherRows.map((r) => r.publisherId);
+      const publisherUserRows = topPublisherIds.length > 0
+        ? await db.select({ id: users.id, email: users.email, companyName: users.companyName }).from(users).where(inArray(users.id, topPublisherIds))
+        : [];
+      const publisherUserMap: Record<string, { email: string | null; companyName: string | null }> = {};
+      for (const u of publisherUserRows) {
+        publisherUserMap[u.id] = { email: u.email, companyName: u.companyName ?? null };
+      }
+
+      // Fetch pending earnings
+      const earningsRows = await db
+        .select({ publisherId: publisherEarnings.publisherId, pendingCents: publisherEarnings.pendingCents })
+        .from(publisherEarnings);
+      const earningsMap: Record<string, number> = {};
+      for (const e of earningsRows) earningsMap[e.publisherId] = e.pendingCents;
+
+      const topPublishers = topPublisherRows.map((r) => ({
+        publisherId: r.publisherId,
+        email: publisherUserMap[r.publisherId]?.email ?? null,
+        companyName: publisherUserMap[r.publisherId]?.companyName ?? null,
+        totalEarnedCents: Number(r.totalEarnedCents),
+        pendingCents: earningsMap[r.publisherId] ?? 0,
+      }));
 
       // Pending payout requests
       const pendingPayouts = await db
@@ -1045,7 +1094,7 @@ export function registerAdPlatformRoutes(app: Express) {
         .values({ publisherId: user.id, amountCents: pendingCents, paymentDetails })
         .returning();
 
-      // Notify admin(s) — create in-app notification record for each admin
+      // Notify admin(s) — send email + create in-app notification for each admin
       try {
         const admins = await db
           .select({ id: users.id, email: users.email })
@@ -1054,6 +1103,35 @@ export function registerAdPlatformRoutes(app: Express) {
         for (const admin of admins) {
           const publisherName = user.companyName || user.email || user.id;
           const amount = `$${(pendingCents / 100).toFixed(2)}`;
+
+          // Send real email notification to admin
+          if (admin.email) {
+            await sendEmail({
+              to: admin.email,
+              subject: `[AdBid] Payout Request from ${publisherName}`,
+              text: [
+                `A publisher has requested a payout on the AdBid platform.`,
+                ``,
+                `Publisher: ${publisherName} (${user.email ?? user.id})`,
+                `Amount requested: ${amount}`,
+                `Payout ID: ${payout.id}`,
+                ``,
+                `Please log in to the Admin dashboard to review and process this request:`,
+                `/ad-platform/admin`,
+              ].join("\n"),
+              html: `
+                <p>A publisher has requested a payout on the AdBid platform.</p>
+                <table>
+                  <tr><td><b>Publisher:</b></td><td>${publisherName} (${user.email ?? user.id})</td></tr>
+                  <tr><td><b>Amount:</b></td><td>${amount}</td></tr>
+                  <tr><td><b>Payout ID:</b></td><td>${payout.id}</td></tr>
+                </table>
+                <p>Please log in to the <a href="/ad-platform/admin">Admin dashboard</a> to review and process this request.</p>
+              `,
+            });
+          }
+
+          // Also create in-app notification record
           await db.insert(notificationLog).values({
             userId: admin.id,
             type: "payout_request",
@@ -1061,10 +1139,6 @@ export function registerAdPlatformRoutes(app: Express) {
             body: `Publisher ${publisherName} has requested a payout of ${amount}. Review it in the Admin dashboard under Payouts.`,
             url: "/ad-platform/admin",
           });
-          console.log(
-            `[EMAIL NOTIFICATION] To: ${admin.email} — Subject: Payout Request — ` +
-            `Publisher ${user.email} requested ${amount} [payout #${payout.id}]`
-          );
         }
       } catch (notifyErr) {
         console.warn("[Payout/notify] Could not notify admins:", notifyErr);
