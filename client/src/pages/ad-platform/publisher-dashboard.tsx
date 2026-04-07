@@ -9,16 +9,20 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Eye, Plus, Zap, DollarSign, TrendingUp, Globe, LogOut, Wallet,
   ToggleLeft, ToggleRight, MousePointer, Edit2, Trash2, Copy, ChevronDown, ChevronRight,
+  RefreshCw, Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AD_CATEGORIES, type AdSlot, type PublisherEarning } from "@shared/schema";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 
 type AdSlotWithEmbed = AdSlot & { embedSnippet?: string };
 
@@ -55,6 +59,7 @@ export default function PublisherDashboard() {
   const [editingSlot, setEditingSlot] = useState<AdSlot | null>(null);
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [days, setDays] = useState(30);
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<AdSlotWithEmbed[]>({
     queryKey: ["/api/ad/slots"],
@@ -62,6 +67,27 @@ export default function PublisherDashboard() {
 
   const { data: earnings } = useQuery<PublisherEarning>({
     queryKey: ["/api/ad/earnings"],
+  });
+
+  const { data: analytics, isLoading: analyticsLoading, refetch: refetchAnalytics } = useQuery<{
+    earnings: PublisherEarning | null;
+    slots: Array<{ id: string; name: string; totalImpressions: number; totalEarningsCents: number }>;
+    daily: Array<{ date: string; impressions: number; earningsCents: number }>;
+  }>({
+    queryKey: ["/api/analytics/publisher", days],
+    queryFn: () => fetch(`/api/analytics/publisher?days=${days}`).then(r => r.json()),
+    refetchInterval: 30000,
+    staleTime: 25000,
+  });
+
+  const payoutMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/ad/publisher/payout", {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/earnings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/publisher"] });
+      toast({ title: "Payout requested!", description: "Your payout request has been submitted for admin review." });
+    },
+    onError: (e: Error) => toast({ title: "Payout failed", description: e.message, variant: "destructive" }),
   });
 
   const slotForm = useForm<SlotForm>({
@@ -112,10 +138,11 @@ export default function PublisherDashboard() {
     onSuccess: () => { queryClient.clear(); window.location.href = "/"; },
   });
 
+  const liveEarnings = analytics?.earnings ?? earnings ?? null;
   const totalImpressions = slots.reduce((s, slot) => s + (slot.totalImpressions ?? 0), 0);
-  const totalEarned = earnings?.totalEarnedCents ?? 0;
-  const pending = earnings?.pendingCents ?? 0;
-  const paidOut = earnings?.paidOutCents ?? 0;
+  const totalEarned = liveEarnings?.totalEarnedCents ?? 0;
+  const pending = liveEarnings?.pendingCents ?? 0;
+  const paidOut = liveEarnings?.paidOutCents ?? 0;
 
   function openEditSlot(slot: AdSlot) {
     setEditingSlot(slot);
@@ -259,6 +286,91 @@ export default function PublisherDashboard() {
             ))}
           </div>
 
+          {/* Analytics Section */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider">Analytics</h2>
+              <div className="flex items-center gap-2">
+                {[7, 30, 90].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDays(d)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${days === d ? "bg-violet-600/30 text-violet-300 border border-violet-500/30" : "text-white/40 hover:text-white/70"}`}
+                  >
+                    {d}d
+                  </button>
+                ))}
+                <button onClick={() => refetchAnalytics()} className="p-1 text-white/30 hover:text-white/60" title="Refresh">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+              {/* Daily earnings area chart */}
+              <Card className="bg-white/5 border-white/10">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs text-white/50 font-medium">Earnings per Day</CardTitle>
+                </CardHeader>
+                <CardContent className="px-2 pb-4">
+                  {analyticsLoading ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">Loading...</div>
+                  ) : !analytics?.daily?.length ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">No data yet</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <AreaChart data={analytics.daily} margin={{ top: 0, right: 4, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="earningsGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0d" />
+                        <XAxis dataKey="date" tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: string) => v.slice(5)} />
+                        <YAxis tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                        <Tooltip
+                          contentStyle={{ background: "#0d1527", border: "1px solid #ffffff14", borderRadius: 6 }}
+                          labelStyle={{ color: "#ffffff80", fontSize: 11 }}
+                          itemStyle={{ color: "#a78bfa", fontSize: 11 }}
+                          formatter={(v: number) => [`$${(v / 100).toFixed(2)}`, "Earnings"]}
+                        />
+                        <Area type="monotone" dataKey="earningsCents" stroke="#7c3aed" strokeWidth={1.5} fill="url(#earningsGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Slot breakdown table */}
+              <Card className="bg-white/5 border-white/10">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs text-white/50 font-medium">Slot Performance</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {analyticsLoading ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">Loading...</div>
+                  ) : !analytics?.slots?.length ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">No data yet</div>
+                  ) : (
+                    <div className="space-y-2 mt-1 max-h-32 overflow-y-auto">
+                      <div className="grid grid-cols-3 text-[10px] text-white/30 mb-1 uppercase">
+                        <span>Slot</span><span className="text-right">Impr.</span><span className="text-right">Earned</span>
+                      </div>
+                      {analytics.slots.map((s) => (
+                        <div key={s.id} className="grid grid-cols-3 text-xs">
+                          <span className="text-white/60 truncate max-w-[100px]">{s.name}</span>
+                          <span className="text-right text-white/40">{formatNum(s.totalImpressions)}</span>
+                          <span className="text-right text-violet-400">{formatMoney(s.totalEarningsCents)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
           {/* Payout button */}
           {pending > 0 && (
             <div className="mb-6 p-4 rounded-lg bg-violet-600/10 border border-violet-500/30 flex items-center justify-between">
@@ -266,8 +378,14 @@ export default function PublisherDashboard() {
                 <div className="font-medium text-sm">You have {formatMoney(pending)} available for payout</div>
                 <div className="text-xs text-white/40 mt-0.5">Minimum payout: $10.00</div>
               </div>
-              <Button size="sm" className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
-                Request Payout
+              <Button
+                size="sm"
+                onClick={() => payoutMutation.mutate()}
+                disabled={payoutMutation.isPending || pending < 1000}
+                className="bg-violet-600 hover:bg-violet-500 text-white gap-2"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {payoutMutation.isPending ? "Requesting..." : "Request Payout"}
               </Button>
             </div>
           )}

@@ -1,7 +1,8 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { z } from "zod";
+import { stripe } from "./stripe";
 import {
   adCampaigns, displayAds, adSlots, adAuctions, slotImpressions, slotClicks,
   advertiserWallets, publisherEarnings, payoutRequests, users,
@@ -620,6 +621,413 @@ export function registerAdPlatformRoutes(app: Express) {
       });
     } catch (e) {
       res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  // ============ ANALYTICS ============
+
+  // Helper: parse date-range query params into Date boundaries
+  function parseDateRange(query: any): { from: Date; to: Date } {
+    const days = parseInt(query.days as string) || 30;
+    const to = query.to ? new Date(query.to as string) : new Date();
+    const from = query.from ? new Date(query.from as string) : new Date(to.getTime() - days * 86400000);
+    to.setHours(23, 59, 59, 999);
+    from.setHours(0, 0, 0, 0);
+    return { from, to };
+  }
+
+  // GET /api/analytics/advertiser — impressions, clicks, spend by campaign by day
+  app.get("/api/analytics/advertiser", requireRole("advertiser"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const { from, to } = parseDateRange(req.query);
+
+      // Summary totals
+      const [totals] = await db
+        .select({
+          impressions: sql<number>`coalesce(sum(${adCampaigns.impressions}), 0)`,
+          clicks: sql<number>`coalesce(sum(${adCampaigns.clicks}), 0)`,
+          spentCents: sql<number>`coalesce(sum(${adCampaigns.spentCents}), 0)`,
+        })
+        .from(adCampaigns)
+        .where(eq(adCampaigns.advertiserId, user.id));
+
+      // Per-campaign breakdown
+      const campaigns = await db
+        .select({
+          id: adCampaigns.id,
+          name: adCampaigns.name,
+          status: adCampaigns.status,
+          impressions: adCampaigns.impressions,
+          clicks: adCampaigns.clicks,
+          spentCents: adCampaigns.spentCents,
+          budgetCents: adCampaigns.budgetCents,
+        })
+        .from(adCampaigns)
+        .where(eq(adCampaigns.advertiserId, user.id))
+        .orderBy(desc(adCampaigns.spentCents));
+
+      // Daily spend series from slot_impressions
+      const daily = await db
+        .select({
+          date: sql<string>`to_char(${slotImpressions.servedAt}, 'YYYY-MM-DD')`,
+          impressions: sql<number>`count(*)`,
+          clicks: sql<number>`coalesce(sum(case when ${slotImpressions.clicked} then 1 else 0 end), 0)`,
+          spentCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0)`,
+        })
+        .from(slotImpressions)
+        .where(
+          and(
+            eq(slotImpressions.advertiserId, user.id),
+            gte(slotImpressions.servedAt, from),
+            lte(slotImpressions.servedAt, to)
+          )
+        )
+        .groupBy(sql`to_char(${slotImpressions.servedAt}, 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${slotImpressions.servedAt}, 'YYYY-MM-DD')`);
+
+      // Wallet balance
+      const [wallet] = await db
+        .select()
+        .from(advertiserWallets)
+        .where(eq(advertiserWallets.advertiserId, user.id));
+
+      res.json({
+        totals: {
+          impressions: Number(totals?.impressions ?? 0),
+          clicks: Number(totals?.clicks ?? 0),
+          spentCents: Number(totals?.spentCents ?? 0),
+        },
+        campaigns,
+        daily,
+        wallet: wallet ?? null,
+      });
+    } catch (e) {
+      console.error("[Analytics/advertiser]", e);
+      res.status(500).json({ message: "Failed to fetch advertiser analytics" });
+    }
+  });
+
+  // GET /api/analytics/publisher — impressions, earnings by slot by day
+  app.get("/api/analytics/publisher", requireRole("publisher"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const { from, to } = parseDateRange(req.query);
+
+      // Per-slot breakdown
+      const slots = await db
+        .select({
+          id: adSlots.id,
+          name: adSlots.name,
+          totalImpressions: adSlots.totalImpressions,
+          totalEarningsCents: adSlots.totalEarningsCents,
+        })
+        .from(adSlots)
+        .where(eq(adSlots.publisherId, user.id))
+        .orderBy(desc(adSlots.totalEarningsCents));
+
+      // Daily earnings series from slot_impressions (publisher gets 70%)
+      const daily = await db
+        .select({
+          date: sql<string>`to_char(${slotImpressions.servedAt}, 'YYYY-MM-DD')`,
+          impressions: sql<number>`count(*)`,
+          earningsCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) * 0.7 / 1000, 0)`,
+        })
+        .from(slotImpressions)
+        .where(
+          and(
+            eq(slotImpressions.publisherId, user.id),
+            gte(slotImpressions.servedAt, from),
+            lte(slotImpressions.servedAt, to)
+          )
+        )
+        .groupBy(sql`to_char(${slotImpressions.servedAt}, 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${slotImpressions.servedAt}, 'YYYY-MM-DD')`);
+
+      // Earnings summary
+      const [earnings] = await db
+        .select()
+        .from(publisherEarnings)
+        .where(eq(publisherEarnings.publisherId, user.id));
+
+      // Payout requests
+      const payouts = await db
+        .select()
+        .from(payoutRequests)
+        .where(eq(payoutRequests.publisherId, user.id))
+        .orderBy(desc(payoutRequests.createdAt));
+
+      res.json({ slots, daily, earnings: earnings ?? null, payouts });
+    } catch (e) {
+      console.error("[Analytics/publisher]", e);
+      res.status(500).json({ message: "Failed to fetch publisher analytics" });
+    }
+  });
+
+  // GET /api/analytics/admin — platform-wide GMV, daily auction volume, top advertisers, top publishers
+  app.get("/api/analytics/admin", requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const { from, to } = parseDateRange(req.query);
+
+      // Platform totals
+      const [totals] = await db
+        .select({
+          gmvCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0)`,
+          totalImpressions: sql<number>`count(*)`,
+          totalClicks: sql<number>`coalesce(sum(case when ${slotImpressions.clicked} then 1 else 0 end), 0)`,
+        })
+        .from(slotImpressions);
+
+      // Platform revenue (30% platform take)
+      const platformRevenueCents = Math.floor(Number(totals?.gmvCents ?? 0) * 0.3);
+
+      // Daily auction volume
+      const daily = await db
+        .select({
+          date: sql<string>`to_char(${adAuctions.createdAt}, 'YYYY-MM-DD')`,
+          auctions: sql<number>`count(*)`,
+          filled: sql<number>`sum(case when not ${adAuctions.noFill} then 1 else 0 end)`,
+          gmvCents: sql<number>`coalesce(sum(${adAuctions.winningCpmCents}) / 1000, 0)`,
+        })
+        .from(adAuctions)
+        .where(
+          and(
+            gte(adAuctions.createdAt, from),
+            lte(adAuctions.createdAt, to)
+          )
+        )
+        .groupBy(sql`to_char(${adAuctions.createdAt}, 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${adAuctions.createdAt}, 'YYYY-MM-DD')`);
+
+      // Top advertisers by spend
+      const topAdvertisers = await db
+        .select({
+          advertiserId: advertiserWallets.advertiserId,
+          email: users.email,
+          companyName: users.companyName,
+          totalSpendCents: advertiserWallets.totalSpendCents,
+          balanceCents: advertiserWallets.balanceCents,
+        })
+        .from(advertiserWallets)
+        .leftJoin(users, eq(advertiserWallets.advertiserId, users.id))
+        .orderBy(desc(advertiserWallets.totalSpendCents))
+        .limit(10);
+
+      // Top publishers by earnings
+      const topPublishers = await db
+        .select({
+          publisherId: publisherEarnings.publisherId,
+          email: users.email,
+          companyName: users.companyName,
+          totalEarnedCents: publisherEarnings.totalEarnedCents,
+          pendingCents: publisherEarnings.pendingCents,
+        })
+        .from(publisherEarnings)
+        .leftJoin(users, eq(publisherEarnings.publisherId, users.id))
+        .orderBy(desc(publisherEarnings.totalEarnedCents))
+        .limit(10);
+
+      // Pending payout requests
+      const pendingPayouts = await db
+        .select({
+          id: payoutRequests.id,
+          publisherId: payoutRequests.publisherId,
+          amountCents: payoutRequests.amountCents,
+          status: payoutRequests.status,
+          paymentDetails: payoutRequests.paymentDetails,
+          createdAt: payoutRequests.createdAt,
+          email: users.email,
+          companyName: users.companyName,
+        })
+        .from(payoutRequests)
+        .leftJoin(users, eq(payoutRequests.publisherId, users.id))
+        .where(eq(payoutRequests.status, "pending"))
+        .orderBy(desc(payoutRequests.createdAt));
+
+      res.json({
+        totals: {
+          gmvCents: Number(totals?.gmvCents ?? 0),
+          platformRevenueCents,
+          totalImpressions: Number(totals?.totalImpressions ?? 0),
+          totalClicks: Number(totals?.totalClicks ?? 0),
+        },
+        daily,
+        topAdvertisers,
+        topPublishers,
+        pendingPayouts,
+      });
+    } catch (e) {
+      console.error("[Analytics/admin]", e);
+      res.status(500).json({ message: "Failed to fetch admin analytics" });
+    }
+  });
+
+  // ============ BILLING — WALLET TOP-UP ============
+
+  const TOPUP_AMOUNTS = [
+    { label: "$10", cents: 1000 },
+    { label: "$25", cents: 2500 },
+    { label: "$50", cents: 5000 },
+    { label: "$100", cents: 10000 },
+    { label: "$250", cents: 25000 },
+    { label: "$500", cents: 50000 },
+  ];
+
+  // POST /api/billing/ad-topup — create Stripe Checkout session for wallet credit
+  app.post("/api/billing/ad-topup", requireRole("advertiser"), async (req: Request, res: Response) => {
+    try {
+      if (!stripe) return res.status(503).json({ message: "Stripe not configured" });
+
+      const user = getAuthUser(req)!;
+      const { amountCents } = z.object({ amountCents: z.number().int().min(500) }).parse(req.body);
+
+      // Ensure Stripe customer
+      const [userRow] = await db.select().from(users).where(eq(users.id, user.id));
+      if (!userRow) return res.status(404).json({ message: "User not found" });
+
+      let customerId = userRow.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: userRow.email || undefined,
+          name: userRow.companyName || [userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || undefined,
+          metadata: { userId: user.id },
+        });
+        customerId = customer.id;
+        await db.update(users).set({ stripeCustomerId: customerId }).where(eq(users.id, user.id));
+      }
+
+      const origin = req.headers.origin || `https://${req.headers.host}`;
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: "payment",
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: amountCents,
+              product_data: {
+                name: `AdBid Wallet Credit — $${(amountCents / 100).toFixed(2)}`,
+                description: "Credits added to your AdBid advertiser wallet",
+              },
+            },
+          },
+        ],
+        metadata: { userId: user.id, type: "ad_wallet_topup", amountCents: String(amountCents) },
+        success_url: `${origin}/ad-platform/advertiser?topup=success`,
+        cancel_url: `${origin}/ad-platform/advertiser?topup=cancelled`,
+      });
+
+      res.json({ checkoutUrl: session.url });
+    } catch (e: any) {
+      console.error("[Billing/topup]", e);
+      res.status(500).json({ message: e.message || "Failed to create checkout session" });
+    }
+  });
+
+  // GET /api/billing/topup-amounts — preset top-up amounts
+  app.get("/api/billing/topup-amounts", requireRole("advertiser"), (_req: Request, res: Response) => {
+    res.json(TOPUP_AMOUNTS);
+  });
+
+  // ============ PAYOUT REQUESTS ============
+
+  // GET /api/ad/admin/payouts — admin list of all payout requests
+  app.get("/api/ad/admin/payouts", requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const results = await db
+        .select({
+          id: payoutRequests.id,
+          publisherId: payoutRequests.publisherId,
+          publisherEmail: users.email,
+          amountCents: payoutRequests.amountCents,
+          status: payoutRequests.status,
+          createdAt: payoutRequests.createdAt,
+        })
+        .from(payoutRequests)
+        .leftJoin(users, eq(payoutRequests.publisherId, users.id))
+        .orderBy(sql`${payoutRequests.createdAt} desc`);
+      res.json(results);
+    } catch (e: any) {
+      console.error("[Payout/list]", e);
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/ad/publisher/payout — request payout of pending earnings
+  app.post("/api/ad/publisher/payout", requireRole("publisher"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const { paymentDetails } = z.object({ paymentDetails: z.string().optional() }).parse(req.body);
+
+      // Fetch current pending earnings
+      const [earning] = await db
+        .select()
+        .from(publisherEarnings)
+        .where(eq(publisherEarnings.publisherId, user.id));
+
+      const pendingCents = earning?.pendingCents ?? 0;
+      if (pendingCents < 1000) {
+        return res.status(400).json({ message: "Minimum payout is $10 (1000 cents)" });
+      }
+
+      // Check no open pending requests
+      const [existing] = await db
+        .select()
+        .from(payoutRequests)
+        .where(and(eq(payoutRequests.publisherId, user.id), eq(payoutRequests.status, "pending")));
+      if (existing) {
+        return res.status(409).json({ message: "You already have a pending payout request" });
+      }
+
+      const [payout] = await db
+        .insert(payoutRequests)
+        .values({ publisherId: user.id, amountCents: pendingCents, paymentDetails })
+        .returning();
+
+      res.json(payout);
+    } catch (e: any) {
+      console.error("[Payout/request]", e);
+      res.status(400).json({ message: e.message || "Failed to request payout" });
+    }
+  });
+
+  // PATCH /api/ad/admin/payouts/:id — admin marks payout as paid
+  app.patch("/api/ad/admin/payouts/:id", requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const { status, adminNotes } = z.object({
+        status: z.enum(["paid", "rejected"]),
+        adminNotes: z.string().optional(),
+      }).parse(req.body);
+
+      const [payout] = await db
+        .select()
+        .from(payoutRequests)
+        .where(eq(payoutRequests.id, req.params.id));
+      if (!payout) return res.status(404).json({ message: "Payout request not found" });
+
+      const [updated] = await db
+        .update(payoutRequests)
+        .set({ status, adminNotes: adminNotes || null, resolvedAt: new Date() })
+        .where(eq(payoutRequests.id, req.params.id))
+        .returning();
+
+      // If paid, reduce pendingCents and increase paidOutCents
+      if (status === "paid") {
+        await db
+          .update(publisherEarnings)
+          .set({
+            pendingCents: sql`${publisherEarnings.pendingCents} - ${payout.amountCents}`,
+            paidOutCents: sql`${publisherEarnings.paidOutCents} + ${payout.amountCents}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(publisherEarnings.publisherId, payout.publisherId));
+      }
+
+      res.json(updated);
+    } catch (e: any) {
+      console.error("[Payout/admin]", e);
+      res.status(400).json({ message: e.message || "Failed to update payout" });
     }
   });
 }
