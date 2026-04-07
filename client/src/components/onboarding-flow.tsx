@@ -29,6 +29,7 @@ import {
   Zap,
   MousePointer,
   Accessibility,
+  Settings2,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { localStorageService } from "@/lib/storage";
@@ -104,6 +105,13 @@ const A11Y_ONBOARDING_PROFILES = [
       highlightFocus: true,
       highlightLinks: true,
     } as Partial<AccessibilitySettings>,
+  },
+  {
+    id: "none-selected",
+    name: "None / I'll configure later",
+    icon: Settings2,
+    description: "Keep default settings, adjust anytime",
+    settings: {} as Partial<AccessibilitySettings>,
   },
 ];
 
@@ -224,9 +232,10 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
     localStorage.setItem("accessibooks_onboarding_done", "true");
 
     // Apply selected accessibility profile to localStorage immediately
-    if (selectedA11yProfile) {
+    // "none-selected" means user explicitly chose to configure later — skip applying
+    if (selectedA11yProfile && selectedA11yProfile !== "none-selected") {
       const profile = A11Y_ONBOARDING_PROFILES.find((p) => p.id === selectedA11yProfile);
-      if (profile) {
+      if (profile && Object.keys(profile.settings).length > 0) {
         const current = localStorageService.getSettings();
         const merged = { ...current, ...profile.settings, activeProfile: selectedA11yProfile };
         localStorageService.saveSettings(merged);
@@ -336,11 +345,13 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
               onSelect={(profileId) => {
                 setSelectedA11yProfile(profileId);
                 // Apply immediately so the user sees the effect right away
+                // "none-selected" resets to defaults without storing a profile id
                 const profile = A11Y_ONBOARDING_PROFILES.find((p) => p.id === profileId);
                 const base = getDefaultA11ySettings();
-                const merged: AccessibilitySettings = profile
-                  ? { ...base, ...profile.settings, activeProfile: profileId }
-                  : base;
+                const isNoneCard = profileId === "none-selected" || !profile || Object.keys(profile.settings).length === 0;
+                const merged: AccessibilitySettings = isNoneCard
+                  ? base
+                  : { ...base, ...profile!.settings, activeProfile: profileId };
                 localStorageService.saveSettings(merged);
                 applyA11ySettings(merged);
               }}
@@ -768,7 +779,7 @@ function DoneStep({
   onBack: () => void;
 }) {
   const habitLabel = LISTENING_HABITS.find((h) => h.id === habit)?.label || habit;
-  const a11yProfileLabel = a11yProfile
+  const a11yProfileLabel = a11yProfile && a11yProfile !== "none-selected"
     ? A11Y_ONBOARDING_PROFILES.find((p) => p.id === a11yProfile)?.name
     : null;
 
