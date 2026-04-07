@@ -77,6 +77,7 @@ const AdPlatformLanding = lazy(() => import('@/pages/ad-platform/landing'));
 const AdvertiserDashboard = lazy(() => import('@/pages/ad-platform/advertiser-dashboard'));
 const PublisherDashboard = lazy(() => import('@/pages/ad-platform/publisher-dashboard'));
 const AdminPlatformDashboard = lazy(() => import('@/pages/ad-platform/admin-dashboard'));
+const SlotDetailPage = lazy(() => import('@/pages/ad-platform/slot-detail'));
 
 function LoadingSpinner() {
   return (
@@ -1953,6 +1954,13 @@ function App() {
               <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
                 <AdPlatformLanding />
               </Suspense>
+            </Route>
+            <Route path="/ad-platform/slots/:id">
+              {(params) => (
+                <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
+                  <SlotDetailPage />
+                </Suspense>
+              )}
             </Route>
             <Route>
               {isAuthenticated ? (

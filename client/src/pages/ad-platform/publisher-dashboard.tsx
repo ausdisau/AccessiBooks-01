@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -333,6 +334,14 @@ export default function PublisherDashboard() {
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
+                          <Link href={`/ad-platform/slots/${slot.id}`}>
+                            <button
+                              className="p-1.5 rounded hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                              title="View slot details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </Link>
                           <button
                             onClick={() => setExpandedSlot(expandedSlot === slot.id ? null : slot.id)}
                             className="p-1.5 rounded hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
