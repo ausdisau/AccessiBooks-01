@@ -14,7 +14,12 @@ interface AgentMailListResponse {
   inboxes?: AgentMailInbox[];
 }
 
-const INBOX_USERNAME = "accessibooks";
+// Derive a stable, URL-safe inbox username from repl/env metadata with fallback
+const rawSlug = (process.env.REPL_SLUG ?? process.env.REPL_ID ?? "accessibooks")
+  .toLowerCase()
+  .replace(/[^a-z0-9-]/g, "-")
+  .slice(0, 30);
+const INBOX_USERNAME = rawSlug || "accessibooks";
 let cachedInboxId: string | null = null;
 
 async function getOrCreateInbox(connectors: ReplitConnectors): Promise<string | null> {
