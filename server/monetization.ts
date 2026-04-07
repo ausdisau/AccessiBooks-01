@@ -197,7 +197,7 @@ export function createPlaybackSession(
   bookId: string,
   isPremium: boolean,
   tier?: SubscriptionTier
-): { success: boolean; sessionId?: string; quality: "low" | "mid" | "high"; message?: string } {
+): { success: boolean; sessionId?: string; quality: "low" | "mid" | "high" | "ultra"; message?: string } {
   const existingSessionId = userActiveSessions.get(userId);
 
   if (existingSessionId) {
