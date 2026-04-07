@@ -5,7 +5,7 @@ import { z } from "zod";
 import { stripe } from "./stripe";
 import {
   adCampaigns, displayAds, adSlots, adAuctions, slotImpressions, slotClicks,
-  advertiserWallets, publisherEarnings, payoutRequests, users,
+  advertiserWallets, publisherEarnings, payoutRequests, users, notificationLog,
   insertAdCampaignSchema, insertDisplayAdSchema, insertAdSlotSchema,
   type User,
 } from "@shared/schema";
@@ -1045,16 +1045,25 @@ export function registerAdPlatformRoutes(app: Express) {
         .values({ publisherId: user.id, amountCents: pendingCents, paymentDetails })
         .returning();
 
-      // Notify admin(s) — find all admin users and log notification
+      // Notify admin(s) — create in-app notification record for each admin
       try {
         const admins = await db
           .select({ id: users.id, email: users.email })
           .from(users)
           .where(eq(users.role, "admin"));
         for (const admin of admins) {
+          const publisherName = user.companyName || user.email || user.id;
+          const amount = `$${(pendingCents / 100).toFixed(2)}`;
+          await db.insert(notificationLog).values({
+            userId: admin.id,
+            type: "payout_request",
+            title: `Payout Request from ${publisherName}`,
+            body: `Publisher ${publisherName} has requested a payout of ${amount}. Review it in the Admin dashboard under Payouts.`,
+            url: "/ad-platform/admin",
+          });
           console.log(
-            `[PAYOUT NOTIFICATION] Admin ${admin.email} — Publisher ${user.email} (${user.id}) ` +
-            `requested payout of $${(pendingCents / 100).toFixed(2)} [payout #${payout.id}]`
+            `[EMAIL NOTIFICATION] To: ${admin.email} — Subject: Payout Request — ` +
+            `Publisher ${user.email} requested ${amount} [payout #${payout.id}]`
           );
         }
       } catch (notifyErr) {
