@@ -224,6 +224,25 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
       .where(eq(adSlots.id, slotId)),
   ]);
 
+  // Auto-pause: pause all active campaigns for this advertiser if wallet is now empty
+  const newBalance = (walletMap.get(winnerEntry.campaign.advertiserId) ?? 0) - costCents;
+  if (newBalance <= 0) {
+    try {
+      await db
+        .update(adCampaigns)
+        .set({ status: "paused", updatedAt: new Date() })
+        .where(
+          and(
+            eq(adCampaigns.advertiserId, winnerEntry.campaign.advertiserId),
+            eq(adCampaigns.status, "active")
+          )
+        );
+      console.log(`[AdPlatform] Wallet empty for advertiser ${winnerEntry.campaign.advertiserId} — campaigns auto-paused`);
+    } catch (pauseErr: any) {
+      console.error("[AdPlatform] Failed to auto-pause campaigns:", pauseErr.message);
+    }
+  }
+
   return {
     noFill: false,
     winner: {
