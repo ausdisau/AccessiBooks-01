@@ -57,3 +57,45 @@ export async function setupFullTextSearch(): Promise<void> {
     console.warn("[FTS] Setup warning:", error.message);
   }
 }
+
+export async function setupEasyEnglishTables(): Promise<void> {
+  try {
+    await sql`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_easy_english_subscription_item_id varchar
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS easy_english_cache (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        book_id varchar NOT NULL,
+        chapter_number integer NOT NULL,
+        original_text text NOT NULL,
+        converted_text text NOT NULL,
+        created_at timestamp DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_easy_english_cache_book_chapter
+      ON easy_english_cache (book_id, chapter_number)
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS easy_english_usage (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        year_month varchar NOT NULL,
+        chapters_converted integer NOT NULL DEFAULT 0
+      )
+    `;
+
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_easy_english_usage_user_month
+      ON easy_english_usage (user_id, year_month)
+    `;
+
+    console.log("[EasyEnglish] Tables set up successfully");
+  } catch (error: any) {
+    console.warn("[EasyEnglish] Table setup warning:", error.message);
+  }
+}
