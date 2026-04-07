@@ -948,6 +948,7 @@ export const adCampaigns = pgTable("ad_campaigns", {
   budgetCents: integer("budget_cents").notNull().default(0),
   dailyBudgetCents: integer("daily_budget_cents").default(0),
   spentCents: integer("spent_cents").notNull().default(0),
+  dailySpendCents: integer("daily_spend_cents").notNull().default(0),
   cpmBidCents: integer("cpm_bid_cents").notNull().default(500),
   targetGenres: text("target_genres").array(),
   targetTimeSlots: text("target_time_slots").array(),

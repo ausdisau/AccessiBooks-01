@@ -65,11 +65,12 @@ export async function setupAdPlatformTables(): Promise<void> {
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name varchar`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS website varchar`;
 
-    // Add category and schedule fields to ad_campaigns if not present
+    // Add category, schedule, and pacing fields to ad_campaigns if not present
     await sql`ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS category varchar DEFAULT 'other'`;
     await sql`ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS daily_budget_cents integer DEFAULT 0`;
     await sql`ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS start_date timestamp`;
     await sql`ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS end_date timestamp`;
+    await sql`ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS daily_spend_cents integer NOT NULL DEFAULT 0`;
 
     // Display ads
     await sql`

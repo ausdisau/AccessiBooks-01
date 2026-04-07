@@ -3,11 +3,12 @@ import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
-  adCampaigns, displayAds, adSlots, adAuctions, slotImpressions,
+  adCampaigns, displayAds, adSlots, adAuctions, slotImpressions, slotClicks,
   advertiserWallets, publisherEarnings, payoutRequests, users,
   insertAdCampaignSchema, insertDisplayAdSchema, insertAdSlotSchema,
   type User,
 } from "@shared/schema";
+import { runAuction } from "./auctionEngine";
 
 type AuthenticatedUser = Pick<User, "id" | "email" | "role" | "firstName" | "lastName" | "companyName">;
 
@@ -230,11 +231,48 @@ export function registerAdPlatformRoutes(app: Express) {
 
   // ============ AD SLOTS ============
 
-  function withEmbedSnippet<T extends { id: string }>(row: T) {
-    return {
-      ...row,
-      embedSnippet: `<script src="https://adbid.io/serve.js" data-slot="${row.id}" async></script>`,
-    };
+  function withEmbedSnippet<T extends { id: string }>(row: T, req?: Request) {
+    const base = req ? `${req.protocol}://${req.get("host")}` : "";
+    const snippet = `<!-- AdBid Display Ad -->
+<div id="adbid-slot-${row.id}" style="display:inline-block;min-width:100px;min-height:30px;"></div>
+<script>
+(function(){
+  fetch("${base}/api/serve/${row.id}")
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.noFill) return;
+      var c=document.getElementById("adbid-slot-${row.id}");
+      if(!c) return;
+      var a=d.ad;
+      var link=document.createElement("a");
+      link.href=a.clickUrl;
+      link.target="_blank";
+      link.rel="noopener noreferrer";
+      link.style.display="block";
+      if(a.imageUrl){
+        var img=document.createElement("img");
+        img.src=a.imageUrl;
+        img.alt=a.headline;
+        img.style.maxWidth="100%";
+        link.appendChild(img);
+      } else {
+        var hl=document.createElement("strong");
+        hl.textContent=a.headline;
+        link.appendChild(hl);
+        if(a.body){
+          var bd=document.createElement("p");
+          bd.textContent=a.body;
+          bd.style.margin="4px 0 0";
+          bd.style.fontSize="13px";
+          link.appendChild(bd);
+        }
+      }
+      c.appendChild(link);
+    })
+    .catch(function(){});
+})();
+</script>`;
+    return { ...row, embedSnippet: snippet };
   }
 
   app.get("/api/ad/slots", requireAnyRole("publisher", "admin"), async (req: Request, res: Response) => {
@@ -243,7 +281,7 @@ export function registerAdPlatformRoutes(app: Express) {
       const rows = user.role === "admin"
         ? await db.select().from(adSlots).orderBy(desc(adSlots.createdAt))
         : await db.select().from(adSlots).where(eq(adSlots.publisherId, user.id)).orderBy(desc(adSlots.createdAt));
-      res.json(rows.map(withEmbedSnippet));
+      res.json(rows.map((row) => withEmbedSnippet(row, req)));
     } catch (e) {
       res.status(500).json({ message: "Failed to fetch slots" });
     }
@@ -257,7 +295,7 @@ export function registerAdPlatformRoutes(app: Express) {
         ? await db.select().from(adSlots).where(eq(adSlots.id, req.params.id))
         : await db.select().from(adSlots).where(and(eq(adSlots.id, req.params.id), eq(adSlots.publisherId, user.id)));
       if (!row) return res.status(404).json({ message: "Slot not found" });
-      res.json(withEmbedSnippet(row));
+      res.json(withEmbedSnippet(row, req));
     } catch (e) {
       res.status(500).json({ message: "Failed to fetch slot" });
     }
@@ -269,7 +307,7 @@ export function registerAdPlatformRoutes(app: Express) {
       const parsed = insertAdSlotSchema.safeParse({ ...req.body, publisherId: user.id });
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
       const [row] = await db.insert(adSlots).values({ ...parsed.data, publisherId: user.id }).returning();
-      res.status(201).json(withEmbedSnippet(row));
+      res.status(201).json(withEmbedSnippet(row, req));
     } catch (e) {
       console.error(e);
       res.status(500).json({ message: "Failed to create slot" });
@@ -296,7 +334,7 @@ export function registerAdPlatformRoutes(app: Express) {
         .where(and(eq(adSlots.id, req.params.id), eq(adSlots.publisherId, user.id)))
         .returning();
       if (!row) return res.status(404).json({ message: "Slot not found" });
-      res.json(withEmbedSnippet(row));
+      res.json(withEmbedSnippet(row, req));
     } catch (e) {
       res.status(500).json({ message: "Failed to update slot" });
     }
@@ -350,72 +388,125 @@ export function registerAdPlatformRoutes(app: Express) {
 
   // ============ BIDDING ENGINE ============
 
+  // Legacy internal auction endpoint (kept for backward compatibility)
   app.post("/api/ad/auction/:slotId", async (req: Request, res: Response) => {
     try {
-      const { slotId } = req.params;
-
-      const [slot] = await db.select().from(adSlots).where(and(eq(adSlots.id, slotId), eq(adSlots.isActive, true)));
-      if (!slot) return res.status(404).json({ message: "Slot not found or inactive" });
-
-      const eligibleAds = await db.select().from(displayAds).where(
-        and(
-          eq(displayAds.status, "approved"),
-          sql`${displayAds.maxCpmCents} >= ${slot.minCpmCents}`
-        )
-      );
-
-      if (eligibleAds.length === 0) {
-        await db.insert(adAuctions).values({
-          slotId,
-          noFill: true,
-          bidsConsidered: 0,
-        });
-        return res.json({ noFill: true });
-      }
-
-      const sorted = [...eligibleAds].sort((a, b) => (b.maxCpmCents ?? 0) - (a.maxCpmCents ?? 0));
-      const winner = sorted[0];
-      const winningCpmCents = winner.maxCpmCents ?? 0;
-      const secondPriceCpmCents = sorted[1]?.maxCpmCents ?? slot.minCpmCents;
-      const chargedCpmCents = Math.max(secondPriceCpmCents + 1, slot.minCpmCents);
-
-      const [auction] = await db.insert(adAuctions).values({
-        slotId,
-        winningAdId: winner.id,
-        winningCpmCents,
-        secondPriceCpmCents,
-        bidsConsidered: eligibleAds.length,
-        noFill: false,
-      }).returning();
-
-      await db.insert(slotImpressions).values({
-        auctionId: auction.id,
-        adId: winner.id,
-        slotId,
-        advertiserId: winner.advertiserId,
-        publisherId: slot.publisherId,
-        cpmCents: chargedCpmCents,
-      });
-
-      await Promise.all([
-        db.update(displayAds).set({ impressionCount: sql`${displayAds.impressionCount} + 1` }).where(eq(displayAds.id, winner.id)),
-        db.update(adSlots).set({ totalImpressions: sql`${adSlots.totalImpressions} + 1` }).where(eq(adSlots.id, slotId)),
-      ]);
-
+      const result = await runAuction(req.params.slotId);
+      if (result.noFill) return res.json({ noFill: true });
+      const { winner } = result;
       res.json({
         noFill: false,
-        auctionId: auction.id,
+        auctionId: winner!.auction.id,
         ad: {
-          id: winner.id,
-          headline: winner.headline,
-          body: winner.body,
-          imageUrl: winner.imageUrl,
-          destinationUrl: winner.destinationUrl,
+          id: winner!.ad.id,
+          headline: winner!.ad.headline,
+          body: winner!.ad.body,
+          imageUrl: winner!.ad.imageUrl,
+          destinationUrl: winner!.ad.destinationUrl,
         },
       });
     } catch (e) {
       console.error("Auction error:", e);
       res.status(500).json({ message: "Auction failed" });
+    }
+  });
+
+  // GET /api/serve/:slotId — public endpoint for publisher embed script
+  // Runs a Vickrey auction and returns the winning creative + click tracking URL.
+  // No auth required (called by third-party publisher sites).
+  app.get("/api/serve/:slotId", async (req: Request, res: Response) => {
+    try {
+      const { slotId } = req.params;
+      res.set("Cache-Control", "no-store");
+      res.set("Access-Control-Allow-Origin", "*");
+
+      const result = await runAuction(slotId);
+
+      if (result.noFill) {
+        return res.json({ noFill: true });
+      }
+
+      const { winner } = result;
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const clickUrl = `${baseUrl}/api/click/${winner!.impression.id}`;
+
+      return res.json({
+        noFill: false,
+        impressionId: winner!.impression.id,
+        ad: {
+          id: winner!.ad.id,
+          headline: winner!.ad.headline,
+          body: winner!.ad.body,
+          imageUrl: winner!.ad.imageUrl,
+          destinationUrl: winner!.ad.destinationUrl,
+          clickUrl,
+        },
+      });
+    } catch (e) {
+      console.error("[Serve] Error:", e);
+      res.status(500).json({ message: "Ad serving failed" });
+    }
+  });
+
+  // GET /api/click/:impressionId — idempotent click tracking + redirect
+  // Records a click row if none exists yet, increments counters, redirects.
+  app.get("/api/click/:impressionId", async (req: Request, res: Response) => {
+    try {
+      const { impressionId } = req.params;
+
+      const [impression] = await db
+        .select()
+        .from(slotImpressions)
+        .where(eq(slotImpressions.id, impressionId));
+
+      if (!impression) {
+        return res.status(404).send("Impression not found");
+      }
+
+      // Fetch destination URL from the ad
+      const [ad] = await db
+        .select({ destinationUrl: displayAds.destinationUrl })
+        .from(displayAds)
+        .where(eq(displayAds.id, impression.adId));
+
+      if (!ad) return res.status(404).send("Ad not found");
+
+      // Idempotency: only record click if not already clicked
+      if (!impression.clicked) {
+        await Promise.all([
+          db
+            .update(slotImpressions)
+            .set({ clicked: true })
+            .where(eq(slotImpressions.id, impressionId)),
+
+          db.insert(slotClicks).values({
+            impressionId,
+            adId: impression.adId,
+          }),
+
+          db
+            .update(displayAds)
+            .set({ clickCount: sql`${displayAds.clickCount} + 1`, updatedAt: new Date() })
+            .where(eq(displayAds.id, impression.adId)),
+
+          db
+            .update(adCampaigns)
+            .set({ clicks: sql`${adCampaigns.clicks} + 1`, updatedAt: new Date() })
+            .where(
+              and(
+                eq(adCampaigns.advertiserId, impression.advertiserId),
+                sql`${adCampaigns.id} = (SELECT campaign_id FROM display_ads WHERE id = ${impression.adId})`
+              )
+            ),
+        ]);
+      }
+
+      // Redirect to destination URL
+      const dest = ad.destinationUrl.startsWith("http") ? ad.destinationUrl : `https://${ad.destinationUrl}`;
+      return res.redirect(302, dest);
+    } catch (e) {
+      console.error("[Click] Error:", e);
+      res.status(500).send("Click tracking failed");
     }
   });
 
