@@ -167,6 +167,21 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
     return () => document.removeEventListener("accessibooks:open-accessibility", handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent).detail?.source === "widget") return;
+      const stored = localStorageService.getSettings();
+      setSettings((prev) => {
+        const changed = (Object.keys(stored) as (keyof AccessibilitySettings)[]).some(
+          (k) => (stored as Record<string, unknown>)[k] !== (prev as Record<string, unknown>)[k]
+        );
+        return changed ? stored : prev;
+      });
+    };
+    document.addEventListener("accessibooks:settings-changed", handler);
+    return () => document.removeEventListener("accessibooks:settings-changed", handler);
+  }, []);
+
   const { data: serverPrefs } = useQuery<{ profile: AccessibilitySettings; hasStoredRecord?: boolean }>({
     queryKey: ["/api/a11y/preferences"],
     enabled: isLoggedIn,
@@ -274,6 +289,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
     const newSettings = { ...settings, ...partial, activeProfile: null };
     setSettings(newSettings);
     localStorageService.saveSettings(newSettings);
+    document.dispatchEvent(new CustomEvent("accessibooks:settings-changed", { detail: { source: "widget" } }));
     if (isLoggedIn) saveMutation.mutate(newSettings);
   };
 
@@ -285,6 +301,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
     };
     setSettings(newSettings);
     localStorageService.saveSettings(newSettings);
+    document.dispatchEvent(new CustomEvent("accessibooks:settings-changed", { detail: { source: "widget" } }));
     if (isLoggedIn) saveMutation.mutate(newSettings);
   };
 
