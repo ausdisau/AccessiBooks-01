@@ -54,7 +54,7 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
   if (books.length === 0) return null;
 
   return (
-    <section className="space-y-3" aria-label={title}>
+    <section className="space-y-3" aria-label={title} data-testid="book-carousel">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-lg flex items-center gap-2">
           <Icon className="h-5 w-5" aria-hidden="true" />
@@ -280,7 +280,7 @@ export function LandingCarousel() {
   }
 
   return (
-    <section className="py-12 overflow-hidden" aria-label="Featured audiobooks">
+    <section className="py-12 overflow-hidden" aria-label="Featured audiobooks" data-testid="landing-carousel">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold mb-2">Discover Great Audiobooks</h2>
         <p className="text-muted-foreground">Thousands of titles waiting for you</p>
