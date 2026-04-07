@@ -513,7 +513,6 @@ export function AiChatPanel({ isOpen, onClose }: AiChatPanelProps) {
           </div>
         </div>
 
-        {/* Login prompt for unauthenticated users */}
         {/* Unauthenticated: prompt to sign in */}
         {authLoading && (
           <div className="flex-1 flex items-center justify-center">
