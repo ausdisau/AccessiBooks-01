@@ -1,6 +1,7 @@
 import { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { z } from "zod";
 import {
   adCampaigns, displayAds, adSlots, adAuctions, slotImpressions,
   advertiserWallets, publisherEarnings, payoutRequests, users,
@@ -65,6 +66,49 @@ export function registerAdPlatformRoutes(app: Express) {
     }
   });
 
+  // PATCH /api/ad/campaigns/:id — edit campaign fields
+  app.patch("/api/ad/campaigns/:id", requireRole("advertiser"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const updateSchema = z.object({
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        category: z.string().optional(),
+        budgetCents: z.number().min(0).optional(),
+        cpmBidCents: z.number().min(0).optional(),
+        status: z.enum(["draft", "pending_review", "active", "paused", "completed", "rejected"]).optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+      const [row] = await db
+        .update(adCampaigns)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(and(eq(adCampaigns.id, req.params.id), eq(adCampaigns.advertiserId, user.id)))
+        .returning();
+      if (!row) return res.status(404).json({ message: "Campaign not found" });
+      res.json(row);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ message: "Failed to update campaign" });
+    }
+  });
+
+  // DELETE /api/ad/campaigns/:id — delete campaign and its ads
+  app.delete("/api/ad/campaigns/:id", requireRole("advertiser"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const [row] = await db
+        .delete(adCampaigns)
+        .where(and(eq(adCampaigns.id, req.params.id), eq(adCampaigns.advertiserId, user.id)))
+        .returning();
+      if (!row) return res.status(404).json({ message: "Campaign not found" });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ message: "Failed to delete campaign" });
+    }
+  });
+
   // ============ DISPLAY ADS ============
 
   app.get("/api/ad/display-ads", requireAnyRole("advertiser", "admin"), async (req: Request, res: Response) => {
@@ -93,6 +137,49 @@ export function registerAdPlatformRoutes(app: Express) {
     } catch (e) {
       console.error(e);
       res.status(500).json({ message: "Failed to create ad" });
+    }
+  });
+
+  // PATCH /api/ad/display-ads/:id — edit ad (only in draft/rejected states)
+  app.patch("/api/ad/display-ads/:id", requireRole("advertiser"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const updateSchema = z.object({
+        headline: z.string().min(1).optional(),
+        body: z.string().optional(),
+        imageUrl: z.string().url().optional().nullable(),
+        destinationUrl: z.string().url().optional(),
+        maxCpmCents: z.number().min(0).optional(),
+        status: z.enum(["draft", "pending_review", "approved", "rejected", "paused", "archived"]).optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+      const [row] = await db
+        .update(displayAds)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(and(eq(displayAds.id, req.params.id), eq(displayAds.advertiserId, user.id)))
+        .returning();
+      if (!row) return res.status(404).json({ message: "Ad not found" });
+      res.json(row);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ message: "Failed to update ad" });
+    }
+  });
+
+  // DELETE /api/ad/display-ads/:id — delete ad
+  app.delete("/api/ad/display-ads/:id", requireRole("advertiser"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const [row] = await db
+        .delete(displayAds)
+        .where(and(eq(displayAds.id, req.params.id), eq(displayAds.advertiserId, user.id)))
+        .returning();
+      if (!row) return res.status(404).json({ message: "Ad not found" });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ message: "Failed to delete ad" });
     }
   });
 
@@ -126,16 +213,42 @@ export function registerAdPlatformRoutes(app: Express) {
   app.patch("/api/ad/slots/:id", requireRole("publisher"), async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req)!;
-      const { isActive } = req.body;
+      const updateSchema = z.object({
+        name: z.string().min(1).optional(),
+        websiteUrl: z.string().url().optional(),
+        category: z.string().optional(),
+        width: z.number().min(100).max(2000).optional(),
+        height: z.number().min(50).max(2000).optional(),
+        minCpmCents: z.number().min(0).optional(),
+        isActive: z.boolean().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
       const [row] = await db
         .update(adSlots)
-        .set({ isActive })
+        .set(parsed.data)
         .where(and(eq(adSlots.id, req.params.id), eq(adSlots.publisherId, user.id)))
         .returning();
       if (!row) return res.status(404).json({ message: "Slot not found" });
       res.json(row);
     } catch (e) {
       res.status(500).json({ message: "Failed to update slot" });
+    }
+  });
+
+  // DELETE /api/ad/slots/:id — delete slot
+  app.delete("/api/ad/slots/:id", requireRole("publisher"), async (req: Request, res: Response) => {
+    try {
+      const user = getAuthUser(req)!;
+      const [row] = await db
+        .delete(adSlots)
+        .where(and(eq(adSlots.id, req.params.id), eq(adSlots.publisherId, user.id)))
+        .returning();
+      if (!row) return res.status(404).json({ message: "Slot not found" });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ message: "Failed to delete slot" });
     }
   });
 

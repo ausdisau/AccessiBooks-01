@@ -8,17 +8,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import {
   type LucideIcon,
-  BarChart3, Plus, Zap, TrendingUp, Eye, MousePointer, DollarSign,
-  LogOut, Settings, Target, Play, Pause, ChevronRight, Wallet, Building2,
-  Clock, CheckCircle, XCircle, AlertCircle,
+  BarChart3, Plus, Zap, TrendingUp, Eye, MousePointer,
+  LogOut, Target, Play, Pause, ChevronRight, Wallet,
+  Clock, CheckCircle, XCircle, AlertCircle, Edit2, Trash2,
+  Image,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AD_CATEGORIES, type AdCampaign, type DisplayAd, type AdvertiserWallet } from "@shared/schema";
@@ -31,9 +31,10 @@ const campaignSchema = z.object({
 });
 
 const adSchema = z.object({
-  campaignId: z.string().min(1),
+  campaignId: z.string().min(1, "Select a campaign"),
   headline: z.string().min(3, "Headline required"),
   body: z.string().optional(),
+  imageUrl: z.string().url("Enter a valid image URL").optional().or(z.literal("")),
   destinationUrl: z.string().url("Enter a valid URL"),
   maxCpmCents: z.coerce.number().min(50, "Minimum $0.50 CPM"),
 });
@@ -52,6 +53,7 @@ const STATUS_CONFIG: Record<string, { color: string; icon: LucideIcon; label: st
   rejected: { color: "text-red-400 bg-red-400/10", icon: XCircle, label: "Rejected" },
   paused: { color: "text-orange-400 bg-orange-400/10", icon: Pause, label: "Paused" },
   completed: { color: "text-blue-400 bg-blue-400/10", icon: CheckCircle, label: "Completed" },
+  archived: { color: "text-white/30 bg-white/5", icon: Clock, label: "Archived" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -70,6 +72,9 @@ export default function AdvertiserDashboard() {
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [adOpen, setAdOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState<AdCampaign | null>(null);
+  const [editingAd, setEditingAd] = useState<DisplayAd | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: "campaign" | "ad"; id: string } | null>(null);
 
   const { data: campaigns = [], isLoading: campaignsLoading } = useQuery<AdCampaign[]>({
     queryKey: ["/api/ad/campaigns"],
@@ -90,7 +95,7 @@ export default function AdvertiserDashboard() {
 
   const adForm = useForm<AdForm>({
     resolver: zodResolver(adSchema),
-    defaultValues: { campaignId: "", headline: "", body: "", destinationUrl: "https://", maxCpmCents: 200 },
+    defaultValues: { campaignId: "", headline: "", body: "", imageUrl: "", destinationUrl: "https://", maxCpmCents: 200 },
   });
 
   const createCampaignMutation = useMutation({
@@ -104,8 +109,38 @@ export default function AdvertiserDashboard() {
     onError: () => toast({ title: "Failed to create campaign", variant: "destructive" }),
   });
 
+  const updateCampaignMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<CampaignForm> }) =>
+      apiRequest("PATCH", `/api/ad/campaigns/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/campaigns"] });
+      setEditingCampaign(null);
+      toast({ title: "Campaign updated!" });
+    },
+    onError: () => toast({ title: "Failed to update campaign", variant: "destructive" }),
+  });
+
+  const pauseResumeCampaignMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/ad/campaigns/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/ad/campaigns"] }),
+    onError: () => toast({ title: "Failed to update campaign status", variant: "destructive" }),
+  });
+
+  const deleteCampaignMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/ad/campaigns/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/display-ads"] });
+      setDeleteConfirm(null);
+      setSelectedCampaign(null);
+      toast({ title: "Campaign deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete campaign", variant: "destructive" }),
+  });
+
   const createAdMutation = useMutation({
-    mutationFn: (data: AdForm) => apiRequest("POST", "/api/ad/display-ads", data),
+    mutationFn: (data: AdForm) => apiRequest("POST", "/api/ad/display-ads", { ...data, imageUrl: data.imageUrl || null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ad/display-ads"] });
       adForm.reset();
@@ -113,6 +148,34 @@ export default function AdvertiserDashboard() {
       toast({ title: "Ad submitted for review!" });
     },
     onError: () => toast({ title: "Failed to submit ad", variant: "destructive" }),
+  });
+
+  const updateAdMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<AdForm> }) =>
+      apiRequest("PATCH", `/api/ad/display-ads/${id}`, { ...data, imageUrl: data.imageUrl || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/display-ads"] });
+      setEditingAd(null);
+      toast({ title: "Ad updated and resubmitted for review!" });
+    },
+    onError: () => toast({ title: "Failed to update ad", variant: "destructive" }),
+  });
+
+  const pauseResumeAdMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/ad/display-ads/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/ad/display-ads"] }),
+    onError: () => toast({ title: "Failed to update ad status", variant: "destructive" }),
+  });
+
+  const deleteAdMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/ad/display-ads/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad/display-ads"] });
+      setDeleteConfirm(null);
+      toast({ title: "Ad deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete ad", variant: "destructive" }),
   });
 
   const logoutMutation = useMutation({
@@ -123,6 +186,16 @@ export default function AdvertiserDashboard() {
   const totalImpressions = displayAds.reduce((s, a) => s + (a.impressionCount ?? 0), 0);
   const totalClicks = displayAds.reduce((s, a) => s + (a.clickCount ?? 0), 0);
   const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00";
+
+  function openEditCampaign(c: AdCampaign) {
+    setEditingCampaign(c);
+    campaignForm.reset({ name: c.name, category: c.category ?? "other", budgetCents: c.budgetCents ?? 0, cpmBidCents: c.cpmBidCents ?? 0 });
+  }
+
+  function openEditAd(ad: DisplayAd) {
+    setEditingAd(ad);
+    adForm.reset({ campaignId: ad.campaignId, headline: ad.headline, body: ad.body ?? "", imageUrl: ad.imageUrl ?? "", destinationUrl: ad.destinationUrl, maxCpmCents: ad.maxCpmCents ?? 0 });
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] text-white flex">
@@ -172,7 +245,8 @@ export default function AdvertiserDashboard() {
               <p className="text-white/40 text-sm mt-1">Welcome back, {user?.firstName || "Advertiser"}</p>
             </div>
             <div className="flex gap-3">
-              <Dialog open={campaignOpen} onOpenChange={setCampaignOpen}>
+              {/* Create Campaign dialog */}
+              <Dialog open={campaignOpen && !editingCampaign} onOpenChange={(v) => { if (!v) { setCampaignOpen(false); campaignForm.reset(); } else setCampaignOpen(true); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white/10 gap-2">
                     <Plus className="h-4 w-4" /> New Campaign
@@ -182,42 +256,17 @@ export default function AdvertiserDashboard() {
                   <DialogHeader>
                     <DialogTitle className="text-white">Create Campaign</DialogTitle>
                   </DialogHeader>
-                  <form onSubmit={campaignForm.handleSubmit((d) => createCampaignMutation.mutate(d))} className="space-y-4 mt-2">
-                    <div>
-                      <Label className="text-white/70 text-sm">Campaign Name</Label>
-                      <Input {...campaignForm.register("name")} placeholder="Q4 Brand Awareness" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
-                      {campaignForm.formState.errors.name && <p className="text-red-400 text-xs mt-1">{campaignForm.formState.errors.name.message}</p>}
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Category</Label>
-                      <Select onValueChange={(v) => campaignForm.setValue("category", v)} defaultValue="other">
-                        <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#0d1527] border-white/10 text-white">
-                          {AD_CATEGORIES.map((c) => (
-                            <SelectItem key={c} value={c} className="capitalize focus:bg-white/10">{c.replace(/_/g, " ")}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Total Budget ($)</Label>
-                      <Input {...campaignForm.register("budgetCents")} type="number" placeholder="100" className="mt-1 bg-white/5 border-white/10 text-white" />
-                      {campaignForm.formState.errors.budgetCents && <p className="text-red-400 text-xs mt-1">{campaignForm.formState.errors.budgetCents.message}</p>}
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Max CPM Bid ($)</Label>
-                      <Input {...campaignForm.register("cpmBidCents")} type="number" step="0.1" placeholder="2.00" className="mt-1 bg-white/5 border-white/10 text-white" />
-                    </div>
-                    <Button type="submit" disabled={createCampaignMutation.isPending} className="w-full bg-blue-600 hover:bg-blue-500 text-white">
-                      {createCampaignMutation.isPending ? "Creating..." : "Create Campaign"}
-                    </Button>
-                  </form>
+                  <CampaignForm
+                    form={campaignForm}
+                    onSubmit={(d) => createCampaignMutation.mutate(d)}
+                    isPending={createCampaignMutation.isPending}
+                    submitLabel="Create Campaign"
+                  />
                 </DialogContent>
               </Dialog>
 
-              <Dialog open={adOpen} onOpenChange={setAdOpen}>
+              {/* Create Ad dialog */}
+              <Dialog open={adOpen && !editingAd} onOpenChange={(v) => { if (!v) { setAdOpen(false); adForm.reset(); } else setAdOpen(true); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="bg-blue-600 hover:bg-blue-500 text-white gap-2">
                     <Plus className="h-4 w-4" /> New Ad
@@ -227,48 +276,80 @@ export default function AdvertiserDashboard() {
                   <DialogHeader>
                     <DialogTitle className="text-white">Create Ad</DialogTitle>
                   </DialogHeader>
-                  <form onSubmit={adForm.handleSubmit((d) => createAdMutation.mutate(d))} className="space-y-4 mt-2">
-                    <div>
-                      <Label className="text-white/70 text-sm">Campaign</Label>
-                      <Select onValueChange={(v) => adForm.setValue("campaignId", v)}>
-                        <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
-                          <SelectValue placeholder="Select a campaign" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#0d1527] border-white/10 text-white">
-                          {campaigns.map((c) => (
-                            <SelectItem key={c.id} value={c.id} className="focus:bg-white/10">{c.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Headline</Label>
-                      <Input {...adForm.register("headline")} placeholder="Discover something amazing" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
-                      {adForm.formState.errors.headline && <p className="text-red-400 text-xs mt-1">{adForm.formState.errors.headline.message}</p>}
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Body Text (optional)</Label>
-                      <Textarea {...adForm.register("body")} placeholder="Short description of your offer..." className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30 resize-none" rows={2} />
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Destination URL</Label>
-                      <Input {...adForm.register("destinationUrl")} type="url" placeholder="https://yoursite.com/landing" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
-                      {adForm.formState.errors.destinationUrl && <p className="text-red-400 text-xs mt-1">{adForm.formState.errors.destinationUrl.message}</p>}
-                    </div>
-                    <div>
-                      <Label className="text-white/70 text-sm">Max CPM Bid ($)</Label>
-                      <Input {...adForm.register("maxCpmCents")} type="number" step="0.1" placeholder="2.00" className="mt-1 bg-white/5 border-white/10 text-white" />
-                    </div>
-                    <Button type="submit" disabled={createAdMutation.isPending} className="w-full bg-blue-600 hover:bg-blue-500 text-white">
-                      {createAdMutation.isPending ? "Submitting..." : "Submit for Review"}
-                    </Button>
-                  </form>
+                  <AdFormFields
+                    form={adForm}
+                    campaigns={campaigns}
+                    onSubmit={(d) => createAdMutation.mutate(d)}
+                    isPending={createAdMutation.isPending}
+                    submitLabel="Submit for Review"
+                  />
                 </DialogContent>
               </Dialog>
             </div>
           </div>
 
-          {/* Wallet */}
+          {/* Edit Campaign dialog */}
+          <Dialog open={!!editingCampaign} onOpenChange={(v) => { if (!v) setEditingCampaign(null); }}>
+            <DialogContent className="bg-[#0d1527] border-white/10 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-white">Edit Campaign</DialogTitle>
+              </DialogHeader>
+              <CampaignForm
+                form={campaignForm}
+                onSubmit={(d) => editingCampaign && updateCampaignMutation.mutate({ id: editingCampaign.id, data: d })}
+                isPending={updateCampaignMutation.isPending}
+                submitLabel="Save Changes"
+              />
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Ad dialog */}
+          <Dialog open={!!editingAd} onOpenChange={(v) => { if (!v) setEditingAd(null); }}>
+            <DialogContent className="bg-[#0d1527] border-white/10 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-white">Edit Ad</DialogTitle>
+              </DialogHeader>
+              <AdFormFields
+                form={adForm}
+                campaigns={campaigns}
+                onSubmit={(d) => editingAd && updateAdMutation.mutate({ id: editingAd.id, data: { ...d, status: "pending_review" } })}
+                isPending={updateAdMutation.isPending}
+                submitLabel="Save & Resubmit"
+              />
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete confirm dialog */}
+          <Dialog open={!!deleteConfirm} onOpenChange={(v) => { if (!v) setDeleteConfirm(null); }}>
+            <DialogContent className="bg-[#0d1527] border-white/10 text-white max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="text-white">Confirm Delete</DialogTitle>
+              </DialogHeader>
+              <p className="text-white/60 text-sm mt-2">
+                {deleteConfirm?.type === "campaign"
+                  ? "Delete this campaign and all its ads? This cannot be undone."
+                  : "Delete this ad? This cannot be undone."}
+              </p>
+              <div className="flex gap-3 mt-4">
+                <Button size="sm" variant="outline" className="border-white/20 text-white hover:bg-white/10 flex-1" onClick={() => setDeleteConfirm(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-500 text-white flex-1"
+                  onClick={() => {
+                    if (deleteConfirm?.type === "campaign") deleteCampaignMutation.mutate(deleteConfirm.id);
+                    else if (deleteConfirm?.type === "ad") deleteAdMutation.mutate(deleteConfirm.id);
+                  }}
+                  disabled={deleteCampaignMutation.isPending || deleteAdMutation.isPending}
+                >
+                  Delete
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Wallet stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
             <Card className="bg-blue-600/10 border-blue-500/30 col-span-2 sm:col-span-1">
               <CardContent className="p-4">
@@ -317,21 +398,48 @@ export default function AdvertiserDashboard() {
             ) : (
               <div className="space-y-3">
                 {campaigns.map((c) => (
-                  <Card key={c.id} className="bg-white/5 border-white/10 hover:bg-white/8 transition-colors cursor-pointer" onClick={() => setSelectedCampaign(c.id === selectedCampaign ? null : c.id)}>
+                  <Card key={c.id} className="bg-white/5 border-white/10 hover:bg-white/[0.07] transition-colors">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-lg bg-blue-600/20 flex items-center justify-center">
+                        <div
+                          className="flex items-center gap-3 flex-1 cursor-pointer"
+                          onClick={() => setSelectedCampaign(c.id === selectedCampaign ? null : c.id)}
+                        >
+                          <div className="h-8 w-8 rounded-lg bg-blue-600/20 flex items-center justify-center flex-shrink-0">
                             <Target className="h-4 w-4 text-blue-400" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <div className="font-medium text-sm">{c.name}</div>
-                            <div className="text-xs text-white/40 capitalize">{c.category?.replace(/_/g, " ")} · Daily: {formatMoney(c.dailyBudgetCents ?? 0)}</div>
+                            <div className="text-xs text-white/40 capitalize">{c.category?.replace(/_/g, " ")} · Budget: {formatMoney(c.budgetCents ?? 0)}</div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           <StatusBadge status={c.status} />
-                          <ChevronRight className={`h-4 w-4 text-white/30 transition-transform ${selectedCampaign === c.id ? "rotate-90" : ""}`} />
+                          <button
+                            onClick={() => openEditCampaign(c)}
+                            className="p-1.5 rounded hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                            title="Edit campaign"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => pauseResumeCampaignMutation.mutate({ id: c.id, status: c.status === "paused" ? "active" : "paused" })}
+                            className="p-1.5 rounded hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                            title={c.status === "paused" ? "Resume campaign" : "Pause campaign"}
+                          >
+                            {c.status === "paused" ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ type: "campaign", id: c.id })}
+                            className="p-1.5 rounded hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors"
+                            title="Delete campaign"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                          <ChevronRight
+                            className={`h-4 w-4 text-white/30 transition-transform cursor-pointer ${selectedCampaign === c.id ? "rotate-90" : ""}`}
+                            onClick={() => setSelectedCampaign(c.id === selectedCampaign ? null : c.id)}
+                          />
                         </div>
                       </div>
                       {selectedCampaign === c.id && (
@@ -367,18 +475,54 @@ export default function AdvertiserDashboard() {
                   <Card key={ad.id} className="bg-white/5 border-white/10">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="font-medium text-sm leading-snug">{ad.headline}</div>
+                        <div className="font-medium text-sm leading-snug flex-1">{ad.headline}</div>
                         <StatusBadge status={ad.status} />
                       </div>
+                      {ad.imageUrl && (
+                        <div className="mb-3 rounded overflow-hidden h-20 bg-white/5 flex items-center justify-center">
+                          <img src={ad.imageUrl} alt="Ad creative" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                        </div>
+                      )}
                       {ad.body && <p className="text-xs text-white/40 mb-3 line-clamp-2">{ad.body}</p>}
-                      <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-3 gap-2 text-xs mb-3">
                         <div><div className="text-white/30">Impressions</div><div className="font-medium">{formatNum(ad.impressionCount ?? 0)}</div></div>
                         <div><div className="text-white/30">Clicks</div><div className="font-medium">{formatNum(ad.clickCount ?? 0)}</div></div>
                         <div><div className="text-white/30">Max CPM</div><div className="font-medium">{formatMoney(ad.maxCpmCents ?? 0)}</div></div>
                       </div>
                       {ad.rejectionReason && (
-                        <div className="mt-3 px-2 py-1.5 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-300">{ad.rejectionReason}</div>
+                        <div className="mb-3 px-2 py-1.5 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-300">{ad.rejectionReason}</div>
                       )}
+                      <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                        <button
+                          onClick={() => openEditAd(ad)}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+                          title="Edit ad"
+                        >
+                          <Edit2 className="h-3 w-3" /> Edit
+                        </button>
+                        {(ad.status === "approved" || ad.status === "active") && (
+                          <button
+                            onClick={() => pauseResumeAdMutation.mutate({ id: ad.id, status: "paused" })}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-white/50 hover:text-orange-400 hover:bg-orange-500/10 transition-colors"
+                          >
+                            <Pause className="h-3 w-3" /> Pause
+                          </button>
+                        )}
+                        {ad.status === "paused" && (
+                          <button
+                            onClick={() => pauseResumeAdMutation.mutate({ id: ad.id, status: "approved" })}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-white/50 hover:text-green-400 hover:bg-green-500/10 transition-colors"
+                          >
+                            <Play className="h-3 w-3" /> Resume
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setDeleteConfirm({ type: "ad", id: ad.id })}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-colors ml-auto"
+                        >
+                          <Trash2 className="h-3 w-3" /> Delete
+                        </button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -388,5 +532,104 @@ export default function AdvertiserDashboard() {
         </div>
       </main>
     </div>
+  );
+}
+
+function CampaignForm({ form, onSubmit, isPending, submitLabel }: {
+  form: ReturnType<typeof useForm<CampaignForm>>;
+  onSubmit: (d: CampaignForm) => void;
+  isPending: boolean;
+  submitLabel: string;
+}) {
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-2">
+      <div>
+        <Label className="text-white/70 text-sm">Campaign Name</Label>
+        <Input {...form.register("name")} placeholder="Q4 Brand Awareness" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
+        {form.formState.errors.name && <p className="text-red-400 text-xs mt-1">{form.formState.errors.name.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Category</Label>
+        <Select onValueChange={(v) => form.setValue("category", v)} defaultValue={form.getValues("category") || "other"}>
+          <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-[#0d1527] border-white/10 text-white">
+            {AD_CATEGORIES.map((c) => (
+              <SelectItem key={c} value={c} className="capitalize focus:bg-white/10">{c.replace(/_/g, " ")}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Total Budget ($)</Label>
+        <Input {...form.register("budgetCents")} type="number" placeholder="100" className="mt-1 bg-white/5 border-white/10 text-white" />
+        {form.formState.errors.budgetCents && <p className="text-red-400 text-xs mt-1">{form.formState.errors.budgetCents.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Max CPM Bid ($)</Label>
+        <Input {...form.register("cpmBidCents")} type="number" step="0.1" placeholder="2.00" className="mt-1 bg-white/5 border-white/10 text-white" />
+        {form.formState.errors.cpmBidCents && <p className="text-red-400 text-xs mt-1">{form.formState.errors.cpmBidCents.message}</p>}
+      </div>
+      <Button type="submit" disabled={isPending} className="w-full bg-blue-600 hover:bg-blue-500 text-white">
+        {isPending ? "Saving..." : submitLabel}
+      </Button>
+    </form>
+  );
+}
+
+function AdFormFields({ form, campaigns, onSubmit, isPending, submitLabel }: {
+  form: ReturnType<typeof useForm<AdForm>>;
+  campaigns: AdCampaign[];
+  onSubmit: (d: AdForm) => void;
+  isPending: boolean;
+  submitLabel: string;
+}) {
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-2">
+      <div>
+        <Label className="text-white/70 text-sm">Campaign</Label>
+        <Select onValueChange={(v) => form.setValue("campaignId", v)} defaultValue={form.getValues("campaignId")}>
+          <SelectTrigger className="mt-1 bg-white/5 border-white/10 text-white">
+            <SelectValue placeholder="Select a campaign" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#0d1527] border-white/10 text-white">
+            {campaigns.map((c) => (
+              <SelectItem key={c.id} value={c.id} className="focus:bg-white/10">{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {form.formState.errors.campaignId && <p className="text-red-400 text-xs mt-1">{form.formState.errors.campaignId.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Headline</Label>
+        <Input {...form.register("headline")} placeholder="Discover something amazing" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
+        {form.formState.errors.headline && <p className="text-red-400 text-xs mt-1">{form.formState.errors.headline.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Body Text (optional)</Label>
+        <Textarea {...form.register("body")} placeholder="Short description of your offer..." className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30 resize-none" rows={2} />
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm flex items-center gap-1.5">
+          <Image className="h-3.5 w-3.5" /> Image URL (optional)
+        </Label>
+        <Input {...form.register("imageUrl")} type="url" placeholder="https://yoursite.com/banner.jpg" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
+        {form.formState.errors.imageUrl && <p className="text-red-400 text-xs mt-1">{form.formState.errors.imageUrl.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Destination URL</Label>
+        <Input {...form.register("destinationUrl")} type="url" placeholder="https://yoursite.com/landing" className="mt-1 bg-white/5 border-white/10 text-white placeholder:text-white/30" />
+        {form.formState.errors.destinationUrl && <p className="text-red-400 text-xs mt-1">{form.formState.errors.destinationUrl.message}</p>}
+      </div>
+      <div>
+        <Label className="text-white/70 text-sm">Max CPM Bid ($)</Label>
+        <Input {...form.register("maxCpmCents")} type="number" step="0.1" placeholder="2.00" className="mt-1 bg-white/5 border-white/10 text-white" />
+        {form.formState.errors.maxCpmCents && <p className="text-red-400 text-xs mt-1">{form.formState.errors.maxCpmCents.message}</p>}
+      </div>
+      <Button type="submit" disabled={isPending} className="w-full bg-blue-600 hover:bg-blue-500 text-white">
+        {isPending ? "Submitting..." : submitLabel}
+      </Button>
+    </form>
   );
 }
