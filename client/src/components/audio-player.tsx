@@ -196,7 +196,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   if (carMode) {
     return (
       <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center p-4 sm:p-8">
-        <audio ref={audioRef} preload="metadata" />
+        <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
         
         <Button
           variant="ghost"
@@ -298,7 +298,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6" role="region" aria-label={`Audio player: ${book.title} by ${book.author}`}>
-      <audio ref={audioRef} preload="metadata" />
+      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
 
       <Card>
         <CardContent className="p-4 sm:p-6">

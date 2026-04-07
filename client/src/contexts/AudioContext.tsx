@@ -295,15 +295,42 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [currentBook?.id]);
 
-  // Poll audio.buffered every second to compute how many seconds are cached ahead
+  const lastPredictivePrefetchRef = useRef<number>(0);
+
+  // Poll audio.buffered every second: track bufferedAhead + predictive prefetch
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    const PREFETCH_THRESHOLD_S = 15;
+    const PREFETCH_COOLDOWN_MS = 30_000;
+
     const poll = () => {
       try {
         if (audio.buffered.length > 0) {
           const end = audio.buffered.end(audio.buffered.length - 1);
-          setBufferedAhead(Math.max(0, end - audio.currentTime));
+          const ahead = Math.max(0, end - audio.currentTime);
+          setBufferedAhead(ahead);
+
+          // Predictive prefetch: reload src when buffer runs low while playing
+          const now = Date.now();
+          if (
+            ahead < PREFETCH_THRESHOLD_S &&
+            !audio.paused &&
+            audio.currentTime > 0 &&
+            audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA &&
+            now - lastPredictivePrefetchRef.current > PREFETCH_COOLDOWN_MS
+          ) {
+            lastPredictivePrefetchRef.current = now;
+            const pos = audio.currentTime;
+            const src = audio.src;
+            if (src) {
+              audio.src = src;
+              audio.load();
+              audio.currentTime = pos;
+              audio.play().catch(() => {});
+            }
+          }
         } else {
           setBufferedAhead(0);
         }

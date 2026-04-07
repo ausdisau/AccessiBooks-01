@@ -175,7 +175,7 @@ export function useRemoveDevice() {
 
 export function usePlaybackSession() {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [quality, setQuality] = useState<"low" | "high">("low");
+  const [quality, setQuality] = useState<"low" | "mid" | "high" | "ultra">("low");
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
