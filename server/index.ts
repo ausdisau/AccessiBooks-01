@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startNotificationScheduler } from "./notificationTriggers";
 import { setupFullTextSearch, setupEasyEnglishTables, setupAdPlatformTables } from "./db";
+import { startDailySpendResetCron } from "./auctionEngine";
 import { storage } from "./storage";
 
 const app = express();
@@ -83,6 +84,7 @@ app.use((req, res, next) => {
     setupFullTextSearch().catch(err => console.warn("[FTS] Setup failed:", err));
     setupEasyEnglishTables().catch(err => console.warn("[EasyEnglish] Setup failed:", err));
     setupAdPlatformTables().catch(err => console.warn("[AdPlatform] Setup failed:", err));
+    startDailySpendResetCron();
     
     // Runtime API ingestion: fetch from external APIs and persist to DB
     setTimeout(async () => {

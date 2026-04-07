@@ -78,6 +78,7 @@ const AdvertiserDashboard = lazy(() => import('@/pages/ad-platform/advertiser-da
 const PublisherDashboard = lazy(() => import('@/pages/ad-platform/publisher-dashboard'));
 const AdminPlatformDashboard = lazy(() => import('@/pages/ad-platform/admin-dashboard'));
 const SlotDetailPage = lazy(() => import('@/pages/ad-platform/slot-detail'));
+const DemoSlotPage = lazy(() => import('@/pages/ad-platform/demo-slot'));
 
 function LoadingSpinner() {
   return (
@@ -1916,6 +1917,9 @@ function App() {
         <Router>
           <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>}>
             <Switch>
+              <Route path="/demo-slot">
+                <DemoSlotPage />
+              </Route>
               {adRole === "advertiser" && (
                 <Route path="/advertiser">
                   <AdvertiserDashboard />
@@ -1950,6 +1954,11 @@ function App() {
         <AudioProvider>
           <AudioAdManager />
           <Switch>
+            <Route path="/demo-slot">
+              <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
+                <DemoSlotPage />
+              </Suspense>
+            </Route>
             <Route path="/ad-platform">
               <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
                 <AdPlatformLanding />
