@@ -36,6 +36,7 @@ import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
 import { AiChatPanel } from "@/components/ai-chat-panel";
 import { SignUpPrompt } from "@/components/sign-up-prompt";
+import { KeyboardShortcutsOverlay } from "@/components/keyboard-shortcuts-overlay";
 import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
 import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
@@ -1271,7 +1272,9 @@ function MainApp() {
     return "full";
   });
   const { toggleHighContrast } = useAccessibility();
-  const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
+  const { currentBook, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { toast } = useToast();
   const { 
     checkAccess, 
     showUpgradeModal, 
@@ -1345,8 +1348,19 @@ function MainApp() {
     } else {
       playBook(book);
       navigate("/player");
+      const shortcutTipShown = localStorage.getItem("accessibooks_shortcut_tip_shown");
+      if (!shortcutTipShown) {
+        localStorage.setItem("accessibooks_shortcut_tip_shown", "true");
+        setTimeout(() => {
+          toast({
+            title: "Tip: Keyboard shortcuts available",
+            description: "Press ? to see all keyboard shortcuts.",
+            duration: 6000,
+          });
+        }, 1500);
+      }
     }
-  }, [checkAccess, playBook, navigate]);
+  }, [checkAccess, playBook, navigate, toast]);
 
   const handleBackToLibrary = useCallback(() => {
     navigate("/");
@@ -1374,7 +1388,20 @@ function MainApp() {
     onSkipForward: () => skip(15),
     onSpeedUp: () => changeSpeed(0.25),
     onSpeedDown: () => changeSpeed(-0.25),
+    onMute: toggleMute,
+    onNextChapter: nextChapter,
+    onPrevChapter: prevChapter,
+    onOpenShortcuts: () => setShortcutsOpen(true),
+    onToggleCaptions: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-captions")),
+    onOpenAccessibility: () => document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility")),
+    onToggleTranscript: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-transcript")),
   });
+
+  useEffect(() => {
+    const handler = () => setShortcutsOpen(true);
+    document.addEventListener("accessibooks:open-shortcuts", handler);
+    return () => document.removeEventListener("accessibooks:open-shortcuts", handler);
+  }, []);
 
   const hasMiniPlayer = currentBook !== null;
 
@@ -1669,6 +1696,8 @@ function MainApp() {
         onOpenChange={(open) => setEngagementUpsell(prev => ({ ...prev, open }))}
         onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan || "monthly"); }}
       />
+
+      <KeyboardShortcutsOverlay open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

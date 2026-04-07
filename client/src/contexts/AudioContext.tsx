@@ -24,6 +24,7 @@ interface AudioContextType {
   currentBook: Book | null;
   audioRef: React.RefObject<HTMLAudioElement>;
   isPlaying: boolean;
+  isMuted: boolean;
   currentTime: number;
   duration: number;
   playbackRate: number;
@@ -41,6 +42,7 @@ interface AudioContextType {
   bufferedAhead: number;
   setCurrentBook: (book: Book | null) => void;
   togglePlayPause: () => Promise<void>;
+  toggleMute: () => void;
   skip: (seconds: number) => void;
   seekTo: (time: number) => void;
   changeSpeed: (delta: number) => void;
@@ -91,6 +93,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     currentAd: null,
     adType: null,
   });
+  const [isMuted, setIsMuted] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [subscriptionTier, setSubscriptionTier] = useState<"free" | "plus" | "premium">("free");
@@ -408,6 +411,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [playbackRate]);
 
+  const toggleMute = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const next = !isMuted;
+    audio.muted = next;
+    setIsMuted(next);
+  };
+
   const togglePlayPause = async () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -669,6 +680,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         currentBook,
         audioRef,
         isPlaying,
+        isMuted,
         currentTime,
         duration,
         playbackRate,
@@ -686,6 +698,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         bufferedAhead,
         setCurrentBook,
         togglePlayPause,
+        toggleMute,
         skip,
         seekTo,
         changeSpeed,
