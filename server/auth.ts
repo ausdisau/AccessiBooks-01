@@ -8,6 +8,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { sendEmail } from "./mailer";
+import { sendViaAgentMail } from "./agentMailer";
 
 interface MagicLinkRecord {
   email: string;
@@ -256,8 +257,10 @@ export function setupAuth(app: Express) {
     magicLinkTokens.set(token, { email: email.toLowerCase().trim(), expiresAt: Date.now() + 15 * 60 * 1000 });
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const link = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
+    // Always log the link for dev visibility regardless of email delivery method
     console.log(`[MagicLink] Generated link for ${email}: ${link}`);
-    await sendEmail({
+
+    const emailPayload = {
       to: email,
       subject: "Your AccessiBooks sign-in link",
       text: `Click this link to sign in (expires in 15 minutes):\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
@@ -265,7 +268,19 @@ export function setupAuth(app: Express) {
 <p style="margin:24px 0"><a href="${link}" style="background:#6d28d9;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Sign In to AccessiBooks</a></p>
 <p style="color:#888;font-size:12px">Or copy this URL into your browser:<br>${link}</p>
 <p style="color:#888;font-size:12px">If you didn't request this link, you can safely ignore this email.</p>`,
-    });
+    };
+
+    // 1. Try AgentMail (no external credentials required)
+    const sentViaAgentMail = await sendViaAgentMail(emailPayload);
+    if (!sentViaAgentMail) {
+      // 2. Fall back to SMTP if configured
+      const sentViaSmtp = await sendEmail(emailPayload);
+      if (!sentViaSmtp) {
+        // 3. Final fallback: link already logged above — nothing more to do
+        console.warn(`[MagicLink] No email delivery method available — link logged to console only`);
+      }
+    }
+
     res.json({ message: "Magic link sent — check your inbox" });
   });
 
