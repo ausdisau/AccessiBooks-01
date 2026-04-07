@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -14,6 +15,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { localStorageService, AccessibilitySettings, ColorVisionMode } from "@/lib/storage";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import {
   Accessibility,
   X,
@@ -33,6 +38,9 @@ import {
   Pause,
   Layers,
   Palette,
+  Cloud,
+  CloudOff,
+  Loader2,
 } from "lucide-react";
 
 const CVD_SVG_ID = "a11y-cvd-filters";
@@ -140,6 +148,78 @@ export function AccessibilityWidget() {
     localStorageService.getSettings()
   );
   const [readingGuideY, setReadingGuideY] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "saved" | "error">("idle");
+
+  const { user } = useAuth();
+  const isLoggedIn = !!user;
+  const { toast } = useToast();
+
+  const { data: serverPrefs } = useQuery<{ profile: Partial<AccessibilitySettings> | null }>({
+    queryKey: ["/api/a11y/preferences"],
+    enabled: isLoggedIn,
+    staleTime: Infinity,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (s: AccessibilitySettings) => {
+      await apiRequest("PUT", "/api/a11y/preferences", { profile: s });
+    },
+    onMutate: () => setSyncStatus("syncing"),
+    onSuccess: () => {
+      setSyncStatus("saved");
+      setTimeout(() => setSyncStatus("idle"), 2500);
+    },
+    onError: () => setSyncStatus("error"),
+  });
+
+  // On first login, restore server settings or offer to migrate local ones
+  useEffect(() => {
+    if (!isLoggedIn || serverPrefs === undefined) return;
+
+    const defaults = getDefaultSettings();
+    const serverProfile = serverPrefs?.profile ?? null;
+    const isServerDefault =
+      !serverProfile ||
+      Object.keys(defaults).every(
+        (k) =>
+          !(k in serverProfile) ||
+          (serverProfile as Record<string, unknown>)[k] === (defaults as Record<string, unknown>)[k]
+      );
+
+    if (!isServerDefault && serverProfile) {
+      // Restore server settings to this device
+      const merged: AccessibilitySettings = { ...defaults, ...serverProfile };
+      setSettings(merged);
+      localStorageService.saveSettings(merged);
+      setSyncStatus("saved");
+      return;
+    }
+
+    // Server is default — check if local has custom settings
+    const localSettings = localStorageService.getSettings();
+    const isLocalDefault = Object.keys(defaults).every(
+      (k) =>
+        (localSettings as Record<string, unknown>)[k] ===
+        (defaults as Record<string, unknown>)[k]
+    );
+    const migrationKey = "a11y-migration-prompted";
+    if (!isLocalDefault && !localStorage.getItem(migrationKey)) {
+      localStorage.setItem(migrationKey, "true");
+      toast({
+        title: "Sync accessibility settings?",
+        description:
+          "You have custom accessibility settings on this device. Save them to your account for cross-device access.",
+        action: (
+          <ToastAction
+            altText="Sync settings to account"
+            onClick={() => saveMutation.mutate(localSettings)}
+          >
+            Sync
+          </ToastAction>
+        ),
+      });
+    }
+  }, [isLoggedIn, serverPrefs]);
 
   useEffect(() => {
     if (!document.getElementById(CVD_SVG_ID)) {
@@ -199,6 +279,7 @@ export function AccessibilityWidget() {
     const newSettings = { ...settings, ...partial, activeProfile: null };
     setSettings(newSettings);
     localStorageService.saveSettings(newSettings);
+    if (isLoggedIn) saveMutation.mutate(newSettings);
   };
 
   const applyProfile = (profile: AccessibilityProfile) => {
@@ -209,6 +290,7 @@ export function AccessibilityWidget() {
     };
     setSettings(newSettings);
     localStorageService.saveSettings(newSettings);
+    if (isLoggedIn) saveMutation.mutate(newSettings);
   };
 
   const getDefaultSettings = (): AccessibilitySettings => ({
@@ -265,7 +347,35 @@ export function AccessibilityWidget() {
                   Accessibility Options
                 </h2>
               </CardTitle>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-1.5">
+                {isLoggedIn && syncStatus !== "idle" && (
+                  <span
+                    className="flex items-center gap-1 text-xs text-muted-foreground"
+                    aria-live="polite"
+                    aria-label={
+                      syncStatus === "syncing"
+                        ? "Syncing settings"
+                        : syncStatus === "saved"
+                        ? "Settings saved to account"
+                        : "Sync failed"
+                    }
+                  >
+                    {syncStatus === "syncing" && (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                    )}
+                    {syncStatus === "saved" && (
+                      <Cloud className="h-3 w-3 text-green-500" aria-hidden="true" />
+                    )}
+                    {syncStatus === "error" && (
+                      <CloudOff className="h-3 w-3 text-destructive" aria-hidden="true" />
+                    )}
+                    {syncStatus === "syncing"
+                      ? "Syncing"
+                      : syncStatus === "saved"
+                      ? "Saved"
+                      : "Error"}
+                  </span>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"

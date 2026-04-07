@@ -46,13 +46,19 @@ passport.use(
 );
 
 // Google Strategy
+const APP_URL = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : null;
+
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  const googleCallbackURL = APP_URL
+    ? `${APP_URL}/api/auth/google/callback`
+    : "/api/auth/google/callback";
   passport.use(
     new GoogleStrategy(
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: "/api/auth/google/callback",
+        callbackURL: googleCallbackURL,
+        proxy: true,
         scope: ["profile", "email"],
       },
       async (accessToken, refreshToken, profile, done) => {
@@ -77,13 +83,21 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 // Facebook Strategy
+// IMPORTANT: The full callback URL below must be added to your Facebook Developer Console
+// under your app's "Valid OAuth Redirect URIs" setting:
+//   <APP_URL>/api/auth/facebook/callback
+// e.g. https://your-app.replit.app/api/auth/facebook/callback
 if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
+  const facebookCallbackURL = APP_URL
+    ? `${APP_URL}/api/auth/facebook/callback`
+    : "/api/auth/facebook/callback";
   passport.use(
     new FacebookStrategy(
       {
         clientID: process.env.FACEBOOK_APP_ID,
         clientSecret: process.env.FACEBOOK_APP_SECRET,
-        callbackURL: "/api/auth/facebook/callback",
+        callbackURL: facebookCallbackURL,
+        proxy: true,
         profileFields: ["id", "emails", "name", "picture"],
       },
       async (accessToken, refreshToken, profile, done) => {
@@ -109,12 +123,16 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
 
 // Microsoft Strategy
 if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
+  const microsoftCallbackURL = APP_URL
+    ? `${APP_URL}/api/auth/microsoft/callback`
+    : "/api/auth/microsoft/callback";
   passport.use(
     new MicrosoftStrategy(
       {
         clientID: process.env.MICROSOFT_CLIENT_ID,
         clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
-        callbackURL: "/api/auth/microsoft/callback",
+        callbackURL: microsoftCallbackURL,
+        proxy: true,
         scope: ["user.read"],
       },
       async (accessToken: string, refreshToken: string, profile: any, done: any) => {
@@ -140,13 +158,17 @@ if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
 
 // Auth0 Strategy
 if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0_CLIENT_SECRET) {
+  const auth0CallbackURL = APP_URL
+    ? `${APP_URL}/api/auth/auth0/callback`
+    : "/api/auth/auth0/callback";
   passport.use(
     new Auth0Strategy(
       {
         domain: process.env.AUTH0_DOMAIN,
         clientID: process.env.AUTH0_CLIENT_ID,
         clientSecret: process.env.AUTH0_CLIENT_SECRET,
-        callbackURL: "/api/auth/auth0/callback",
+        callbackURL: auth0CallbackURL,
+        proxy: true,
       },
       async (accessToken: string, refreshToken: string, extraParams: any, profile: any, done: any) => {
         try {
