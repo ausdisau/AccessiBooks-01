@@ -27,7 +27,11 @@ export default function SlotDetailPage() {
 
   const { data: slot, isLoading, isError } = useQuery<AdSlotWithEmbed>({
     queryKey: ["/api/ad/slots", id],
-    queryFn: () => fetch(`/api/ad/slots/${id}`, { credentials: "include" }).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/ad/slots/${id}`, { credentials: "include" });
+      if (!r.ok) throw new Error(`Failed to fetch slot: ${r.status}`);
+      return r.json();
+    },
   });
 
   function copySnippet() {
