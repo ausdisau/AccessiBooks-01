@@ -366,81 +366,117 @@ p, li, blockquote, .prose {
    instant restore on exit to avoid flicker.
    ============================================================ */
 
-/* Smooth fade transition for elements that will be hidden */
+/* ── Elements that will gently fade on Focus Mode entry ──────────────── */
 aside,
 header[role="banner"],
 nav[aria-label="Breadcrumb"],
 nav[aria-label="Main navigation"],
-footer {
+footer,
+[data-testid="book-carousel"],
+[data-testid="landing-carousel"],
+[data-testid="for-you-section"],
+[data-testid="genre-cards"],
+[data-testid="gamification-dashboard"],
+[data-testid="social-feed"],
+[data-testid="streaming-queue"],
+[data-testid="ad-banner"],
+[data-testid="ad-overlay"],
+[data-testid="book-reviews"],
+[data-testid="bookmark-list"] {
   transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
-/* Hide the left navigation sidebar and right-side columns */
+/* ── Focus Mode: hide distracting chrome ───────────────────────────── */
+
+/* Sidebar and top nav */
 .focus-mode aside,
 .focus-mode [data-testid="sidebar"],
-.focus-mode nav[aria-label="Main navigation"] {
-  display: none !important;
-}
-
-/* Hide the top header bar */
-.focus-mode header[role="banner"] {
-  display: none !important;
-}
-
-/* Hide breadcrumb navigation */
-.focus-mode nav[aria-label="Breadcrumb"] {
-  display: none !important;
-}
-
-/* Hide recommendation carousels and "you might also like" sections */
-.focus-mode [data-testid="section-carousel"],
-.focus-mode [data-testid="section-recommendations"] {
-  display: none !important;
-}
-
-/* Hide gamification / achievement / XP banners */
-.focus-mode [data-testid="panel-stats"],
-.focus-mode [data-testid="gamification-dashboard"] {
-  display: none !important;
-}
-
-/* Hide the social feed panel */
-.focus-mode [data-testid="social-feed"] {
-  display: none !important;
-}
-
-/* Hide streaming queue widget */
-.focus-mode [data-testid="panel-queue"],
-.focus-mode [data-testid="streaming-queue"] {
-  display: none !important;
-}
-
-/* Hide footer */
+.focus-mode nav[aria-label="Main navigation"],
+.focus-mode header[role="banner"],
+.focus-mode nav[aria-label="Breadcrumb"],
 .focus-mode footer {
-  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: fixed !important;
 }
 
-/* Hide ad overlays and in-page ad banners */
-.focus-mode [data-testid="ad-overlay"],
-.focus-mode [data-testid="ad-banner"] {
-  display: none !important;
-}
-
-/* Hide genre cards and discovery sections on library page */
+/* Carousels and discovery sections */
+.focus-mode [data-testid="book-carousel"],
+.focus-mode [data-testid="landing-carousel"],
+.focus-mode [data-testid="for-you-section"],
 .focus-mode [data-testid="genre-cards"],
 .focus-mode [data-testid="section-trending"] {
-  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
-/* Hide back/author/share action row and reviews on the player page */
-.focus-mode [data-testid="button-back-to-library"],
-.focus-mode [data-testid="button-view-author"],
+/* Gamification dashboard */
+.focus-mode [data-testid="panel-stats"],
+.focus-mode [data-testid="gamification-dashboard"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Social feed */
+.focus-mode [data-testid="social-feed"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Streaming queue */
+.focus-mode [data-testid="panel-queue"],
+.focus-mode [data-testid="streaming-queue"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Ads */
+.focus-mode [data-testid="ad-overlay"],
+.focus-mode [data-testid="ad-banner"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Player extra chrome */
 .focus-mode [data-testid="book-reviews"],
 .focus-mode [data-testid="bookmark-list"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Hide nav buttons that wrap Back + Author + Share on player page */
+.focus-mode [data-testid="button-back-to-library"],
+.focus-mode [data-testid="button-view-author"] {
   display: none !important;
 }
 
-/* Hide the flex row that wraps Back + Author + Share buttons on player page */
 .focus-mode .flex.items-center.justify-between:has([data-testid="button-back-to-library"]) {
   display: none !important;
 }
@@ -463,8 +499,7 @@ footer {
 }
 
 /* Keep the audio player fully visible and centred */
-.focus-mode [data-testid="audio-player"],
-.focus-mode [class*="AudioPlayer"] {
+.focus-mode [data-testid="audio-player"] {
   width: 100% !important;
   max-width: 56rem !important;
   margin: 0 auto !important;
@@ -474,6 +509,9 @@ footer {
 .focus-mode [data-testid="accessibility-widget-toggle"],
 .focus-mode [aria-label="Open accessibility menu"] {
   display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
 }
 
 /* Respect prefers-reduced-motion for focus-mode transitions */
@@ -482,7 +520,18 @@ footer {
   header[role="banner"],
   nav[aria-label="Breadcrumb"],
   nav[aria-label="Main navigation"],
-  footer {
+  footer,
+  [data-testid="book-carousel"],
+  [data-testid="landing-carousel"],
+  [data-testid="for-you-section"],
+  [data-testid="genre-cards"],
+  [data-testid="gamification-dashboard"],
+  [data-testid="social-feed"],
+  [data-testid="streaming-queue"],
+  [data-testid="ad-banner"],
+  [data-testid="ad-overlay"],
+  [data-testid="book-reviews"],
+  [data-testid="bookmark-list"] {
     transition: none;
   }
 }

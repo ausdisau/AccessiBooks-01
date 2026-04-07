@@ -1923,10 +1923,8 @@ function FocusModeExitButton() {
       setFocusModeState(!!localStorageService.getSettings().focusMode);
     };
     document.addEventListener("accessibooks:settings-changed", syncState);
-    document.addEventListener("accessibooks:toggle-focus-mode", syncState);
     return () => {
       document.removeEventListener("accessibooks:settings-changed", syncState);
-      document.removeEventListener("accessibooks:toggle-focus-mode", syncState);
     };
   }, []);
 
