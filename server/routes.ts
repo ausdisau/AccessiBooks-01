@@ -21,6 +21,7 @@ import { registerBillingRoutes, recordTransaction, updateTransactionStatus } fro
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
 import { registerMoatScaffoldRoutes } from "./moatScaffold";
+import { registerChatRoutes } from "./replit_integrations/chat";
 import { 
   ensureCoversDir, 
   getGeneratedCoverUrl, 
@@ -159,6 +160,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Moat scaffold routes (a11y metadata, reviews, institutional, recommendations, metrics)
   registerMoatScaffoldRoutes(app);
+
+  // AI conversational chat routes (conversations, messages, streaming AI responses)
+  registerChatRoutes(app);
 
   // Auth user endpoint (Passport.js authentication)
   app.get('/api/auth/user', async (req: any, res) => {

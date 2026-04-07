@@ -3,6 +3,7 @@ import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useMonetization } from "@/hooks/use-monetization";
 import { BookmarkList } from "./bookmark-list";
@@ -40,6 +41,7 @@ import {
   ChevronRight,
   Subtitles,
   ArrowUpDown,
+  Keyboard,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { InteractiveTranscript } from "./interactive-transcript";
@@ -118,11 +120,54 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const canGoNext = currentChapterIndex < chapters.length - 1;
 
   useEffect(() => {
+    const handleToggleCaptions = () => {
+      updateProfile({ captionsOn: !profile.captionsOn });
+    };
+    const handleToggleTranscript = () => {
+      setShowTranscript(prev => !prev);
+    };
+    document.addEventListener("accessibooks:toggle-captions", handleToggleCaptions);
+    document.addEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
+    return () => {
+      document.removeEventListener("accessibooks:toggle-captions", handleToggleCaptions);
+      document.removeEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
+    };
+  }, [profile.captionsOn, updateProfile]);
+
+  useEffect(() => {
+    const TOAST_KEY = "accessibooks_shortcuts_tip_shown";
+    if (isPlaying && !localStorage.getItem(TOAST_KEY)) {
+      localStorage.setItem(TOAST_KEY, "1");
+      toast({
+        title: "Tip: Keyboard shortcuts",
+        description: 'Press ? anywhere to see all keyboard shortcuts.',
+        duration: 6000,
+      });
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
     startSession(book.id);
     return () => {
       endSession();
     };
   }, [book.id]);
+
+  const captionsOnRef = { current: captionsOn };
+  captionsOnRef.current = captionsOn;
+
+  useEffect(() => {
+    const handleToggleCaptions = () => {
+      updateProfile({ captionsOn: !captionsOnRef.current });
+    };
+    const handleToggleTranscript = () => setShowTranscript(prev => !prev);
+    document.addEventListener("accessibooks:toggle-captions", handleToggleCaptions);
+    document.addEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
+    return () => {
+      document.removeEventListener("accessibooks:toggle-captions", handleToggleCaptions);
+      document.removeEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
+    };
+  }, []);
 
   const handleSkipForward = async () => {
     if (!isPremium && skipStatus && !skipStatus.unlimited) {
@@ -719,6 +764,27 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               />
             </div>
           )}
+
+          {/* Keyboard shortcut hint */}
+          <div className="flex justify-end mt-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  onClick={() => document.dispatchEvent(new CustomEvent("accessibooks:open-shortcuts"))}
+                  aria-label="Keyboard shortcuts"
+                  data-testid="button-keyboard-shortcuts-hint"
+                >
+                  <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+                  <kbd className="text-[10px] font-mono">?</kbd>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Keyboard shortcuts
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </CardContent>
       </Card>
 

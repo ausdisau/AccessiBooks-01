@@ -143,8 +143,13 @@ const accessibilityProfiles: AccessibilityProfile[] = [
   },
 ];
 
-export function AccessibilityWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { externalOpen?: boolean; onExternalOpenChange?: (open: boolean) => void } = {}) {
+  const [isOpenInternal, setIsOpenInternal] = useState(false);
+  const isOpen = externalOpen !== undefined ? externalOpen : isOpenInternal;
+  const setIsOpen = (val: boolean) => {
+    setIsOpenInternal(val);
+    onExternalOpenChange?.(val);
+  };
   const [settings, setSettings] = useState<AccessibilitySettings>(() =>
     localStorageService.getSettings()
   );
@@ -154,6 +159,12 @@ export function AccessibilityWidget() {
   const { user } = useAuth();
   const isLoggedIn = !!user;
   const { toast } = useToast();
+
+  useEffect(() => {
+    const handler = () => setIsOpen(true);
+    document.addEventListener("accessibooks:open-accessibility", handler);
+    return () => document.removeEventListener("accessibooks:open-accessibility", handler);
+  }, []);
 
   const { data: serverPrefs } = useQuery<{ profile: AccessibilitySettings; hasStoredRecord?: boolean }>({
     queryKey: ["/api/a11y/preferences"],

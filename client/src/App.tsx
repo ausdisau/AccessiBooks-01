@@ -18,7 +18,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,7 +34,9 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
 import { SocialFeed } from "@/components/social-feed";
 import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
+import { AiChatPanel } from "@/components/ai-chat-panel";
 import { SignUpPrompt } from "@/components/sign-up-prompt";
+import { KeyboardShortcutsOverlay } from "@/components/keyboard-shortcuts-overlay";
 import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
 import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
@@ -138,6 +140,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -178,9 +181,21 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
 
       <div className="flex items-center space-x-2 ml-auto shrink-0">
         <AccessibilityControls />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setChatOpen(true)}
+          aria-label="Open AI chat assistant"
+          data-testid="button-ai-chat"
+          className="p-2 relative"
+          title="AI Assistant"
+        >
+          <MessageCircle className="h-5 w-5" />
+        </Button>
         
         {user && (
-          <div className="flex items-center space-x-2 pl-4 border-l border-border">
+          <div className="flex items-center space-x-2 pl-2 border-l border-border">
             <PremiumBadge showUpgrade />
             <NotificationCenter />
             
@@ -232,6 +247,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
         <SearchAutocomplete onSelectBook={() => { navigate("/player"); setMobileSearchOpen(false); }} />
       </div>
     )}
+    <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </>
   );
 }
@@ -822,6 +838,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
   const { toggleHighContrast } = useAccessibility();
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   
   const { data: platformStats } = useQuery<{ totalBooks: number; totalUsers: number; totalListeningMinutes: number }>({
     queryKey: ["/api/platform/stats"],
@@ -906,6 +923,17 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-4">
             <AccessibilityControls />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setChatOpen(true)}
+              aria-label="Open AI chat assistant"
+              data-testid="button-ai-chat"
+              className="p-2"
+              title="AI Assistant"
+            >
+              <MessageCircle className="h-5 w-5" />
+            </Button>
             <Button variant="ghost" onClick={openLogin} data-testid="nav-sign-in">
               Sign In
             </Button>
@@ -1216,6 +1244,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
         isRegistering={isRegistering}
         setIsRegistering={setIsRegistering}
       />
+      <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 }
@@ -1243,7 +1272,9 @@ function MainApp() {
     return "full";
   });
   const { toggleHighContrast } = useAccessibility();
-  const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
+  const { currentBook, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { toast } = useToast();
   const { 
     checkAccess, 
     showUpgradeModal, 
@@ -1317,8 +1348,19 @@ function MainApp() {
     } else {
       playBook(book);
       navigate("/player");
+      const shortcutTipShown = localStorage.getItem("accessibooks_shortcut_tip_shown");
+      if (!shortcutTipShown) {
+        localStorage.setItem("accessibooks_shortcut_tip_shown", "true");
+        setTimeout(() => {
+          toast({
+            title: "Tip: Keyboard shortcuts available",
+            description: "Press ? to see all keyboard shortcuts.",
+            duration: 6000,
+          });
+        }, 1500);
+      }
     }
-  }, [checkAccess, playBook, navigate]);
+  }, [checkAccess, playBook, navigate, toast]);
 
   const handleBackToLibrary = useCallback(() => {
     navigate("/");
@@ -1346,7 +1388,20 @@ function MainApp() {
     onSkipForward: () => skip(15),
     onSpeedUp: () => changeSpeed(0.25),
     onSpeedDown: () => changeSpeed(-0.25),
+    onMute: toggleMute,
+    onNextChapter: nextChapter,
+    onPrevChapter: prevChapter,
+    onOpenShortcuts: () => setShortcutsOpen(true),
+    onToggleCaptions: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-captions")),
+    onOpenAccessibility: () => document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility")),
+    onToggleTranscript: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-transcript")),
   });
+
+  useEffect(() => {
+    const handler = () => setShortcutsOpen(true);
+    document.addEventListener("accessibooks:open-shortcuts", handler);
+    return () => document.removeEventListener("accessibooks:open-shortcuts", handler);
+  }, []);
 
   const hasMiniPlayer = currentBook !== null;
 
@@ -1641,6 +1696,8 @@ function MainApp() {
         onOpenChange={(open) => setEngagementUpsell(prev => ({ ...prev, open }))}
         onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan || "monthly"); }}
       />
+
+      <KeyboardShortcutsOverlay open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }
@@ -1650,6 +1707,7 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
   const [signUpAction, setSignUpAction] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const { toggleHighContrast } = useAccessibility();
 
   useKeyboardShortcuts({
@@ -1679,16 +1737,28 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
             </div>
             <div className="flex items-center space-x-4">
               <AccessibilityControls />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setChatOpen(true)}
+                aria-label="Open AI chat assistant"
+                data-testid="button-ai-chat"
+                className="p-2"
+                title="AI Assistant"
+              >
+                <MessageCircle className="h-5 w-5" />
+              </Button>
               <Button variant="ghost" onClick={() => { setIsRegistering(false); setLoginOpen(true); }}>
                 Sign In
               </Button>
               <Button onClick={() => { setIsRegistering(true); setLoginOpen(true); }}>
-                Create Account
+                Get Started
               </Button>
             </div>
           </div>
         </div>
       </header>
+      <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
 
       <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
