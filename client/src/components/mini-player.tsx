@@ -4,6 +4,8 @@ import { Slider } from "@/components/ui/slider";
 import { Play, Pause, RotateCcw, RotateCw, ChevronUp, ChevronDown, Loader2, ListMusic } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
+import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
+import { CaptionsBar } from "./captions-bar";
 
 interface MiniPlayerProps {
   onExpand?: () => void;
@@ -25,6 +27,8 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
 
   const [isDragging, setIsDragging] = useState(false);
   const [mobileTrayOpen, setMobileTrayOpen] = useState(false);
+  const { profile } = usePreferencesKernel();
+  const captionsOn = profile.captionsOn;
 
   if (!currentBook) return null;
 
@@ -43,6 +47,16 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
         aria-label="Audio player"
         data-testid="mini-player"
       >
+        {captionsOn && (
+          <div className="px-3 py-1 bg-black/80" data-testid="mini-player-captions">
+            <CaptionsBar
+              bookId={currentBook.id}
+              currentTime={currentTime}
+              compact
+            />
+          </div>
+        )}
+
         <div
           className="h-1.5 bg-secondary cursor-pointer group"
           role="progressbar"

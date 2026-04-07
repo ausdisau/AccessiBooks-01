@@ -11,8 +11,10 @@ import { SleepTimer } from "./sleep-timer";
 import { ChapterList } from "./chapter-list";
 import { AddToCollectionButton } from "./library-collections";
 import { AddToPlaylistDialog } from "./add-to-playlist-dialog";
+import { CaptionsBar } from "./captions-bar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,7 +37,8 @@ import {
   SkipForward,
   SkipBack,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Subtitles,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { InteractiveTranscript } from "./interactive-transcript";
@@ -94,8 +97,15 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const [showChapters, setShowChapters] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [showPlaylistDialog, setShowPlaylistDialog] = useState(false);
+  const [captionFontSize, setCaptionFontSize] = useState(16);
   const { toast } = useToast();
   const { user } = useAuth();
+  const { profile, updateProfile } = usePreferencesKernel();
+  const captionsOn = profile.captionsOn;
+
+  const handleToggleCaptions = () => {
+    updateProfile({ captionsOn: !captionsOn });
+  };
 
   const hasChapters = chapters.length > 0;
   const canGoPrev = currentChapterIndex > 0;
@@ -604,6 +614,19 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 <ChevronRight className="h-4 w-4" />
                 <span className="hidden sm:inline">Transcript</span>
               </Button>
+
+              <Button
+                variant={captionsOn ? "default" : "outline"}
+                size="sm"
+                onClick={handleToggleCaptions}
+                className="gap-1"
+                aria-label={captionsOn ? "Turn off captions" : "Turn on captions"}
+                aria-pressed={captionsOn}
+                data-testid="button-captions-toggle"
+              >
+                <Subtitles className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">CC</span>
+              </Button>
             </div>
             
             <div className="flex items-center gap-2">
@@ -652,6 +675,18 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               )}
             </div>
           </div>
+
+          {/* Live captions bar — shown inside the card at the bottom */}
+          {captionsOn && (
+            <div className="mt-4 pt-3 border-t border-border" data-testid="captions-bar">
+              <CaptionsBar
+                bookId={book.id}
+                currentTime={currentTime}
+                fontSize={captionFontSize}
+                onFontSizeChange={setCaptionFontSize}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
