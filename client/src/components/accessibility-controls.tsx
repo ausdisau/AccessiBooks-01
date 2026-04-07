@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -8,14 +8,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAccessibility } from "@/hooks/use-accessibility";
-import { Accessibility, Contrast, Type, Moon, Check, Settings } from "lucide-react";
+import { Accessibility, Contrast, Type, Moon, Check, Settings, Mic, MicOff } from "lucide-react";
 import { PreferencesKernel } from "./preferences-kernel";
 
-export function AccessibilityControls() {
-  const { settings, toggleHighContrast, toggleDyslexiaFont, toggleDarkMode } = useAccessibility();
-  const [showKernel, setShowKernel] = useState(false);
+function isSpeechRecognitionSupported() {
+  return typeof window !== "undefined" &&
+    !!(
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+    );
+}
 
-  const activeCount = [settings.highContrast, settings.dyslexiaFont, settings.darkMode].filter(Boolean).length;
+export function AccessibilityControls() {
+  const { settings, toggleHighContrast, toggleDyslexiaFont, toggleDarkMode, toggleVoiceControl } = useAccessibility();
+  const [showKernel, setShowKernel] = useState(false);
+  const speechSupported = useMemo(() => isSpeechRecognitionSupported(), []);
+
+  const activeCount = [settings.highContrast, settings.dyslexiaFont, settings.darkMode, settings.voiceControlEnabled].filter(Boolean).length;
 
   return (
     <>
@@ -71,6 +80,23 @@ export function AccessibilityControls() {
             </span>
             {settings.darkMode && <Check className="h-4 w-4 text-primary" />}
           </DropdownMenuItem>
+          {speechSupported && (
+            <DropdownMenuItem
+              onClick={toggleVoiceControl}
+              data-testid="button-voice-control"
+              className="flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center">
+                {settings.voiceControlEnabled ? (
+                  <Mic className="h-4 w-4 mr-2" aria-hidden="true" />
+                ) : (
+                  <MicOff className="h-4 w-4 mr-2" aria-hidden="true" />
+                )}
+                Voice Control
+              </span>
+              {settings.voiceControlEnabled && <Check className="h-4 w-4 text-primary" />}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => setShowKernel(true)}

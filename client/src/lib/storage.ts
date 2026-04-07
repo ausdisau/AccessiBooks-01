@@ -47,6 +47,7 @@ export interface AccessibilitySettings {
   captionsOn?: boolean;
   captionPosition?: "above" | "below";
   focusMode?: boolean;
+  voiceControlEnabled?: boolean;
 }
 
 export const localStorageService = {
@@ -142,6 +143,7 @@ export const localStorageService = {
       captionsOn: false,
       captionPosition: "below",
       focusMode: false,
+      voiceControlEnabled: false,
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);

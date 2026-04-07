@@ -135,11 +135,12 @@ const accessibilityProfiles: AccessibilityProfile[] = [
     id: "motor-impaired",
     name: "Motor Impaired",
     icon: MousePointer,
-    description: "Enhanced navigation aids",
+    description: "Enhanced navigation aids + voice control",
     settings: {
       largerCursor: true,
       highlightFocus: true,
       highlightLinks: true,
+      voiceControlEnabled: true,
     },
   },
 ];
