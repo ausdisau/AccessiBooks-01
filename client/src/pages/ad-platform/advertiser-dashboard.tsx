@@ -150,8 +150,9 @@ export default function AdvertiserDashboard() {
     onError: () => toast({ title: "Failed to submit ad", variant: "destructive" }),
   });
 
+  type AdUpdatePayload = Partial<AdForm> & { status?: "paused" | "pending_review" };
   const updateAdMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<AdForm> }) =>
+    mutationFn: ({ id, data }: { id: string; data: AdUpdatePayload }) =>
       apiRequest("PATCH", `/api/ad/display-ads/${id}`, { ...data, imageUrl: data.imageUrl || null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ad/display-ads"] });
@@ -510,10 +511,11 @@ export default function AdvertiserDashboard() {
                         )}
                         {ad.status === "paused" && (
                           <button
-                            onClick={() => pauseResumeAdMutation.mutate({ id: ad.id, status: "approved" })}
+                            onClick={() => pauseResumeAdMutation.mutate({ id: ad.id, status: "pending_review" })}
                             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-white/50 hover:text-green-400 hover:bg-green-500/10 transition-colors"
+                            title="Resubmit for admin review"
                           >
-                            <Play className="h-3 w-3" /> Resume
+                            <Play className="h-3 w-3" /> Resubmit
                           </button>
                         )}
                         <button
