@@ -47,6 +47,17 @@ export function CaptionsBar({
   }, [segments, currentTime]);
 
   if (isLoading) {
+    if (compact) {
+      return (
+        <div
+          className="px-3 py-1.5 bg-black/80 text-white/60 rounded text-xs truncate"
+          aria-live="polite"
+          role="status"
+        >
+          Loading captions…
+        </div>
+      );
+    }
     return (
       <div
         className="flex items-center justify-center gap-2 px-4 py-2 bg-black/80 text-white rounded-lg text-sm"
@@ -60,6 +71,17 @@ export function CaptionsBar({
   }
 
   if (!segments.length) {
+    if (compact) {
+      return (
+        <div
+          className="px-3 py-1.5 bg-black/70 text-white/50 rounded text-xs italic truncate"
+          role="status"
+          aria-label="No captions available"
+        >
+          No captions available
+        </div>
+      );
+    }
     return (
       <div
         className="flex items-center gap-2 px-4 py-2 bg-black/70 text-white/70 rounded-lg text-sm italic"
