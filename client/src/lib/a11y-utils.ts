@@ -19,6 +19,7 @@ export function getDefaultA11ySettings(): AccessibilitySettings {
     activeProfile: null,
     wordSpacing: 0,
     colorVisionMode: "none",
+    focusMode: false,
   };
 }
 
@@ -32,6 +33,7 @@ export function applyA11ySettings(s: AccessibilitySettings) {
   root.classList.toggle("highlight-focus", s.highlightFocus);
   root.classList.toggle("pause-animations", s.pauseAnimations);
   root.classList.toggle("larger-cursor", s.largerCursor);
+  root.classList.toggle("focus-mode", !!s.focusMode);
   const clampedSize = Math.min(150, Math.max(80, s.fontSize));
   root.style.setProperty("--a11y-font-size", `${clampedSize}%`);
   root.style.setProperty("--a11y-letter-spacing", `${s.letterSpacing * 0.05}em`);

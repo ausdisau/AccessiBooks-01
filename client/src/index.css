@@ -358,6 +358,122 @@ p, li, blockquote, .prose {
   background: linear-gradient(135deg, hsl(38, 80%, 35%) 0%, hsl(25, 85%, 30%) 50%, hsl(15, 80%, 25%) 100%);
 }
 
+/* ============================================================
+   Cognitive Focus Mode — hides distracting UI elements so the
+   user can concentrate on the current book and audio player.
+   All rules are scoped to .focus-mode on <html>.
+   ============================================================ */
+
+/* Transition helper — smooth exit/entry of hidden panels */
+.focus-mode-transition {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Hide the left navigation sidebar and right-side columns */
+.focus-mode aside,
+.focus-mode [data-testid="sidebar"],
+.focus-mode nav[aria-label="Main navigation"] {
+  display: none !important;
+}
+
+/* Hide the top header bar */
+.focus-mode header[role="banner"] {
+  display: none !important;
+}
+
+/* Hide breadcrumb navigation */
+.focus-mode nav[aria-label="Breadcrumb"] {
+  display: none !important;
+}
+
+/* Hide recommendation carousels and "you might also like" sections */
+.focus-mode [data-testid="section-carousel"],
+.focus-mode [data-testid="section-recommendations"],
+.focus-mode [class*="carousel"],
+.focus-mode [class*="LandingCarousel"] {
+  display: none !important;
+}
+
+/* Hide gamification / achievement / XP banners */
+.focus-mode [data-testid="panel-stats"],
+.focus-mode [data-testid="gamification"],
+.focus-mode [class*="GamificationDashboard"],
+.focus-mode [class*="battle-pass"],
+.focus-mode [class*="BattlePass"] {
+  display: none !important;
+}
+
+/* Hide the social feed and social hub panels */
+.focus-mode [data-testid="panel-social"],
+.focus-mode [data-testid="social-feed"],
+.focus-mode [class*="SocialFeed"],
+.focus-mode [class*="SocialHub"] {
+  display: none !important;
+}
+
+/* Hide streaming queue widget */
+.focus-mode [data-testid="panel-queue"],
+.focus-mode [class*="StreamingQueue"] {
+  display: none !important;
+}
+
+/* Hide footer */
+.focus-mode footer {
+  display: none !important;
+}
+
+/* Hide ad overlays / banners */
+.focus-mode [data-testid="ad-overlay"],
+.focus-mode [class*="ad-banner"],
+.focus-mode [class*="AdOverlay"],
+.focus-mode [class*="AudioAdOverlay"] {
+  display: none !important;
+}
+
+/* Hide genre cards and discovery sections on library page */
+.focus-mode [data-testid="section-genres"],
+.focus-mode [class*="genre-card"],
+.focus-mode [data-testid="section-trending"] {
+  display: none !important;
+}
+
+/* Hide trial/upsell nudges */
+.focus-mode [class*="TrialNudge"],
+.focus-mode [class*="EngagementUpsell"] {
+  display: none !important;
+}
+
+/* Make the main content area fill the viewport */
+.focus-mode main,
+.focus-mode [role="main"] {
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+
+/* Center the player / book cover within the full viewport */
+.focus-mode #main-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem !important;
+}
+
+/* Keep the audio player fully visible and centred */
+.focus-mode [data-testid="audio-player"],
+.focus-mode [class*="AudioPlayer"] {
+  width: 100% !important;
+  max-width: 56rem !important;
+  margin: 0 auto !important;
+}
+
+/* Accessibility widget — always on top, never hidden */
+.focus-mode [data-testid="accessibility-widget-toggle"],
+.focus-mode [aria-label="Open accessibility menu"] {
+  display: flex !important;
+}
+
 .dark.high-contrast {
   --background: hsl(0, 0%, 0%);
   --foreground: hsl(0, 0%, 100%);

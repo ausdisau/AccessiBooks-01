@@ -37,6 +37,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { key: "G", description: "Toggle high contrast" },
       { key: "A", description: "Open accessibility panel" },
       { key: "C", description: "Toggle captions on / off" },
+      { key: "F", description: "Toggle Focus Mode" },
     ],
   },
   {
