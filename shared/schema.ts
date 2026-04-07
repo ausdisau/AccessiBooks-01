@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, jsonb, index, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, serial, timestamp, jsonb, index, boolean } from "drizzle-orm/pg-core";
 
 // Content type enum values
 export const CONTENT_TYPES = ["audiobook", "ebook", "magazine"] as const;
@@ -1604,4 +1604,43 @@ export const moatMetricsSnapshots = pgTable("moat_metrics_snapshots", {
 export const insertMoatMetricsSnapshotSchema = createInsertSchema(moatMetricsSnapshots).omit({ id: true });
 export type InsertMoatMetricsSnapshot = z.infer<typeof insertMoatMetricsSnapshotSchema>;
 export type MoatMetricsSnapshot = typeof moatMetricsSnapshots.$inferSelect;
+
+// === AI CHAT SYSTEM ===
+
+export const conversations = pgTable("conversations", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("New Chat"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_conversations_created_at").on(table.createdAt),
+  index("idx_conversations_user_id").on(table.userId),
+]);
+
+export const insertConversationSchema = createInsertSchema(conversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertConversation = z.infer<typeof insertConversationSchema>;
+export type Conversation = typeof conversations.$inferSelect;
+
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_messages_conversation_id").on(table.conversationId),
+  index("idx_messages_created_at").on(table.createdAt),
+]);
+
+export const insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type Message = typeof messages.$inferSelect;
 
