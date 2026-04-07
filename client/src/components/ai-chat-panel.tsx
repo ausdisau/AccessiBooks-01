@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import {
   MessageCircle,
   X,
@@ -21,6 +22,7 @@ import {
   Newspaper,
   ChevronLeft,
   Sparkles,
+  Lock,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -197,6 +199,8 @@ interface AiChatPanelProps {
 
 export function AiChatPanel({ isOpen, onClose }: AiChatPanelProps) {
   const { toast } = useToast();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const [_, navigate] = useLocation();
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
