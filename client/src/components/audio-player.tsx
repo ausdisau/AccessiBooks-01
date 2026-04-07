@@ -123,15 +123,16 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   captionsOnRef.current = captionsOn;
 
   useEffect(() => {
-    const handleToggleCaptions = () => {
-      updateProfile({ captionsOn: !captionsOnRef.current });
-    };
-    const handleToggleTranscript = () => setShowTranscript(prev => !prev);
-    document.addEventListener("accessibooks:toggle-captions", handleToggleCaptions);
-    document.addEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
+    const onToggleCaptions = () => updateProfile({ captionsOn: !captionsOnRef.current });
+    const onToggleTranscript = () => setShowTranscript(prev => !prev);
+    const onAddBookmark = () => setShowBookmarkInput(true);
+    document.addEventListener("accessibooks:toggle-captions", onToggleCaptions);
+    document.addEventListener("accessibooks:toggle-transcript", onToggleTranscript);
+    document.addEventListener("accessibooks:add-bookmark", onAddBookmark);
     return () => {
-      document.removeEventListener("accessibooks:toggle-captions", handleToggleCaptions);
-      document.removeEventListener("accessibooks:toggle-transcript", handleToggleTranscript);
+      document.removeEventListener("accessibooks:toggle-captions", onToggleCaptions);
+      document.removeEventListener("accessibooks:toggle-transcript", onToggleTranscript);
+      document.removeEventListener("accessibooks:add-bookmark", onAddBookmark);
     };
   }, [updateProfile]);
 
