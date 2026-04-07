@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { localStorageService, AccessibilitySettings, ColorVisionMode } from "@/lib/storage";
+import { applyA11ySettings, getDefaultA11ySettings } from "@/lib/a11y-utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -154,7 +155,7 @@ export function AccessibilityWidget() {
   const isLoggedIn = !!user;
   const { toast } = useToast();
 
-  const { data: serverPrefs } = useQuery<{ profile: Partial<AccessibilitySettings> | null }>({
+  const { data: serverPrefs } = useQuery<{ profile: AccessibilitySettings | null; hasStoredRecord?: boolean }>({
     queryKey: ["/api/a11y/preferences"],
     enabled: isLoggedIn,
     staleTime: Infinity,
@@ -172,30 +173,27 @@ export function AccessibilityWidget() {
     onError: () => setSyncStatus("error"),
   });
 
-  // On first login, restore server settings or offer to migrate local ones
+  // On first login: restore server settings if stored, or offer migration toast if local is custom
   useEffect(() => {
     if (!isLoggedIn || serverPrefs === undefined) return;
 
+    const serverProfile = serverPrefs.profile;
     const defaults = getDefaultSettings();
-    const serverProfile = serverPrefs?.profile ?? null;
-    const isServerDefault =
-      !serverProfile ||
-      Object.keys(defaults).every(
-        (k) =>
-          !(k in serverProfile) ||
-          (serverProfile as Record<string, unknown>)[k] === (defaults as Record<string, unknown>)[k]
-      );
 
-    if (!isServerDefault && serverProfile) {
-      // Restore server settings to this device
-      const merged: AccessibilitySettings = { ...defaults, ...serverProfile };
-      setSettings(merged);
-      localStorageService.saveSettings(merged);
-      setSyncStatus("saved");
+    if (serverProfile !== null) {
+      // A stored user profile exists — only restore widget-owned fields
+      const widgetKeys = Object.keys(defaults) as (keyof AccessibilitySettings)[];
+      const hasWidgetFields = widgetKeys.some((k) => k in serverProfile);
+      if (hasWidgetFields) {
+        const merged: AccessibilitySettings = { ...defaults, ...serverProfile };
+        setSettings(merged);
+        localStorageService.saveSettings(merged);
+        setSyncStatus("saved");
+      }
       return;
     }
 
-    // Server is default — check if local has custom settings
+    // profile === null means no record has been stored yet — check for local custom settings
     const localSettings = localStorageService.getSettings();
     const isLocalDefault = Object.keys(defaults).every(
       (k) =>
@@ -249,31 +247,7 @@ export function AccessibilityWidget() {
     }
   }, [settings.readingGuide]);
 
-  const applySettings = (s: AccessibilitySettings) => {
-    const root = document.documentElement;
-    root.classList.toggle("high-contrast", s.highContrast);
-    root.classList.toggle("dyslexia-font", s.dyslexiaFont);
-    root.classList.toggle("dark", s.darkMode);
-    // Keep .invert-colors class for child rules (img/video/svg counter-invert)
-    root.classList.toggle("invert-colors", s.invertColors);
-    root.classList.toggle("highlight-links", s.highlightLinks);
-    root.classList.toggle("highlight-focus", s.highlightFocus);
-    root.classList.toggle("pause-animations", s.pauseAnimations);
-    root.classList.toggle("larger-cursor", s.largerCursor);
-    const clampedSize = Math.min(150, Math.max(80, s.fontSize));
-    root.style.setProperty("--a11y-font-size", `${clampedSize}%`);
-    root.style.setProperty("--a11y-letter-spacing", `${s.letterSpacing * 0.05}em`);
-    root.style.setProperty("--a11y-line-height", `${s.lineHeight}%`);
-    root.style.setProperty("--a11y-word-spacing", `${(s.wordSpacing || 0) * 0.05}em`);
-    // Compose all root-level filters into a single inline style so they never conflict:
-    // invert (if on) → saturation → CVD simulation (if active)
-    const filters: string[] = [];
-    if (s.invertColors) filters.push("invert(1) hue-rotate(180deg)");
-    filters.push(`saturate(${s.saturation}%)`);
-    const cvdMode = s.colorVisionMode && s.colorVisionMode !== "none" ? s.colorVisionMode : null;
-    if (cvdMode) filters.push(`url(#a11y-cvd-${cvdMode})`);
-    root.style.filter = filters.join(" ");
-  };
+  const applySettings = applyA11ySettings;
 
   const updateSettings = (partial: Partial<AccessibilitySettings>) => {
     const newSettings = { ...settings, ...partial, activeProfile: null };
@@ -293,25 +267,7 @@ export function AccessibilityWidget() {
     if (isLoggedIn) saveMutation.mutate(newSettings);
   };
 
-  const getDefaultSettings = (): AccessibilitySettings => ({
-    highContrast: false,
-    dyslexiaFont: false,
-    darkMode: false,
-    fontSize: 100,
-    letterSpacing: 0,
-    lineHeight: 100,
-    saturation: 100,
-    invertColors: false,
-    highlightLinks: false,
-    highlightFocus: false,
-    readingGuide: false,
-    pauseAnimations: false,
-    largerCursor: false,
-    readingMask: false,
-    activeProfile: null,
-    wordSpacing: 0,
-    colorVisionMode: "none",
-  });
+  const getDefaultSettings = getDefaultA11ySettings;
 
   const resetSettings = () => {
     const defaultSettings = getDefaultSettings();
