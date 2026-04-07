@@ -467,6 +467,7 @@ export function AiChatPanel({ isOpen, onClose }: AiChatPanelProps) {
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
+          {/* Header is always shown — close button visible even for unauthenticated users */}
           {showHistory ? (
             <Button variant="ghost" size="sm" onClick={() => setShowHistory(false)} className="p-1.5">
               <ChevronLeft className="h-4 w-4" />
@@ -512,8 +513,45 @@ export function AiChatPanel({ isOpen, onClose }: AiChatPanelProps) {
           </div>
         </div>
 
-        {/* History Panel */}
-        {showHistory ? (
+        {/* Login prompt for unauthenticated users */}
+        {/* Unauthenticated: prompt to sign in */}
+        {authLoading && (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {!authLoading && !isAuthenticated && (
+          <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5 text-center">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <Lock className="h-7 w-7 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold mb-1.5">Sign in to chat</h3>
+              <p className="text-sm text-muted-foreground max-w-[260px]">
+                Create a free account or sign in to start asking the AI about books, audiobooks, and more.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 w-full max-w-xs">
+              <Button
+                className="w-full"
+                onClick={() => { onClose(); navigate("/auth"); }}
+              >
+                Sign in
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => { onClose(); navigate("/auth?tab=register"); }}
+              >
+                Create account
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Authenticated: history panel or chat */}
+        {!authLoading && isAuthenticated && showHistory && (
           <ScrollArea className="flex-1 px-4 py-2">
             {conversationsLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -553,7 +591,9 @@ export function AiChatPanel({ isOpen, onClose }: AiChatPanelProps) {
               </div>
             )}
           </ScrollArea>
-        ) : (
+        )}
+
+        {!authLoading && isAuthenticated && !showHistory && (
           <>
             {/* Messages Area */}
             <ScrollArea className="flex-1 px-4 py-4">
