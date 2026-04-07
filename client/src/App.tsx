@@ -1734,9 +1734,18 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
   const { toggleHighContrast } = useAccessibility();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
+  const toggleFocusMode = useCallback(() => {
+    const s = localStorageService.getSettings();
+    const next = !s.focusMode;
+    localStorageService.saveSettings({ ...s, focusMode: next });
+    document.documentElement.classList.toggle("focus-mode", next);
+    document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
+  }, []);
+
   useKeyboardShortcuts({
     onHighContrast: toggleHighContrast,
     onOpenShortcuts: () => setShortcutsOpen(true),
+    onToggleFocusMode: toggleFocusMode,
   });
 
   const promptSignUp = (action: string) => {

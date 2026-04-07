@@ -362,11 +362,17 @@ p, li, blockquote, .prose {
    Cognitive Focus Mode — hides distracting UI elements so the
    user can concentrate on the current book and audio player.
    All rules are scoped to .focus-mode on <html>.
+   Gentle fade-out transition is applied on enter (class added),
+   instant restore on exit to avoid flicker.
    ============================================================ */
 
-/* Transition helper — smooth exit/entry of hidden panels */
-.focus-mode-transition {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+/* Smooth fade transition for elements that will be hidden */
+aside,
+header[role="banner"],
+nav[aria-label="Breadcrumb"],
+nav[aria-label="Main navigation"],
+footer {
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
 /* Hide the left navigation sidebar and right-side columns */
@@ -443,6 +449,25 @@ p, li, blockquote, .prose {
   display: none !important;
 }
 
+/* Hide back/share action rows and extra player-page chrome */
+.focus-mode [data-testid="button-back-to-library"],
+.focus-mode [data-testid="button-view-author"],
+.focus-mode [data-testid="player-action-row"],
+.focus-mode [data-testid="related-books"] {
+  display: none !important;
+}
+
+/* Hide the row that contains Back + Author + Share on the player page */
+.focus-mode .flex.items-center.justify-between:has([data-testid="button-back-to-library"]) {
+  display: none !important;
+}
+
+/* Hide BookReviews section on player page */
+.focus-mode [data-testid="book-reviews"],
+.focus-mode [class*="BookReviews"] {
+  display: none !important;
+}
+
 /* Make the main content area fill the viewport */
 .focus-mode main,
 .focus-mode [role="main"] {
@@ -472,6 +497,17 @@ p, li, blockquote, .prose {
 .focus-mode [data-testid="accessibility-widget-toggle"],
 .focus-mode [aria-label="Open accessibility menu"] {
   display: flex !important;
+}
+
+/* Respect prefers-reduced-motion for focus-mode transitions */
+@media (prefers-reduced-motion: reduce) {
+  aside,
+  header[role="banner"],
+  nav[aria-label="Breadcrumb"],
+  nav[aria-label="Main navigation"],
+  footer {
+    transition: none;
+  }
 }
 
 .dark.high-contrast {
