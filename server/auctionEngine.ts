@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gte } from "drizzle-orm";
 import {
   adSlots,
   adCampaigns,
@@ -9,7 +9,6 @@ import {
   advertiserWallets,
   publisherEarnings,
   bids,
-  type AdSlot,
   type DisplayAd,
   type AdAuction,
   type SlotImpression,
@@ -34,10 +33,11 @@ export interface AuctionResult {
  * Eligibility rules:
  *  1. Display ad must be status = "approved"
  *  2. Its campaign must be status = "active"
- *  3. Campaign total budget must not be exhausted (spentCents < budgetCents)
- *  4. Campaign daily budget must not be exhausted (dailySpendCents < dailyBudgetCents, if set)
- *  5. Campaign must be within its scheduled date range (if set)
- *  6. Ad's maxCpmCents must meet or exceed slot's minCpmCents floor
+ *  3. Ad's maxCpmCents must meet or exceed slot's minCpmCents floor
+ *  4. Campaign total budget must not be exhausted (spentCents < budgetCents, when set)
+ *  5. Campaign daily budget must not be exhausted (dailySpendCents < dailyBudgetCents, when set)
+ *  6. Campaign must be within its scheduled date range (when set)
+ *  7. Advertiser wallet balance must cover at least the slot's floor CPM cost per impression
  *
  * Winner pays the second-highest bid price (or the slot floor, whichever is higher).
  * This is strict Vickrey semantics — no +1 cent inflation.
@@ -51,8 +51,10 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
   if (!slot) return { noFill: true };
 
   const now = new Date();
+  // Minimum cost per impression at this slot's floor (ceil(floorCpm/1000))
+  const minCostCents = Math.ceil(slot.minCpmCents / 1000);
 
-  // Fetch all approved ads with their campaigns in one join
+  // Fetch all approved, active ads with their campaigns in one join
   const candidates = await db
     .select({
       ad: displayAds,
@@ -64,11 +66,26 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
       and(
         eq(displayAds.status, "approved"),
         eq(adCampaigns.status, "active"),
+        // Ad bid must meet slot CPM floor
         sql`${displayAds.maxCpmCents} >= ${slot.minCpmCents}`
       )
     );
 
-  // Filter eligibility in JS (date range + budget checks, fully typed)
+  if (candidates.length === 0) {
+    await db.insert(adAuctions).values({ slotId, noFill: true, bidsConsidered: 0 });
+    return { noFill: true };
+  }
+
+  // Batch-fetch wallets for all unique advertisers
+  const advertiserIds = Array.from(new Set(candidates.map((c) => c.campaign.advertiserId)));
+  const walletRows = await db
+    .select({ advertiserId: advertiserWallets.advertiserId, balanceCents: advertiserWallets.balanceCents })
+    .from(advertiserWallets)
+    .where(sql`${advertiserWallets.advertiserId} = ANY(ARRAY[${sql.join(advertiserIds.map((id) => sql`${id}`), sql`, `)}])`);
+
+  const walletMap = new Map<string, number>(walletRows.map((w) => [w.advertiserId, w.balanceCents]));
+
+  // Filter eligibility in JS (budget, date range, wallet balance — all fully typed)
   const eligible = candidates.filter(({ campaign }: { campaign: AdCampaign }) => {
     // Date range
     if (campaign.startDate && new Date(campaign.startDate) > now) return false;
@@ -79,17 +96,17 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
 
     // Daily budget exhausted
     const dailyBudget = campaign.dailyBudgetCents ?? 0;
-    const dailySpend = campaign.dailySpendCents;
-    if (dailyBudget > 0 && dailySpend >= dailyBudget) return false;
+    if (dailyBudget > 0 && campaign.dailySpendCents >= dailyBudget) return false;
+
+    // Wallet must exist and have sufficient balance to cover at least the slot floor
+    const balance = walletMap.get(campaign.advertiserId) ?? 0;
+    if (balance < minCostCents) return false;
 
     return true;
   });
 
-  // Record no-fill auction
   if (eligible.length === 0) {
-    await db
-      .insert(adAuctions)
-      .values({ slotId, noFill: true, bidsConsidered: 0 });
+    await db.insert(adAuctions).values({ slotId, noFill: true, bidsConsidered: 0 });
     return { noFill: true };
   }
 
@@ -102,13 +119,17 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
   const secondEntry = sorted[1];
 
   const winningCpmCents = winnerEntry.ad.maxCpmCents ?? 0;
-  // Strict Vickrey: winner pays the second-highest bid price.
+  // Strict Vickrey: winner pays second-highest bid price.
   // If only one bidder, they pay the slot floor.
   const secondPriceCpmCents = secondEntry?.ad.maxCpmCents ?? slot.minCpmCents;
-  // Charged price is the second-price, but never below the slot floor.
+  // Charged price never goes below slot floor.
   const chargedCpmCents = Math.max(secondPriceCpmCents, slot.minCpmCents);
+  // Cost per impression (CPM / 1000, rounded up)
+  const costCents = Math.ceil(chargedCpmCents / 1000);
+  const publisherCutCents = Math.floor(costCents * 0.7);
 
-  // Insert auction record
+  // --- Persistence phase ---
+  // (1) Auction record
   const [auction] = await db
     .insert(adAuctions)
     .values({
@@ -121,7 +142,7 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
     })
     .returning();
 
-  // Record all bids
+  // (2) All bids
   const bidRows = eligible.map(({ ad, campaign }: { ad: DisplayAd; campaign: AdCampaign }) => ({
     auctionId: auction.id,
     adId: ad.id,
@@ -131,7 +152,7 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
   }));
   await db.insert(bids).values(bidRows);
 
-  // Record impression
+  // (3) Impression record
   const [impression] = await db
     .insert(slotImpressions)
     .values({
@@ -144,12 +165,15 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
     })
     .returning();
 
-  // Decrement advertiser wallet (chargedCPM / 1000 = cost per single impression)
-  const costCents = Math.ceil(chargedCpmCents / 1000);
-  const publisherCutCents = Math.floor(costCents * 0.7);
+  // (4) Financial + counter updates — upsert wallet first so debit cannot be a no-op,
+  //     then apply all counters in parallel.
+  await db
+    .insert(advertiserWallets)
+    .values({ advertiserId: winnerEntry.campaign.advertiserId, balanceCents: 0 })
+    .onConflictDoNothing();
 
   await Promise.all([
-    // Wallet debit
+    // Wallet debit (wallet row guaranteed to exist from upsert above)
     db
       .update(advertiserWallets)
       .set({
@@ -173,7 +197,7 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
       })
       .where(eq(publisherEarnings.publisherId, slot.publisherId)),
 
-    // Update campaign spend counters (pacing)
+    // Campaign spend counters (pacing)
     db
       .update(adCampaigns)
       .set({
@@ -184,13 +208,13 @@ export async function runAuction(slotId: string): Promise<AuctionResult> {
       })
       .where(eq(adCampaigns.id, winnerEntry.campaign.id)),
 
-    // Update ad impression count
+    // Ad impression count
     db
       .update(displayAds)
       .set({ impressionCount: sql`${displayAds.impressionCount} + 1`, updatedAt: new Date() })
       .where(eq(displayAds.id, winnerEntry.ad.id)),
 
-    // Update slot impression count + earnings
+    // Slot impression count + earnings
     db
       .update(adSlots)
       .set({
