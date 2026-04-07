@@ -62,7 +62,7 @@ const EXPLANATORY_QUESTION_PATTERNS = [
  * A message with one of these is ALWAYS catalog_search regardless of question words.
  */
 const EXPLICIT_SEARCH_VERBS =
-  /\b(find\s+me|search\s+for|look\s+for|show\s+me|recommend\s+me?|suggest|give\s+me|discover|browse|i('m|\s+am|\s+was)\s+looking\s+for|i\s+need\s+(a[n]?\s+)?(book|audiobook|ebook)|any\s+(good\s+)?(books?|audiobooks?|ebooks?|magazines?))\b/i;
+  /\b(find\s+me|search\s+for|look\s+for|show\s+me|recommend(\s+me)?\b|suggest|give\s+me|discover|browse|i('m|\s+am|\s+was)\s+looking\s+for|i\s+need\s+(a[n]?\s+)?(book|audiobook|ebook)|any\s+(good\s+)?(books?|audiobooks?|ebooks?|magazines?))\b/i;
 
 /**
  * Weaker but still clear search signals (format + genre/topic without question framing).
@@ -79,14 +79,15 @@ const CATALOG_SIGNAL_PATTERNS = [
 ];
 
 export function classifyIntent(message: string): Intent {
+  // Explicit search intent always wins, even inside a greeting-like opening.
+  // e.g. "Hi, find me fantasy audiobooks" → catalog_search
+  if (EXPLICIT_SEARCH_VERBS.test(message)) return "catalog_search";
+
   if (GREETING_PATTERNS.some((p) => p.test(message))) return "greeting";
   if (HELP_PATTERNS.some((p) => p.test(message))) return "help";
 
-  const hasExplicitSearch = EXPLICIT_SEARCH_VERBS.test(message);
-  if (hasExplicitSearch) return "catalog_search";
-
-  const isExplanatoryQuestion = EXPLANATORY_QUESTION_PATTERNS.some((p) => p.test(message));
-  if (isExplanatoryQuestion) return "general";
+  // Explanatory questions about concepts (not search requests) go to general/OpenAI.
+  if (EXPLANATORY_QUESTION_PATTERNS.some((p) => p.test(message))) return "general";
 
   if (CATALOG_SIGNAL_PATTERNS.some((p) => p.test(message))) return "catalog_search";
 
@@ -323,12 +324,19 @@ function buildContextDescription(entities: Entities): string {
   return parts.join(" ") || `matching "${entities.coreQuery}"`;
 }
 
-const OPENERS_FOUND = [
+const OPENERS_FOUND_FEW = [
   "Great news — I found",
   "Here you go! I found",
   "I searched the catalog and found",
   "I've got some matches for you —",
   "Looking good! I found",
+];
+
+const OPENERS_FOUND_MANY = [
+  "The catalog has plenty of options",
+  "There are lots of matches for that",
+  "Great catalog coverage here —",
+  "I found a wide selection",
 ];
 
 const OPENERS_ONE = [
@@ -367,9 +375,13 @@ function buildSearchResponse(books: BookSummary[], entities: Entities): string {
     } is ${ctx}. Tap it to start reading or listening!`;
   }
 
-  const count = books.length >= 6 ? "6" : `${books.length}`;
-  const opener = pick(OPENERS_FOUND);
-  return `${opener} ${count} ${ctx}. Here's what's available — tap any title to open it!`;
+  if (books.length >= 6) {
+    const opener = pick(OPENERS_FOUND_MANY);
+    return `${opener} ${ctx}. Showing the top 6 — tap any title to open it! If you want something more specific, try adding a genre, language, or length.`;
+  }
+
+  const opener = pick(OPENERS_FOUND_FEW);
+  return `${opener} ${books.length} ${ctx}. Here's what's available — tap any title to open it!`;
 }
 
 /**
