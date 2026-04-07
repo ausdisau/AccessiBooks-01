@@ -56,7 +56,13 @@ export function registerAdPlatformRoutes(app: Express) {
   app.post("/api/ad/campaigns", requireRole("advertiser"), async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req)!;
-      const parsed = insertAdCampaignSchema.safeParse({ ...req.body, advertiserId: user.id });
+      // Pre-process date strings to Date objects before schema validation
+      const body = { ...req.body, advertiserId: user.id };
+      if (body.startDate && typeof body.startDate === "string") body.startDate = new Date(body.startDate);
+      if (body.endDate && typeof body.endDate === "string") body.endDate = new Date(body.endDate);
+      if (body.startDate === "") body.startDate = null;
+      if (body.endDate === "") body.endDate = null;
+      const parsed = insertAdCampaignSchema.safeParse(body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
       const [row] = await db.insert(adCampaigns).values({ ...parsed.data, advertiserId: user.id }).returning();
       res.status(201).json(row);
