@@ -1839,3 +1839,22 @@ export const payoutRequests = pgTable("payout_requests", {
 
 export type PayoutRequest = typeof payoutRequests.$inferSelect;
 
+// Bids: individual bids placed during an auction
+export const bids = pgTable("bids", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  auctionId: varchar("auction_id").notNull().references(() => adAuctions.id, { onDelete: "cascade" }),
+  adId: varchar("ad_id").notNull().references(() => displayAds.id, { onDelete: "cascade" }),
+  advertiserId: varchar("advertiser_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cpmCents: integer("cpm_cents").notNull().default(0),
+  isWinner: boolean("is_winner").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_bids_auction").on(t.auctionId),
+  index("idx_bids_ad").on(t.adId),
+  index("idx_bids_advertiser").on(t.advertiserId),
+]);
+
+export const insertBidSchema = createInsertSchema(bids).omit({ id: true, createdAt: true, isWinner: true });
+export type InsertBid = z.infer<typeof insertBidSchema>;
+export type Bid = typeof bids.$inferSelect;
+

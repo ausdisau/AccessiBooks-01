@@ -183,6 +183,19 @@ export async function setupAdPlatformTables(): Promise<void> {
       )
     `;
 
+    // Bids table: records each bid submitted during an auction
+    await sql`
+      CREATE TABLE IF NOT EXISTS bids (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        auction_id varchar NOT NULL REFERENCES ad_auctions(id) ON DELETE CASCADE,
+        ad_id varchar NOT NULL REFERENCES display_ads(id) ON DELETE CASCADE,
+        advertiser_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        cpm_cents integer NOT NULL DEFAULT 0,
+        is_winner boolean NOT NULL DEFAULT false,
+        created_at timestamp DEFAULT now()
+      )
+    `;
+
     console.log("[AdPlatform] Tables set up successfully");
   } catch (error: any) {
     console.warn("[AdPlatform] Table setup warning:", error.message);

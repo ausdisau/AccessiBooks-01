@@ -262,6 +262,18 @@ export function setupMultiAuth(app: Express) {
       });
     });
   });
+
+  // POST logout alias for ad-platform dashboards
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Logout failed" });
+      }
+      req.session.destroy(() => {
+        res.json({ message: "Logged out" });
+      });
+    });
+  });
   
   // Local registration
   app.post("/api/auth/register", async (req: Request, res: Response) => {
@@ -273,7 +285,7 @@ export function setupMultiAuth(app: Express) {
       }
 
       // Validate role if provided
-      const VALID_ROLES = ["advertiser", "publisher", "admin"];
+      const VALID_ROLES = ["advertiser", "publisher"];
       if (role && !VALID_ROLES.includes(role)) {
         return res.status(400).json({ message: "Invalid role. Must be advertiser or publisher." });
       }
