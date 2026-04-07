@@ -146,6 +146,10 @@ export const users = pgTable("users", {
   name: varchar("name"),
   emailVerified: timestamp("email_verified"),
   image: varchar("image"),
+  // Ad platform role: 'advertiser' | 'publisher' | 'admin' | null (existing users)
+  role: varchar("role"),
+  companyName: varchar("company_name"),
+  website: varchar("website"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -950,6 +954,7 @@ export const adCampaigns = pgTable("ad_campaigns", {
   endDate: timestamp("end_date"),
   impressions: integer("impressions").notNull().default(0),
   clicks: integer("clicks").notNull().default(0),
+  category: varchar("category").default("other"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -1676,4 +1681,161 @@ export const easyEnglishUsage = pgTable("easy_english_usage", {
 export const insertEasyEnglishUsageSchema = createInsertSchema(easyEnglishUsage).omit({ id: true });
 export type InsertEasyEnglishUsage = z.infer<typeof insertEasyEnglishUsageSchema>;
 export type EasyEnglishUsage = typeof easyEnglishUsage.$inferSelect;
+
+// ============================================================
+// AD BIDDING PLATFORM — NEW TABLES
+// (adCampaigns & adImpressions already defined above for audio ads)
+// ============================================================
+
+export const AD_CATEGORIES = [
+  "technology", "finance", "health", "education", "entertainment",
+  "sports", "travel", "food", "fashion", "automotive", "real_estate",
+  "gaming", "news", "lifestyle", "business", "other",
+] as const;
+export type AdCategory = typeof AD_CATEGORIES[number];
+
+export const DISPLAY_AD_STATUSES = ["draft", "pending_review", "approved", "rejected", "paused", "archived"] as const;
+export type DisplayAdStatus = typeof DISPLAY_AD_STATUSES[number];
+
+// Display ads: image/text creatives for the bidding platform
+export const displayAds = pgTable("display_ads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => adCampaigns.id, { onDelete: "cascade" }),
+  advertiserId: varchar("advertiser_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  headline: text("headline").notNull(),
+  body: text("body"),
+  imageUrl: text("image_url"),
+  destinationUrl: text("destination_url").notNull(),
+  status: varchar("status").notNull().default("pending_review"),
+  maxCpmCents: integer("max_cpm_cents").notNull().default(0),
+  rejectionReason: text("rejection_reason"),
+  impressionCount: integer("impression_count").notNull().default(0),
+  clickCount: integer("click_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("idx_display_ads_campaign").on(t.campaignId),
+  index("idx_display_ads_advertiser").on(t.advertiserId),
+  index("idx_display_ads_status").on(t.status),
+]);
+
+export const insertDisplayAdSchema = createInsertSchema(displayAds).omit({ id: true, createdAt: true, updatedAt: true, impressionCount: true, clickCount: true });
+export type InsertDisplayAd = z.infer<typeof insertDisplayAdSchema>;
+export type DisplayAd = typeof displayAds.$inferSelect;
+
+// Ad Slots: publisher-registered placements
+export const adSlots = pgTable("ad_slots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  publisherId: varchar("publisher_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  websiteUrl: text("website_url").notNull(),
+  width: integer("width").notNull().default(728),
+  height: integer("height").notNull().default(90),
+  category: varchar("category").notNull().default("other"),
+  minCpmCents: integer("min_cpm_cents").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  totalImpressions: integer("total_impressions").notNull().default(0),
+  totalEarningsCents: integer("total_earnings_cents").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_ad_slots_publisher").on(t.publisherId),
+  index("idx_ad_slots_active").on(t.isActive),
+  index("idx_ad_slots_category").on(t.category),
+]);
+
+export const insertAdSlotSchema = createInsertSchema(adSlots).omit({ id: true, createdAt: true, totalImpressions: true, totalEarningsCents: true });
+export type InsertAdSlot = z.infer<typeof insertAdSlotSchema>;
+export type AdSlot = typeof adSlots.$inferSelect;
+
+// Auctions: each time a slot is requested, runs a second-price auction
+export const adAuctions = pgTable("ad_auctions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slotId: varchar("slot_id").notNull().references(() => adSlots.id, { onDelete: "cascade" }),
+  winningAdId: varchar("winning_ad_id").references(() => displayAds.id),
+  winningCpmCents: integer("winning_cpm_cents").notNull().default(0),
+  secondPriceCpmCents: integer("second_price_cpm_cents").notNull().default(0),
+  bidsConsidered: integer("bids_considered").notNull().default(0),
+  noFill: boolean("no_fill").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_ad_auctions_slot").on(t.slotId),
+  index("idx_ad_auctions_created").on(t.createdAt),
+]);
+
+export type AdAuction = typeof adAuctions.$inferSelect;
+
+// Slot impressions: each time a winning display ad is served (distinct from audio adImpressions)
+export const slotImpressions = pgTable("slot_impressions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  auctionId: varchar("auction_id").notNull().references(() => adAuctions.id, { onDelete: "cascade" }),
+  adId: varchar("ad_id").notNull().references(() => displayAds.id, { onDelete: "cascade" }),
+  slotId: varchar("slot_id").notNull().references(() => adSlots.id, { onDelete: "cascade" }),
+  advertiserId: varchar("advertiser_id").notNull(),
+  publisherId: varchar("publisher_id").notNull(),
+  cpmCents: integer("cpm_cents").notNull().default(0),
+  clicked: boolean("clicked").notNull().default(false),
+  servedAt: timestamp("served_at").defaultNow(),
+}, (t) => [
+  index("idx_slot_impressions_ad").on(t.adId),
+  index("idx_slot_impressions_slot").on(t.slotId),
+  index("idx_slot_impressions_advertiser").on(t.advertiserId),
+  index("idx_slot_impressions_publisher").on(t.publisherId),
+  index("idx_slot_impressions_served").on(t.servedAt),
+]);
+
+export type SlotImpression = typeof slotImpressions.$inferSelect;
+
+// Slot clicks: when a user clicks a served display ad
+export const slotClicks = pgTable("slot_clicks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  impressionId: varchar("impression_id").notNull().references(() => slotImpressions.id, { onDelete: "cascade" }),
+  adId: varchar("ad_id").notNull().references(() => displayAds.id, { onDelete: "cascade" }),
+  clickedAt: timestamp("clicked_at").defaultNow(),
+}, (t) => [
+  index("idx_slot_clicks_impression").on(t.impressionId),
+  index("idx_slot_clicks_ad").on(t.adId),
+]);
+
+export type SlotClick = typeof slotClicks.$inferSelect;
+
+// Advertiser wallets: credit balance for ad spend
+export const advertiserWallets = pgTable("advertiser_wallets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  advertiserId: varchar("advertiser_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  balanceCents: integer("balance_cents").notNull().default(0),
+  totalTopupCents: integer("total_topup_cents").notNull().default(0),
+  totalSpendCents: integer("total_spend_cents").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type AdvertiserWallet = typeof advertiserWallets.$inferSelect;
+
+// Publisher earnings: accumulate CPM revenue share
+export const publisherEarnings = pgTable("publisher_earnings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  publisherId: varchar("publisher_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  totalEarnedCents: integer("total_earned_cents").notNull().default(0),
+  pendingCents: integer("pending_cents").notNull().default(0),
+  paidOutCents: integer("paid_out_cents").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type PublisherEarning = typeof publisherEarnings.$inferSelect;
+
+// Payout requests from publishers
+export const payoutRequests = pgTable("payout_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  publisherId: varchar("publisher_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amountCents: integer("amount_cents").notNull(),
+  status: varchar("status").notNull().default("pending"),
+  paymentDetails: text("payment_details"),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (t) => [
+  index("idx_payout_requests_publisher").on(t.publisherId),
+  index("idx_payout_requests_status").on(t.status),
+]);
+
+export type PayoutRequest = typeof payoutRequests.$inferSelect;
 
