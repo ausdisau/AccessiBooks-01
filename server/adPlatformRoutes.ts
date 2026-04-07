@@ -660,14 +660,16 @@ export function registerAdPlatformRoutes(app: Express) {
         );
 
       // Per-campaign breakdown — also date-filtered
+      // Join slotImpressions -> displayAds to get campaignId (no direct campaignId on slotImpressions)
       const campaignRows = await db
         .select({
-          campaignId: slotImpressions.campaignId,
+          campaignId: displayAds.campaignId,
           impressions: sql<number>`count(*)`,
           clicks: sql<number>`coalesce(sum(case when ${slotImpressions.clicked} then 1 else 0 end), 0)`,
           spentCents: sql<number>`coalesce(sum(${slotImpressions.cpmCents}) / 1000, 0)`,
         })
         .from(slotImpressions)
+        .innerJoin(displayAds, eq(slotImpressions.adId, displayAds.id))
         .where(
           and(
             eq(slotImpressions.advertiserId, user.id),
@@ -675,7 +677,7 @@ export function registerAdPlatformRoutes(app: Express) {
             lte(slotImpressions.servedAt, to)
           )
         )
-        .groupBy(slotImpressions.campaignId);
+        .groupBy(displayAds.campaignId);
 
       // Join with campaign metadata
       const allCampaigns = await db

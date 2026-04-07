@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
@@ -1656,6 +1656,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     })
                     .where(eq(advertiserWallets.advertiserId, userId));
                   console.log(`[AdWallet] Credited $${(amountCents / 100).toFixed(2)} to advertiser ${userId} (session ${session.id})`);
+                  // Auto-resume: re-activate campaigns that were auto-paused due to empty wallet
+                  const resumed = await db
+                    .update(adCampaigns)
+                    .set({ status: "active", updatedAt: new Date() })
+                    .where(and(eq(adCampaigns.advertiserId, userId), eq(adCampaigns.status, "paused")))
+                    .returning({ id: adCampaigns.id });
+                  if (resumed.length > 0) {
+                    console.log(`[AdWallet] Auto-resumed ${resumed.length} campaign(s) for advertiser ${userId}`);
+                  }
                 } catch (e) {
                   console.error("[AdWallet] Failed to credit wallet:", e);
                 }
