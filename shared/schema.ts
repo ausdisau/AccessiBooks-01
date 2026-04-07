@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, serial, timestamp, jsonb, index, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, serial, timestamp, jsonb, index, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Content type enum values
 export const CONTENT_TYPES = ["audiobook", "ebook", "magazine"] as const;
@@ -1018,6 +1018,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   index("idx_tx_user").on(table.userId),
   index("idx_tx_provider").on(table.provider),
   index("idx_tx_created").on(table.createdAt),
+  uniqueIndex("uniq_tx_provider_txid").on(table.provider, table.providerTransactionId),
 ]);
 
 export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions).omit({
