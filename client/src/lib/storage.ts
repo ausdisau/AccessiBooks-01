@@ -141,6 +141,7 @@ export const localStorageService = {
       colorVisionMode: "none",
       captionsOn: false,
       captionPosition: "below",
+      focusMode: false,
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);

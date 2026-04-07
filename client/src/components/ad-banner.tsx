@@ -23,7 +23,7 @@ export function AdBanner({ variant = "library", onClose, useGoogleAds = true }: 
 
   if (useGoogleAds && hasGoogleAdsConfig && variant === "library") {
     return (
-      <div className="mb-6">
+      <div className="mb-6" data-testid="ad-banner">
         <ResponsiveAd position="library-top" className="mx-auto" />
       </div>
     );
@@ -31,7 +31,7 @@ export function AdBanner({ variant = "library", onClose, useGoogleAds = true }: 
 
   if (variant === "inline") {
     return (
-      <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4 my-4">
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4 my-4" data-testid="ad-banner">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="bg-amber-100 dark:bg-amber-900 p-2 rounded-full">
@@ -64,6 +64,7 @@ export function AdBanner({ variant = "library", onClose, useGoogleAds = true }: 
       className="relative bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded-lg p-6 mb-6 border border-slate-300 dark:border-slate-600"
       role="complementary"
       aria-label="Advertisement"
+      data-testid="ad-banner"
     >
       {onClose && (
         <button

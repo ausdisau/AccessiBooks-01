@@ -394,32 +394,24 @@ footer {
 
 /* Hide recommendation carousels and "you might also like" sections */
 .focus-mode [data-testid="section-carousel"],
-.focus-mode [data-testid="section-recommendations"],
-.focus-mode [class*="carousel"],
-.focus-mode [class*="LandingCarousel"] {
+.focus-mode [data-testid="section-recommendations"] {
   display: none !important;
 }
 
 /* Hide gamification / achievement / XP banners */
 .focus-mode [data-testid="panel-stats"],
-.focus-mode [data-testid="gamification"],
-.focus-mode [class*="GamificationDashboard"],
-.focus-mode [class*="battle-pass"],
-.focus-mode [class*="BattlePass"] {
+.focus-mode [data-testid="gamification-dashboard"] {
   display: none !important;
 }
 
-/* Hide the social feed and social hub panels */
-.focus-mode [data-testid="panel-social"],
-.focus-mode [data-testid="social-feed"],
-.focus-mode [class*="SocialFeed"],
-.focus-mode [class*="SocialHub"] {
+/* Hide the social feed panel */
+.focus-mode [data-testid="social-feed"] {
   display: none !important;
 }
 
 /* Hide streaming queue widget */
 .focus-mode [data-testid="panel-queue"],
-.focus-mode [class*="StreamingQueue"] {
+.focus-mode [data-testid="streaming-queue"] {
   display: none !important;
 }
 
@@ -428,43 +420,28 @@ footer {
   display: none !important;
 }
 
-/* Hide ad overlays / banners */
+/* Hide ad overlays and in-page ad banners */
 .focus-mode [data-testid="ad-overlay"],
-.focus-mode [class*="ad-banner"],
-.focus-mode [class*="AdOverlay"],
-.focus-mode [class*="AudioAdOverlay"] {
+.focus-mode [data-testid="ad-banner"] {
   display: none !important;
 }
 
 /* Hide genre cards and discovery sections on library page */
-.focus-mode [data-testid="section-genres"],
-.focus-mode [class*="genre-card"],
+.focus-mode [data-testid="genre-cards"],
 .focus-mode [data-testid="section-trending"] {
   display: none !important;
 }
 
-/* Hide trial/upsell nudges */
-.focus-mode [class*="TrialNudge"],
-.focus-mode [class*="EngagementUpsell"] {
-  display: none !important;
-}
-
-/* Hide back/share action rows and extra player-page chrome */
+/* Hide back/author/share action row and reviews on the player page */
 .focus-mode [data-testid="button-back-to-library"],
 .focus-mode [data-testid="button-view-author"],
-.focus-mode [data-testid="player-action-row"],
-.focus-mode [data-testid="related-books"] {
-  display: none !important;
-}
-
-/* Hide the row that contains Back + Author + Share on the player page */
-.focus-mode .flex.items-center.justify-between:has([data-testid="button-back-to-library"]) {
-  display: none !important;
-}
-
-/* Hide BookReviews section on player page */
 .focus-mode [data-testid="book-reviews"],
-.focus-mode [class*="BookReviews"] {
+.focus-mode [data-testid="bookmark-list"] {
+  display: none !important;
+}
+
+/* Hide the flex row that wraps Back + Author + Share buttons on player page */
+.focus-mode .flex.items-center.justify-between:has([data-testid="button-back-to-library"]) {
   display: none !important;
 }
 

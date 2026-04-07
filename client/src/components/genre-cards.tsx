@@ -100,7 +100,7 @@ export function GenreCards({ books, onGenreSelect, selectedGenre }: GenreCardsPr
   }
 
   return (
-    <section className="mb-8" aria-label="Browse by Genre">
+    <section className="mb-8" aria-label="Browse by Genre" data-testid="genre-cards">
       <h2 className="text-xl font-semibold mb-4">Browse by Genre</h2>
       <ScrollArea className="w-full whitespace-nowrap">
         <div className="flex gap-3 pb-4">
