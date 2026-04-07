@@ -12,6 +12,8 @@ import { Player } from "@/pages/player";
 import { Book } from "@shared/schema";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
+import { useVoiceControl, type VoiceCommand } from "@/hooks/use-voice-control";
+import { VoiceControlButton } from "@/components/voice-control-button";
 import { useContentAccess } from "@/hooks/use-content-access";
 import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
 import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
@@ -1398,7 +1400,7 @@ function MainApp() {
     if (window.innerWidth >= 768) return "rail";
     return "full";
   });
-  const { toggleHighContrast } = useAccessibility();
+  const { settings: a11ySettings, toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
@@ -1537,6 +1539,110 @@ function MainApp() {
     onOpenAccessibility: () => document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility")),
     onToggleTranscript: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-transcript")),
     onToggleFocusMode: toggleFocusMode,
+  });
+
+  const voiceCommands = useMemo<VoiceCommand[]>(() => [
+    {
+      patterns: ["play", "resume", "start"],
+      handler: () => togglePlayPause(),
+      description: "Play / resume audio",
+    },
+    {
+      patterns: ["pause", "stop playing"],
+      handler: () => togglePlayPause(),
+      description: "Pause audio",
+    },
+    {
+      patterns: ["skip forward", "forward", "skip ahead", "fast forward"],
+      handler: () => skip(30),
+      description: "Skip forward 30 s",
+    },
+    {
+      patterns: ["skip back", "skip backward", "go back", "rewind"],
+      handler: () => skip(-30),
+      description: "Skip back 30 s",
+    },
+    {
+      patterns: ["next chapter", "next"],
+      handler: () => nextChapter(),
+      description: "Next chapter",
+    },
+    {
+      patterns: ["previous chapter", "previous", "last chapter", "go back chapter"],
+      handler: () => prevChapter(),
+      description: "Previous chapter",
+    },
+    {
+      patterns: ["speed up", "faster", "increase speed"],
+      handler: () => changeSpeed(0.25),
+      description: "Increase playback speed",
+    },
+    {
+      patterns: ["slow down", "slower", "decrease speed", "speed down"],
+      handler: () => changeSpeed(-0.25),
+      description: "Decrease playback speed",
+    },
+    {
+      patterns: ["mute", "silence", "quiet"],
+      handler: () => toggleMute(),
+      description: "Mute / unmute",
+    },
+    {
+      patterns: ["bookmark", "add bookmark", "save position"],
+      handler: () => document.dispatchEvent(new CustomEvent("accessibooks:add-bookmark")),
+      description: "Add bookmark",
+    },
+    {
+      patterns: ["toggle captions", "captions", "subtitles"],
+      handler: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-captions")),
+      description: "Toggle captions",
+    },
+    {
+      patterns: ["high contrast", "contrast"],
+      handler: () => toggleHighContrast(),
+      description: "Toggle high contrast",
+    },
+    {
+      patterns: ["dark mode", "dark theme", "night mode"],
+      handler: () => document.dispatchEvent(new CustomEvent("accessibooks:settings-changed")),
+      description: "Toggle dark mode",
+    },
+    {
+      patterns: ["go to library", "go home", "library", "home"],
+      handler: () => navigate("/"),
+      description: "Navigate to library",
+    },
+    {
+      patterns: ["go to player", "player", "open player"],
+      handler: () => navigate("/player"),
+      description: "Navigate to player",
+    },
+    {
+      patterns: [/^search\s+(.+)$/],
+      handler: (arg?: string) => {
+        if (arg) {
+          const searchInput = document.querySelector<HTMLInputElement>('[data-testid="search-input"], input[placeholder*="earch"]');
+          if (searchInput) {
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+            nativeInputValueSetter?.call(searchInput, arg);
+            searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+            searchInput.focus();
+          }
+        }
+      },
+      description: "Search for a book by name",
+    },
+  ], [togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, navigate]);
+
+  const voiceControl = useVoiceControl({
+    commands: voiceCommands,
+    onNoMatch: (transcript) => {
+      toast({
+        title: "Command not understood",
+        description: `Heard: "${transcript}" — try "play", "pause", "search [title]", or "go to library"`,
+        duration: 3000,
+      });
+    },
   });
 
   useEffect(() => {
@@ -1846,6 +1952,10 @@ function MainApp() {
         onOpenChange={(open) => setEngagementUpsell(prev => ({ ...prev, open }))}
         onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan || "monthly"); }}
       />
+
+      {a11ySettings.voiceControlEnabled && (
+        <VoiceControlButton voiceControl={voiceControl} />
+      )}
 
       <KeyboardShortcutsOverlay open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
