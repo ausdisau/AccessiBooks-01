@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,10 +18,13 @@ import {
   BarChart3, Plus, Zap, TrendingUp, Eye, MousePointer,
   LogOut, Target, Play, Pause, ChevronRight, Wallet,
   Clock, CheckCircle, XCircle, AlertCircle, Edit2, Trash2,
-  Image,
+  Image, RefreshCw, DollarSign, CreditCard,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AD_CATEGORIES, type AdCampaign, type DisplayAd, type AdvertiserWallet } from "@shared/schema";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line,
+} from "recharts";
 
 const campaignSchema = z.object({
   name: z.string().min(1, "Campaign name required"),
@@ -79,6 +82,9 @@ export default function AdvertiserDashboard() {
   const [editingAd, setEditingAd] = useState<DisplayAd | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "campaign" | "ad"; id: string } | null>(null);
 
+  const [days, setDays] = useState(30);
+  const [topupOpen, setTopupOpen] = useState(false);
+
   const { data: campaigns = [], isLoading: campaignsLoading } = useQuery<AdCampaign[]>({
     queryKey: ["/api/ad/campaigns"],
   });
@@ -90,6 +96,36 @@ export default function AdvertiserDashboard() {
   const { data: wallet } = useQuery<AdvertiserWallet>({
     queryKey: ["/api/ad/wallet"],
   });
+
+  const { data: analytics, isLoading: analyticsLoading, refetch: refetchAnalytics } = useQuery<{
+    totals: { impressions: number; clicks: number; spentCents: number };
+    campaigns: Array<{ id: string; name: string; status: string; impressions: number; clicks: number; spentCents: number; budgetCents: number }>;
+    daily: Array<{ date: string; impressions: number; clicks: number; spentCents: number }>;
+    wallet: AdvertiserWallet | null;
+  }>({
+    queryKey: ["/api/analytics/advertiser", days],
+    queryFn: () => fetch(`/api/analytics/advertiser?days=${days}`).then(r => r.json()),
+    refetchInterval: 30000,
+    staleTime: 25000,
+  });
+
+  const topupMutation = useMutation({
+    mutationFn: (amountCents: number) =>
+      apiRequest("POST", "/api/billing/ad-topup", { amountCents }).then(r => r.json()),
+    onSuccess: (data: { checkoutUrl: string }) => {
+      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
+    },
+    onError: (e: Error) => toast({ title: "Top-up failed", description: e.message, variant: "destructive" }),
+  });
+
+  const TOPUP_PRESETS = [
+    { label: "$10", cents: 1000 },
+    { label: "$25", cents: 2500 },
+    { label: "$50", cents: 5000 },
+    { label: "$100", cents: 10000 },
+    { label: "$250", cents: 25000 },
+    { label: "$500", cents: 50000 },
+  ];
 
   const campaignForm = useForm<CampaignForm>({
     resolver: zodResolver(campaignSchema),
@@ -195,9 +231,11 @@ export default function AdvertiserDashboard() {
     onSuccess: () => { queryClient.clear(); window.location.href = "/"; },
   });
 
-  const totalImpressions = displayAds.reduce((s, a) => s + (a.impressionCount ?? 0), 0);
-  const totalClicks = displayAds.reduce((s, a) => s + (a.clickCount ?? 0), 0);
+  const liveWallet = analytics?.wallet ?? wallet ?? null;
+  const totalImpressions = analytics?.totals.impressions ?? displayAds.reduce((s, a) => s + (a.impressionCount ?? 0), 0);
+  const totalClicks = analytics?.totals.clicks ?? displayAds.reduce((s, a) => s + (a.clickCount ?? 0), 0);
   const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00";
+  const totalSpentCents = analytics?.totals.spentCents ?? 0;
 
   function openEditCampaign(c: AdCampaign) {
     setEditingCampaign(c);
@@ -370,6 +408,35 @@ export default function AdvertiserDashboard() {
             </DialogContent>
           </Dialog>
 
+          {/* Top-up Dialog */}
+          <Dialog open={topupOpen} onOpenChange={setTopupOpen}>
+            <DialogContent className="bg-[#0d1527] border-white/10 text-white max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="text-white flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-blue-400" /> Add Wallet Credits
+                </DialogTitle>
+              </DialogHeader>
+              <div className="mt-2">
+                <p className="text-white/50 text-sm mb-4">Choose a credit amount. You will be redirected to Stripe to complete payment securely.</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {TOPUP_PRESETS.map(({ label, cents }) => (
+                    <Button
+                      key={cents}
+                      variant="outline"
+                      size="sm"
+                      disabled={topupMutation.isPending}
+                      onClick={() => topupMutation.mutate(cents)}
+                      className="border-white/20 text-white hover:bg-blue-600/30 hover:border-blue-400"
+                    >
+                      {topupMutation.isPending ? "..." : label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-white/30 text-xs mt-3 text-center">Credits are added instantly after payment</p>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           {/* Wallet stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
             <Card className="bg-blue-600/10 border-blue-500/30 col-span-2 sm:col-span-1">
@@ -378,9 +445,16 @@ export default function AdvertiserDashboard() {
                   <Wallet className="h-4 w-4 text-blue-400" />
                   <span className="text-sm text-blue-300">Wallet Balance</span>
                 </div>
-                <div className="text-2xl font-bold">{wallet ? formatMoney(wallet.balanceCents) : "$0.00"}</div>
-                <Button size="sm" className="mt-3 w-full bg-blue-600/40 hover:bg-blue-600/60 text-blue-200 text-xs border border-blue-500/30">
-                  Top Up
+                <div className="text-2xl font-bold">{liveWallet ? formatMoney(liveWallet.balanceCents) : "$0.00"}</div>
+                {liveWallet && liveWallet.totalSpendCents > 0 && (
+                  <div className="text-xs text-white/30 mt-1">Total spent: {formatMoney(liveWallet.totalSpendCents)}</div>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => setTopupOpen(true)}
+                  className="mt-3 w-full bg-blue-600/40 hover:bg-blue-600/60 text-blue-200 text-xs border border-blue-500/30 gap-1"
+                >
+                  <CreditCard className="h-3 w-3" /> Top Up
                 </Button>
               </CardContent>
             </Card>
@@ -399,6 +473,110 @@ export default function AdvertiserDashboard() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+
+          {/* Analytics Section */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider">Analytics</h2>
+              <div className="flex items-center gap-2">
+                {[7, 30, 90].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDays(d)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${days === d ? "bg-blue-600/30 text-blue-300 border border-blue-500/30" : "text-white/40 hover:text-white/70"}`}
+                  >
+                    {d}d
+                  </button>
+                ))}
+                <button onClick={() => refetchAnalytics()} className="p-1 text-white/30 hover:text-white/60" title="Refresh">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+              {/* Daily impressions bar chart */}
+              <Card className="bg-white/5 border-white/10">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs text-white/50 font-medium">Impressions per Day</CardTitle>
+                </CardHeader>
+                <CardContent className="px-2 pb-4">
+                  {analyticsLoading ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">Loading...</div>
+                  ) : !analytics?.daily?.length ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">No data yet</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <BarChart data={analytics.daily} margin={{ top: 0, right: 4, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0d" />
+                        <XAxis dataKey="date" tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: string) => v.slice(5)} />
+                        <YAxis tick={{ fill: "#ffffff33", fontSize: 9 }} />
+                        <Tooltip
+                          contentStyle={{ background: "#0d1527", border: "1px solid #ffffff14", borderRadius: 6 }}
+                          labelStyle={{ color: "#ffffff80", fontSize: 11 }}
+                          itemStyle={{ color: "#60a5fa", fontSize: 11 }}
+                        />
+                        <Bar dataKey="impressions" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Campaign spend breakdown */}
+              <Card className="bg-white/5 border-white/10">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs text-white/50 font-medium">Campaign Spend</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {analyticsLoading ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">Loading...</div>
+                  ) : !analytics?.campaigns?.length ? (
+                    <div className="h-32 flex items-center justify-center text-white/20 text-xs">No campaigns yet</div>
+                  ) : (
+                    <div className="space-y-2 mt-1 max-h-32 overflow-y-auto">
+                      {analytics.campaigns.map((c) => {
+                        const burnPct = c.budgetCents > 0 ? Math.min(100, (c.spentCents / c.budgetCents) * 100) : 0;
+                        return (
+                          <div key={c.id}>
+                            <div className="flex items-center justify-between text-xs mb-0.5">
+                              <span className="text-white/60 truncate max-w-[120px]">{c.name}</span>
+                              <span className="text-white/40">{formatMoney(c.spentCents)} / {formatMoney(c.budgetCents)}</span>
+                            </div>
+                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${burnPct > 80 ? "bg-red-500" : burnPct > 50 ? "bg-yellow-500" : "bg-blue-500"}`}
+                                style={{ width: `${burnPct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Summary row */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Total Spend", value: formatMoney(totalSpentCents), icon: DollarSign, color: "text-red-400" },
+                { label: "Wallet Loaded", value: liveWallet ? formatMoney(liveWallet.totalTopupCents) : "$0.00", icon: CreditCard, color: "text-blue-400" },
+                { label: "Balance", value: liveWallet ? formatMoney(liveWallet.balanceCents) : "$0.00", icon: Wallet, color: liveWallet && liveWallet.balanceCents < 500 ? "text-red-400" : "text-green-400" },
+              ].map(({ label, value, icon: Icon, color }) => (
+                <Card key={label} className="bg-white/5 border-white/10">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Icon className={`h-3.5 w-3.5 ${color}`} />
+                      <span className="text-xs text-white/40">{label}</span>
+                    </div>
+                    <div className={`text-lg font-bold ${color}`}>{value}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
 
           {/* Campaigns */}

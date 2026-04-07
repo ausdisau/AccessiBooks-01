@@ -9,8 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Shield, Zap, LogOut, Eye, Users, DollarSign, TrendingUp,
   CheckCircle, XCircle, Clock, AlertCircle, Globe, Target, Building2,
+  RefreshCw, Send, CheckSquare,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 
 interface PendingAd {
   id: string;
@@ -42,6 +46,15 @@ interface PlatformStats {
   revenueCents: number;
 }
 
+interface PayoutRequest {
+  id: string;
+  publisherId: string;
+  publisherEmail: string | null;
+  amountCents: number;
+  status: string;
+  createdAt: Date | null;
+}
+
 function formatMoney(cents: number) { return `$${(cents / 100).toFixed(2)}`; }
 function formatNum(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString(); }
 
@@ -51,6 +64,8 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   rejected: { color: "text-red-400 bg-red-400/10 border-red-400/20", label: "Rejected" },
   draft: { color: "text-white/50 bg-white/10 border-white/20", label: "Draft" },
   active: { color: "text-green-400 bg-green-400/10 border-green-400/20", label: "Active" },
+  pending: { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20", label: "Pending" },
+  paid: { color: "text-green-400 bg-green-400/10 border-green-400/20", label: "Paid" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -61,6 +76,7 @@ function StatusBadge({ status }: { status: string }) {
 export default function AdminPlatformDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [days, setDays] = useState(30);
 
   const { data: pendingAds = [], refetch: refetchAds } = useQuery<PendingAd[]>({
     queryKey: ["/api/ad/admin/pending-ads"],
@@ -74,6 +90,23 @@ export default function AdminPlatformDashboard() {
     queryKey: ["/api/ad/admin/stats"],
   });
 
+  const { data: payouts = [], refetch: refetchPayouts } = useQuery<PayoutRequest[]>({
+    queryKey: ["/api/ad/admin/payouts"],
+  });
+
+  const { data: analytics, isLoading: analyticsLoading, refetch: refetchAnalytics } = useQuery<{
+    totals: { gmvCents: number; platformRevenueCents: number; totalImpressions: number; totalClicks: number };
+    daily: Array<{ date: string; auctions: number; filled: number; gmvCents: number }>;
+    topAdvertisers: Array<{ advertiserId: string; email: string | null; companyName: string | null; totalSpendCents: number; balanceCents: number }>;
+    topPublishers: Array<{ publisherId: string; email: string | null; companyName: string | null; totalEarnedCents: number; pendingCents: number }>;
+    pendingPayouts: Array<{ id: string; publisherId: string; amountCents: number; status: string; createdAt: Date | null; email: string | null }>;
+  }>({
+    queryKey: ["/api/analytics/admin", days],
+    queryFn: () => fetch(`/api/analytics/admin?days=${days}`).then(r => r.json()),
+    refetchInterval: 30000,
+    staleTime: 25000,
+  });
+
   const reviewAdMutation = useMutation({
     mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
       apiRequest("PATCH", `/api/ad/admin/display-ads/${id}/review`, { status, rejectionReason: reason }),
@@ -85,6 +118,16 @@ export default function AdminPlatformDashboard() {
     onError: () => toast({ title: "Review failed", variant: "destructive" }),
   });
 
+  const payoutActionMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "paid" | "rejected" }) =>
+      apiRequest("PATCH", `/api/ad/admin/payouts/${id}`, { status }),
+    onSuccess: () => {
+      refetchPayouts();
+      toast({ title: "Payout updated" });
+    },
+    onError: () => toast({ title: "Failed to update payout", variant: "destructive" }),
+  });
+
   const logoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/auth/logout", {}),
     onSuccess: () => { queryClient.clear(); window.location.href = "/"; },
@@ -92,6 +135,7 @@ export default function AdminPlatformDashboard() {
 
   const advertisers = allUsers.filter((u) => u.role === "advertiser");
   const publishers = allUsers.filter((u) => u.role === "publisher");
+  const pendingPayouts = payouts.filter((p) => p.status === "pending");
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] text-white flex">
@@ -146,7 +190,7 @@ export default function AdminPlatformDashboard() {
               { icon: Building2, label: "Advertisers", value: advertisers.length, color: "text-blue-400" },
               { icon: Globe, label: "Publishers", value: publishers.length, color: "text-violet-400" },
               { icon: Target, label: "Pending Review", value: pendingAds.length, color: "text-yellow-400" },
-              { icon: DollarSign, label: "Platform Revenue", value: formatMoney(platformStats?.revenueCents ?? 0), color: "text-green-400" },
+              { icon: DollarSign, label: "Platform Revenue", value: formatMoney(analytics?.totals?.platformRevenueCents ?? platformStats?.revenueCents ?? 0), color: "text-green-400" },
             ].map(({ icon: Icon, label, value, color }) => (
               <Card key={label} className="bg-white/5 border-white/10">
                 <CardContent className="p-4">
@@ -160,6 +204,122 @@ export default function AdminPlatformDashboard() {
             ))}
           </div>
 
+          {/* Analytics */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider">Analytics</h2>
+              <div className="flex items-center gap-2">
+                {[7, 30, 90].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDays(d)}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${days === d ? "bg-red-600/20 text-red-300 border border-red-500/30" : "text-white/40 hover:text-white/70"}`}
+                  >
+                    {d}d
+                  </button>
+                ))}
+                <button onClick={() => refetchAnalytics()} className="p-1 text-white/30 hover:text-white/60">
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* GMV summary */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[
+                { label: "Gross Revenue (GMV)", value: formatMoney(analytics?.totals?.gmvCents ?? 0), color: "text-white" },
+                { label: "Platform Take (30%)", value: formatMoney(analytics?.totals?.platformRevenueCents ?? 0), color: "text-green-400" },
+                { label: "Publisher Payouts (70%)", value: formatMoney(Math.floor((analytics?.totals?.gmvCents ?? 0) * 0.7)), color: "text-violet-400" },
+              ].map(({ label, value, color }) => (
+                <Card key={label} className="bg-white/5 border-white/10">
+                  <CardContent className="p-3">
+                    <div className="text-xs text-white/40 mb-1">{label}</div>
+                    <div className={`text-xl font-bold ${color}`}>{value}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Daily volume line chart */}
+            <Card className="bg-white/5 border-white/10 mb-4">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-xs text-white/50 font-medium">Daily GMV & Revenue</CardTitle>
+              </CardHeader>
+              <CardContent className="px-2 pb-4">
+                {analyticsLoading ? (
+                  <div className="h-36 flex items-center justify-center text-white/20 text-xs">Loading...</div>
+                ) : !analytics?.daily?.length ? (
+                  <div className="h-36 flex items-center justify-center text-white/20 text-xs">No data yet</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={140}>
+                    <LineChart data={analytics.daily} margin={{ top: 0, right: 4, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0d" />
+                      <XAxis dataKey="date" tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: string) => v.slice(5)} />
+                      <YAxis tick={{ fill: "#ffffff33", fontSize: 9 }} tickFormatter={(v: number) => `$${(v / 100).toFixed(0)}`} />
+                      <Tooltip
+                        contentStyle={{ background: "#0d1527", border: "1px solid #ffffff14", borderRadius: 6 }}
+                        labelStyle={{ color: "#ffffff80", fontSize: 11 }}
+                        formatter={(v: number) => [`$${(v / 100).toFixed(2)}`, "GMV"]}
+                      />
+                      <Line type="monotone" dataKey="gmvCents" name="GMV" stroke="#ffffff50" strokeWidth={1.5} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Top advertisers & publishers */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Card className="bg-white/5 border-white/10">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs text-white/50 font-medium">Top Advertisers</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {!analytics?.topAdvertisers?.length ? (
+                    <div className="text-xs text-white/20 py-4 text-center">No data yet</div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 text-[10px] text-white/30 mb-1 uppercase">
+                        <span>Advertiser</span><span className="text-right">Balance</span><span className="text-right">Total Spend</span>
+                      </div>
+                      {analytics.topAdvertisers.map((a) => (
+                        <div key={a.advertiserId} className="grid grid-cols-3 text-xs">
+                          <span className="text-white/60 truncate max-w-[100px]">{a.companyName || a.email}</span>
+                          <span className="text-right text-white/40">{formatMoney(a.balanceCents)}</span>
+                          <span className="text-right text-blue-400">{formatMoney(a.totalSpendCents)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/5 border-white/10">
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs text-white/50 font-medium">Top Publishers</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {!analytics?.topPublishers?.length ? (
+                    <div className="text-xs text-white/20 py-4 text-center">No data yet</div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 text-[10px] text-white/30 mb-1 uppercase">
+                        <span>Publisher</span><span className="text-right">Pending</span><span className="text-right">Total Earned</span>
+                      </div>
+                      {analytics.topPublishers.map((p) => (
+                        <div key={p.publisherId} className="grid grid-cols-3 text-xs">
+                          <span className="text-white/60 truncate max-w-[100px]">{p.companyName || p.email}</span>
+                          <span className="text-right text-white/40">{formatMoney(p.pendingCents)}</span>
+                          <span className="text-right text-violet-400">{formatMoney(p.totalEarnedCents)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
           <Tabs defaultValue="pending" className="space-y-4">
             <TabsList className="bg-white/5 border border-white/10">
               <TabsTrigger value="pending" className="data-[state=active]:bg-white/10 data-[state=active]:text-white text-white/50">
@@ -170,6 +330,12 @@ export default function AdminPlatformDashboard() {
               </TabsTrigger>
               <TabsTrigger value="users" className="data-[state=active]:bg-white/10 data-[state=active]:text-white text-white/50">
                 Users
+              </TabsTrigger>
+              <TabsTrigger value="payouts" className="data-[state=active]:bg-white/10 data-[state=active]:text-white text-white/50">
+                Payouts
+                {pendingPayouts.length > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded text-xs">{pendingPayouts.length}</span>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -261,6 +427,58 @@ export default function AdminPlatformDashboard() {
                   ))
                 )}
               </div>
+            </TabsContent>
+
+            <TabsContent value="payouts">
+              {payouts.length === 0 ? (
+                <Card className="bg-white/5 border-white/10">
+                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                    <DollarSign className="h-10 w-10 text-white/20 mb-3" />
+                    <p className="text-white/40 text-sm">No payout requests yet.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {payouts.map((p) => (
+                    <Card key={p.id} className="bg-white/5 border-white/10">
+                      <CardContent className="p-4 flex items-center justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-sm">{p.publisherEmail || p.publisherId}</span>
+                            <StatusBadge status={p.status} />
+                          </div>
+                          <div className="text-xs text-white/40">
+                            Requested: {formatMoney(p.amountCents)}
+                            {p.createdAt && ` · ${new Date(p.createdAt).toLocaleDateString()}`}
+                          </div>
+                        </div>
+                        <div className="text-xl font-bold text-violet-400">{formatMoney(p.amountCents)}</div>
+                        {p.status === "pending" && (
+                          <div className="flex gap-2 flex-shrink-0">
+                            <Button
+                              size="sm"
+                              onClick={() => payoutActionMutation.mutate({ id: p.id, status: "paid" })}
+                              disabled={payoutActionMutation.isPending}
+                              className="bg-green-600 hover:bg-green-500 text-white gap-1 text-xs"
+                            >
+                              <CheckSquare className="h-3.5 w-3.5" /> Mark Paid
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => payoutActionMutation.mutate({ id: p.id, status: "rejected" })}
+                              disabled={payoutActionMutation.isPending}
+                              className="border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs gap-1"
+                            >
+                              <XCircle className="h-3.5 w-3.5" /> Reject
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>

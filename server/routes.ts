@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
@@ -1615,6 +1615,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           case "checkout.session.completed": {
             const session = event.data.object as any;
             const userId = session.metadata?.userId;
+
+            // Handle AdBid wallet top-up
+            if (session.mode === "payment" && session.metadata?.type === "ad_wallet_topup" && userId) {
+              const amountCents = parseInt(session.metadata?.amountCents || "0");
+              if (amountCents > 0) {
+                try {
+                  await db
+                    .insert(advertiserWallets)
+                    .values({ advertiserId: userId, balanceCents: 0, totalTopupCents: 0 })
+                    .onConflictDoNothing();
+                  await db
+                    .update(advertiserWallets)
+                    .set({
+                      balanceCents: sql`${advertiserWallets.balanceCents} + ${amountCents}`,
+                      totalTopupCents: sql`${advertiserWallets.totalTopupCents} + ${amountCents}`,
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(advertiserWallets.advertiserId, userId));
+                  console.log(`[AdWallet] Credited $${(amountCents / 100).toFixed(2)} to advertiser ${userId}`);
+                } catch (e) {
+                  console.error("[AdWallet] Failed to credit wallet:", e);
+                }
+              }
+              break;
+            }
 
             // Handle Easy English add-on checkout completion
             if (session.mode === "subscription" && session.metadata?.type === "easy_english_addon" && userId) {
