@@ -104,13 +104,27 @@ app.use((req, res, next) => {
     }, 10000);
     
     // Auto-start catalog seeder in background (resumes from where it left off)
-    import("./catalogSeeder").then(({ startSeeding }) => {
-      setTimeout(() => {
-        startSeeding(["librivox", "gutenberg", "openlibrary", "internetarchive"]).then(result => {
+    import("./catalogSeeder").then(({ startSeeding, resetAndRestartExpandedSources, getSeededBookCount }) => {
+      setTimeout(async () => {
+        try {
+          // First run the normal seeders (LibriVox & Gutenberg resume/complete quickly)
+          const result = await startSeeding(["librivox", "gutenberg", "openlibrary", "internetarchive"]);
           console.log(`[Auto-Seeder] ${result.message}`);
-        }).catch(err => {
+
+          // Check if we're below 1M — if so, reset OL + IA and re-run with expanded queries
+          const counts = await getSeededBookCount();
+          const total = counts.total ?? 0;
+          console.log(`[Auto-Seeder] Current catalog size: ${total.toLocaleString()} books`);
+          if (total < 1_000_000) {
+            console.log(`[Auto-Seeder] Below 1M target (${total.toLocaleString()}) — launching expanded seed run across 200+ subjects and 80+ queries`);
+            const expanded = await resetAndRestartExpandedSources();
+            console.log(`[Auto-Seeder] Expanded run: ${expanded.message}`);
+          } else {
+            console.log("[Auto-Seeder] Catalog at 1M+ books — no expanded run needed");
+          }
+        } catch (err: any) {
           console.warn("[Auto-Seeder] Failed to start:", err);
-        });
+        }
       }, 30000);
     });
   });

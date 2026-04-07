@@ -8,7 +8,7 @@ import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
-import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
+import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, resetAndRestartExpandedSources, getSeededBookCount } from "./catalogSeeder";
 import { registerSelfPublishingRoutes } from "./selfPublishing";
 import { registerRevenueRoutes, seedVoicePacks } from "./revenueRoutes";
 import { registerLoanRoutes, startLoanExpirationJob } from "./loanSystem";
@@ -4473,6 +4473,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to reset seeder" });
+    }
+  });
+
+  // Trigger the expanded 1M-book seed run for Open Library + Internet Archive
+  app.post("/api/admin/seed/expand", async (req, res) => {
+    try {
+      const result = await resetAndRestartExpandedSources();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start expanded seed run" });
     }
   });
 
