@@ -4,32 +4,47 @@ import { ReplitConnectors } from "@replit/connectors-sdk";
 
 import type { EmailMessage } from "./mailer";
 
+interface AgentMailInbox {
+  id: string;
+  username?: string;
+  address?: string;
+}
+
+interface AgentMailListResponse {
+  inboxes?: AgentMailInbox[];
+}
+
+const INBOX_USERNAME = "accessibooks";
 let cachedInboxId: string | null = null;
 
 async function getOrCreateInbox(connectors: ReplitConnectors): Promise<string | null> {
   if (cachedInboxId) return cachedInboxId;
 
   try {
+    // Try to find an existing inbox with our username
     const listRes = await connectors.proxy("agentmail", "/inboxes", { method: "GET" });
     if (listRes.ok) {
-      const data = await listRes.json() as { inboxes?: Array<{ id: string; username: string }> } | Array<{ id: string }>;
-      const list: Array<{ id: string }> = Array.isArray(data) ? data : ((data as any).inboxes ?? []);
-      const existing = list.find((i: any) => i.username === "accessibooks" || i.id);
-      if (existing) {
-        cachedInboxId = existing.id;
-        console.log(`[AgentMail] Reusing inbox: ${cachedInboxId}`);
+      const data: AgentMailInbox[] | AgentMailListResponse = await listRes.json();
+      const list: AgentMailInbox[] = Array.isArray(data)
+        ? data
+        : (data.inboxes ?? []);
+      const match = list.find((i) => i.username === INBOX_USERNAME);
+      if (match) {
+        cachedInboxId = match.id;
+        console.log(`[AgentMail] Reusing inbox ${INBOX_USERNAME}: ${cachedInboxId}`);
         return cachedInboxId;
       }
     }
 
+    // Create a new inbox for this app
     const createRes = await connectors.proxy("agentmail", "/inboxes", {
       method: "POST",
-      body: { username: "accessibooks" },
+      body: { username: INBOX_USERNAME },
     });
     if (createRes.ok) {
-      const inbox = await createRes.json() as { id: string; address?: string };
+      const inbox: AgentMailInbox = await createRes.json();
       cachedInboxId = inbox.id;
-      console.log(`[AgentMail] Created inbox: ${cachedInboxId} (${inbox.address ?? ""})`);
+      console.log(`[AgentMail] Created inbox ${INBOX_USERNAME}: ${cachedInboxId} (${inbox.address ?? ""})`);
       return cachedInboxId;
     }
     const errText = await createRes.text();
