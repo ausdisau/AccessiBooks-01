@@ -533,6 +533,7 @@ async function seedGutenberg(abortSignal: AbortSignal): Promise<void> {
 }
 
 const OL_SUBJECTS = [
+  // Original 68
   "fiction", "science_fiction", "mystery", "romance", "history", "biography",
   "philosophy", "poetry", "drama", "science", "fantasy", "horror", "adventure",
   "thriller", "children", "young_adult", "classic_literature", "psychology",
@@ -545,6 +546,55 @@ const OL_SUBJECTS = [
   "folk_tales", "war", "journalism", "environment", "agriculture",
   "crafts", "gardening", "pets", "parenting", "health", "fitness",
   "dance", "theater", "film", "photography", "design", "fashion",
+  // Expanded literature & fiction
+  "american_literature", "british_literature", "french_literature",
+  "russian_literature", "german_literature", "african_literature",
+  "asian_literature", "world_literature", "short_stories", "novellas",
+  "literary_criticism", "folklore", "fairy_tales", "legends", "fables",
+  "epics", "satire", "gothic", "noir", "western", "spy_fiction",
+  "dystopian", "utopian", "alternate_history", "steampunk", "cyberpunk",
+  "space_opera", "military_fiction", "historical_fiction", "magical_realism",
+  "detective_fiction", "crime_fiction", "legal_thriller", "supernatural",
+  "paranormal", "occult", "ghosts",
+  // History expansions
+  "civil_war", "world_war_1", "world_war_2", "american_revolution",
+  "french_revolution", "industrial_revolution", "renaissance",
+  "medieval_history", "ancient_history", "roman_history", "greek_history",
+  "egyptian_history", "chinese_history", "japanese_history", "indian_history",
+  "african_history", "islamic_history", "jewish_history",
+  "military_history", "naval_history", "economic_history", "social_history",
+  "cultural_history", "art_history", "music_history", "local_history",
+  "genealogy", "archaeology", "colonial_history",
+  // Science expansions
+  "paleontology", "genetics", "evolution", "neuroscience", "cognitive_science",
+  "nanotechnology", "quantum_physics", "particle_physics", "cosmology",
+  "astrophysics", "meteorology", "climate", "ecology", "marine_biology",
+  "botany", "zoology", "microbiology", "virology", "anatomy", "physiology",
+  "pharmacology", "epidemiology", "forensic_science", "criminology",
+  // Social sciences & humanities
+  "labor_history", "immigration", "feminism", "disability_studies",
+  "urban_studies", "rural_studies", "international_relations", "diplomacy",
+  "human_rights", "civil_rights", "abolitionism", "colonialism",
+  "nationalism", "ethics", "logic", "epistemology", "metaphysics",
+  "aesthetics", "existentialism", "pragmatism",
+  // Religion & spirituality
+  "hinduism", "buddhism", "christianity", "islam", "judaism",
+  "mysticism", "meditation", "yoga",
+  // Health & lifestyle
+  "nursing", "public_health", "nutrition", "psychiatry", "dentistry",
+  "veterinary", "mental_health",
+  // Arts & performance
+  "music_theory", "opera", "jazz", "classical_music", "folk_music",
+  "ballet", "film_making", "television", "radio",
+  // Hobbies & crafts
+  "woodworking", "quilting", "sewing", "knitting", "drawing",
+  "sculpture", "printmaking", "chess", "mountaineering", "sailing",
+  "fishing", "automobiles", "aviation", "railroads",
+  // Additional broad subjects
+  "publishing", "libraries", "museums", "cultural_heritage",
+  "energy", "transportation", "food_security", "sustainable_development",
+  "poverty", "housing", "terrorism", "espionage",
+  "capitalism", "anarchism", "marxism",
 ];
 
 async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
@@ -553,7 +603,7 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
   progress.lastLogTime = Date.now();
-  progress.estimatedTotal = 40000;
+  progress.estimatedTotal = 700000;
 
   const saved = await loadProgressFromDB("openlibrary");
   if (saved) {
@@ -576,7 +626,8 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
     }
   }
 
-  const targetPerSubject = Math.ceil(40000 / OL_SUBJECTS.length);
+  // Allow up to 5000 books per subject (vs old ~588) to reach 1M total
+  const targetPerSubject = 5000;
 
   try {
     for (let si = progress.subjectIndex; si < OL_SUBJECTS.length; si++) {
@@ -678,6 +729,7 @@ async function seedOpenLibrary(abortSignal: AbortSignal): Promise<void> {
 }
 
 const IA_QUERIES = [
+  // Original 25 subject queries
   "mediatype:texts AND language:English AND subject:fiction",
   "mediatype:texts AND language:English AND subject:science",
   "mediatype:texts AND language:English AND subject:history",
@@ -703,6 +755,76 @@ const IA_QUERIES = [
   "mediatype:texts AND language:English AND subject:law",
   "mediatype:texts AND language:English AND subject:medicine",
   "mediatype:audio AND subject:poetry AND language:English",
+  // Decade-based sweeps — non-overlapping, high-yield
+  "mediatype:texts AND language:English AND date:[1800-01-01 TO 1850-12-31]",
+  "mediatype:texts AND language:English AND date:[1850-01-01 TO 1900-12-31]",
+  "mediatype:texts AND language:English AND date:[1900-01-01 TO 1930-12-31]",
+  "mediatype:texts AND language:English AND date:[1930-01-01 TO 1960-12-31]",
+  "mediatype:texts AND language:English AND date:[1960-01-01 TO 1990-12-31]",
+  "mediatype:texts AND language:English AND date:[1990-01-01 TO 2010-12-31]",
+  // More subject queries — broad topics not in original list
+  "mediatype:texts AND language:English AND subject:literature",
+  "mediatype:texts AND language:English AND subject:natural_history",
+  "mediatype:texts AND language:English AND subject:engineering",
+  "mediatype:texts AND language:English AND subject:politics",
+  "mediatype:texts AND language:English AND subject:travel",
+  "mediatype:texts AND language:English AND subject:sociology",
+  "mediatype:texts AND language:English AND subject:anthropology",
+  "mediatype:texts AND language:English AND subject:geology",
+  "mediatype:texts AND language:English AND subject:astronomy",
+  "mediatype:texts AND language:English AND subject:botany",
+  "mediatype:texts AND language:English AND subject:zoology",
+  "mediatype:texts AND language:English AND subject:chemistry",
+  "mediatype:texts AND language:English AND subject:physics",
+  "mediatype:texts AND language:English AND subject:architecture",
+  "mediatype:texts AND language:English AND subject:business",
+  "mediatype:texts AND language:English AND subject:cooking",
+  "mediatype:texts AND language:English AND subject:agriculture",
+  "mediatype:texts AND language:English AND subject:war",
+  "mediatype:texts AND language:English AND subject:military",
+  "mediatype:texts AND language:English AND subject:naval",
+  "mediatype:texts AND language:English AND subject:politics AND date:[1800-01-01 TO 1950-12-31]",
+  "mediatype:texts AND language:English AND subject:newspaper",
+  "mediatype:texts AND language:English AND subject:journal",
+  "mediatype:texts AND language:English AND subject:memoir",
+  "mediatype:texts AND language:English AND subject:essays",
+  "mediatype:texts AND language:English AND subject:folklore",
+  "mediatype:texts AND language:English AND subject:mythology",
+  "mediatype:texts AND language:English AND subject:humor",
+  "mediatype:texts AND language:English AND subject:social",
+  // American literature & history splits
+  "mediatype:texts AND language:English AND subject:american_history",
+  "mediatype:texts AND language:English AND subject:american_literature",
+  "mediatype:texts AND language:English AND subject:civil_war",
+  "mediatype:texts AND language:English AND subject:british_history",
+  "mediatype:texts AND language:English AND subject:world_war",
+  // Science sub-disciplines
+  "mediatype:texts AND language:English AND subject:evolution",
+  "mediatype:texts AND language:English AND subject:genetics",
+  "mediatype:texts AND language:English AND subject:ecology",
+  "mediatype:texts AND language:English AND subject:health",
+  "mediatype:texts AND language:English AND subject:nutrition",
+  "mediatype:texts AND language:English AND subject:surgery",
+  "mediatype:texts AND language:English AND subject:pharmacy",
+  // More audio
+  "mediatype:audio AND language:English AND subject:fiction",
+  "mediatype:audio AND language:English AND subject:drama",
+  "mediatype:audio AND language:English AND subject:music",
+  "mediatype:audio AND language:English AND subject:history",
+  "mediatype:audio AND language:English AND subject:comedy",
+  "mediatype:audio AND language:English AND subject:speech",
+  // Classic/Public domain sweeps
+  "mediatype:texts AND language:English AND subject:public_domain AND date:[1800-01-01 TO 1930-12-31]",
+  "mediatype:texts AND language:English AND creator:shakespeare",
+  "mediatype:texts AND language:English AND creator:dickens",
+  "mediatype:texts AND language:English AND creator:twain",
+  "mediatype:texts AND language:English AND creator:darwin",
+  // Non-English (expanded multilingual)
+  "mediatype:texts AND language:French",
+  "mediatype:texts AND language:German",
+  "mediatype:texts AND language:Spanish",
+  "mediatype:texts AND language:Italian",
+  "mediatype:texts AND language:Portuguese",
 ];
 
 const IA_SKIP_SUBJECTS = new Set([
@@ -716,7 +838,7 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
   progress.status = "running";
   progress.startedAt = new Date().toISOString();
   progress.lastLogTime = Date.now();
-  progress.estimatedTotal = 30000;
+  progress.estimatedTotal = 650000;
 
   const saved = await loadProgressFromDB("internetarchive");
   if (saved) {
@@ -739,7 +861,8 @@ async function seedInternetArchive(abortSignal: AbortSignal): Promise<void> {
     }
   }
 
-  const targetPerQuery = Math.ceil(30000 / IA_QUERIES.length);
+  // Allow up to 8000 per query (vs old ~1200) to reach 1M total
+  const targetPerQuery = 8000;
 
   try {
     for (let qi = progress.subjectIndex; qi < IA_QUERIES.length; qi++) {
@@ -961,6 +1084,85 @@ export function resetSeeder(source?: SeederSource): { message: string } {
     state.seenIds[s] = new Set();
   }
   return { message: "Reset all seeder progress" };
+}
+
+/**
+ * Reset openlibrary and internetarchive DB progress rows so they
+ * re-run with the expanded subject/query lists targeting 1M books.
+ * LibriVox and Gutenberg are intentionally left alone (they are
+ * genuinely exhausted public-domain sources).
+ */
+export async function resetAndRestartExpandedSources(): Promise<{ message: string }> {
+  const expandable: SeederSource[] = ["openlibrary", "internetarchive"];
+
+  // Step 1: Abort running instances and reset in-memory state
+  for (const source of expandable) {
+    const ctrl = state.abortControllers[source];
+    if (ctrl) {
+      ctrl.abort();
+      state.abortControllers[source] = null;
+    }
+    state[source] = createProgress(source);
+    state.seenIds[source] = new Set();
+  }
+
+  // Step 2: Wait for aborting seeders to finish cleanup and write their final
+  // progress rows to DB (they do this in the finally/catch block after abort).
+  await delay(3000);
+
+  // Step 3: Now that old cleanup is done, overwrite DB rows so new run starts
+  // directly at the FIRST NEW subject/query, skipping already-populated ones.
+  const OL_ORIGINAL_COUNT = 68;   // subjects 0–67 already populated in phase 1
+  const IA_ORIGINAL_COUNT = 25;   // queries 0–24 already populated in phase 1
+
+  try {
+    await db.insert(seederProgress).values({
+      source: "openlibrary",
+      currentOffset: 0,
+      subjectIndex: OL_ORIGINAL_COUNT,
+      nextUrl: null,
+      status: "idle" as const,
+      totalInserted: 0,
+      lastError: null,
+    }).onConflictDoUpdate({
+      target: seederProgress.source,
+      set: {
+        currentOffset: 0,
+        subjectIndex: OL_ORIGINAL_COUNT,
+        nextUrl: null,
+        status: "idle" as const,
+        totalInserted: 0,
+        lastError: null,
+        updatedAt: new Date(),
+      },
+    });
+  } catch { /* ignore */ }
+
+  try {
+    await db.insert(seederProgress).values({
+      source: "internetarchive",
+      currentOffset: 0,
+      subjectIndex: IA_ORIGINAL_COUNT,
+      nextUrl: null,
+      status: "idle" as const,
+      totalInserted: 0,
+      lastError: null,
+    }).onConflictDoUpdate({
+      target: seederProgress.source,
+      set: {
+        currentOffset: 0,
+        subjectIndex: IA_ORIGINAL_COUNT,
+        nextUrl: null,
+        status: "idle" as const,
+        totalInserted: 0,
+        lastError: null,
+        updatedAt: new Date(),
+      },
+    });
+  } catch { /* ignore */ }
+
+  console.log(`[Seeder] Expanded run: OL starts at subject ${OL_ORIGINAL_COUNT} (${OL_SUBJECTS[OL_ORIGINAL_COUNT]}), IA starts at query ${IA_ORIGINAL_COUNT}`);
+  return startSeeding(expandable);
 }
 
 export async function getSeededBookCount(): Promise<Record<string, number>> {
