@@ -4,11 +4,28 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/reso
 import { chatStorage } from "./storage";
 import { storage } from "../../storage";
 import type { Book } from "@shared/schema";
+import {
+  classifyIntent,
+  runCatalogSearch,
+  greetingResponse,
+  helpResponse,
+  generalFallbackResponse,
+  type BookSummary,
+} from "./customEngine";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+const hasOpenAI = !!(
+  process.env.AI_INTEGRATIONS_OPENAI_API_KEY &&
+  process.env.AI_INTEGRATIONS_OPENAI_API_KEY.length > 0
+);
+
+const openai = hasOpenAI
+  ? new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    })
+  : null;
+
+console.log(`[Chat] OpenAI integration: ${hasOpenAI ? "enabled" : "disabled — using custom engine only"}`);
 
 const SYSTEM_PROMPT = `You are an AI assistant for AccessiBooks, a platform featuring audiobooks, ebooks, and magazines for everyone — including those with accessibility needs like visual impairments, dyslexia, and learning disabilities.
 
@@ -66,20 +83,6 @@ interface SearchBooksArgs {
   language?: string;
 }
 
-interface BookSummary {
-  id: string;
-  title: string;
-  author: string;
-  genre: string | null | undefined;
-  contentType: string | null | undefined;
-  language: string | null | undefined;
-  duration: number | null | undefined;
-  totalTime: string | null | undefined;
-  description: string | null;
-  coverImage: string | null | undefined;
-  isPremium: boolean;
-}
-
 async function executeSearchBooks(args: SearchBooksArgs): Promise<BookSummary[]> {
   try {
     let books: Book[] = await storage.searchBooks(args.query);
@@ -131,8 +134,126 @@ function requireAuth(req: Request, res: Response): string | null {
   return r.user?.claims?.sub ?? r.user?.id ?? null;
 }
 
+function sendSSE(res: Response, data: object): void {
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+async function handleWithOpenAI(
+  res: Response,
+  content: string,
+  chatMessages: ChatCompletionMessageParam[]
+): Promise<{ text: string; books: BookSummary[] | null }> {
+  let fullResponse = "";
+  let toolResultBooks: BookSummary[] | null = null;
+
+  const firstStream = await openai!.chat.completions.create({
+    model: "gpt-4.1",
+    messages: chatMessages,
+    tools: [SEARCH_BOOKS_TOOL],
+    tool_choice: "auto",
+    stream: true,
+    max_completion_tokens: 4096,
+  });
+
+  let toolCallId = "";
+  let toolCallName = "";
+  let toolCallArgs = "";
+  let hasToolCall = false;
+
+  for await (const chunk of firstStream) {
+    const delta = chunk.choices[0]?.delta;
+    if (!delta) continue;
+
+    if (delta.tool_calls && delta.tool_calls.length > 0) {
+      hasToolCall = true;
+      const tc = delta.tool_calls[0];
+      if (tc.id) toolCallId = tc.id;
+      if (tc.function?.name) toolCallName = tc.function.name;
+      if (tc.function?.arguments) toolCallArgs += tc.function.arguments;
+    } else if (delta.content) {
+      fullResponse += delta.content;
+      sendSSE(res, { content: delta.content });
+    }
+  }
+
+  if (hasToolCall && toolCallName === "search_books") {
+    let parsedArgs: SearchBooksArgs = { query: "" };
+    try {
+      parsedArgs = JSON.parse(toolCallArgs) as SearchBooksArgs;
+    } catch {
+      parsedArgs = { query: content };
+    }
+
+    const bookResults = await executeSearchBooks(parsedArgs);
+    toolResultBooks = bookResults;
+
+    sendSSE(res, { bookResults, toolCall: { name: toolCallName, args: parsedArgs } });
+
+    const assistantToolCallMessage: ChatCompletionMessageParam = {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: toolCallId,
+          type: "function",
+          function: { name: toolCallName, arguments: toolCallArgs },
+        },
+      ],
+    };
+
+    const toolResultMessage: ChatCompletionMessageParam = {
+      role: "tool",
+      tool_call_id: toolCallId,
+      content: JSON.stringify(bookResults),
+    };
+
+    const secondStream = await openai!.chat.completions.create({
+      model: "gpt-4.1",
+      messages: [...chatMessages, assistantToolCallMessage, toolResultMessage],
+      stream: true,
+      max_completion_tokens: 4096,
+    });
+
+    for await (const chunk of secondStream) {
+      const textContent = chunk.choices[0]?.delta?.content ?? "";
+      if (textContent) {
+        fullResponse += textContent;
+        sendSSE(res, { content: textContent });
+      }
+    }
+  }
+
+  return { text: fullResponse, books: toolResultBooks };
+}
+
+async function handleWithCustomEngine(
+  res: Response,
+  content: string,
+  intent: ReturnType<typeof classifyIntent>
+): Promise<{ text: string; books: BookSummary[] | null }> {
+  let responseText = "";
+  let books: BookSummary[] | null = null;
+
+  if (intent === "greeting") {
+    responseText = greetingResponse();
+  } else if (intent === "help") {
+    responseText = helpResponse();
+  } else if (intent === "catalog_search") {
+    const result = await runCatalogSearch(content);
+    responseText = result.text;
+    books = result.books.length > 0 ? result.books : null;
+    if (books && books.length > 0) {
+      sendSSE(res, { bookResults: books });
+    }
+  } else {
+    responseText = generalFallbackResponse(content);
+  }
+
+  sendSSE(res, { content: responseText });
+  return { text: responseText, books };
+}
+
 export function registerChatRoutes(app: Express): void {
-  // Get all conversations for the authenticated user
   app.get("/api/conversations", async (req: Request, res: Response) => {
     const userId = requireAuth(req, res);
     if (!userId) return;
@@ -145,7 +266,6 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Get single conversation with messages — only if owned by authenticated user
   app.get("/api/conversations/:id", async (req: Request, res: Response) => {
     const userId = requireAuth(req, res);
     if (!userId) return;
@@ -163,7 +283,6 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Create new conversation (requires auth)
   app.post("/api/conversations", async (req: Request, res: Response) => {
     const userId = requireAuth(req, res);
     if (!userId) return;
@@ -177,13 +296,11 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Delete conversation — only owner (authenticated) may delete
   app.delete("/api/conversations/:id", async (req: Request, res: Response) => {
     const userId = requireAuth(req, res);
     if (!userId) return;
     try {
       const id = parseInt(req.params.id);
-      // Verify ownership before deleting
       const conversation = await chatStorage.getConversation(id, userId);
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
@@ -196,7 +313,6 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Send message and get AI response (streaming, requires auth)
   app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
     const userId = requireAuth(req, res);
     if (!userId) return;
@@ -204,135 +320,63 @@ export function registerChatRoutes(app: Express): void {
       const conversationId = parseInt(req.params.id);
       const { content } = req.body as { content: string };
 
-      // Verify conversation ownership before posting
       const conversation = await chatStorage.getConversation(conversationId, userId);
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
       }
 
-      // Save user message
       await chatStorage.createMessage(conversationId, "user", content);
 
-      // Get conversation history for context
-      const existingMessages = await chatStorage.getMessagesByConversation(conversationId);
-      const chatMessages: ChatCompletionMessageParam[] = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...existingMessages.map(
-          (m): ChatCompletionMessageParam => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })
-        ),
-      ];
-
-      // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
+      const intent = classifyIntent(content);
+      console.log(`[Chat] Intent for "${content.slice(0, 60)}…": ${intent}, OpenAI: ${hasOpenAI}`);
+
       let fullResponse = "";
       let toolResultBooks: BookSummary[] | null = null;
 
-      // First call with tool definitions
-      const firstStream = await openai.chat.completions.create({
-        model: "gpt-4.1",
-        messages: chatMessages,
-        tools: [SEARCH_BOOKS_TOOL],
-        tool_choice: "auto",
-        stream: true,
-        max_completion_tokens: 4096,
-      });
-
-      let toolCallId = "";
-      let toolCallName = "";
-      let toolCallArgs = "";
-      let hasToolCall = false;
-
-      for await (const chunk of firstStream) {
-        const delta = chunk.choices[0]?.delta;
-        if (!delta) continue;
-
-        if (delta.tool_calls && delta.tool_calls.length > 0) {
-          hasToolCall = true;
-          const tc = delta.tool_calls[0];
-          if (tc.id) toolCallId = tc.id;
-          if (tc.function?.name) toolCallName = tc.function.name;
-          if (tc.function?.arguments) toolCallArgs += tc.function.arguments;
-        } else if (delta.content) {
-          fullResponse += delta.content;
-          res.write(`data: ${JSON.stringify({ content: delta.content })}\n\n`);
-        }
-      }
-
-      // If there was a tool call, execute it and stream a second response
-      if (hasToolCall && toolCallName === "search_books") {
-        let parsedArgs: SearchBooksArgs = { query: "" };
-        try {
-          parsedArgs = JSON.parse(toolCallArgs) as SearchBooksArgs;
-        } catch {
-          parsedArgs = { query: content };
-        }
-
-        const bookResults = await executeSearchBooks(parsedArgs);
-        toolResultBooks = bookResults;
-
-        // Send book results to frontend immediately so it can render book cards
-        res.write(
-          `data: ${JSON.stringify({ bookResults, toolCall: { name: toolCallName, args: parsedArgs } })}\n\n`
-        );
-
-        // Build second request with tool result
-        const assistantToolCallMessage: ChatCompletionMessageParam = {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: toolCallId,
-              type: "function",
-              function: { name: toolCallName, arguments: toolCallArgs },
-            },
-          ],
-        };
-
-        const toolResultMessage: ChatCompletionMessageParam = {
-          role: "tool",
-          tool_call_id: toolCallId,
-          content: JSON.stringify(bookResults),
-        };
-
-        const toolResultMessages: ChatCompletionMessageParam[] = [
-          ...chatMessages,
-          assistantToolCallMessage,
-          toolResultMessage,
+      if (intent === "catalog_search" || intent === "greeting" || intent === "help") {
+        const result = await handleWithCustomEngine(res, content, intent);
+        fullResponse = result.text;
+        toolResultBooks = result.books;
+      } else if (intent === "general" && hasOpenAI) {
+        const existingMessages = await chatStorage.getMessagesByConversation(conversationId);
+        const chatMessages: ChatCompletionMessageParam[] = [
+          { role: "system", content: SYSTEM_PROMPT },
+          ...existingMessages.map(
+            (m): ChatCompletionMessageParam => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            })
+          ),
         ];
 
-        const secondStream = await openai.chat.completions.create({
-          model: "gpt-4.1",
-          messages: toolResultMessages,
-          stream: true,
-          max_completion_tokens: 4096,
-        });
-
-        for await (const chunk of secondStream) {
-          const textContent = chunk.choices[0]?.delta?.content ?? "";
-          if (textContent) {
-            fullResponse += textContent;
-            res.write(`data: ${JSON.stringify({ content: textContent })}\n\n`);
-          }
+        try {
+          const result = await handleWithOpenAI(res, content, chatMessages);
+          fullResponse = result.text;
+          toolResultBooks = result.books;
+        } catch (openaiErr) {
+          console.warn("[Chat] OpenAI failed, falling back to custom engine:", openaiErr);
+          const result = await handleWithCustomEngine(res, content, "general");
+          fullResponse = result.text;
+          toolResultBooks = result.books;
         }
+      } else {
+        const result = await handleWithCustomEngine(res, content, intent);
+        fullResponse = result.text;
+        toolResultBooks = result.books;
       }
 
-      // Save the complete assistant message (text only)
       await chatStorage.createMessage(conversationId, "assistant", fullResponse);
 
-      res.write(
-        `data: ${JSON.stringify({ done: true, bookResults: toolResultBooks })}\n\n`
-      );
+      sendSSE(res, { done: true, bookResults: toolResultBooks });
       res.end();
     } catch (error) {
       console.error("Error sending message:", error);
       if (res.headersSent) {
-        res.write(`data: ${JSON.stringify({ error: "Failed to send message" })}\n\n`);
+        sendSSE(res, { error: "Failed to send message" });
         res.end();
       } else {
         res.status(500).json({ error: "Failed to send message" });
