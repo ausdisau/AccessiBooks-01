@@ -38,23 +38,58 @@ const GREETING_PATTERNS = [
 ];
 
 const HELP_PATTERNS = [
-  /\b(what\s+can\s+you\s+do|how\s+(do(es)?\s+this|does\s+it)\s+work|help\s+me|what\s+are\s+you|who\s+are\s+you|capabilities|features|how\s+to\s+use)\b/i,
+  /\b(what\s+can\s+you\s+do|how\s+(do(es)?\s+this|does\s+it)\s+work|what\s+are\s+you|who\s+are\s+you|your\s+capabilities|how\s+to\s+use\s+(you|this))\b/i,
 ];
 
-const CATALOG_SEARCH_PATTERNS = [
-  /\b(find|search|look\s+for|show|recommend|suggest|discover|browse|give\s+me|i('m|\s+am)\s+looking|want\s+to|looking\s+for|i\s+need|any\s+(books?|audiobooks?|ebooks?|magazines?))\b/i,
-  /\b(audiobooks?|ebooks?|e-books?|magazines?|podcasts?)\b/i,
-  /\b(fiction|non.?fiction|mystery|thriller|romance|fantasy|sci.?fi|science\s+fiction|biography|memoir|history|self.?help|business|technology|children'?s|adventure|horror|comedy|drama)\b/i,
-  /\b(by\s+[A-Z]|author)\b/,
-  /\b(read|listen)\s+to\b/i,
-  /\b(book|novel|story|title)\b/i,
-  /\b(dyslexia|dyslexic|visual\s+impairment|visually\s+impaired|blind|large\s+print|learning\s+disabilit|adhd|autism)\b/i,
+/**
+ * Explanatory questions — user wants information/explanation, not a catalog search.
+ * These take priority over format/genre keyword matching.
+ * NOTE: must NOT also contain explicit search verbs to qualify.
+ */
+const EXPLANATORY_QUESTION_PATTERNS = [
+  /\bwhat'?s?\s+(the\s+)?(difference|distinction|advantage|benefit|point|meaning)\b/i,
+  /\bhow\s+(does|do|is|are)\s+.{3,}\s+(work|different|better|used)\b/i,
+  /\bwhat\s+(is|are)\s+(a[n]?\s+)?(podcast|audiobook|ebook|epub|drm|isbn)\b/i,
+  /\bcan\s+you\s+explain\b/i,
+  /\bexplain\s+(what|how|why|the)\b/i,
+  /\btell\s+me\s+(what|how|why|about\s+the\s+difference)\b/i,
+  /\bwhy\s+(is|are|do|does|should)\b/i,
+  /\bis\s+(it\s+)?(possible|safe|legal|free|good|bad|worth)\b/i,
+];
+
+/**
+ * Explicit search verbs — strong signals the user wants to search the catalog.
+ * A message with one of these is ALWAYS catalog_search regardless of question words.
+ */
+const EXPLICIT_SEARCH_VERBS =
+  /\b(find\s+me|search\s+for|look\s+for|show\s+me|recommend\s+me?|suggest|give\s+me|discover|browse|i('m|\s+am|\s+was)\s+looking\s+for|i\s+need\s+(a[n]?\s+)?(book|audiobook|ebook)|any\s+(good\s+)?(books?|audiobooks?|ebooks?|magazines?))\b/i;
+
+/**
+ * Weaker but still clear search signals (format + genre/topic without question framing).
+ */
+const CATALOG_SIGNAL_PATTERNS = [
+  /\b(audiobooks?|ebooks?|e-books?|magazines?)\s+(about|on|for|in|with|featuring|set\s+in)\b/i,
+  /\b(want\s+to|looking\s+to)\s+(listen|read)\b/i,
+  /\b(listen|read)\s+to\s+\w/i,
+  /\bby\s+[A-Z][a-z]+\s+[A-Z]/,
+  /\b(dyslexia|dyslexic|visually\s+impaired|blind|large\s+print|adhd)\s+(books?|audiobooks?|friendly|accessible)\b/i,
+  /\b(short|long|quick)\s+(audiobooks?|ebooks?|reads?|listens?)\b/i,
+  /\b(mystery|thriller|romance|fantasy|sci.?fi|biography|history|self.?help)\s+(audiobooks?|ebooks?|books?)\b/i,
+  /\b(audiobooks?|ebooks?|books?)\s+(in\s+(spanish|french|german|italian|portuguese|russian|chinese|japanese|arabic))\b/i,
 ];
 
 export function classifyIntent(message: string): Intent {
   if (GREETING_PATTERNS.some((p) => p.test(message))) return "greeting";
   if (HELP_PATTERNS.some((p) => p.test(message))) return "help";
-  if (CATALOG_SEARCH_PATTERNS.some((p) => p.test(message))) return "catalog_search";
+
+  const hasExplicitSearch = EXPLICIT_SEARCH_VERBS.test(message);
+  if (hasExplicitSearch) return "catalog_search";
+
+  const isExplanatoryQuestion = EXPLANATORY_QUESTION_PATTERNS.some((p) => p.test(message));
+  if (isExplanatoryQuestion) return "general";
+
+  if (CATALOG_SIGNAL_PATTERNS.some((p) => p.test(message))) return "catalog_search";
+
   return "general";
 }
 
@@ -236,7 +271,7 @@ function applyFilters(books: Book[], entities: Entities): Book[] {
     if (genreFiltered.length > 0) filtered = genreFiltered;
   }
 
-  if (entities.durationPref && entities.durationPref === "short") {
+  if (entities.durationPref === "short") {
     const durationFiltered = filtered.filter(
       (b) => b.duration && b.duration <= DURATION_THRESHOLDS.short
     );
@@ -312,7 +347,7 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function buildSearchResponse(books: BookSummary[], entities: Entities, originalQuery: string): string {
+function buildSearchResponse(books: BookSummary[], entities: Entities): string {
   const ctx = buildContextDescription(entities);
 
   if (books.length === 0) {
@@ -337,9 +372,11 @@ function buildSearchResponse(books: BookSummary[], entities: Entities, originalQ
   return `${opener} ${count} ${ctx}. Here's what's available — tap any title to open it!`;
 }
 
-export async function runCatalogSearch(
-  message: string
-): Promise<EngineResult> {
+/**
+ * Run a catalog search using the local PostgreSQL full-text index only.
+ * No external API calls are made — this is entirely self-contained.
+ */
+export async function runCatalogSearch(message: string): Promise<EngineResult> {
   const entities = extractEntities(message);
 
   const searchQuery =
@@ -348,21 +385,21 @@ export async function runCatalogSearch(
 
   let books: Book[] = [];
   try {
-    books = await storage.searchBooks(searchQuery);
+    books = await storage.searchBooksDB(searchQuery, 50);
   } catch (err) {
-    console.error("[CustomEngine] searchBooks error:", err);
+    console.error("[CustomEngine] searchBooksDB error:", err);
   }
 
   const filtered = applyFilters(books, entities).slice(0, 6);
   const summaries = filtered.map(toBookSummary);
-  const text = buildSearchResponse(summaries, entities, message);
+  const text = buildSearchResponse(summaries, entities);
 
   return { text, books: summaries };
 }
 
 export function greetingResponse(): string {
   const responses = [
-    "Hi there! 👋 I'm AccessiBooks AI — your personal reading and listening guide. Ask me to find audiobooks, ebooks, or magazines, or tell me a genre you enjoy and I'll pull up some great matches from the catalog!",
+    "Hi there! I'm AccessiBooks AI — your personal reading and listening guide. Ask me to find audiobooks, ebooks, or magazines, or tell me a genre you enjoy and I'll pull up some great matches from the catalog!",
     "Hello! Welcome to AccessiBooks. I'm here to help you discover your next great listen or read. What are you in the mood for today?",
     "Hey! Great to see you. Tell me what kind of book or audiobook you're looking for and I'll search our catalog for you right away!",
   ];
@@ -373,17 +410,17 @@ export function helpResponse(): string {
   return `I'm AccessiBooks AI — your guide to our entire catalog of audiobooks, ebooks, and magazines.
 
 Here's what I can do:
-• **Find books** by genre, author, title, or topic — just describe what you're looking for
-• **Filter by format** — audiobooks to listen to, ebooks to read, or magazines
-• **Filter by language** — English, Spanish, French, German, and more
-• **Filter by length** — short, medium, or long
-• **Recommend by mood** — "something relaxing", "an exciting thriller", "a quick read"
+- Find books by genre, author, title, or topic — just describe what you're looking for
+- Filter by format — audiobooks to listen to, ebooks to read, or magazines
+- Filter by language — English, Spanish, French, German, and more
+- Filter by length — short, medium, or long
+- Recommend by mood — "something relaxing", "an exciting thriller", "a quick read"
 
 Try asking things like:
-– "Find me short mystery audiobooks"
-– "Show me romance ebooks in Spanish"
-– "Recommend something by Charles Dickens"
-– "I want a long fantasy audiobook"`;
+- "Find me short mystery audiobooks"
+- "Show me romance ebooks in Spanish"
+- "Recommend something by Charles Dickens"
+- "I want a long fantasy audiobook"`;
 }
 
 export function generalFallbackResponse(message: string): string {
@@ -392,7 +429,7 @@ export function generalFallbackResponse(message: string): string {
   if (/\b(thank|thanks|thank you|cheers)\b/.test(lower)) {
     return pick([
       "You're welcome! Let me know if you'd like more recommendations.",
-      "Happy to help! Enjoy your reading (or listening)! 📚",
+      "Happy to help! Enjoy your reading (or listening)!",
       "Anytime! Feel free to ask whenever you want to find more books.",
     ]);
   }
