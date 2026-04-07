@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Star, ThumbsUp, User, MessageSquare, Loader2 } from "lucide-react";
+import { Star, ThumbsUp, User, MessageSquare, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ import {
   useIsFollowing,
 } from "@/hooks/use-reviews";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import type { ReviewWithUser, AggregatedRatings } from "@shared/schema";
 import { Link } from "wouter";
 
@@ -94,11 +96,31 @@ function AggregatedRatingsDisplay({ bookId, title, author }: { bookId: string; t
   );
 }
 
-function ReviewForm({ bookId, onSuccess }: { bookId: string; onSuccess?: () => void }) {
+function ReviewForm({ bookId, bookTitle, onSuccess }: { bookId: string; bookTitle?: string; onSuccess?: () => void }) {
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
   const createReview = useCreateReview();
+  const { toast } = useToast();
+
+  const handleGenerateTitle = async () => {
+    if (!content.trim()) {
+      toast({ title: "Write your review first", description: "Add some review content before generating a title.", variant: "destructive" });
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const response = await apiRequest("POST", "/api/reviews/generate-title", { content, bookTitle });
+      const data = await response.json();
+      setTitle(data.title);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to generate title";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,18 +140,35 @@ function ReviewForm({ bookId, onSuccess }: { bookId: string; onSuccess?: () => v
         <StarRating rating={rating} onRatingChange={setRating} size="lg" />
       </div>
       
-      <Input
-        placeholder="Review title (optional)"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      
       <Textarea
         placeholder="Share your thoughts about this book..."
         value={content}
         onChange={(e) => setContent(e.target.value)}
         rows={4}
       />
+
+      <div className="flex gap-2 items-center">
+        <Input
+          placeholder="Review title (optional)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="flex-1"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          title="Generate title with AI"
+          disabled={!content.trim() || isGenerating}
+          onClick={handleGenerateTitle}
+        >
+          {isGenerating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
       
       <Button type="submit" disabled={rating === 0 || createReview.isPending}>
         {createReview.isPending ? (
@@ -272,7 +311,7 @@ export function BookReviews({ bookId, title, author, onViewAuthor }: BookReviews
           </CardHeader>
           <CardContent>
             {showForm ? (
-              <ReviewForm bookId={bookId} onSuccess={() => setShowForm(false)} />
+              <ReviewForm bookId={bookId} bookTitle={title} onSuccess={() => setShowForm(false)} />
             ) : (
               <Button onClick={() => setShowForm(true)}>
                 <Star className="mr-2 h-4 w-4" />
