@@ -17,7 +17,7 @@ import {
   ChevronRight, ToggleLeft, ToggleRight, MousePointer,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { AD_CATEGORIES } from "@shared/schema";
+import { AD_CATEGORIES, type AdSlot, type PublisherEarning } from "@shared/schema";
 
 const slotSchema = z.object({
   name: z.string().min(1, "Slot name required"),
@@ -38,11 +38,11 @@ export default function PublisherDashboard() {
   const { toast } = useToast();
   const [slotOpen, setSlotOpen] = useState(false);
 
-  const { data: slots = [], isLoading: slotsLoading } = useQuery<any[]>({
+  const { data: slots = [], isLoading: slotsLoading } = useQuery<AdSlot[]>({
     queryKey: ["/api/ad/slots"],
   });
 
-  const { data: earnings } = useQuery<any>({
+  const { data: earnings } = useQuery<PublisherEarning>({
     queryKey: ["/api/ad/earnings"],
   });
 
@@ -73,7 +73,7 @@ export default function PublisherDashboard() {
     onSuccess: () => { queryClient.clear(); window.location.href = "/"; },
   });
 
-  const totalImpressions = slots.reduce((s: number, slot: any) => s + (slot.totalImpressions ?? 0), 0);
+  const totalImpressions = slots.reduce((s, slot) => s + (slot.totalImpressions ?? 0), 0);
   const totalEarned = earnings?.totalEarnedCents ?? 0;
   const pending = earnings?.pendingCents ?? 0;
   const paidOut = earnings?.paidOutCents ?? 0;
@@ -261,7 +261,7 @@ export default function PublisherDashboard() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {slots.map((slot: any) => (
+                {slots.map((slot) => (
                   <Card key={slot.id} className="bg-white/5 border-white/10 hover:bg-white/8 transition-colors">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">

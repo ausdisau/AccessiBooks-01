@@ -12,6 +12,36 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+interface PendingAd {
+  id: string;
+  headline: string;
+  body: string | null;
+  destinationUrl: string;
+  status: string;
+  maxCpmCents: number;
+  advertiserId: string;
+  advertiserEmail: string | null;
+  createdAt: Date | null;
+}
+
+interface PlatformUser {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  role: string | null;
+  companyName: string | null;
+  website: string | null;
+  createdAt: Date | null;
+}
+
+interface PlatformStats {
+  advertiserCount: number;
+  publisherCount: number;
+  totalImpressions: number;
+  revenueCents: number;
+}
+
 function formatMoney(cents: number) { return `$${(cents / 100).toFixed(2)}`; }
 function formatNum(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString(); }
 
@@ -32,15 +62,15 @@ export default function AdminPlatformDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const { data: pendingAds = [], refetch: refetchAds } = useQuery<any[]>({
+  const { data: pendingAds = [], refetch: refetchAds } = useQuery<PendingAd[]>({
     queryKey: ["/api/ad/admin/pending-ads"],
   });
 
-  const { data: allUsers = [] } = useQuery<any[]>({
+  const { data: allUsers = [] } = useQuery<PlatformUser[]>({
     queryKey: ["/api/ad/admin/users"],
   });
 
-  const { data: platformStats } = useQuery<any>({
+  const { data: platformStats } = useQuery<PlatformStats>({
     queryKey: ["/api/ad/admin/stats"],
   });
 
@@ -60,8 +90,8 @@ export default function AdminPlatformDashboard() {
     onSuccess: () => { queryClient.clear(); window.location.href = "/"; },
   });
 
-  const advertisers = allUsers.filter((u: any) => u.role === "advertiser");
-  const publishers = allUsers.filter((u: any) => u.role === "publisher");
+  const advertisers = allUsers.filter((u) => u.role === "advertiser");
+  const publishers = allUsers.filter((u) => u.role === "publisher");
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] text-white flex">
@@ -153,7 +183,7 @@ export default function AdminPlatformDashboard() {
                 </Card>
               ) : (
                 <div className="space-y-4">
-                  {pendingAds.map((ad: any) => (
+                  {pendingAds.map((ad) => (
                     <Card key={ad.id} className="bg-white/5 border-white/10">
                       <CardContent className="p-5">
                         <div className="flex items-start justify-between gap-4 mb-3">
@@ -211,7 +241,7 @@ export default function AdminPlatformDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  allUsers.map((u: any) => (
+                  allUsers.map((u) => (
                     <Card key={u.id} className="bg-white/5 border-white/10">
                       <CardContent className="p-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">

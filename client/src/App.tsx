@@ -1907,7 +1907,7 @@ function App() {
   }
 
   // Ad platform role-based routing
-  const adRole = (user as any)?.role;
+  const adRole = user?.role;
 
   if (isAuthenticated && (adRole === "advertiser" || adRole === "publisher" || adRole === "admin")) {
     return (
