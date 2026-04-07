@@ -312,6 +312,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
       aria-live="polite"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
+      data-testid="ad-overlay"
     >
       <Card className="max-w-md w-full bg-gradient-to-b from-card to-card/95 border-primary/20">
         <CardContent className="p-6 space-y-4">

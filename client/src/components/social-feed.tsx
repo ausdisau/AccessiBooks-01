@@ -144,7 +144,7 @@ export function SocialFeed() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="social-feed">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

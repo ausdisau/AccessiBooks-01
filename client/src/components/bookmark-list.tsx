@@ -13,7 +13,7 @@ interface BookmarkListProps {
 export function BookmarkList({ bookmarks, onJumpTo, onRemove, formatTime }: BookmarkListProps) {
   if (bookmarks.length === 0) {
     return (
-      <Card>
+      <Card data-testid="bookmark-list">
         <CardHeader>
           <CardTitle className="flex items-center">
             <BookmarkIcon className="h-5 w-5 mr-2" aria-hidden="true" />
@@ -30,7 +30,7 @@ export function BookmarkList({ bookmarks, onJumpTo, onRemove, formatTime }: Book
   }
 
   return (
-    <Card>
+    <Card data-testid="bookmark-list">
       <CardHeader>
         <CardTitle className="flex items-center">
           <BookmarkIcon className="h-5 w-5 mr-2" aria-hidden="true" />
