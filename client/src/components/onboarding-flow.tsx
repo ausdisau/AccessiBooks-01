@@ -23,9 +23,17 @@ import {
   Check,
   Library,
   Star,
+  Glasses,
+  Brain,
+  Type,
+  Zap,
+  MousePointer,
+  Accessibility,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { localStorageService } from "@/lib/storage";
 import type { Book } from "@shared/schema";
+import type { AccessibilitySettings } from "@/lib/storage";
 
 interface OnboardingFlowProps {
   open: boolean;
@@ -33,7 +41,70 @@ interface OnboardingFlowProps {
   onComplete: () => void;
 }
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
+
+const A11Y_ONBOARDING_PROFILES = [
+  {
+    id: "vision-impaired",
+    name: "Vision Impaired",
+    icon: Glasses,
+    description: "Larger text, high contrast, enhanced focus",
+    settings: {
+      highContrast: true,
+      fontSize: 130,
+      lineHeight: 150,
+      highlightFocus: true,
+      largerCursor: true,
+    } as Partial<AccessibilitySettings>,
+  },
+  {
+    id: "adhd-friendly",
+    name: "ADHD Friendly",
+    icon: Brain,
+    description: "Reduced distractions, clear focus",
+    settings: {
+      pauseAnimations: true,
+      highlightFocus: true,
+      readingGuide: true,
+      lineHeight: 130,
+      letterSpacing: 2,
+    } as Partial<AccessibilitySettings>,
+  },
+  {
+    id: "dyslexia-friendly",
+    name: "Dyslexia Friendly",
+    icon: Type,
+    description: "Optimised fonts and letter spacing",
+    settings: {
+      dyslexiaFont: true,
+      fontSize: 115,
+      letterSpacing: 3,
+      lineHeight: 160,
+      highlightLinks: true,
+    } as Partial<AccessibilitySettings>,
+  },
+  {
+    id: "seizure-safe",
+    name: "Seizure Safe",
+    icon: Zap,
+    description: "No animations, reduced motion",
+    settings: {
+      pauseAnimations: true,
+      saturation: 80,
+    } as Partial<AccessibilitySettings>,
+  },
+  {
+    id: "motor-impaired",
+    name: "Motor Impaired",
+    icon: MousePointer,
+    description: "Enhanced navigation aids",
+    settings: {
+      largerCursor: true,
+      highlightFocus: true,
+      highlightLinks: true,
+    } as Partial<AccessibilitySettings>,
+  },
+];
 
 const GENRES = [
   "Fiction",
@@ -83,6 +154,7 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>([]);
   const [listeningHabit, setListeningHabit] = useState<string>("");
+  const [selectedA11yProfile, setSelectedA11yProfile] = useState<string | null>(null);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -150,6 +222,22 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
     localStorage.setItem("onboarding-completed", "true");
     localStorage.setItem("accessibooks_onboarding_done", "true");
 
+    // Apply selected accessibility profile to localStorage immediately
+    if (selectedA11yProfile) {
+      const profile = A11Y_ONBOARDING_PROFILES.find((p) => p.id === selectedA11yProfile);
+      if (profile) {
+        const current = localStorageService.getSettings();
+        const merged = { ...current, ...profile.settings, activeProfile: selectedA11yProfile };
+        localStorageService.saveSettings(merged);
+        // Persist to server if possible; errors are non-fatal
+        try {
+          await apiRequest("PUT", "/api/a11y/preferences", { profile: merged });
+        } catch {
+          // non-critical — settings are in localStorage
+        }
+      }
+    }
+
     try {
       await apiRequest("PUT", "/api/user/preferences", {
         favoriteGenres: selectedGenres,
@@ -169,6 +257,7 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
     setSelectedGenres([]);
     setSelectedContentTypes([]);
     setListeningHabit("");
+    setSelectedA11yProfile(null);
   };
 
   const canProceed = () => {
@@ -177,8 +266,9 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
       case 2: return selectedGenres.length >= 2;
       case 3: return selectedContentTypes.length >= 1;
       case 4: return listeningHabit !== "";
-      case 5: return true;
+      case 5: return true; // accessibility step — always skippable
       case 6: return true;
+      case 7: return true;
       default: return false;
     }
   };
@@ -240,6 +330,14 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
             />
           )}
           {step === 5 && (
+            <AccessibilityStep
+              selected={selectedA11yProfile}
+              onSelect={setSelectedA11yProfile}
+              onNext={handleNext}
+              onBack={handleBack}
+            />
+          )}
+          {step === 6 && (
             <RecommendationsStep
               books={recommendedBooks()}
               genres={selectedGenres}
@@ -247,11 +345,12 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
               onBack={handleBack}
             />
           )}
-          {step === 6 && (
+          {step === 7 && (
             <DoneStep
               genres={selectedGenres}
               contentTypes={selectedContentTypes}
               habit={listeningHabit}
+              a11yProfile={selectedA11yProfile}
               onComplete={handleComplete}
               onBack={handleBack}
             />
@@ -492,6 +591,82 @@ function ListeningHabitStep({
   );
 }
 
+function AccessibilityStep({
+  selected,
+  onSelect,
+  onNext,
+  onBack,
+}: {
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="text-center space-y-1">
+        <div className="mx-auto w-10 h-10 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center mb-2">
+          <Accessibility className="h-5 w-5 text-primary" />
+        </div>
+        <h2 className="text-xl font-bold text-foreground dark:text-white">
+          Any accessibility needs?
+        </h2>
+        <p className="text-sm text-muted-foreground dark:text-gray-400">
+          Choose a profile to set things up quickly — or skip and configure later
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2">
+        {A11Y_ONBOARDING_PROFILES.map((profile) => {
+          const isSelected = selected === profile.id;
+          const Icon = profile.icon;
+          return (
+            <button
+              key={profile.id}
+              onClick={() => onSelect(isSelected ? null : profile.id)}
+              className={`w-full flex items-center gap-3 rounded-xl border-2 p-3 transition-all duration-150 text-left ${
+                isSelected
+                  ? "border-primary bg-primary/10 dark:bg-primary/20"
+                  : "border-border dark:border-gray-700 hover:border-primary/50"
+              }`}
+            >
+              <div
+                className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                  isSelected
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted dark:bg-gray-800 text-muted-foreground dark:text-gray-400"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-semibold leading-tight ${isSelected ? "text-primary" : "text-foreground dark:text-gray-200"}`}>
+                  {profile.name}
+                </p>
+                <p className="text-xs text-muted-foreground dark:text-gray-500">
+                  {profile.description}
+                </p>
+              </div>
+              {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <Button variant="outline" onClick={onBack} className="dark:border-gray-700 dark:text-gray-300">
+          <ChevronLeft className="h-4 w-4 mr-1" />
+          Back
+        </Button>
+        <Button className="flex-1" onClick={onNext}>
+          {selected ? "Apply & Continue" : "Skip for Now"}
+          <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function RecommendationsStep({
   books,
   genres,
@@ -570,16 +745,21 @@ function DoneStep({
   genres,
   contentTypes,
   habit,
+  a11yProfile,
   onComplete,
   onBack,
 }: {
   genres: string[];
   contentTypes: string[];
   habit: string;
+  a11yProfile: string | null;
   onComplete: () => void;
   onBack: () => void;
 }) {
   const habitLabel = LISTENING_HABITS.find((h) => h.id === habit)?.label || habit;
+  const a11yProfileLabel = a11yProfile
+    ? A11Y_ONBOARDING_PROFILES.find((p) => p.id === a11yProfile)?.name
+    : null;
 
   return (
     <div className="text-center space-y-5 py-2">
@@ -622,6 +802,16 @@ function DoneStep({
             </Badge>
           </div>
         </div>
+
+        {a11yProfileLabel && (
+          <div className="rounded-xl bg-primary/10 dark:bg-primary/20 border border-primary/20 p-3 flex items-center gap-2">
+            <Accessibility className="h-4 w-4 text-primary shrink-0" />
+            <div>
+              <p className="text-xs font-semibold text-primary">Accessibility</p>
+              <p className="text-xs text-muted-foreground dark:text-gray-400">{a11yProfileLabel} profile applied</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-2 pt-2">
