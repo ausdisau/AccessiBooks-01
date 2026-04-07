@@ -252,7 +252,7 @@ export function BookReviews({ bookId, title, author, onViewAuthor }: BookReviews
   const [showForm, setShowForm] = useState(false);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="book-reviews">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

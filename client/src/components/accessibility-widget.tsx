@@ -311,6 +311,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
     const defaultSettings = getDefaultSettings();
     setSettings(defaultSettings);
     localStorageService.saveSettings(defaultSettings);
+    document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
     if (isLoggedIn) saveMutation.mutate(defaultSettings);
   };
 
