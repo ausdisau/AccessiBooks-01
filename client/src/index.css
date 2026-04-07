@@ -177,11 +177,10 @@ body {
   word-spacing: var(--a11y-word-spacing);
 }
 
-/* Invert Colors Mode */
-.invert-colors {
-  filter: invert(1) hue-rotate(180deg);
-}
-
+/* Invert Colors Mode
+   Note: the root-level filter (invert) is now composed inline by applySettings()
+   together with saturation and CVD filters so they all coexist in one filter string.
+   The class is still toggled so these child-counter-invert rules keep working. */
 .invert-colors img,
 .invert-colors video,
 .invert-colors svg {
