@@ -1834,6 +1834,7 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
+  const { toast } = useToast();
   const [guestMode, setGuestMode] = useState(false);
   const [showWelcomeBonus, setShowWelcomeBonus] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -1844,6 +1845,17 @@ function App() {
     if (refCode) {
       localStorage.setItem("accessibooks_referral_code", refCode);
       window.history.replaceState({}, "", window.location.pathname);
+    }
+    const authStatus = params.get("auth");
+    if (authStatus === "failed") {
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => {
+        toast({
+          title: "Sign-in failed",
+          description: "We couldn't sign you in with that account. Please try again or use a different method.",
+          variant: "destructive",
+        });
+      }, 300);
     }
   }, []);
 
