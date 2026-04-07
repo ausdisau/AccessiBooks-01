@@ -11,6 +11,7 @@ interface A11yProfile {
   reducedMotion: boolean;
   screenReaderHints: boolean;
   captionsOn: boolean;
+  captionPosition: "above" | "below";
   playbackSpeed: number;
   colorScheme: string;
   lineSpacing: number;
@@ -33,6 +34,7 @@ const DEFAULT_PROFILE: A11yProfile = {
   reducedMotion: false,
   screenReaderHints: true,
   captionsOn: false,
+  captionPosition: "below",
   playbackSpeed: 1.0,
   colorScheme: "default",
   lineSpacing: 1.5,
@@ -52,6 +54,8 @@ function profileFromLocalStorage(): A11yProfile {
     fontSize: settings.fontSize || DEFAULT_PROFILE.fontSize,
     letterSpacing: settings.letterSpacing || DEFAULT_PROFILE.letterSpacing,
     lineSpacing: settings.lineHeight || DEFAULT_PROFILE.lineSpacing,
+    captionsOn: settings.captionsOn ?? DEFAULT_PROFILE.captionsOn,
+    captionPosition: settings.captionPosition ?? DEFAULT_PROFILE.captionPosition,
   };
 }
 
@@ -65,6 +69,8 @@ function syncToLocalStorage(profile: A11yProfile) {
     fontSize: profile.fontSize,
     letterSpacing: profile.letterSpacing,
     lineHeight: profile.lineSpacing,
+    captionsOn: profile.captionsOn,
+    captionPosition: profile.captionPosition,
   });
 }
 

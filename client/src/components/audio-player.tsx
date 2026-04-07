@@ -39,6 +39,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Subtitles,
+  ArrowUpDown,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { InteractiveTranscript } from "./interactive-transcript";
@@ -102,9 +103,14 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const { user } = useAuth();
   const { profile, updateProfile } = usePreferencesKernel();
   const captionsOn = profile.captionsOn;
+  const captionPosition = profile.captionPosition ?? "below";
 
   const handleToggleCaptions = () => {
     updateProfile({ captionsOn: !captionsOn });
+  };
+
+  const handleToggleCaptionPosition = () => {
+    updateProfile({ captionPosition: captionPosition === "above" ? "below" : "above" });
   };
 
   const hasChapters = chapters.length > 0;
@@ -406,6 +412,18 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             />
           </div>
 
+          {/* Captions bar — above position */}
+          {captionsOn && captionPosition === "above" && (
+            <div className="mb-4" data-testid="captions-bar">
+              <CaptionsBar
+                bookId={book.id}
+                currentTime={currentTime}
+                fontSize={captionFontSize}
+                onFontSizeChange={setCaptionFontSize}
+              />
+            </div>
+          )}
+
           {/* Chapter indicator */}
           {hasChapters && currentChapter && (
             <div className="text-center mb-3">
@@ -627,6 +645,20 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 <Subtitles className="h-4 w-4" aria-hidden="true" />
                 <span className="hidden sm:inline">CC</span>
               </Button>
+
+              {captionsOn && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleToggleCaptionPosition}
+                  className="gap-1"
+                  aria-label={`Move captions ${captionPosition === "above" ? "below" : "above"} controls`}
+                  title={`Captions position: ${captionPosition} — click to move ${captionPosition === "above" ? "below" : "above"}`}
+                  data-testid="button-captions-position"
+                >
+                  <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              )}
             </div>
             
             <div className="flex items-center gap-2">
@@ -676,8 +708,8 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             </div>
           </div>
 
-          {/* Live captions bar — shown inside the card at the bottom */}
-          {captionsOn && (
+          {/* Live captions bar — below position */}
+          {captionsOn && captionPosition === "below" && (
             <div className="mt-4 pt-3 border-t border-border" data-testid="captions-bar">
               <CaptionsBar
                 bookId={book.id}

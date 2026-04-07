@@ -44,6 +44,8 @@ export interface AccessibilitySettings {
   activeProfile: string | null;
   wordSpacing?: number;
   colorVisionMode?: ColorVisionMode;
+  captionsOn?: boolean;
+  captionPosition?: "above" | "below";
 }
 
 export const localStorageService = {
@@ -136,6 +138,8 @@ export const localStorageService = {
       activeProfile: null,
       wordSpacing: 0,
       colorVisionMode: "none",
+      captionsOn: false,
+      captionPosition: "below",
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);
