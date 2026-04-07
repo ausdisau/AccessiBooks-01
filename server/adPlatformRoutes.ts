@@ -140,7 +140,9 @@ export function registerAdPlatformRoutes(app: Express) {
     }
   });
 
-  // PATCH /api/ad/display-ads/:id — edit ad (only in draft/rejected states)
+  // PATCH /api/ad/display-ads/:id — edit ad creative fields
+  // Advertisers may only set status to 'paused' or 'pending_review' (re-submit after edits).
+  // 'approved' and 'rejected' are admin-only transitions enforced here.
   app.patch("/api/ad/display-ads/:id", requireRole("advertiser"), async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req)!;
@@ -150,7 +152,7 @@ export function registerAdPlatformRoutes(app: Express) {
         imageUrl: z.string().url().optional().nullable(),
         destinationUrl: z.string().url().optional(),
         maxCpmCents: z.number().min(0).optional(),
-        status: z.enum(["draft", "pending_review", "approved", "rejected", "paused", "archived"]).optional(),
+        status: z.enum(["paused", "pending_review"]).optional(),
       });
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
@@ -185,13 +187,20 @@ export function registerAdPlatformRoutes(app: Express) {
 
   // ============ AD SLOTS ============
 
+  function withEmbedSnippet<T extends { id: string }>(row: T) {
+    return {
+      ...row,
+      embedSnippet: `<script src="https://adbid.io/serve.js" data-slot="${row.id}" async></script>`,
+    };
+  }
+
   app.get("/api/ad/slots", requireAnyRole("publisher", "admin"), async (req: Request, res: Response) => {
     try {
       const user = getAuthUser(req)!;
       const rows = user.role === "admin"
         ? await db.select().from(adSlots).orderBy(desc(adSlots.createdAt))
         : await db.select().from(adSlots).where(eq(adSlots.publisherId, user.id)).orderBy(desc(adSlots.createdAt));
-      res.json(rows);
+      res.json(rows.map(withEmbedSnippet));
     } catch (e) {
       res.status(500).json({ message: "Failed to fetch slots" });
     }
@@ -203,7 +212,7 @@ export function registerAdPlatformRoutes(app: Express) {
       const parsed = insertAdSlotSchema.safeParse({ ...req.body, publisherId: user.id });
       if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
       const [row] = await db.insert(adSlots).values({ ...parsed.data, publisherId: user.id }).returning();
-      res.status(201).json(row);
+      res.status(201).json(withEmbedSnippet(row));
     } catch (e) {
       console.error(e);
       res.status(500).json({ message: "Failed to create slot" });
@@ -230,7 +239,7 @@ export function registerAdPlatformRoutes(app: Express) {
         .where(and(eq(adSlots.id, req.params.id), eq(adSlots.publisherId, user.id)))
         .returning();
       if (!row) return res.status(404).json({ message: "Slot not found" });
-      res.json(row);
+      res.json(withEmbedSnippet(row));
     } catch (e) {
       res.status(500).json({ message: "Failed to update slot" });
     }

@@ -19,6 +19,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { AD_CATEGORIES, type AdSlot, type PublisherEarning } from "@shared/schema";
 
+type AdSlotWithEmbed = AdSlot & { embedSnippet?: string };
+
 const slotSchema = z.object({
   name: z.string().min(1, "Slot name required"),
   websiteUrl: z.string().url("Enter a valid URL"),
@@ -53,7 +55,7 @@ export default function PublisherDashboard() {
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  const { data: slots = [], isLoading: slotsLoading } = useQuery<AdSlot[]>({
+  const { data: slots = [], isLoading: slotsLoading } = useQuery<AdSlotWithEmbed[]>({
     queryKey: ["/api/ad/slots"],
   });
 
@@ -119,8 +121,12 @@ export default function PublisherDashboard() {
     slotForm.reset({ name: slot.name, websiteUrl: slot.websiteUrl, category: slot.category, width: slot.width, height: slot.height, minCpmCents: slot.minCpmCents ?? 0 });
   }
 
-  function copyEmbed(slotId: string) {
-    navigator.clipboard.writeText(embedSnippet(slotId)).then(() => {
+  function getSnippet(slot: AdSlotWithEmbed) {
+    return slot.embedSnippet ?? embedSnippet(slot.id);
+  }
+
+  function copyEmbed(slot: AdSlotWithEmbed) {
+    navigator.clipboard.writeText(getSnippet(slot)).then(() => {
       toast({ title: "Embed snippet copied to clipboard!" });
     });
   }
@@ -343,14 +349,14 @@ export default function PublisherDashboard() {
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-xs text-white/50">Integration snippet — paste into your site's HTML:</p>
                             <button
-                              onClick={() => copyEmbed(slot.id)}
+                              onClick={() => copyEmbed(slot)}
                               className="flex items-center gap-1 px-2 py-1 rounded text-xs text-violet-400 hover:bg-violet-500/10 transition-colors"
                             >
                               <Copy className="h-3 w-3" /> Copy
                             </button>
                           </div>
                           <pre className="bg-black/40 rounded p-3 text-xs text-green-300 overflow-x-auto whitespace-pre">
-                            {embedSnippet(slot.id)}
+                            {getSnippet(slot)}
                           </pre>
                           <div className="mt-2 sm:hidden grid grid-cols-2 gap-2 text-xs">
                             <div><div className="text-white/40">Impressions</div><div className="font-medium">{formatNum(slot.totalImpressions ?? 0)}</div></div>
