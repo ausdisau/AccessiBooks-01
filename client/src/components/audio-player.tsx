@@ -297,42 +297,48 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6" role="region" aria-label={`Audio player: ${book.title} by ${book.author}`}>
+    <div className="max-w-4xl mx-auto" role="region" aria-label={`Audio player: ${book.title} by ${book.author}`}>
       <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
 
-      <Card>
-        <CardContent className="p-4 sm:p-6">
-          <div className="flex flex-col md:flex-row gap-6">
-            {book.coverImage && (
-              <img
-                src={book.coverImage}
-                alt={`${book.title} audiobook cover`}
-                className="w-32 h-48 sm:w-40 sm:h-60 md:w-48 md:h-72 object-cover rounded-md mx-auto md:mx-0 shadow-lg"
-                data-testid="img-book-cover"
-              />
-            )}
-            
-            <div className="flex-1">
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-2" data-testid="text-book-title">
-                {book.title}
-              </h2>
-              <p className="text-base sm:text-lg md:text-xl text-muted-foreground mb-4" data-testid="text-book-author">
-                by {book.author}
-              </p>
-              {book.narrator && (
-                <p className="text-muted-foreground mb-4" data-testid="text-book-narrator">
-                  Narrated by {book.narrator}
-                </p>
-              )}
-              {book.description && (
-                <p className="text-sm text-muted-foreground line-clamp-4" data-testid="text-book-description">
-                  {book.description}
-                </p>
-              )}
+      {/* Two-column layout on md+, single column stacked on mobile */}
+      <div className="flex flex-col md:flex-row gap-4 sm:gap-6">
+        {/* Left column: cover art (full-width on mobile, fixed width on md+) */}
+        <div className="md:w-56 lg:w-64 shrink-0">
+          {book.coverImage ? (
+            <img
+              src={book.coverImage}
+              alt={`${book.title} audiobook cover`}
+              className="w-full max-w-[200px] sm:max-w-[240px] md:w-full md:max-w-none aspect-[2/3] object-cover rounded-lg mx-auto md:mx-0 shadow-lg"
+              data-testid="img-book-cover"
+            />
+          ) : (
+            <div className="w-full max-w-[200px] sm:max-w-[240px] md:w-full md:max-w-none aspect-[2/3] rounded-lg bg-secondary flex items-center justify-center mx-auto md:mx-0 shadow-md">
+              <ListMusic className="h-16 w-16 text-muted-foreground" />
             </div>
+          )}
+        </div>
+
+        {/* Right column: book info + controls + chapter list */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4">
+          {/* Book info */}
+          <div>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 text-center md:text-left" data-testid="text-book-title">
+              {book.title}
+            </h2>
+            <p className="text-base sm:text-lg text-muted-foreground mb-2 text-center md:text-left" data-testid="text-book-author">
+              by {book.author}
+            </p>
+            {book.narrator && (
+              <p className="text-sm text-muted-foreground mb-2 text-center md:text-left" data-testid="text-book-narrator">
+                Narrated by {book.narrator}
+              </p>
+            )}
+            {book.description && (
+              <p className="text-sm text-muted-foreground line-clamp-3 hidden md:block" data-testid="text-book-description">
+                {book.description}
+              </p>
+            )}
           </div>
-        </CardContent>
-      </Card>
 
       <Card className="overflow-hidden">
         <CardContent className="p-4 sm:p-6">
@@ -410,7 +416,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 variant="ghost"
                 onClick={handlePrevChapter}
                 disabled={!canGoPrev}
-                className="h-10 w-10 rounded-full"
+                className="h-11 w-11 rounded-full"
                 aria-label="Previous chapter"
                 data-testid="button-prev-chapter"
               >
@@ -472,7 +478,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 variant="ghost"
                 onClick={handleNextChapter}
                 disabled={!canGoNext}
-                className="h-10 w-10 rounded-full"
+                className="h-11 w-11 rounded-full"
                 aria-label="Next chapter"
                 data-testid="button-next-chapter"
               >
@@ -738,6 +744,8 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
           </CardContent>
         </Card>
       )}
+        </div>{/* end right column */}
+      </div>{/* end two-column flex */}
     </div>
   );
 }
