@@ -3,24 +3,43 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import session from "express-session";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { scrypt, randomBytes, timingSafeEqual, createHmac } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { sendEmail } from "./mailer";
 import { sendViaAgentMail } from "./agentMailer";
 
-interface MagicLinkRecord {
-  email: string;
-  expiresAt: number;
+const MAGIC_LINK_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+function getMagicLinkSecret(): string {
+  return process.env.SESSION_SECRET || process.env.MAGIC_LINK_SECRET || "magic-link-dev-secret-change-in-prod";
 }
 
-const magicLinkTokens = new Map<string, MagicLinkRecord>();
+function createMagicToken(email: string): string {
+  const payload = Buffer.from(JSON.stringify({ email: email.toLowerCase().trim(), expiresAt: Date.now() + MAGIC_LINK_TTL_MS })).toString("base64url");
+  const sig = createHmac("sha256", getMagicLinkSecret()).update(payload).digest("hex");
+  return `${payload}.${sig}`;
+}
 
-function pruneMagicLinkTokens() {
-  const now = Date.now();
-  for (const [token, record] of magicLinkTokens.entries()) {
-    if (record.expiresAt < now) magicLinkTokens.delete(token);
+function verifyMagicToken(token: string): { email: string } | null {
+  const dotIdx = token.lastIndexOf(".");
+  if (dotIdx === -1) return null;
+  const payload = token.slice(0, dotIdx);
+  const sig = token.slice(dotIdx + 1);
+  const expectedSig = createHmac("sha256", getMagicLinkSecret()).update(payload).digest("hex");
+  try {
+    if (sig.length !== expectedSig.length || !timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expectedSig, "hex"))) return null;
+  } catch {
+    return null;
+  }
+  try {
+    const { email, expiresAt } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (!email || typeof email !== "string" || typeof expiresAt !== "number") return null;
+    if (Date.now() > expiresAt) return null;
+    return { email };
+  } catch {
+    return null;
   }
 }
 
@@ -252,12 +271,12 @@ export function setupAuth(app: Express) {
     if (!email || typeof email !== "string") {
       return res.status(400).json({ message: "Email is required" });
     }
-    pruneMagicLinkTokens();
-    const token = randomBytes(32).toString("hex");
-    magicLinkTokens.set(token, { email: email.toLowerCase().trim(), expiresAt: Date.now() + 15 * 60 * 1000 });
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const link = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
-    // Always log for dev visibility — email is always masked; token/link only shown in non-production
+    const token = createMagicToken(email);
+    // Respect X-Forwarded-Proto so the link works correctly behind Replit's HTTPS proxy
+    const proto = (req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
+    const baseUrl = `${proto}://${req.get("host")}`;
+    const link = `${baseUrl}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
+    // Always log for dev visibility — email is always masked; full link only in development
     const atIdx = email.indexOf("@");
     const localPart = atIdx >= 0 ? email.slice(0, atIdx) : email;
     const domain = atIdx >= 0 ? email.slice(atIdx + 1) : "unknown";
@@ -265,7 +284,7 @@ export function setupAuth(app: Express) {
     if (process.env.NODE_ENV === "development") {
       console.log(`[MagicLink] Generated link for ${maskedEmail}: ${link}`);
     } else {
-      console.log(`[MagicLink] Generated link for ${maskedEmail} (token: ${token.slice(0, 8)}...)`);
+      console.log(`[MagicLink] Generated link for ${maskedEmail}`);
     }
 
     const emailPayload = {
@@ -298,14 +317,13 @@ export function setupAuth(app: Express) {
     if (!token || typeof token !== "string") {
       return res.redirect("/?magic=invalid");
     }
-    pruneMagicLinkTokens();
-    const record = magicLinkTokens.get(token);
-    if (!record || record.expiresAt < Date.now()) {
-      magicLinkTokens.delete(token);
+    const result = verifyMagicToken(token);
+    if (!result) {
+      // verifyMagicToken returns null for both expired and invalid tokens;
+      // use "expired" as it's more user-friendly (most likely cause)
       return res.redirect("/?magic=expired");
     }
-    magicLinkTokens.delete(token);
-    const email = record.email;
+    const { email } = result;
     let user = await storage.getUserByEmail(email);
     if (!user) {
       const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") + "_" + randomBytes(3).toString("hex");
