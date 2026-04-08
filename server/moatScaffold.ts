@@ -6,7 +6,7 @@ import {
   moatMetricsSnapshots, accessibilityPreferences, bookTranscripts,
   users, books, DISABILITY_TYPES,
 } from "@shared/schema";
-import { eq, and, count, avg, sql, desc } from "drizzle-orm";
+import { eq, and, count, avg, sql, desc, inArray } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
 import { z } from "zod";
 
@@ -140,14 +140,18 @@ export function registerMoatScaffoldRoutes(app: Express) {
   const CERTIFIED_MIN_RATING = 4.0;
   const CERTIFIED_MIN_COUNT = 5;
 
+  function isValidDisabilityType(value: string | undefined): value is typeof DISABILITY_TYPES[number] {
+    return typeof value === "string" && (DISABILITY_TYPES as readonly string[]).includes(value);
+  }
+
   app.get("/api/accessible-picks", async (req: any, res) => {
     try {
-      const disabilityType = req.query.disabilityType as string | undefined;
+      const rawDisabilityType = req.query.disabilityType as string | undefined;
       const sortBy = (req.query.sortBy as string) || "rating";
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
 
-      const validDisabilityType = DISABILITY_TYPES.includes(disabilityType as any) ? disabilityType : null;
+      const validDisabilityType = isValidDisabilityType(rawDisabilityType) ? rawDisabilityType : null;
 
       const reviewRows = await db
         .select({
@@ -183,26 +187,29 @@ export function registerMoatScaffoldRoutes(app: Express) {
 
       for (const stat of Object.values(bookStats)) {
         for (const [dtype, group] of Object.entries(stat.disabilityGroups)) {
-          const avg = group.total / group.count;
-          if (group.count >= CERTIFIED_MIN_COUNT && avg >= CERTIFIED_MIN_RATING) {
+          const groupAvg = group.total / group.count;
+          if (group.count >= CERTIFIED_MIN_COUNT && groupAvg >= CERTIFIED_MIN_RATING) {
             stat.certifiedTypes.push(dtype);
           }
         }
       }
 
+      const avgRating = (s: typeof bookStats[string]) => s.totalRating / s.count;
       const statsList = Object.values(bookStats)
         .filter(s => s.count > 0)
-        .sort((a, b) => (b.totalRating / b.count) - (a.totalRating / a.count));
+        .sort((a, b) => {
+          if (sortBy === "count") return b.count - a.count;
+          return avgRating(b) - avgRating(a);
+        });
 
-      const bookIds = statsList.slice((page - 1) * limit, page * limit).map(s => s.bookId);
+      const pagedStats = statsList.slice((page - 1) * limit, page * limit);
+      const bookIds = pagedStats.map(s => s.bookId);
 
       if (bookIds.length === 0) {
         return res.json({ books: [], total: statsList.length, page, certifiedBookIds: [] });
       }
 
-      const bookRows = await db.select().from(books).where(
-        sql`${books.id} = ANY(${sql.raw(`ARRAY[${bookIds.map(id => `'${id.replace(/'/g, "''")}'`).join(",")}]::text[]`)})`,
-      );
+      const bookRows = await db.select().from(books).where(inArray(books.id, bookIds));
 
       const certifiedBookIds = statsList.filter(s => s.certifiedTypes.length > 0).map(s => s.bookId);
 
@@ -211,7 +218,7 @@ export function registerMoatScaffoldRoutes(app: Express) {
         const stat = bookStats[id];
         return book ? {
           ...book,
-          accessibilityScore: stat ? Math.round((stat.totalRating / stat.count) * 10) / 10 : 0,
+          accessibilityScore: stat ? Math.round(avgRating(stat) * 10) / 10 : 0,
           accessibilityReviewCount: stat?.count ?? 0,
           certifiedTypes: stat?.certifiedTypes ?? [],
           isCertified: (stat?.certifiedTypes.length ?? 0) > 0,
