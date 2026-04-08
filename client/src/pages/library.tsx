@@ -344,6 +344,7 @@ export function Library({ onSelectBook }: LibraryProps) {
 
   return (
     <div className="space-y-8">
+      <h1 className="sr-only">Browse Library</h1>
       {showPersonalizedSections && (
         <ListeningStatsCard />
       )}

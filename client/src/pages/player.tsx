@@ -43,6 +43,7 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
 
   return (
     <div className="space-y-8">
+      <h1 className="sr-only">{book.title}</h1>
       <AudioAdInterstitial 
         booksPlayed={booksPlayed}
         onAdComplete={onAdComplete}
