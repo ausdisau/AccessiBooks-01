@@ -153,6 +153,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
   
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -193,6 +194,19 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
 
       <div className="flex items-center space-x-2 ml-auto shrink-0">
         <AccessibilityControls />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setDonateOpen(true)}
+          aria-label="Donate to Australian Disability Ltd"
+          data-testid="button-donate"
+          className="p-2 relative text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950"
+          title="Donate"
+        >
+          <Gift className="h-5 w-5" />
+          <span className="hidden md:inline ml-1.5 text-sm font-medium">Donate</span>
+        </Button>
 
         <Button
           variant="ghost"
@@ -273,6 +287,37 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
     )}
     <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
     <AccessibilityCoachPanel isOpen={coachOpen} onClose={() => setCoachOpen(false)} />
+
+    <Dialog open={donateOpen} onOpenChange={setDonateOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+          <Gift className="h-5 w-5" />
+          Support Australian Disability Ltd
+        </DialogTitle>
+        <div className="space-y-4 pt-1">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            <strong className="text-foreground">Australian Disability Ltd</strong> is a registered charity dedicated to improving the lives of people with disabilities across Australia. AccessiBooks is proudly operated by Australian Disability Ltd to make literature accessible to everyone.
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Your donation helps us expand our audiobook library, improve accessibility features, and reach more people who need them. Every contribution makes a difference.
+          </p>
+          <div className="flex flex-col gap-2 pt-2">
+            <a
+              href="https://www.australiandisability.org.au/donate"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 w-full rounded-md bg-rose-500 hover:bg-rose-600 text-white font-semibold px-4 py-2.5 text-sm transition-colors"
+            >
+              <Gift className="h-4 w-4" />
+              Donate Now
+            </a>
+            <Button variant="outline" size="sm" onClick={() => setDonateOpen(false)} className="w-full">
+              Maybe Later
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
