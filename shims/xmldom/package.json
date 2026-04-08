@@ -1,0 +1,7 @@
+{
+  "name": "xmldom",
+  "version": "0.9.0",
+  "description": "Safe xmldom shim redirecting to @xmldom/xmldom",
+  "main": "index.js",
+  "license": "MIT"
+}

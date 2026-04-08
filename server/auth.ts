@@ -258,8 +258,10 @@ export function setupAuth(app: Express) {
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const link = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
     // Always log for dev visibility — email is always masked; token/link only shown in non-production
-    const [localPart = "", domain = ""] = email.split("@");
-    const maskedEmail = `${localPart.slice(0, 2).padEnd(Math.max(2, localPart.length), "*")}@${domain}`;
+    const atIdx = email.indexOf("@");
+    const localPart = atIdx >= 0 ? email.slice(0, atIdx) : email;
+    const domain = atIdx >= 0 ? email.slice(atIdx + 1) : "unknown";
+    const maskedEmail = `${localPart.slice(0, 2)}***@${domain}`;
     if (process.env.NODE_ENV !== "production") {
       console.log(`[MagicLink] Generated link for ${maskedEmail}: ${link}`);
     } else {
