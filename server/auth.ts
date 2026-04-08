@@ -257,8 +257,13 @@ export function setupAuth(app: Express) {
     magicLinkTokens.set(token, { email: email.toLowerCase().trim(), expiresAt: Date.now() + 15 * 60 * 1000 });
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const link = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
-    // Always log the link for dev visibility regardless of email delivery method
-    console.log(`[MagicLink] Generated link for ${email}: ${link}`);
+    // Always log for dev visibility — mask email, never log the full token in production
+    const maskedEmail = email.replace(/^(.{2}).*(@.*)$/, "$1***$2");
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[MagicLink] Generated link for ${maskedEmail}: ${link}`);
+    } else {
+      console.log(`[MagicLink] Generated link for ${maskedEmail} (token: ${token.slice(0, 8)}...)`);
+    }
 
     const emailPayload = {
       to: email,
@@ -302,7 +307,7 @@ export function setupAuth(app: Express) {
     if (!user) {
       const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") + "_" + randomBytes(3).toString("hex");
       user = await storage.createUser({ email, username, password: "MAGIC_LINK_USER", firstName: "", lastName: "" });
-      console.log(`[MagicLink] Created new user for ${email}: ${user.id}`);
+      console.log(`[MagicLink] Created new user: ${user.id}`);
     }
     req.login(user, (err) => {
       if (err) {
