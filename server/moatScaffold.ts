@@ -370,6 +370,23 @@ export function registerMoatScaffoldRoutes(app: Express) {
           }).from(accessibilityPreferences).where(inArray(accessibilityPreferences.userId, memberUserIds))
         : [];
 
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const weeklyListeningRaw = memberUserIds.length > 0
+        ? await db.select({
+            userId: listeningHistory.userId,
+            currentTime: listeningHistory.currentTime,
+          }).from(listeningHistory)
+            .where(and(
+              inArray(listeningHistory.userId, memberUserIds),
+              gte(listeningHistory.lastPlayedAt, sevenDaysAgo),
+            ))
+        : [];
+
+      const weeklyMinutesByUser: Record<string, number> = {};
+      for (const row of weeklyListeningRaw) {
+        weeklyMinutesByUser[row.userId] = (weeklyMinutesByUser[row.userId] ?? 0) + Math.round((row.currentTime ?? 0) / 60);
+      }
+
       const xpByUser = Object.fromEntries(xpRows.map((r) => [r.userId, r]));
       const streakByUser = Object.fromEntries(streakRows.map((r) => [r.userId, r]));
       const presetByUser = Object.fromEntries(presetRows.map((r) => [r.userId, r]));
@@ -377,6 +394,7 @@ export function registerMoatScaffoldRoutes(app: Express) {
       const members = memberRows.map((m) => ({
         ...m,
         listeningMinutesTotal: xpByUser[m.userId]?.totalListeningMinutes ?? 0,
+        weeklyListeningMinutes: weeklyMinutesByUser[m.userId] ?? 0,
         booksCompleted: xpByUser[m.userId]?.booksCompleted ?? 0,
         currentStreak: streakByUser[m.userId]?.currentStreak ?? 0,
         activePreset: presetByUser[m.userId]?.activePreset ?? null,
@@ -527,8 +545,11 @@ export function registerMoatScaffoldRoutes(app: Express) {
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
       const [membership] = await db.select().from(institutionalMembers)
-        .where(eq(institutionalMembers.userId, userId));
-      if (!membership) return res.status(403).json({ message: "Not part of an institution" });
+        .where(and(
+          eq(institutionalMembers.userId, userId),
+          eq(institutionalMembers.role, "admin"),
+        ));
+      if (!membership) return res.status(403).json({ message: "Admin access required for org analytics" });
 
       const memberRows = await db.select({
         userId: institutionalMembers.userId,
