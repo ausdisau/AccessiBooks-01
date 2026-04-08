@@ -30,6 +30,7 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
   if (!book) {
     return (
       <div className="text-center py-12">
+        <h1 className="sr-only">Now Playing</h1>
         <p className="text-muted-foreground text-lg mb-4" data-testid="text-no-book">
           No book selected. Please select a book from the library.
         </p>
@@ -43,7 +44,7 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
 
   return (
     <div className="space-y-8">
-      <h1 className="sr-only">{book.title}</h1>
+      <h1 className="text-2xl font-bold">Now Playing</h1>
       <AudioAdInterstitial 
         booksPlayed={booksPlayed}
         onAdComplete={onAdComplete}
