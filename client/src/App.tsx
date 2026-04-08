@@ -76,6 +76,7 @@ const ChurnDashboard = lazy(() => import('@/components/churn-dashboard').then(m 
 const TrustPage = lazy(() => import('@/pages/trust'));
 const InstitutionalPage = lazy(() => import('@/pages/institutional'));
 const MoatDashboard = lazy(() => import('@/pages/moat-dashboard'));
+const AccessiblePicksPage = lazy(() => import('@/pages/accessible-picks'));
 const AdPlatformLanding = lazy(() => import('@/pages/ad-platform/landing'));
 const AdvertiserDashboard = lazy(() => import('@/pages/ad-platform/advertiser-dashboard'));
 const PublisherDashboard = lazy(() => import('@/pages/ad-platform/publisher-dashboard'));
@@ -108,6 +109,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
     label: "Discover",
     items: [
       { path: "/feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
+      { path: "/accessible-picks", label: "Accessible Picks", icon: <HeartHandshake className="h-5 w-5" /> },
       { path: "/queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
       { path: "/party", label: "Party", icon: <Radio className="h-5 w-5" /> },
       { path: "/social", label: "Social", icon: <Users className="h-5 w-5" /> },
@@ -1948,6 +1950,13 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="moat-metrics-panel" role="region" data-testid="panel-moat-metrics">
                       <MoatDashboard />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/accessible-picks">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="accessible-picks-panel" role="region" data-testid="panel-accessible-picks">
+                      <AccessiblePicksPage />
                     </div>
                   </Suspense>
                 </Route>
