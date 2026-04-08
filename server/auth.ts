@@ -262,7 +262,7 @@ export function setupAuth(app: Express) {
     const localPart = atIdx >= 0 ? email.slice(0, atIdx) : email;
     const domain = atIdx >= 0 ? email.slice(atIdx + 1) : "unknown";
     const maskedEmail = `${localPart.slice(0, 2)}***@${domain}`;
-    if (process.env.NODE_ENV !== "production") {
+    if (process.env.NODE_ENV === "development") {
       console.log(`[MagicLink] Generated link for ${maskedEmail}: ${link}`);
     } else {
       console.log(`[MagicLink] Generated link for ${maskedEmail} (token: ${token.slice(0, 8)}...)`);
