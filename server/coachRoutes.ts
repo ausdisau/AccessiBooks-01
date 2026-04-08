@@ -151,7 +151,7 @@ YOUR CAPABILITIES:
 
 ACCESSIBILITY PRESETS YOU KNOW ABOUT:
 - Low Vision: large text, high contrast, simple layout
-- Motor Impaired: voice control enabled, larger touch targets
+- Motor Impaired / Motor Impairment: voice control enabled, larger touch targets
 - Dyslexia Optimized: OpenDyslexic font, wider spacing, reduced visual clutter
 - Screen Reader: full ARIA hints, keyboard navigation optimized
 
@@ -187,6 +187,31 @@ async function fetchUserContext(userId: string): Promise<{
   }
 }
 
+const GUEST_LIMIT = 3;
+const GUEST_WINDOW_MS = 24 * 60 * 60 * 1000;
+const guestUsage = new Map<string, { count: number; resetAt: number }>();
+
+function getGuestKey(req: Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const ip = Array.isArray(forwarded) ? forwarded[0] : (forwarded?.split(",")[0] ?? req.socket.remoteAddress ?? "unknown");
+  return `coach:${ip}`;
+}
+
+function checkAndIncrementGuest(req: Request): { allowed: boolean; remaining: number } {
+  const key = getGuestKey(req);
+  const now = Date.now();
+  let entry = guestUsage.get(key);
+  if (!entry || entry.resetAt <= now) {
+    entry = { count: 0, resetAt: now + GUEST_WINDOW_MS };
+  }
+  if (entry.count >= GUEST_LIMIT) {
+    return { allowed: false, remaining: 0 };
+  }
+  entry.count += 1;
+  guestUsage.set(key, entry);
+  return { allowed: true, remaining: GUEST_LIMIT - entry.count };
+}
+
 export function registerCoachRoutes(app: Express): void {
   app.post("/api/coach", async (req: Request, res: Response) => {
     try {
@@ -198,7 +223,7 @@ export function registerCoachRoutes(app: Express): void {
       const authed = typeof r.isAuthenticated === "function" && r.isAuthenticated();
       const userId = authed ? r.user?.id : null;
 
-      const { messages, sessionCount = 0 } = req.body as {
+      const { messages } = req.body as {
         messages: CoachMessage[];
         sessionCount?: number;
       };
@@ -207,11 +232,14 @@ export function registerCoachRoutes(app: Express): void {
         return res.status(400).json({ error: "messages array required" });
       }
 
-      if (!authed && sessionCount >= 3) {
-        return res.status(403).json({
-          error: "guest_limit",
-          message: "Sign in to continue chatting with your Accessibility Coach.",
-        });
+      if (!authed) {
+        const { allowed } = checkAndIncrementGuest(req);
+        if (!allowed) {
+          return res.status(403).json({
+            error: "guest_limit",
+            message: "Sign in to continue chatting with your Accessibility Coach.",
+          });
+        }
       }
 
       let userContext = { activePreset: null as string | null, profile: {} as Record<string, unknown>, recentBooks: [] as { bookTitle: string; bookAuthor: string | null }[] };
