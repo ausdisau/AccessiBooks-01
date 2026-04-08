@@ -20,7 +20,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus, Zap } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus, Zap, HeartHandshake } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -37,6 +37,7 @@ import { SocialFeed } from "@/components/social-feed";
 import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
 import { AiChatPanel } from "@/components/ai-chat-panel";
+import { AccessibilityCoachPanel } from "@/components/accessibility-coach-panel";
 import { SignUpPrompt } from "@/components/sign-up-prompt";
 import { KeyboardShortcutsOverlay } from "@/components/keyboard-shortcuts-overlay";
 import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
@@ -149,6 +150,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   const [, navigate] = useLocation();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
   
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -189,6 +191,18 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
 
       <div className="flex items-center space-x-2 ml-auto shrink-0">
         <AccessibilityControls />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCoachOpen(true)}
+          aria-label="Open Accessibility Coach"
+          data-testid="button-accessibility-coach"
+          className="p-2 relative text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
+          title="Accessibility Coach"
+        >
+          <HeartHandshake className="h-5 w-5" />
+        </Button>
 
         <Button
           variant="ghost"
@@ -256,6 +270,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
       </div>
     )}
     <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+    <AccessibilityCoachPanel isOpen={coachOpen} onClose={() => setCoachOpen(false)} />
     </>
   );
 }
@@ -968,6 +983,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
   
   const { data: platformStats } = useQuery<{ totalBooks: number; totalUsers: number; totalListeningMinutes: number }>({
     queryKey: ["/api/platform/stats"],
@@ -1052,6 +1068,17 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-4">
             <AccessibilityControls />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCoachOpen(true)}
+              aria-label="Open Accessibility Coach"
+              data-testid="button-accessibility-coach"
+              className="p-2 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
+              title="Accessibility Coach"
+            >
+              <HeartHandshake className="h-5 w-5" />
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -1374,6 +1401,7 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
         setIsRegistering={setIsRegistering}
       />
       <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+      <AccessibilityCoachPanel isOpen={coachOpen} onClose={() => setCoachOpen(false)} />
     </div>
   );
 }
@@ -1979,6 +2007,7 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
   const { toggleHighContrast } = useAccessibility();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
@@ -2022,6 +2051,17 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => setCoachOpen(true)}
+                aria-label="Open Accessibility Coach"
+                data-testid="button-accessibility-coach"
+                className="p-2 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
+                title="Accessibility Coach"
+              >
+                <HeartHandshake className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setChatOpen(true)}
                 aria-label="Open AI chat assistant"
                 data-testid="button-ai-chat"
@@ -2041,6 +2081,7 @@ function GuestBrowseApp({ onExitGuest }: { onExitGuest: () => void }) {
         </div>
       </header>
       <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+      <AccessibilityCoachPanel isOpen={coachOpen} onClose={() => setCoachOpen(false)} />
 
       <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
