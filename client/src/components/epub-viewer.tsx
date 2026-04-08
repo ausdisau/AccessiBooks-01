@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import ePub, { Book as EpubBook, Rendition, NavItem } from "epubjs";
+import ePub from "epubjs";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,6 +32,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
+interface EpubNavItem { href: string; label: string; subitems?: EpubNavItem[]; }
+type EpubBook = any;
+type Rendition = any;
+
 interface EpubViewerProps {
   book: Book;
   onBack: () => void;
@@ -53,7 +57,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<ReadingSettings>(defaultSettings);
-  const [toc, setToc] = useState<NavItem[]>([]);
+  const [toc, setToc] = useState<EpubNavItem[]>([]);
   const [currentLocation, setCurrentLocation] = useState<string>("");
   const [progress, setProgress] = useState(0);
   
@@ -80,7 +84,8 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
     try {
       if (!viewerRef.current) return;
 
-      const epub = ePub(epubUrl);
+      // epubjs 0.4.x: ePub() is async and resolves after the book is fully opened
+      const epub = await ePub(epubUrl);
       epubRef.current = epub;
 
       const rendition = epub.renderTo(viewerRef.current, {
@@ -91,10 +96,11 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
       });
       renditionRef.current = rendition;
 
-      await epub.ready;
-
-      const navigation = await epub.loaded.navigation;
-      setToc(navigation.toc);
+      // In 0.4.x the book is already open; epub.navigation is set directly (no epub.loaded.navigation)
+      const navigation = epub.navigation;
+      if (navigation?.toc) {
+        setToc(navigation.toc as EpubNavItem[]);
+      }
 
       const savedLocation = localStorage.getItem(`epub-location-${book.id}`);
       if (savedLocation) {

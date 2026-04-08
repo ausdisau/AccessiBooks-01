@@ -257,8 +257,9 @@ export function setupAuth(app: Express) {
     magicLinkTokens.set(token, { email: email.toLowerCase().trim(), expiresAt: Date.now() + 15 * 60 * 1000 });
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const link = `${baseUrl}/api/auth/magic-link/verify?token=${token}`;
-    // Always log for dev visibility — mask email, never log the full token in production
-    const maskedEmail = email.replace(/^(.{2}).*(@.*)$/, "$1***$2");
+    // Always log for dev visibility — email is always masked; token/link only shown in non-production
+    const [localPart = "", domain = ""] = email.split("@");
+    const maskedEmail = `${localPart.slice(0, 2).padEnd(Math.max(2, localPart.length), "*")}@${domain}`;
     if (process.env.NODE_ENV !== "production") {
       console.log(`[MagicLink] Generated link for ${maskedEmail}: ${link}`);
     } else {
