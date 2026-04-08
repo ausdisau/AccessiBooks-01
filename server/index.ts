@@ -64,7 +64,12 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  // Detect production by checking if the built frontend exists (dist/public/).
+  // In the bundled dist/index.js, import.meta.dirname is the dist/ folder.
+  // In development (tsx server/index.ts), import.meta.dirname is server/ — no public/ there.
+  const distPublicPath = path.resolve(import.meta.dirname, "public");
+  const isProduction = process.env.NODE_ENV === "production" || fs.existsSync(distPublicPath);
+  if (!isProduction) {
     await setupVite(app, server);
   } else {
     serveStatic(app);
