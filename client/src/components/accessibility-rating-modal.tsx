@@ -85,6 +85,7 @@ export function AccessibilityRatingModal({ isOpen, onClose, bookId, bookTitle }:
       apiRequest("POST", `/api/books/${bookId}/a11y-reviews`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/books", bookId, "a11y-reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accessible-picks"] });
       toast({
         title: "Review submitted!",
         description: "Thank you! Your accessibility rating helps other readers with similar needs.",
