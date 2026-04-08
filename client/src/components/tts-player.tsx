@@ -22,12 +22,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 
-type Voice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
+type OpenAIVoice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
+type VoiceProvider = "openai" | "elevenlabs";
+
+interface SelectedVoice {
+  id: string;
+  provider: VoiceProvider;
+}
 
 interface TTSPlayerProps {
   text: string;
@@ -46,15 +53,27 @@ interface OwnedVoicePack {
   systemPrompt?: string;
 }
 
-const FREE_VOICES: Voice[] = ["alloy", "shimmer"];
+interface VoiceOption {
+  id: string;
+  name: string;
+  description: string;
+  provider: VoiceProvider;
+}
 
-const VOICE_OPTIONS: { value: Voice; label: string; description: string }[] = [
-  { value: "nova", label: "Nova", description: "Warm, engaging female" },
-  { value: "alloy", label: "Alloy", description: "Neutral, balanced" },
-  { value: "echo", label: "Echo", description: "Clear, steady male" },
-  { value: "fable", label: "Fable", description: "Expressive, storytelling" },
-  { value: "onyx", label: "Onyx", description: "Deep, authoritative male" },
-  { value: "shimmer", label: "Shimmer", description: "Bright, optimistic female" },
+interface VoiceList {
+  openai: VoiceOption[];
+  elevenlabs: VoiceOption[];
+}
+
+const FREE_OPENAI_VOICES: OpenAIVoice[] = ["alloy", "shimmer"];
+
+const DEFAULT_OPENAI_VOICES: VoiceOption[] = [
+  { id: "nova", name: "Nova", description: "Warm, engaging female", provider: "openai" },
+  { id: "alloy", name: "Alloy", description: "Neutral, balanced", provider: "openai" },
+  { id: "echo", name: "Echo", description: "Clear, steady male", provider: "openai" },
+  { id: "fable", name: "Fable", description: "Expressive, storytelling", provider: "openai" },
+  { id: "onyx", name: "Onyx", description: "Deep, authoritative male", provider: "openai" },
+  { id: "shimmer", name: "Shimmer", description: "Bright, optimistic female", provider: "openai" },
 ];
 
 export function TTSPlayer({
@@ -69,7 +88,7 @@ export function TTSPlayer({
 }: TTSPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [voice, setVoice] = useState<Voice>("alloy");
+  const [selectedVoice, setSelectedVoice] = useState<SelectedVoice>({ id: "alloy", provider: "openai" });
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
@@ -88,38 +107,54 @@ export function TTSPlayer({
     queryKey: ["/api/voice-packs/owned"],
   });
 
+  const { data: voiceList } = useQuery<VoiceList>({
+    queryKey: ["/api/tts/voices"],
+  });
+
+  const allVoices = useMemo((): VoiceOption[] => {
+    const openai = voiceList?.openai || DEFAULT_OPENAI_VOICES;
+    const elevenlabs = voiceList?.elevenlabs || [];
+    return [...openai, ...elevenlabs];
+  }, [voiceList]);
+
   const unlockedVoices = useMemo(() => {
-    const voices = new Set<string>(FREE_VOICES);
+    const voices = new Set<string>(FREE_OPENAI_VOICES);
+    // All ElevenLabs voices are accessible (gated by provider config, not voice packs)
+    if (voiceList?.elevenlabs) {
+      for (const v of voiceList.elevenlabs) voices.add(v.id);
+    }
     if (ownedPacks) {
       for (const pack of ownedPacks) {
         if (pack.voices) {
-          for (const v of pack.voices) {
-            voices.add(v);
-          }
+          for (const v of pack.voices) voices.add(v);
         }
       }
     }
     return voices;
-  }, [ownedPacks]);
+  }, [ownedPacks, voiceList]);
 
   const activeSystemPrompt = useMemo(() => {
     if (!ownedPacks) return undefined;
     for (const pack of ownedPacks) {
-      if (pack.voices?.includes(voice) && pack.systemPrompt) {
+      if (pack.voices?.includes(selectedVoice.id) && pack.systemPrompt) {
         return pack.systemPrompt;
       }
     }
     return undefined;
-  }, [ownedPacks, voice]);
+  }, [ownedPacks, selectedVoice]);
 
-  const isVoiceLocked = useCallback((v: Voice) => {
-    return !unlockedVoices.has(v);
+  const isVoiceLocked = useCallback((v: VoiceOption) => {
+    return !unlockedVoices.has(v.id);
   }, [unlockedVoices]);
 
+  const currentVoiceOption = useMemo(() =>
+    allVoices.find(v => v.id === selectedVoice.id && v.provider === selectedVoice.provider)
+    || DEFAULT_OPENAI_VOICES[1],
+    [allVoices, selectedVoice]
+  );
+
   useEffect(() => {
-    return () => {
-      cleanup();
-    };
+    return () => { cleanup(); };
   }, []);
 
   useEffect(() => {
@@ -170,7 +205,7 @@ export function TTSPlayer({
   }, [onWordIndex]);
 
   const synthesizeAndPlay = useCallback(async (textToSpeak: string) => {
-    if (isVoiceLocked(voice)) return;
+    if (isVoiceLocked(currentVoiceOption)) return;
 
     cleanup();
     setIsLoading(true);
@@ -182,9 +217,17 @@ export function TTSPlayer({
     }
 
     try {
-      const body: Record<string, string> = { text: textToSpeak, voice, format: "mp3" };
-      if (activeSystemPrompt) {
-        body.systemPrompt = activeSystemPrompt;
+      const body: Record<string, string> = {
+        text: textToSpeak,
+        provider: selectedVoice.provider,
+      };
+
+      if (selectedVoice.provider === "elevenlabs") {
+        body.voiceId = selectedVoice.id;
+      } else {
+        body.voice = selectedVoice.id;
+        body.format = "mp3";
+        if (activeSystemPrompt) body.systemPrompt = activeSystemPrompt;
       }
 
       const response = await fetch("/api/tts/synthesize", {
@@ -221,8 +264,6 @@ export function TTSPlayer({
         }
         if (autoAdvance && currentPage < totalPages) {
           onNextPage();
-          setTimeout(() => {
-          }, 500);
         }
       });
 
@@ -244,11 +285,11 @@ export function TTSPlayer({
         variant: "destructive",
       });
     }
-  }, [voice, playbackRate, volume, isMuted, autoAdvance, currentPage, totalPages, onNextPage, onWordIndex, cleanup, updateProgress, toast, activeSystemPrompt, isVoiceLocked]);
+  }, [selectedVoice, currentVoiceOption, playbackRate, volume, isMuted, autoAdvance, currentPage, totalPages, onNextPage, onWordIndex, cleanup, updateProgress, toast, activeSystemPrompt, isVoiceLocked]);
 
   const handlePlayPause = useCallback(() => {
     if (isLoading) return;
-    if (isVoiceLocked(voice)) return;
+    if (isVoiceLocked(currentVoiceOption)) return;
 
     if (audioRef.current && currentTextRef.current === text) {
       if (isPlaying) {
@@ -266,7 +307,7 @@ export function TTSPlayer({
     } else {
       synthesizeAndPlay(text);
     }
-  }, [isLoading, isPlaying, text, voice, synthesizeAndPlay, updateProgress, onWordIndex, isVoiceLocked]);
+  }, [isLoading, isPlaying, text, currentVoiceOption, synthesizeAndPlay, updateProgress, onWordIndex, isVoiceLocked]);
 
   const handleStop = useCallback(() => {
     cleanup();
@@ -291,7 +332,10 @@ export function TTSPlayer({
   };
 
   const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-  const currentVoiceLocked = isVoiceLocked(voice);
+  const currentVoiceLocked = isVoiceLocked(currentVoiceOption);
+
+  const openaiVoices = useMemo(() => voiceList?.openai || DEFAULT_OPENAI_VOICES, [voiceList]);
+  const elevenlabsVoices = useMemo(() => voiceList?.elevenlabs || [], [voiceList]);
 
   return (
     <div className={`border rounded-lg p-3 ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-muted/30 border-border"}`}>
@@ -410,37 +454,71 @@ export function TTSPlayer({
             <div className="flex items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 text-xs">
-                    {currentVoiceLocked && <Lock className="h-3 w-3 mr-1" />}
-                    {VOICE_OPTIONS.find(v => v.value === voice)?.label || "Voice"}
+                  <Button variant="outline" size="sm" className="h-7 text-xs max-w-[160px] truncate">
+                    {currentVoiceLocked && <Lock className="h-3 w-3 mr-1 flex-shrink-0" />}
+                    {currentVoiceOption.name}
+                    {currentVoiceOption.provider === "elevenlabs" && (
+                      <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0 h-4">EL</Badge>
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuLabel>AI Voice</DropdownMenuLabel>
+                <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto w-56">
+                  <DropdownMenuLabel>OpenAI Voices</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {VOICE_OPTIONS.map(v => {
-                    const locked = isVoiceLocked(v.value);
+                  {openaiVoices.map(v => {
+                    const locked = !unlockedVoices.has(v.id);
+                    const active = selectedVoice.id === v.id && selectedVoice.provider === "openai";
                     return (
                       <DropdownMenuItem
-                        key={v.value}
+                        key={v.id}
                         onClick={() => {
-                          setVoice(v.value);
+                          setSelectedVoice({ id: v.id, provider: "openai" });
                           if (isPlaying) handleStop();
                         }}
-                        className={voice === v.value ? "bg-primary/10" : ""}
+                        className={active ? "bg-primary/10" : ""}
                       >
                         <div className="flex items-center gap-2 w-full">
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <div className="font-medium flex items-center gap-1">
-                              {v.label}
+                              {v.name}
                               {locked && <Lock className="h-3 w-3 text-muted-foreground" />}
                             </div>
-                            <div className="text-xs text-muted-foreground">{v.description}</div>
+                            <div className="text-xs text-muted-foreground truncate">{v.description}</div>
                           </div>
                         </div>
                       </DropdownMenuItem>
                     );
                   })}
+                  {elevenlabsVoices.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="flex items-center gap-1">
+                        ElevenLabs Voices
+                        <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 ml-1">Premium</Badge>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {elevenlabsVoices.map(v => {
+                        const active = selectedVoice.id === v.id && selectedVoice.provider === "elevenlabs";
+                        return (
+                          <DropdownMenuItem
+                            key={v.id}
+                            onClick={() => {
+                              setSelectedVoice({ id: v.id, provider: "elevenlabs" });
+                              if (isPlaying) handleStop();
+                            }}
+                            className={active ? "bg-primary/10" : ""}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium">{v.name}</div>
+                              {v.description && (
+                                <div className="text-xs text-muted-foreground truncate">{v.description}</div>
+                              )}
+                            </div>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href="/voice-packs" className="text-xs text-primary cursor-pointer">

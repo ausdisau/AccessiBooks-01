@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useSubscription } from "@/hooks/use-subscription";
+import { useAuth } from "@/hooks/useAuth";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,6 +37,10 @@ import {
   Palette,
   Sparkles,
   Lock,
+  Mic,
+  Radio,
+  Play,
+  CheckCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -204,6 +209,10 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const { toast } = useToast();
+  const { isPremium, isPlus } = useSubscription();
+  const { user: authUser } = useAuth();
+  const isAdmin = authUser?.role === "admin";
+  const canGenerateNarration = isPremium || isPlus || isAdmin;
 
   const { data: easyEnglishStatus, refetch: refetchEasyEnglishStatus } = useQuery<{
     freeChaptersRemaining: number | null;
@@ -257,6 +266,49 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     },
     onError: (err: any) => {
       toast({ title: "Subscription failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const { data: existingNarration, refetch: refetchNarration } = useQuery<{
+    narrationUrl: string;
+    voiceId: string;
+    createdAt: string;
+  } | null>({
+    queryKey: ["/api/audiobook/narration", book.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/audiobook/narration/${book.id}`);
+      if (res.status === 404) return null;
+      if (!res.ok) return null;
+      return res.json();
+    },
+    retry: false,
+  });
+
+  const generateNarrationMutation = useMutation({
+    mutationFn: async (voiceId?: string) => {
+      const res = await apiRequest("POST", "/api/audiobook/generate", {
+        bookId: book.id,
+        ...(voiceId ? { voiceId } : {}),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any).message || "Failed to generate narration");
+      }
+      return res.json() as Promise<{ narrationUrl: string; voiceId: string; chunks: number }>;
+    },
+    onSuccess: () => {
+      refetchNarration();
+      toast({
+        title: "Narration generated",
+        description: "Your audiobook narration is ready to play.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Narration failed",
+        description: err.message || "Could not generate narration. Try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -963,6 +1015,81 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             darkMode={settings.theme === "dark"}
             onWordIndex={setHighlightedWordIndex}
           />
+        </div>
+
+        <div className={`mb-4 border rounded-lg p-3 ${settings.theme === "dark" ? "bg-gray-800/50 border-gray-700" : "bg-muted/30 border-border"}`}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Radio className="h-4 w-4 text-primary" />
+              <span className={`text-sm font-medium ${settings.theme === "dark" ? "text-gray-200" : "text-foreground"}`}>
+                Full Audiobook Narration
+              </span>
+              {existingNarration && (
+                <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 border-green-300">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Ready
+                </Badge>
+              )}
+            </div>
+            {!existingNarration ? (
+              canGenerateNarration ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => generateNarrationMutation.mutate()}
+                  disabled={generateNarrationMutation.isPending}
+                >
+                  {generateNarrationMutation.isPending ? (
+                    <>
+                      <Mic className="h-3 w-3 mr-1 animate-pulse" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="h-3 w-3 mr-1" />
+                      Generate Narration
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Lock className="h-3 w-3 text-muted-foreground" />
+                  <span className={`text-xs ${settings.theme === "dark" ? "text-gray-400" : "text-muted-foreground"}`}>
+                    Plus or Premium required
+                  </span>
+                </div>
+              )
+            ) : (
+              <div className="flex items-center gap-2">
+                <audio
+                  controls
+                  src={existingNarration.narrationUrl}
+                  className="h-8 max-w-[200px] sm:max-w-xs"
+                  style={{ borderRadius: "6px" }}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => generateNarrationMutation.mutate()}
+                  disabled={generateNarrationMutation.isPending}
+                  title="Re-generate narration"
+                >
+                  {generateNarrationMutation.isPending ? (
+                    <Mic className="h-3 w-3 animate-pulse" />
+                  ) : (
+                    <Mic className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+          {generateNarrationMutation.isPending && (
+            <p className={`mt-2 text-xs ${settings.theme === "dark" ? "text-gray-400" : "text-muted-foreground"}`}>
+              Synthesizing narration via ElevenLabs — this may take a minute for longer books…
+            </p>
+          )}
         </div>
 
         <div className="mb-4">
