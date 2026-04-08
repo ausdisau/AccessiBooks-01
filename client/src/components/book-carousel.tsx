@@ -217,13 +217,8 @@ export function LandingCarousel() {
   const [isPaused, setIsPaused] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   
-  const { data: booksResponse } = useQuery<{ data: Book[] }>({
-    queryKey: ["/api/books", "carousel"],
-    queryFn: async () => {
-      const res = await fetch("/api/books?limit=20");
-      if (!res.ok) throw new Error("Failed to fetch books");
-      return res.json();
-    },
+  const { data: booksResponse } = useQuery<{ data: Book[]; nextCursor: string | null; hasMore: boolean }>({
+    queryKey: ["/api/books?limit=20"],
   });
   const books = booksResponse?.data || [];
 
