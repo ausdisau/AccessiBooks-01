@@ -75,7 +75,7 @@
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.7.1",
     "embla-carousel-react": "^8.6.0",
-    "epubjs": "^0.3.93",
+    "epubjs": "^0.4.2",
     "esbuild": "^0.25.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.2.2",
@@ -164,8 +164,6 @@
         "form-data": "^2.5.5"
       }
     },
-    "epubjs": {
-      "@xmldom/xmldom": ">=0.8.12"
-    }
+    "xmldom": "file:./shims/xmldom"
   }
 }
