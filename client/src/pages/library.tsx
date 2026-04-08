@@ -25,21 +25,37 @@ import { CommercialAudiobooks } from "@/components/commercial-audiobooks";
 import { PodcastDiscovery } from "@/components/podcast-discovery";
 import { MagazineSection } from "@/components/magazine-section";
 
+interface OrgMemberData {
+  userId: string;
+  weeklyListeningMinutes: number;
+}
+
+interface OrgData {
+  account: {
+    orgName: string;
+    weeklyGoalMinutes: number;
+  };
+  members: OrgMemberData[];
+}
+
 function OrgGoalCard({ userId }: { userId: string }) {
-  const orgQuery = useQuery({
+  const orgQuery = useQuery<OrgData>({
     queryKey: ["/api/institutional/members"],
+    queryFn: () =>
+      fetch("/api/institutional/members", { credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error("Not a member");
+        return r.json() as Promise<OrgData>;
+      }),
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
 
-  const orgData = orgQuery.data as any;
+  const orgData = orgQuery.data;
   if (!orgData?.account || !orgData.account.weeklyGoalMinutes) return null;
 
-  const goalMinutes: number = orgData.account.weeklyGoalMinutes;
-
-  const myData = (orgData.members as any[])?.find((m: any) => m.userId === userId);
-  const totalMinutes: number = myData?.listeningMinutesTotal ?? 0;
-  const weeklyMinutes = Math.min(totalMinutes, goalMinutes);
+  const goalMinutes = orgData.account.weeklyGoalMinutes;
+  const myData = orgData.members.find((m) => m.userId === userId);
+  const weeklyMinutes = Math.min(myData?.weeklyListeningMinutes ?? 0, goalMinutes);
   const pct = goalMinutes > 0 ? Math.round((weeklyMinutes / goalMinutes) * 100) : 0;
 
   return (
@@ -53,7 +69,7 @@ function OrgGoalCard({ userId }: { userId: string }) {
         </p>
         <Progress value={pct} className="h-2 mb-1" />
         <p className="text-xs text-muted-foreground">
-          {weeklyMinutes} / {goalMinutes} min ({pct}%)
+          {weeklyMinutes} / {goalMinutes} min this week ({pct}%)
           {pct >= 100 && " — Goal reached!"}
         </p>
       </div>

@@ -19,6 +19,87 @@ import {
   TrendingUp, Award, Headphones, ChevronRight, Eye,
 } from "lucide-react";
 
+interface OrgAccount {
+  id: string;
+  orgName: string;
+  orgType: string;
+  maxSeats: number;
+  currentSeats: number;
+  isActive: boolean;
+  weeklyGoalMinutes: number;
+}
+
+interface OrgMember {
+  id: string;
+  userId: string;
+  role: string;
+  addedAt: string | null;
+  email: string | null;
+  name: string | null;
+  profileImage: string | null;
+  listeningMinutesTotal: number;
+  weeklyListeningMinutes: number;
+  booksCompleted: number;
+  currentStreak: number;
+  activePreset: string | null;
+}
+
+interface MembersResponse {
+  account: OrgAccount;
+  members: OrgMember[];
+  myRole: string;
+}
+
+interface TopBook {
+  bookId: string;
+  bookTitle: string;
+  bookCover: string | null;
+  plays: number;
+}
+
+interface PresetEntry {
+  preset: string;
+  count: number;
+}
+
+interface WeeklyDay {
+  day: number;
+  minutes: number;
+}
+
+interface AnalyticsResponse {
+  totalListeningMinutes: number;
+  totalBooksCompleted: number;
+  avgCompletionRate: number;
+  activeUsersCount: number;
+  topBooks: TopBook[];
+  presetDistribution: PresetEntry[];
+  weeklyListeningMinutes: WeeklyDay[];
+}
+
+interface HistoryEntry {
+  bookId: string;
+  bookTitle: string;
+  bookAuthor: string | null;
+  bookCover: string | null;
+  currentTime: number;
+  totalDuration: number | null;
+  lastPlayedAt: string | null;
+  completedAt: string | null;
+  playCount: number;
+}
+
+interface MemberDetailResponse {
+  user: { id: string; email: string | null; name: string | null; profileImage: string | null };
+  role: string;
+  addedAt: string | null;
+  history: HistoryEntry[];
+  streak: { currentStreak: number; longestStreak: number } | null;
+  xp: { totalListeningMinutes: number; booksCompleted: number } | null;
+  accessibilityProfile: Record<string, unknown> | null;
+  activePreset: string | null;
+}
+
 const PLANS = [
   {
     key: "education",
@@ -38,7 +119,7 @@ const PLANS = [
   },
 ];
 
-function getInitials(name: string | null | undefined, email: string | null | undefined) {
+function getInitials(name: string | null | undefined, email: string | null | undefined): string {
   if (name) {
     const parts = name.trim().split(" ");
     return parts.length >= 2
@@ -58,13 +139,17 @@ function MemberAvatar({ name, email, size = "md" }: { name?: string | null; emai
 }
 
 function MemberDetailDrawer({ userId, open, onClose }: { userId: string | null; open: boolean; onClose: () => void }) {
-  const memberDetailQuery = useQuery({
+  const memberDetailQuery = useQuery<MemberDetailResponse>({
     queryKey: ["/api/institutional/member", userId],
-    queryFn: () => fetch(`/api/institutional/member/${userId}`, { credentials: "include" }).then((r) => r.json()),
+    queryFn: () =>
+      fetch(`/api/institutional/member/${userId}`, { credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error("Failed to load member");
+        return r.json() as Promise<MemberDetailResponse>;
+      }),
     enabled: !!userId && open,
   });
 
-  const detail = memberDetailQuery.data as any;
+  const detail = memberDetailQuery.data;
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -81,7 +166,7 @@ function MemberDetailDrawer({ userId, open, onClose }: { userId: string | null; 
           <div className="space-y-4 mt-6">
             {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
           </div>
-        ) : !detail || detail.message ? (
+        ) : memberDetailQuery.isError || !detail ? (
           <p className="text-muted-foreground mt-6">Could not load member data.</p>
         ) : (
           <div className="mt-6 space-y-6">
@@ -118,15 +203,31 @@ function MemberDetailDrawer({ userId, open, onClose }: { userId: string | null; 
               </div>
             )}
 
+            {detail.accessibilityProfile && Object.keys(detail.accessibilityProfile).length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <Shield className="h-4 w-4" /> Accessibility Settings
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(detail.accessibilityProfile).map(([key, val]) => (
+                    <div key={key} className="p-2 rounded bg-muted/40">
+                      <p className="text-xs text-muted-foreground capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</p>
+                      <p className="text-xs font-medium text-foreground truncate">{String(val)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                 <BookOpen className="h-4 w-4" /> Recent Reading History
               </h4>
-              {(detail.history ?? []).length === 0 ? (
+              {detail.history.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No reading history yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {(detail.history as any[]).slice(0, 8).map((h: any) => (
+                  {detail.history.slice(0, 8).map((h) => (
                     <div key={h.bookId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/40 transition-colors">
                       {h.bookCover ? (
                         <img src={h.bookCover} alt={h.bookTitle} className="h-10 w-7 object-cover rounded flex-shrink-0" />
@@ -154,7 +255,7 @@ function MemberDetailDrawer({ userId, open, onClose }: { userId: string | null; 
   );
 }
 
-function AdminDashboard({ data }: { data: any }) {
+function AdminDashboard({ data }: { data: MembersResponse }) {
   const { toast } = useToast();
   const [inviteEmail, setInviteEmail] = useState("");
   const [weeklyGoal, setWeeklyGoal] = useState<string>(String(data.account?.weeklyGoalMinutes ?? 180));
@@ -162,14 +263,19 @@ function AdminDashboard({ data }: { data: any }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const account = data.account;
-  const members: any[] = data.members ?? [];
-  const myRole: string = data.myRole ?? "member";
+  const members = data.members;
+  const myRole = data.myRole;
 
-  const analyticsQuery = useQuery({
+  const analyticsQuery = useQuery<AnalyticsResponse>({
     queryKey: ["/api/institutional/analytics"],
+    queryFn: () =>
+      fetch("/api/institutional/analytics", { credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error("Admin access required");
+        return r.json() as Promise<AnalyticsResponse>;
+      }),
     enabled: myRole === "admin",
   });
-  const analytics = analyticsQuery.data as any;
+  const analytics = analyticsQuery.data;
 
   const inviteMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/institutional/invite", { email: inviteEmail }),
@@ -178,7 +284,7 @@ function AdminDashboard({ data }: { data: any }) {
       setInviteEmail("");
       queryClient.invalidateQueries({ queryKey: ["/api/institutional/members"] });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Failed to add member", description: err.message, variant: "destructive" });
     },
   });
@@ -189,7 +295,7 @@ function AdminDashboard({ data }: { data: any }) {
       toast({ title: "Member removed" });
       queryClient.invalidateQueries({ queryKey: ["/api/institutional/members"] });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Failed to remove member", description: err.message, variant: "destructive" });
     },
   });
@@ -202,7 +308,7 @@ function AdminDashboard({ data }: { data: any }) {
       toast({ title: "Reading goal updated!" });
       queryClient.invalidateQueries({ queryKey: ["/api/institutional/members"] });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Failed to update goal", description: err.message, variant: "destructive" });
     },
   });
@@ -301,7 +407,7 @@ function AdminDashboard({ data }: { data: any }) {
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {members.map((m: any) => (
+                  {members.map((m) => (
                     <div key={m.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group">
                       <MemberAvatar name={m.name} email={m.email} />
                       <div className="flex-1 min-w-0">
@@ -382,7 +488,7 @@ function AdminDashboard({ data }: { data: any }) {
                       </div>
                       <div>
                         <p className="text-2xl font-bold text-foreground">
-                          {Math.round((analytics.totalListeningMinutes ?? 0) / 60)}h
+                          {Math.round(analytics.totalListeningMinutes / 60)}h
                         </p>
                         <p className="text-xs text-muted-foreground">Total Listening</p>
                       </div>
@@ -396,7 +502,7 @@ function AdminDashboard({ data }: { data: any }) {
                         <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-foreground">{analytics.totalBooksCompleted ?? 0}</p>
+                        <p className="text-2xl font-bold text-foreground">{analytics.totalBooksCompleted}</p>
                         <p className="text-xs text-muted-foreground">Books Completed</p>
                       </div>
                     </div>
@@ -409,7 +515,7 @@ function AdminDashboard({ data }: { data: any }) {
                         <TrendingUp className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-foreground">{analytics.avgCompletionRate ?? 0}%</p>
+                        <p className="text-2xl font-bold text-foreground">{analytics.avgCompletionRate}%</p>
                         <p className="text-xs text-muted-foreground">Completion Rate</p>
                       </div>
                     </div>
@@ -422,7 +528,7 @@ function AdminDashboard({ data }: { data: any }) {
                         <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-foreground">{analytics.activeUsersCount ?? 0}</p>
+                        <p className="text-2xl font-bold text-foreground">{analytics.activeUsersCount}</p>
                         <p className="text-xs text-muted-foreground">Active Readers</p>
                       </div>
                     </div>
@@ -439,29 +545,25 @@ function AdminDashboard({ data }: { data: any }) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {analytics.weeklyListeningMinutes ? (
-                      <div className="flex items-end gap-1 h-24">
-                        {(analytics.weeklyListeningMinutes as any[]).map((d: any, i: number) => {
-                          const maxMin = Math.max(...(analytics.weeklyListeningMinutes as any[]).map((x: any) => x.minutes), 1);
-                          const pct = (d.minutes / maxMin) * 100;
-                          const dayLabel = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
-                            (new Date().getDay() - 6 + i + 7) % 7
-                          ];
-                          return (
-                            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                              <div
-                                className="w-full rounded-sm bg-primary/70 transition-all"
-                                style={{ height: `${Math.max(pct, 4)}%` }}
-                                title={`${d.minutes} min`}
-                              />
-                              <span className="text-xs text-muted-foreground">{dayLabel}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No data</p>
-                    )}
+                    <div className="flex items-end gap-1 h-24">
+                      {analytics.weeklyListeningMinutes.map((d, i) => {
+                        const maxMin = Math.max(...analytics.weeklyListeningMinutes.map((x) => x.minutes), 1);
+                        const pct = (d.minutes / maxMin) * 100;
+                        const dayLabel = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
+                          (new Date().getDay() - 6 + i + 7) % 7
+                        ];
+                        return (
+                          <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                            <div
+                              className="w-full rounded-sm bg-primary/70 transition-all"
+                              style={{ height: `${Math.max(pct, 4)}%` }}
+                              title={`${d.minutes} min`}
+                            />
+                            <span className="text-xs text-muted-foreground">{dayLabel}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -473,11 +575,11 @@ function AdminDashboard({ data }: { data: any }) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {(analytics.topBooks ?? []).length === 0 ? (
+                    {analytics.topBooks.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No data yet.</p>
                     ) : (
                       <div className="space-y-2">
-                        {(analytics.topBooks as any[]).map((b: any, i: number) => (
+                        {analytics.topBooks.map((b, i) => (
                           <div key={b.bookId} className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
                             {b.bookCover && (
@@ -493,7 +595,7 @@ function AdminDashboard({ data }: { data: any }) {
                 </Card>
               </div>
 
-              {(analytics.presetDistribution ?? []).length > 0 && (
+              {analytics.presetDistribution.length > 0 && (
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -503,8 +605,8 @@ function AdminDashboard({ data }: { data: any }) {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {(analytics.presetDistribution as any[]).map((p: any) => {
-                        const total = (analytics.presetDistribution as any[]).reduce((s: number, x: any) => s + x.count, 0);
+                      {analytics.presetDistribution.map((p) => {
+                        const total = analytics.presetDistribution.reduce((s, x) => s + x.count, 0);
                         const pct = total > 0 ? Math.round((p.count / total) * 100) : 0;
                         return (
                           <div key={p.preset} className="flex items-center gap-3">
@@ -519,9 +621,12 @@ function AdminDashboard({ data }: { data: any }) {
                 </Card>
               )}
             </>
-          ) : (
-            <p className="text-muted-foreground text-sm">No analytics data available yet.</p>
-          )}
+          ) : analyticsQuery.isError ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <BarChart3 className="h-10 w-10 mx-auto mb-2 opacity-40" />
+              <p>Analytics unavailable.</p>
+            </div>
+          ) : null}
         </TabsContent>
 
         <TabsContent value="goals" className="space-y-4 mt-4">
@@ -624,7 +729,7 @@ function SignupForm() {
       toast({ title: "Organization created successfully!" });
       queryClient.invalidateQueries({ queryKey: ["/api/institutional/members"] });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Failed to create organization", description: err.message, variant: "destructive" });
     },
   });
@@ -741,8 +846,13 @@ function SignupForm() {
 export default function InstitutionalPage() {
   const { user } = useAuth();
 
-  const membersQuery = useQuery({
+  const membersQuery = useQuery<MembersResponse>({
     queryKey: ["/api/institutional/members"],
+    queryFn: () =>
+      fetch("/api/institutional/members", { credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error("Not a member");
+        return r.json() as Promise<MembersResponse>;
+      }),
     enabled: !!user,
     retry: false,
   });
@@ -769,11 +879,10 @@ export default function InstitutionalPage() {
     );
   }
 
-  const data = membersQuery.data as any;
-  const hasOrg = data && data.account;
+  const hasOrg = membersQuery.isSuccess && membersQuery.data;
 
   if (hasOrg) {
-    return <AdminDashboard data={data} />;
+    return <AdminDashboard data={membersQuery.data} />;
   }
 
   return <SignupForm />;
