@@ -6,6 +6,8 @@ import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon, ShoppingCart, Chec
 import { BookCover } from "@/components/book-cover";
 import { usePurchaseCheckout } from "@/hooks/use-purchases";
 import { useSubscription } from "@/hooks/use-subscription";
+import { BookAccessibilityRatings } from "@/components/book-accessibility-ratings";
+import { Separator } from "@/components/ui/separator";
 
 interface BookCardProps {
   book: Book;
@@ -196,6 +198,9 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
             </Button>
           )}
         </div>
+
+        <Separator className="my-4" />
+        <BookAccessibilityRatings bookId={book.id} bookTitle={book.title} />
       </CardContent>
     </Card>
   );

@@ -1540,14 +1540,19 @@ export const insertAccessibilityMetadataSchema = createInsertSchema(accessibilit
 export type InsertAccessibilityMetadata = z.infer<typeof insertAccessibilityMetadataSchema>;
 export type AccessibilityMetadata = typeof accessibilityMetadata.$inferSelect;
 
+export const DISABILITY_TYPES = ["dyslexia", "low-vision", "motor", "hearing", "cognitive", "other"] as const;
+export type DisabilityType = typeof DISABILITY_TYPES[number];
+
 export const accessibilityReviews = pgTable("accessibility_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
+  disabilityType: text("disability_type").notNull().default("other"),
   rating: integer("rating").notNull(),
   screenReaderScore: integer("screen_reader_score"),
   navigationScore: integer("navigation_score"),
   contrastScore: integer("contrast_score"),
+  audioQualityScore: integer("audio_quality_score"),
   comments: text("comments"),
   status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1555,6 +1560,7 @@ export const accessibilityReviews = pgTable("accessibility_reviews", {
   index("idx_a11y_reviews_book").on(table.bookId),
   index("idx_a11y_reviews_user").on(table.userId),
   index("idx_a11y_reviews_status").on(table.status),
+  index("idx_a11y_reviews_disability").on(table.disabilityType),
 ]);
 
 export const insertAccessibilityReviewSchema = createInsertSchema(accessibilityReviews).omit({ id: true, createdAt: true });

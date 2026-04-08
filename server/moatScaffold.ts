@@ -4,7 +4,7 @@ import {
   accessibilityReviews, accessibilityMetadata,
   institutionalAccounts, institutionalMembers,
   moatMetricsSnapshots, accessibilityPreferences, bookTranscripts,
-  users,
+  users, books, DISABILITY_TYPES,
 } from "@shared/schema";
 import { eq, and, count, avg, sql, desc } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
@@ -40,20 +40,35 @@ export function registerMoatScaffoldRoutes(app: Express) {
     }
   });
 
+  const reviewBodySchema = z.object({
+    disabilityType: z.enum(DISABILITY_TYPES).default("other"),
+    rating: z.number().int().min(1).max(5),
+    screenReaderScore: z.number().int().min(1).max(5).optional().nullable(),
+    navigationScore: z.number().int().min(1).max(5).optional().nullable(),
+    contrastScore: z.number().int().min(1).max(5).optional().nullable(),
+    audioQualityScore: z.number().int().min(1).max(5).optional().nullable(),
+    comments: z.string().max(2000).optional().nullable(),
+  });
+
   app.post("/api/books/:id/a11y-reviews", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-      const { rating, screenReaderScore, navigationScore, contrastScore, comments } = req.body;
+      const parsed = reviewBodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid review data", errors: parsed.error.flatten() });
+
+      const { disabilityType, rating, screenReaderScore, navigationScore, contrastScore, audioQualityScore, comments } = parsed.data;
 
       const [review] = await db.insert(accessibilityReviews).values({
         userId,
         bookId: req.params.id,
+        disabilityType,
         rating,
         screenReaderScore,
         navigationScore,
         contrastScore,
+        audioQualityScore,
         comments,
         status: "pending",
       }).returning();
@@ -73,32 +88,140 @@ export function registerMoatScaffoldRoutes(app: Express) {
         .where(and(
           eq(accessibilityReviews.bookId, bookId),
           eq(accessibilityReviews.status, "approved")
-        ));
+        ))
+        .orderBy(desc(accessibilityReviews.createdAt));
 
-      const [averages] = await db.select({
-        rating: avg(accessibilityReviews.rating),
-        screenReaderScore: avg(accessibilityReviews.screenReaderScore),
-        navigationScore: avg(accessibilityReviews.navigationScore),
-        contrastScore: avg(accessibilityReviews.contrastScore),
-      }).from(accessibilityReviews)
-        .where(and(
-          eq(accessibilityReviews.bookId, bookId),
-          eq(accessibilityReviews.status, "approved")
-        ));
+      const byDisabilityType: Record<string, {
+        count: number;
+        avgRating: number;
+        avgScreenReader: number;
+        avgNavigation: number;
+        avgContrast: number;
+        avgAudioQuality: number;
+        certified: boolean;
+      }> = {};
+
+      for (const dtype of DISABILITY_TYPES) {
+        const group = reviews.filter(r => r.disabilityType === dtype);
+        if (group.length === 0) continue;
+        const avg = (arr: (number | null)[]) => {
+          const valid = arr.filter((v): v is number => v !== null);
+          return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
+        };
+        const avgRating = avg(group.map(r => r.rating));
+        byDisabilityType[dtype] = {
+          count: group.length,
+          avgRating: Math.round(avgRating * 10) / 10,
+          avgScreenReader: Math.round(avg(group.map(r => r.screenReaderScore)) * 10) / 10,
+          avgNavigation: Math.round(avg(group.map(r => r.navigationScore)) * 10) / 10,
+          avgContrast: Math.round(avg(group.map(r => r.contrastScore)) * 10) / 10,
+          avgAudioQuality: Math.round(avg(group.map(r => r.audioQualityScore)) * 10) / 10,
+          certified: group.length >= 5 && avgRating >= 4.0,
+        };
+      }
+
+      const allRatings = reviews.map(r => r.rating);
+      const overallAvg = allRatings.length > 0 ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length : 0;
 
       res.json({
         reviews,
+        byDisabilityType,
         averages: {
-          rating: Number(averages?.rating) || 0,
-          screenReaderScore: Number(averages?.screenReaderScore) || 0,
-          navigationScore: Number(averages?.navigationScore) || 0,
-          contrastScore: Number(averages?.contrastScore) || 0,
+          rating: Math.round(overallAvg * 10) / 10,
+          total: reviews.length,
         },
-        total: reviews.length,
       });
     } catch (error) {
       console.error("[Moat] Failed to fetch accessibility reviews:", error);
       res.status(500).json({ message: "Failed to fetch accessibility reviews" });
+    }
+  });
+
+  const CERTIFIED_MIN_RATING = 4.0;
+  const CERTIFIED_MIN_COUNT = 5;
+
+  app.get("/api/accessible-picks", async (req: any, res) => {
+    try {
+      const disabilityType = req.query.disabilityType as string | undefined;
+      const sortBy = (req.query.sortBy as string) || "rating";
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      const validDisabilityType = DISABILITY_TYPES.includes(disabilityType as any) ? disabilityType : null;
+
+      const reviewRows = await db
+        .select({
+          bookId: accessibilityReviews.bookId,
+          disabilityType: accessibilityReviews.disabilityType,
+          rating: accessibilityReviews.rating,
+        })
+        .from(accessibilityReviews)
+        .where(and(
+          eq(accessibilityReviews.status, "approved"),
+          ...(validDisabilityType ? [eq(accessibilityReviews.disabilityType, validDisabilityType)] : []),
+        ));
+
+      const bookStats: Record<string, {
+        bookId: string;
+        count: number;
+        totalRating: number;
+        certifiedTypes: string[];
+        disabilityGroups: Record<string, { count: number; total: number }>;
+      }> = {};
+
+      for (const row of reviewRows) {
+        if (!bookStats[row.bookId]) {
+          bookStats[row.bookId] = { bookId: row.bookId, count: 0, totalRating: 0, certifiedTypes: [], disabilityGroups: {} };
+        }
+        const s = bookStats[row.bookId];
+        s.count++;
+        s.totalRating += row.rating;
+        if (!s.disabilityGroups[row.disabilityType]) s.disabilityGroups[row.disabilityType] = { count: 0, total: 0 };
+        s.disabilityGroups[row.disabilityType].count++;
+        s.disabilityGroups[row.disabilityType].total += row.rating;
+      }
+
+      for (const stat of Object.values(bookStats)) {
+        for (const [dtype, group] of Object.entries(stat.disabilityGroups)) {
+          const avg = group.total / group.count;
+          if (group.count >= CERTIFIED_MIN_COUNT && avg >= CERTIFIED_MIN_RATING) {
+            stat.certifiedTypes.push(dtype);
+          }
+        }
+      }
+
+      const statsList = Object.values(bookStats)
+        .filter(s => s.count > 0)
+        .sort((a, b) => (b.totalRating / b.count) - (a.totalRating / a.count));
+
+      const bookIds = statsList.slice((page - 1) * limit, page * limit).map(s => s.bookId);
+
+      if (bookIds.length === 0) {
+        return res.json({ books: [], total: statsList.length, page, certifiedBookIds: [] });
+      }
+
+      const bookRows = await db.select().from(books).where(
+        sql`${books.id} = ANY(${sql.raw(`ARRAY[${bookIds.map(id => `'${id.replace(/'/g, "''")}'`).join(",")}]::text[]`)})`,
+      );
+
+      const certifiedBookIds = statsList.filter(s => s.certifiedTypes.length > 0).map(s => s.bookId);
+
+      const enriched = bookIds.map(id => {
+        const book = bookRows.find(b => b.id === id);
+        const stat = bookStats[id];
+        return book ? {
+          ...book,
+          accessibilityScore: stat ? Math.round((stat.totalRating / stat.count) * 10) / 10 : 0,
+          accessibilityReviewCount: stat?.count ?? 0,
+          certifiedTypes: stat?.certifiedTypes ?? [],
+          isCertified: (stat?.certifiedTypes.length ?? 0) > 0,
+        } : null;
+      }).filter(Boolean);
+
+      res.json({ books: enriched, total: statsList.length, page, certifiedBookIds });
+    } catch (error) {
+      console.error("[Moat] Failed to fetch accessible picks:", error);
+      res.status(500).json({ message: "Failed to fetch accessible picks" });
     }
   });
 
