@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import ePub from "epubjs";
+import ePub, { Book as EpubBook, Rendition, NavItem } from "epubjs";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,10 +32,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-interface EpubNavItem { href: string; label: string; subitems?: EpubNavItem[]; }
-type EpubBook = any;
-type Rendition = any;
-
 interface EpubViewerProps {
   book: Book;
   onBack: () => void;
@@ -57,7 +53,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<ReadingSettings>(defaultSettings);
-  const [toc, setToc] = useState<EpubNavItem[]>([]);
+  const [toc, setToc] = useState<NavItem[]>([]);
   const [currentLocation, setCurrentLocation] = useState<string>("");
   const [progress, setProgress] = useState(0);
   
@@ -84,11 +80,10 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
     try {
       if (!viewerRef.current) return;
 
-      // epubjs 0.4.x: ePub() is async and resolves after the book is fully opened
-      const epub = await ePub(epubUrl);
+      const epub: EpubBook = ePub(epubUrl);
       epubRef.current = epub;
 
-      const rendition = epub.renderTo(viewerRef.current, {
+      const rendition: Rendition = epub.renderTo(viewerRef.current, {
         width: "100%",
         height: "100%",
         spread: "none",
@@ -96,11 +91,10 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
       });
       renditionRef.current = rendition;
 
-      // In 0.4.x the book is already open; epub.navigation is set directly (no epub.loaded.navigation)
-      const navigation = epub.navigation;
-      if (navigation?.toc) {
-        setToc(navigation.toc as EpubNavItem[]);
-      }
+      await epub.ready;
+
+      const navigation = await epub.loaded.navigation;
+      setToc(navigation.toc);
 
       const savedLocation = localStorage.getItem(`epub-location-${book.id}`);
       if (savedLocation) {
@@ -109,7 +103,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
         await rendition.display();
       }
 
-      rendition.on("relocated", (location: any) => {
+      rendition.on("relocated", (location) => {
         if (location.start?.cfi) {
           setCurrentLocation(location.start.cfi);
           localStorage.setItem(`epub-location-${book.id}`, location.start.cfi);
