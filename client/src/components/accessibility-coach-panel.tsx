@@ -164,7 +164,7 @@ function buildGreeting(prefs: A11yPrefs | undefined, isAuthenticated: boolean): 
   if (preset === "Low Vision" || profile.highContrast) {
     return "Hi! I can see you're using high contrast mode — great choice. I specialize in finding audiobooks and books with clean, accessible layouts. What would you like today?";
   }
-  if (preset === "Motor Impaired" || profile.voiceControlEnabled) {
+  if (preset === "Motor Impaired" || preset === "Motor Impairment" || profile.voiceControlEnabled) {
     return "Hello! Your voice control is ready to go. I can suggest hands-free listening experiences and help you navigate AccessiBooks easily. What can I do for you?";
   }
   if (preset === "Screen Reader") {
