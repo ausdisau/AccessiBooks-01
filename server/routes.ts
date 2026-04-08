@@ -20,7 +20,7 @@ import { registerSelfServeAdRoutes } from "./selfServeAds";
 import { registerBillingRoutes, recordTransaction, updateTransactionStatus } from "./billing";
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
-import { registerMoatScaffoldRoutes } from "./moatScaffold";
+import { registerMoatScaffoldRoutes, ensureMoatMigrations } from "./moatScaffold";
 import { registerCoachRoutes } from "./coachRoutes";
 import { registerAdPlatformRoutes } from "./adPlatformRoutes";
 import { registerChatRoutes } from "./replit_integrations/chat";
@@ -172,6 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   seedSampleTranscript().catch(err => console.warn("[Transcripts] Failed to seed sample:", err.message));
 
   // Moat scaffold routes (a11y metadata, reviews, institutional, recommendations, metrics)
+  ensureMoatMigrations().catch(err => console.warn("[Moat] Migrations failed:", err.message));
   registerMoatScaffoldRoutes(app);
 
   // AI Accessibility Coach endpoint

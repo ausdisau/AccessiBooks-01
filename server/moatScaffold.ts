@@ -10,6 +10,17 @@ import { eq, and, count, avg, sql, desc, inArray, gte, sum } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
 import { z } from "zod";
 
+export async function ensureMoatMigrations() {
+  try {
+    await db.execute(sql`
+      ALTER TABLE institutional_accounts
+      ADD COLUMN IF NOT EXISTS weekly_goal_minutes integer NOT NULL DEFAULT 180
+    `);
+  } catch (err) {
+    console.error("[Moat] Migration warning (weekly_goal_minutes):", err);
+  }
+}
+
 export function registerMoatScaffoldRoutes(app: Express) {
 
   app.get("/api/books/:id/accessibility", async (req: any, res) => {
@@ -299,11 +310,13 @@ export function registerMoatScaffoldRoutes(app: Express) {
       if (!invitee) return res.status(404).json({ message: "No AccessiBooks account found for that email" });
 
       const [alreadyMember] = await db.select().from(institutionalMembers)
-        .where(and(
-          eq(institutionalMembers.institutionalId, membership.institutionalId),
-          eq(institutionalMembers.userId, invitee.id),
-        ));
-      if (alreadyMember) return res.status(400).json({ message: "User is already a member" });
+        .where(eq(institutionalMembers.userId, invitee.id));
+      if (alreadyMember) {
+        if (alreadyMember.institutionalId === membership.institutionalId) {
+          return res.status(400).json({ message: "User is already a member of this organization" });
+        }
+        return res.status(400).json({ message: "User already belongs to another organization" });
+      }
 
       await db.insert(institutionalMembers).values({
         institutionalId: membership.institutionalId,

@@ -423,15 +423,15 @@ function AdminDashboard({ data }: { data: MembersResponse }) {
                           )}
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1" title="Listening this week">
                             <Clock className="h-3 w-3" />
-                            {Math.round(m.listeningMinutesTotal / 60)}h listened
+                            {m.weeklyListeningMinutes} min this week
                           </span>
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1" title="Books completed">
                             <BookOpen className="h-3 w-3" />
                             {m.booksCompleted} books
                           </span>
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1" title="Current streak">
                             <Flame className="h-3 w-3" />
                             {m.currentStreak}d streak
                           </span>
