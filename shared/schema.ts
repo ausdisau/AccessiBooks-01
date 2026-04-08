@@ -1579,6 +1579,7 @@ export const institutionalAccounts = pgTable("institutional_accounts", {
   billingCycle: text("billing_cycle").notNull().default("monthly"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   isActive: boolean("is_active").notNull().default(true),
+  weeklyGoalMinutes: integer("weekly_goal_minutes").notNull().default(180),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_institutional_active").on(table.isActive),
