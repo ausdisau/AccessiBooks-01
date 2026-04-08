@@ -8,8 +8,7 @@ channel = "stable-24_05"
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
-run = ["node", "dist/index.js"]
-publicDir = "dist/public"
+run = ["bash", "-c", "NODE_ENV=production node dist/index.js"]
 
 [[ports]]
 localPort = 5000
@@ -49,9 +48,6 @@ VAPID_PUBLIC_KEY = "BJWdQQ8a8kG2M3_9fo6ngx3I9eiPEbTwShBynd1q7xt04SuBSZT-OWwuPQ-L
 VAPID_PRIVATE_KEY = "RhX-A0WBHL6FIyDGorPdEwy_uEF291kDkSFGgxR_sCQ"
 VITE_VAPID_PUBLIC_KEY = "BJWdQQ8a8kG2M3_9fo6ngx3I9eiPEbTwShBynd1q7xt04SuBSZT-OWwuPQ-LHSeCJIYloJwaOTR28B3RbhBZoyw"
 CUSTOM_DATABASE_URL = "postgresql://neondb_owner:npg_PdZIj65TWkVt@ep-rough-bread-a7hy2uut-pooler.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-
-[userenv.production]
-NODE_ENV = "production"
 
 [postMerge]
 path = "scripts/post-merge.sh"
