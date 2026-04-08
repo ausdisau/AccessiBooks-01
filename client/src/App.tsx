@@ -1791,18 +1791,18 @@ function MainApp() {
               />
               <Switch>
                 <Route path="/">
-                  <div id="library-panel" role="region" data-testid="panel-library">
+                  <div id="library-panel" role="region" aria-label="Library" data-testid="panel-library">
                     <Library onSelectBook={handleSelectBook} />
                   </div>
                 </Route>
                 <Route path="/player">
-                  <div id="player-panel" role="region" data-testid="panel-player">
+                  <div id="player-panel" role="region" aria-label="Player" data-testid="panel-player">
                     <Player book={selectedBook || currentBook} onBackToLibrary={handleBackToLibrary} onViewAuthor={handleViewAuthor} />
                   </div>
                 </Route>
                 <Route path="/reader">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="reader-panel" role="region" data-testid="panel-reader">
+                    <div id="reader-panel" role="region" aria-label="Reader" data-testid="panel-reader">
                       {selectedBook ? <EbookReader book={selectedBook} onBack={handleBackToLibrary} /> : <Library onSelectBook={handleSelectBook} />}
                     </div>
                   </Suspense>
@@ -1810,7 +1810,7 @@ function MainApp() {
                 <Route path="/author/:name">
                   {(params) => (
                     <Suspense fallback={<LoadingSpinner />}>
-                      <div id="author-panel" role="region" data-testid="panel-author">
+                      <div id="author-panel" role="region" aria-label="Author" data-testid="panel-author">
                         <AuthorPage authorName={decodeURIComponent(params.name)} onBack={handleBackToLibrary} />
                       </div>
                     </Suspense>
@@ -1818,14 +1818,14 @@ function MainApp() {
                 </Route>
                 <Route path="/feed">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="feed-panel" role="region" data-testid="panel-feed">
+                    <div id="feed-panel" role="region" aria-label="Social Feed" data-testid="panel-feed">
                       <SocialFeed />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/stats">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="stats-panel" role="region" data-testid="panel-stats" className="space-y-8">
+                    <div id="stats-panel" role="region" aria-label="Statistics" data-testid="panel-stats" className="space-y-8">
                       <GamificationDashboard />
                       <BattlePassComponent />
                       <YearInReview />
@@ -1835,98 +1835,98 @@ function MainApp() {
                 </Route>
                 <Route path="/usage">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="usage-panel" role="region" data-testid="panel-usage">
+                    <div id="usage-panel" role="region" aria-label="Usage" data-testid="panel-usage">
                       <UsageDashboard isPremium={isPremium} onUpgrade={() => upgradeToPremium("monthly")} />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/publish">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="publish-panel" role="region" data-testid="panel-publish">
+                    <div id="publish-panel" role="region" aria-label="Publish" data-testid="panel-publish">
                       <AuthorDashboard />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/party">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="party-panel" role="region" data-testid="panel-party">
+                    <div id="party-panel" role="region" aria-label="Listening Party" data-testid="panel-party">
                       <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/queue">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="queue-panel" role="region" data-testid="panel-queue">
+                    <div id="queue-panel" role="region" aria-label="Queue" data-testid="panel-queue">
                       <StreamingQueue onBack={handleBackToLibrary} />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/advertise">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="advertise-panel" role="region" data-testid="panel-advertise">
+                    <div id="advertise-panel" role="region" aria-label="Advertise" data-testid="panel-advertise">
                       <AudioAdvertiserDashboard />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/billing">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="billing-panel" role="region" data-testid="panel-billing">
+                    <div id="billing-panel" role="region" aria-label="Billing" data-testid="panel-billing">
                       <BillingDashboard />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/downloads">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="downloads-panel" role="region" data-testid="panel-downloads">
+                    <div id="downloads-panel" role="region" aria-label="Downloads" data-testid="panel-downloads">
                       <OfflineDownloads />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/loans">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="loans-panel" role="region" data-testid="panel-loans">
+                    <div id="loans-panel" role="region" aria-label="Loans" data-testid="panel-loans">
                       <MyLoans onSelectBook={handleSelectBook} />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/referrals">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="referrals-panel" role="region" data-testid="panel-referrals">
+                    <div id="referrals-panel" role="region" aria-label="Referrals" data-testid="panel-referrals">
                       <ReferralsPage />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/social">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="social-panel" role="region" data-testid="panel-social">
+                    <div id="social-panel" role="region" aria-label="Social Hub" data-testid="panel-social">
                       <SocialHub />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/family">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="family-panel" role="region" data-testid="panel-family">
+                    <div id="family-panel" role="region" aria-label="Family Plan" data-testid="panel-family">
                       <FamilyPlan />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/enterprise">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="enterprise-panel" role="region" data-testid="panel-enterprise">
+                    <div id="enterprise-panel" role="region" aria-label="Enterprise" data-testid="panel-enterprise">
                       <EnterprisePage />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/moderation">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="moderation-panel" role="region" data-testid="panel-moderation">
+                    <div id="moderation-panel" role="region" aria-label="Moderation" data-testid="panel-moderation">
                       <AdminModerationPage />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/health">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="health-panel" role="region" data-testid="panel-health" className="space-y-8">
+                    <div id="health-panel" role="region" aria-label="Admin Health" data-testid="panel-health" className="space-y-8">
                       <AdminHealthDashboard />
                       <ChurnDashboard />
                     </div>
@@ -1934,34 +1934,34 @@ function MainApp() {
                 </Route>
                 <Route path="/trust">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="trust-panel" role="region" data-testid="panel-trust">
+                    <div id="trust-panel" role="region" aria-label="Trust & Safety" data-testid="panel-trust">
                       <TrustPage />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/institutional">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="institutional-panel" role="region" data-testid="panel-institutional">
+                    <div id="institutional-panel" role="region" aria-label="Institutional" data-testid="panel-institutional">
                       <InstitutionalPage />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/moat-metrics">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="moat-metrics-panel" role="region" data-testid="panel-moat-metrics">
+                    <div id="moat-metrics-panel" role="region" aria-label="Moat Metrics" data-testid="panel-moat-metrics">
                       <MoatDashboard />
                     </div>
                   </Suspense>
                 </Route>
                 <Route path="/accessible-picks">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="accessible-picks-panel" role="region" data-testid="panel-accessible-picks">
+                    <div id="accessible-picks-panel" role="region" aria-label="Accessible Picks" data-testid="panel-accessible-picks">
                       <AccessiblePicksPage />
                     </div>
                   </Suspense>
                 </Route>
                 <Route>
-                  <div id="library-panel" role="region" data-testid="panel-library">
+                  <div id="library-panel" role="region" aria-label="Library" data-testid="panel-library">
                     <Library onSelectBook={handleSelectBook} />
                   </div>
                 </Route>
