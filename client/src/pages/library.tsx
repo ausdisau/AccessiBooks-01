@@ -16,13 +16,50 @@ import { BookCarousel } from "@/components/book-carousel";
 import { DJSection } from "@/components/dj-section";
 import { PlaylistSection } from "@/components/playlist-section";
 import { PlaylistDetail } from "@/components/playlist-detail";
-import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles, Loader2, Crown, Headphones, Download, Shield, Zap, Check, X } from "lucide-react";
+import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles, Loader2, Crown, Headphones, Download, Shield, Zap, Check, X, Target } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/use-subscription";
+import { Progress } from "@/components/ui/progress";
 import { SubmitContent } from "@/components/submit-content";
 import { CommercialAudiobooks } from "@/components/commercial-audiobooks";
 import { PodcastDiscovery } from "@/components/podcast-discovery";
 import { MagazineSection } from "@/components/magazine-section";
+
+function OrgGoalCard({ userId }: { userId: string }) {
+  const orgQuery = useQuery({
+    queryKey: ["/api/institutional/members"],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const orgData = orgQuery.data as any;
+  if (!orgData?.account || !orgData.account.weeklyGoalMinutes) return null;
+
+  const goalMinutes: number = orgData.account.weeklyGoalMinutes;
+
+  const myData = (orgData.members as any[])?.find((m: any) => m.userId === userId);
+  const totalMinutes: number = myData?.listeningMinutesTotal ?? 0;
+  const weeklyMinutes = Math.min(totalMinutes, goalMinutes);
+  const pct = goalMinutes > 0 ? Math.round((weeklyMinutes / goalMinutes) * 100) : 0;
+
+  return (
+    <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20 p-4 flex items-center gap-4">
+      <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center flex-shrink-0">
+        <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-foreground mb-1">
+          {orgData.account.orgName} — Weekly Goal
+        </p>
+        <Progress value={pct} className="h-2 mb-1" />
+        <p className="text-xs text-muted-foreground">
+          {weeklyMinutes} / {goalMinutes} min ({pct}%)
+          {pct >= 100 && " — Goal reached!"}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function PremiumHeroBanner({ onUpgrade }: { onUpgrade: () => void }) {
   const [dismissed, setDismissed] = useState(() =>
@@ -293,6 +330,10 @@ export function Library({ onSelectBook }: LibraryProps) {
     <div className="space-y-8">
       {showPersonalizedSections && (
         <ListeningStatsCard />
+      )}
+
+      {showPersonalizedSections && user && (
+        <OrgGoalCard userId={user.id} />
       )}
 
       {showPersonalizedSections && (

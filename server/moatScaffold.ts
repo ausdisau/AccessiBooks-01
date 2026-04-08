@@ -4,9 +4,9 @@ import {
   accessibilityReviews, accessibilityMetadata,
   institutionalAccounts, institutionalMembers,
   moatMetricsSnapshots, accessibilityPreferences, bookTranscripts,
-  users, books, DISABILITY_TYPES,
+  users, books, listeningHistory, userStreaks, userXp, DISABILITY_TYPES,
 } from "@shared/schema";
-import { eq, and, count, avg, sql, desc, inArray } from "drizzle-orm";
+import { eq, and, count, avg, sql, desc, inArray, gte, sum } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
 import { z } from "zod";
 
@@ -258,6 +258,10 @@ export function registerMoatScaffoldRoutes(app: Express) {
       const { orgName, contactEmail, orgType, maxSeats } = req.body;
       if (!orgName || !contactEmail) return res.status(400).json({ message: "orgName and contactEmail required" });
 
+      const existing = await db.select().from(institutionalMembers)
+        .where(eq(institutionalMembers.userId, userId));
+      if (existing.length > 0) return res.status(400).json({ message: "Already part of an organization" });
+
       const [account] = await db.insert(institutionalAccounts).values({
         orgName,
         contactEmail,
@@ -284,13 +288,37 @@ export function registerMoatScaffoldRoutes(app: Express) {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+      const [membership] = await db.select().from(institutionalMembers)
+        .where(eq(institutionalMembers.userId, userId));
+      if (!membership || membership.role !== "admin") return res.status(403).json({ message: "Admin only" });
+
       const { email } = req.body;
       if (!email) return res.status(400).json({ message: "email required" });
 
-      res.json({ message: "Invitation sent", email });
+      const [invitee] = await db.select().from(users).where(eq(users.email, email));
+      if (!invitee) return res.status(404).json({ message: "No AccessiBooks account found for that email" });
+
+      const [alreadyMember] = await db.select().from(institutionalMembers)
+        .where(and(
+          eq(institutionalMembers.institutionalId, membership.institutionalId),
+          eq(institutionalMembers.userId, invitee.id),
+        ));
+      if (alreadyMember) return res.status(400).json({ message: "User is already a member" });
+
+      await db.insert(institutionalMembers).values({
+        institutionalId: membership.institutionalId,
+        userId: invitee.id,
+        role: "member",
+      });
+
+      await db.update(institutionalAccounts)
+        .set({ currentSeats: sql`${institutionalAccounts.currentSeats} + 1` })
+        .where(eq(institutionalAccounts.id, membership.institutionalId));
+
+      res.json({ message: "Member added", email });
     } catch (error) {
-      console.error("[Moat] Failed to send invitation:", error);
-      res.status(500).json({ message: "Failed to send invitation" });
+      console.error("[Moat] Failed to invite member:", error);
+      res.status(500).json({ message: "Failed to invite member" });
     }
   });
 
@@ -303,28 +331,158 @@ export function registerMoatScaffoldRoutes(app: Express) {
         .where(eq(institutionalMembers.userId, userId));
       if (!membership) return res.status(404).json({ message: "Not part of an institution" });
 
-      const members = await db.select({
+      const [account] = await db.select().from(institutionalAccounts)
+        .where(eq(institutionalAccounts.id, membership.institutionalId));
+
+      const memberRows = await db.select({
         id: institutionalMembers.id,
         userId: institutionalMembers.userId,
         role: institutionalMembers.role,
         addedAt: institutionalMembers.addedAt,
         email: users.email,
         name: users.name,
+        profileImage: users.profileImageUrl,
       }).from(institutionalMembers)
         .innerJoin(users, eq(institutionalMembers.userId, users.id))
         .where(eq(institutionalMembers.institutionalId, membership.institutionalId));
 
-      res.json(members);
+      const memberUserIds = memberRows.map((m) => m.userId);
+
+      const xpRows = memberUserIds.length > 0
+        ? await db.select({
+            userId: userXp.userId,
+            totalListeningMinutes: userXp.totalListeningMinutes,
+            booksCompleted: userXp.booksCompleted,
+          }).from(userXp).where(inArray(userXp.userId, memberUserIds))
+        : [];
+
+      const streakRows = memberUserIds.length > 0
+        ? await db.select({
+            userId: userStreaks.userId,
+            currentStreak: userStreaks.currentStreak,
+          }).from(userStreaks).where(inArray(userStreaks.userId, memberUserIds))
+        : [];
+
+      const presetRows = memberUserIds.length > 0
+        ? await db.select({
+            userId: accessibilityPreferences.userId,
+            activePreset: accessibilityPreferences.activePreset,
+          }).from(accessibilityPreferences).where(inArray(accessibilityPreferences.userId, memberUserIds))
+        : [];
+
+      const xpByUser = Object.fromEntries(xpRows.map((r) => [r.userId, r]));
+      const streakByUser = Object.fromEntries(streakRows.map((r) => [r.userId, r]));
+      const presetByUser = Object.fromEntries(presetRows.map((r) => [r.userId, r]));
+
+      const members = memberRows.map((m) => ({
+        ...m,
+        listeningMinutesTotal: xpByUser[m.userId]?.totalListeningMinutes ?? 0,
+        booksCompleted: xpByUser[m.userId]?.booksCompleted ?? 0,
+        currentStreak: streakByUser[m.userId]?.currentStreak ?? 0,
+        activePreset: presetByUser[m.userId]?.activePreset ?? null,
+      }));
+
+      res.json({ account, members, myRole: membership.role });
     } catch (error) {
       console.error("[Moat] Failed to fetch institutional members:", error);
       res.status(500).json({ message: "Failed to fetch institutional members" });
     }
   });
 
+  app.get("/api/institutional/member/:userId", isAuthenticated, async (req: any, res) => {
+    try {
+      const adminId = req.user?.id;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [adminMembership] = await db.select().from(institutionalMembers)
+        .where(and(
+          eq(institutionalMembers.userId, adminId),
+          eq(institutionalMembers.role, "admin"),
+        ));
+      if (!adminMembership) return res.status(403).json({ message: "Admin only" });
+
+      const targetUserId = req.params.userId;
+
+      const [targetMembership] = await db.select().from(institutionalMembers)
+        .where(and(
+          eq(institutionalMembers.userId, targetUserId),
+          eq(institutionalMembers.institutionalId, adminMembership.institutionalId),
+        ));
+      if (!targetMembership) return res.status(404).json({ message: "Member not found" });
+
+      const [targetUser] = await db.select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        profileImage: users.profileImageUrl,
+      }).from(users).where(eq(users.id, targetUserId));
+
+      const history = await db.select({
+        bookId: listeningHistory.bookId,
+        bookTitle: listeningHistory.bookTitle,
+        bookAuthor: listeningHistory.bookAuthor,
+        bookCover: listeningHistory.bookCover,
+        currentTime: listeningHistory.currentTime,
+        totalDuration: listeningHistory.totalDuration,
+        lastPlayedAt: listeningHistory.lastPlayedAt,
+        completedAt: listeningHistory.completedAt,
+        playCount: listeningHistory.playCount,
+      }).from(listeningHistory)
+        .where(eq(listeningHistory.userId, targetUserId))
+        .orderBy(desc(listeningHistory.lastPlayedAt))
+        .limit(20);
+
+      const [streak] = await db.select().from(userStreaks)
+        .where(eq(userStreaks.userId, targetUserId));
+
+      const [xp] = await db.select().from(userXp)
+        .where(eq(userXp.userId, targetUserId));
+
+      const [prefs] = await db.select().from(accessibilityPreferences)
+        .where(eq(accessibilityPreferences.userId, targetUserId));
+
+      res.json({
+        user: targetUser,
+        role: targetMembership.role,
+        addedAt: targetMembership.addedAt,
+        history,
+        streak: streak ?? null,
+        xp: xp ?? null,
+        accessibilityProfile: prefs?.profile ?? null,
+        activePreset: prefs?.activePreset ?? null,
+      });
+    } catch (error) {
+      console.error("[Moat] Failed to fetch member detail:", error);
+      res.status(500).json({ message: "Failed to fetch member detail" });
+    }
+  });
+
   app.delete("/api/institutional/members/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const adminId = req.user?.id;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [adminMembership] = await db.select().from(institutionalMembers)
+        .where(and(
+          eq(institutionalMembers.userId, adminId),
+          eq(institutionalMembers.role, "admin"),
+        ));
+      if (!adminMembership) return res.status(403).json({ message: "Admin only" });
+
+      const memberId = req.params.id;
+      const [target] = await db.select().from(institutionalMembers)
+        .where(and(
+          eq(institutionalMembers.id, memberId),
+          eq(institutionalMembers.institutionalId, adminMembership.institutionalId),
+        ));
+      if (!target) return res.status(404).json({ message: "Member not found" });
+      if (target.role === "admin") return res.status(400).json({ message: "Cannot remove admin" });
+
+      await db.delete(institutionalMembers).where(eq(institutionalMembers.id, memberId));
+
+      await db.update(institutionalAccounts)
+        .set({ currentSeats: sql`GREATEST(${institutionalAccounts.currentSeats} - 1, 0)` })
+        .where(eq(institutionalAccounts.id, adminMembership.institutionalId));
 
       res.json({ message: "Member removed" });
     } catch (error) {
@@ -333,16 +491,126 @@ export function registerMoatScaffoldRoutes(app: Express) {
     }
   });
 
+  app.patch("/api/institutional/settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const adminId = req.user?.id;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [adminMembership] = await db.select().from(institutionalMembers)
+        .where(and(
+          eq(institutionalMembers.userId, adminId),
+          eq(institutionalMembers.role, "admin"),
+        ));
+      if (!adminMembership) return res.status(403).json({ message: "Admin only" });
+
+      const schema = z.object({
+        weeklyGoalMinutes: z.number().int().min(0).max(10080).optional(),
+        orgName: z.string().min(1).optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid settings" });
+
+      await db.update(institutionalAccounts)
+        .set(parsed.data)
+        .where(eq(institutionalAccounts.id, adminMembership.institutionalId));
+
+      res.json({ message: "Settings updated" });
+    } catch (error) {
+      console.error("[Moat] Failed to update institutional settings:", error);
+      res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
   app.get("/api/institutional/analytics", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
+      const [membership] = await db.select().from(institutionalMembers)
+        .where(eq(institutionalMembers.userId, userId));
+      if (!membership) return res.status(403).json({ message: "Not part of an institution" });
+
+      const memberRows = await db.select({
+        userId: institutionalMembers.userId,
+      }).from(institutionalMembers)
+        .where(eq(institutionalMembers.institutionalId, membership.institutionalId));
+
+      const memberUserIds = memberRows.map((m) => m.userId);
+
+      if (memberUserIds.length === 0) {
+        return res.json({
+          totalListeningMinutes: 0,
+          totalBooksCompleted: 0,
+          avgCompletionRate: 0,
+          activeUsersCount: 0,
+          topBooks: [],
+          presetDistribution: [],
+          weeklyListeningMinutes: Array.from({ length: 7 }, (_, i) => ({ day: i, minutes: 0 })),
+        });
+      }
+
+      const [xpAgg] = await db.select({
+        totalListeningMinutes: sum(userXp.totalListeningMinutes),
+        totalBooksCompleted: sum(userXp.booksCompleted),
+        activeCount: count(userXp.userId),
+      }).from(userXp).where(inArray(userXp.userId, memberUserIds));
+
+      const topBooksRaw = await db.select({
+        bookId: listeningHistory.bookId,
+        bookTitle: listeningHistory.bookTitle,
+        bookCover: listeningHistory.bookCover,
+        plays: count(listeningHistory.id),
+      }).from(listeningHistory)
+        .where(inArray(listeningHistory.userId, memberUserIds))
+        .groupBy(listeningHistory.bookId, listeningHistory.bookTitle, listeningHistory.bookCover)
+        .orderBy(desc(count(listeningHistory.id)))
+        .limit(5);
+
+      const presetRows = await db.select({
+        activePreset: accessibilityPreferences.activePreset,
+        cnt: count(accessibilityPreferences.userId),
+      }).from(accessibilityPreferences)
+        .where(inArray(accessibilityPreferences.userId, memberUserIds))
+        .groupBy(accessibilityPreferences.activePreset)
+        .orderBy(desc(count(accessibilityPreferences.userId)));
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const weeklyRaw = await db.select({
+        lastPlayedAt: listeningHistory.lastPlayedAt,
+        currentTime: listeningHistory.currentTime,
+      }).from(listeningHistory)
+        .where(and(
+          inArray(listeningHistory.userId, memberUserIds),
+          gte(listeningHistory.lastPlayedAt, sevenDaysAgo),
+        ));
+
+      const weeklyByDay = Array.from({ length: 7 }, (_, i) => ({ day: i, minutes: 0 }));
+      for (const row of weeklyRaw) {
+        if (!row.lastPlayedAt) continue;
+        const daysAgo = Math.floor((Date.now() - new Date(row.lastPlayedAt).getTime()) / (24 * 60 * 60 * 1000));
+        const idx = Math.min(daysAgo, 6);
+        weeklyByDay[6 - idx].minutes += Math.round((row.currentTime ?? 0) / 60);
+      }
+
+      const totalMinutes = Number(xpAgg?.totalListeningMinutes ?? 0);
+      const totalBooks = Number(xpAgg?.totalBooksCompleted ?? 0);
+      const historyRows = await db.select({ completedAt: listeningHistory.completedAt })
+        .from(listeningHistory).where(inArray(listeningHistory.userId, memberUserIds));
+      const totalHistoryCount = historyRows.length;
+      const completedCount = historyRows.filter((r) => r.completedAt !== null).length;
+      const avgCompletionRate = totalHistoryCount > 0 ? Math.round((completedCount / totalHistoryCount) * 100) : 0;
+
       res.json({
-        listeningHours: 1247,
-        activeUsers: 34,
-        popularBooks: ["Pride and Prejudice", "Moby Dick", "The Great Gatsby"],
-        completionRate: 67,
+        totalListeningMinutes: totalMinutes,
+        totalBooksCompleted: totalBooks,
+        avgCompletionRate,
+        activeUsersCount: Number(xpAgg?.activeCount ?? 0),
+        topBooks: topBooksRaw,
+        presetDistribution: presetRows.map((r) => ({
+          preset: r.activePreset ?? "None",
+          count: Number(r.cnt),
+        })),
+        weeklyListeningMinutes: weeklyByDay,
       });
     } catch (error) {
       console.error("[Moat] Failed to fetch institutional analytics:", error);
