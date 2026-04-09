@@ -42,6 +42,12 @@ import {
   Cloud,
   CloudOff,
   Loader2,
+  Clock,
+  Scan,
+  Star,
+  Droplets,
+  FlipHorizontal,
+  UserCog,
 } from "lucide-react";
 
 const CVD_SVG_ID = "a11y-cvd-filters";
@@ -141,6 +147,35 @@ const accessibilityProfiles: AccessibilityProfile[] = [
       highlightFocus: true,
       highlightLinks: true,
       voiceControlEnabled: true,
+    },
+  },
+  {
+    id: "senior-mode",
+    name: "Senior Simplified",
+    icon: UserCog,
+    description: "Larger text, captions, slow audio, high contrast",
+    settings: {
+      fontSize: 145,
+      highContrast: true,
+      largerCursor: true,
+      captionsOn: true,
+      highlightFocus: true,
+      lineHeight: 160,
+      letterSpacing: 2,
+    },
+  },
+  {
+    id: "bionic-plus",
+    name: "Bionic Reading+",
+    icon: FlipHorizontal,
+    description: "Bionic reading + dyslexia font + symbol hints",
+    settings: {
+      bionicReading: true,
+      dyslexiaFont: true,
+      symbolOverlay: true,
+      lineHeight: 160,
+      letterSpacing: 2,
+      fontSize: 115,
     },
   },
 ];
@@ -514,6 +549,59 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
 
               <div>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Droplets className="h-4 w-4" /> Colour Overlay
+                </h3>
+                <div className="space-y-3">
+                  <Label className="text-xs text-muted-foreground">Tint the screen to reduce visual stress (Irlen-style)</Label>
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="Colour overlay colour">
+                    {[
+                      { color: "", label: "None" },
+                      { color: "#fffacd", label: "Yellow" },
+                      { color: "#ffd6e0", label: "Pink" },
+                      { color: "#d4f1e4", label: "Mint" },
+                      { color: "#d6e8ff", label: "Blue" },
+                      { color: "#f5d5f0", label: "Lavender" },
+                      { color: "#ffe8cc", label: "Peach" },
+                    ].map(({ color, label }) => (
+                      <button
+                        key={label}
+                        onClick={() => updateSettings({ colourOverlay: color })}
+                        className="rounded-full border-2 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          background: color || "transparent",
+                          borderColor: (settings.colourOverlay ?? "") === color ? "hsl(var(--primary))" : "hsl(var(--border))",
+                          boxShadow: (settings.colourOverlay ?? "") === color ? "0 0 0 2px hsl(var(--primary)/0.3)" : undefined,
+                        }}
+                        aria-label={label}
+                        aria-pressed={(settings.colourOverlay ?? "") === color}
+                        title={label}
+                      >
+                        {!color && <span className="text-xs leading-none" aria-hidden="true">✕</span>}
+                      </button>
+                    ))}
+                  </div>
+                  {(settings.colourOverlay ?? "") !== "" && (
+                    <div className="space-y-1">
+                      <Label className="text-sm">Opacity: {Math.round((settings.colourOverlayOpacity ?? 0.15) * 100)}%</Label>
+                      <Slider
+                        value={[(settings.colourOverlayOpacity ?? 0.15) * 100]}
+                        min={5}
+                        max={40}
+                        step={5}
+                        onValueChange={([v]) => updateSettings({ colourOverlayOpacity: v / 100 })}
+                        aria-label="Colour overlay opacity"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <Type className="h-4 w-4" /> Reading
                 </h3>
                 <div className="space-y-3">
@@ -571,6 +659,28 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                       aria-label="Adjust word spacing"
                     />
                   </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="bionic-reading" className="flex items-center gap-2 text-sm">
+                      <FlipHorizontal className="h-3 w-3" /> Bionic Reading
+                      <span className="text-xs text-muted-foreground font-normal">(bold first syllable)</span>
+                    </Label>
+                    <Switch
+                      id="bionic-reading"
+                      checked={!!settings.bionicReading}
+                      onCheckedChange={(checked) => updateSettings({ bionicReading: checked })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="symbol-overlay" className="flex items-center gap-2 text-sm">
+                      <Star className="h-3 w-3" /> Symbol Overlay
+                      <span className="text-xs text-muted-foreground font-normal">(emoji above keywords)</span>
+                    </Label>
+                    <Switch
+                      id="symbol-overlay"
+                      checked={!!settings.symbolOverlay}
+                      onCheckedChange={(checked) => updateSettings({ symbolOverlay: checked })}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -621,6 +731,17 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                       onCheckedChange={(checked) => updateSettings({ readingMask: checked })}
                     />
                   </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="switch-access" className="flex items-center gap-2 text-sm">
+                      <Scan className="h-3 w-3" /> Switch Access Scanning
+                      <span className="text-xs text-muted-foreground font-normal">(Space=scan, Enter=select)</span>
+                    </Label>
+                    <Switch
+                      id="switch-access"
+                      checked={!!settings.switchAccessMode}
+                      onCheckedChange={(checked) => updateSettings({ switchAccessMode: checked })}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -652,6 +773,40 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                       onCheckedChange={(checked) => updateSettings({ focusMode: checked })}
                     />
                   </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="session-pacing" className="flex items-center gap-2 text-sm">
+                      <Clock className="h-3 w-3" /> Session Pacing
+                      <span className="text-xs text-muted-foreground font-normal">(break reminder)</span>
+                    </Label>
+                    <Select
+                      value={String(settings.sessionPacingMinutes ?? 0)}
+                      onValueChange={(v) => updateSettings({ sessionPacingMinutes: Number(v) })}
+                    >
+                      <SelectTrigger id="session-pacing" className="w-full h-8 text-sm" aria-label="Session pacing interval">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Off</SelectItem>
+                        <SelectItem value="10">Every 10 minutes</SelectItem>
+                        <SelectItem value="15">Every 15 minutes</SelectItem>
+                        <SelectItem value="20">Every 20 minutes</SelectItem>
+                        <SelectItem value="30">Every 30 minutes</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(settings.sessionPacingMinutes ?? 0) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="comprehension-checkins" className="flex items-center gap-2 text-sm">
+                        <Brain className="h-3 w-3" /> AI Comprehension Quiz
+                        <span className="text-xs text-muted-foreground font-normal">(at each break)</span>
+                      </Label>
+                      <Switch
+                        id="comprehension-checkins"
+                        checked={!!settings.comprehensionCheckIns}
+                        onCheckedChange={(checked) => updateSettings({ comprehensionCheckIns: checked })}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

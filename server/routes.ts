@@ -5739,6 +5739,187 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── AI Accessibility Features ────────────────────────────────────────────
+
+  app.post("/api/ai/explain-passage", async (req: any, res) => {
+    try {
+      const { passage, context } = req.body as { passage?: string; context?: string };
+      if (!passage || typeof passage !== "string" || passage.trim().length === 0) {
+        return res.status(400).json({ message: "passage is required" });
+      }
+      const { openai } = await import("./replit_integrations/image/client");
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a friendly reading assistant that helps people with reading disabilities understand text. Explain the given passage in clear, simple language. Be concise (2–4 sentences). Avoid jargon.",
+          },
+          {
+            role: "user",
+            content: context
+              ? `Book context: ${context.slice(0, 200)}\n\nPassage to explain: "${passage}"`
+              : `Explain this passage: "${passage}"`,
+          },
+        ],
+        max_tokens: 200,
+      });
+      const explanation = completion.choices[0]?.message?.content ?? "Unable to generate explanation.";
+      res.json({ explanation });
+    } catch (err) {
+      console.error("explain-passage error:", err);
+      res.status(500).json({ message: "AI explanation failed" });
+    }
+  });
+
+  app.post("/api/ai/chapter-checkin", async (req: any, res) => {
+    try {
+      const { chapterText, title } = req.body as { chapterText?: string; title?: string };
+      if (!chapterText || typeof chapterText !== "string" || chapterText.trim().length === 0) {
+        return res.status(400).json({ message: "chapterText is required" });
+      }
+      const { openai } = await import("./replit_integrations/image/client");
+      const excerpt = chapterText.slice(0, 2000);
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              'You are a comprehension quiz generator. Given a text excerpt, generate 3 multiple-choice questions to check understanding. Respond ONLY with valid JSON: {"questions": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0}]}. Use 0-based index for correct answer.',
+          },
+          {
+            role: "user",
+            content: `${title ? `Book: ${title}\n\n` : ""}Text excerpt:\n${excerpt}`,
+          },
+        ],
+        max_tokens: 600,
+        response_format: { type: "json_object" },
+      });
+      const raw = completion.choices[0]?.message?.content ?? "{}";
+      let parsed: { questions: { question: string; options: string[]; correct: number }[] };
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = { questions: [] };
+      }
+      res.json(parsed);
+    } catch (err) {
+      console.error("chapter-checkin error:", err);
+      res.status(500).json({ message: "AI comprehension quiz failed" });
+    }
+  });
+
+  app.post("/api/ai/image-description", async (req: any, res) => {
+    try {
+      const { imageUrl, bookContext } = req.body as { imageUrl?: string; bookContext?: string };
+      if (!imageUrl || typeof imageUrl !== "string") {
+        return res.status(400).json({ message: "imageUrl is required" });
+      }
+      const { openai } = await import("./replit_integrations/image/client");
+      const visionMessages: Parameters<typeof openai.chat.completions.create>[0]["messages"] = [
+        {
+          role: "user" as const,
+          content: `Describe this image (URL: ${imageUrl}) in 1–2 sentences for a visually impaired reader. Be specific and factual.${bookContext ? ` Context: ${bookContext}` : ""}`,
+        },
+      ];
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: visionMessages,
+        max_tokens: 120,
+      });
+      const description = completion.choices[0]?.message?.content ?? "Image description unavailable.";
+      res.json({ description });
+    } catch (err) {
+      console.error("image-description error:", err);
+      res.status(500).json({ message: "Image description failed" });
+    }
+  });
+
+  app.get("/api/books/:id/daisy", async (req: any, res) => {
+    try {
+      const bookId = req.params.id as string;
+      const [book] = await db.select().from(books).where(eq(books.id, bookId));
+      if (!book) return res.status(404).json({ message: "Book not found" });
+
+      const chapters: { id: string; title: string; text: string }[] = [];
+      if (book.chapters && Array.isArray(book.chapters)) {
+        (book.chapters as { title?: string; content?: string }[]).forEach((ch, i) => {
+          chapters.push({
+            id: `ch${i + 1}`,
+            title: ch.title ?? `Chapter ${i + 1}`,
+            text: ch.content ?? "",
+          });
+        });
+      } else {
+        chapters.push({
+          id: "ch1",
+          title: book.title ?? "Full Text",
+          text: (book as any).content ?? book.description ?? "",
+        });
+      }
+
+      const navEntries = chapters.map((ch) => `  <navPoint id="${ch.id}"><navLabel><text>${ch.title}</text></navLabel><content src="${ch.id}.html"/></navPoint>`).join("\n");
+      const ncxXml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="${bookId}"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle><text>${book.title ?? "Untitled"}</text></docTitle>
+  <navMap>
+${navEntries}
+  </navMap>
+</ncx>`;
+
+      const opfXml = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>${book.title ?? "Untitled"}</dc:title>
+    <dc:creator>${book.author ?? "Unknown"}</dc:creator>
+    <dc:identifier id="bookid">${bookId}</dc:identifier>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="navigation.ncx" media-type="application/x-dtbncx+xml"/>
+    ${chapters.map(ch => `<item id="${ch.id}" href="${ch.id}.html" media-type="application/xhtml+xml"/>`).join("\n    ")}
+  </manifest>
+  <spine toc="ncx">
+    ${chapters.map(ch => `<itemref idref="${ch.id}"/>`).join("\n    ")}
+  </spine>
+</package>`;
+
+      const chapterHtmlFiles = chapters.map((ch) => ({
+        name: `${ch.id}.html`,
+        content: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head><title>${ch.title}</title></head>
+<body><h1>${ch.title}</h1><p>${ch.text.replace(/\n\n/g, "</p><p>")}</p></body>
+</html>`,
+      }));
+
+      res.json({
+        bookId,
+        title: book.title,
+        author: book.author,
+        format: "DAISY 2.02",
+        files: [
+          { name: "content.opf", content: opfXml },
+          { name: "navigation.ncx", content: ncxXml },
+          ...chapterHtmlFiles,
+        ],
+      });
+    } catch (err) {
+      console.error("DAISY export error:", err);
+      res.status(500).json({ message: "DAISY export failed" });
+    }
+  });
+
   registerListeningPartyRoutes(app);
   registerStreamingQueueRoutes(app);
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,6 +45,9 @@ import {
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { InteractiveTranscript } from "./interactive-transcript";
+import { localStorageService } from "@/lib/storage";
+import { apiRequest } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
 
 interface AudioPlayerProps {
   book: Book;
@@ -106,6 +109,65 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const { profile, updateProfile } = usePreferencesKernel();
   const captionsOn = profile.captionsOn;
   const captionPosition = profile.captionPosition ?? "below";
+
+  const [a11ySettings, setA11ySettings] = useState(() => localStorageService.getSettings());
+  const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showBreakPrompt, setShowBreakPrompt] = useState(false);
+  const [breakQuizQuestions, setBreakQuizQuestions] = useState<{ question: string; options: string[]; correct: number }[]>([]);
+  const [breakQuizAnswers, setBreakQuizAnswers] = useState<(number | null)[]>([]);
+  const [showBreakQuiz, setShowBreakQuiz] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setA11ySettings(localStorageService.getSettings());
+    document.addEventListener("accessibooks:settings-changed", sync);
+    return () => document.removeEventListener("accessibooks:settings-changed", sync);
+  }, []);
+
+  useEffect(() => {
+    if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+    const pacing = a11ySettings.sessionPacingMinutes ?? 0;
+    if (pacing > 0) {
+      sessionTimerRef.current = setInterval(() => {
+        setShowBreakPrompt(true);
+      }, pacing * 60 * 1000);
+    }
+    return () => { if (sessionTimerRef.current) clearInterval(sessionTimerRef.current); };
+  }, [a11ySettings.sessionPacingMinutes]);
+
+  const breakQuizMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/ai/chapter-checkin", {
+        chapterText: book.description ?? book.title ?? "audiobook",
+        title: book.title,
+      });
+      if (!res.ok) throw new Error("Quiz failed");
+      return res.json() as Promise<{ questions: { question: string; options: string[]; correct: number }[] }>;
+    },
+    onSuccess: (data) => {
+      setBreakQuizQuestions(data.questions ?? []);
+      setBreakQuizAnswers((data.questions ?? []).map(() => null));
+      setShowBreakQuiz(true);
+      setShowBreakPrompt(false);
+    },
+  });
+
+  const handleDownloadDaisy = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/books/${book.id}/daisy`, { credentials: "include" });
+      if (!res.ok) throw new Error("DAISY export failed");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${book.title ?? "book"}-daisy.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "DAISY package downloaded" });
+    } catch {
+      toast({ title: "DAISY export failed", variant: "destructive" });
+    }
+  }, [book.id, book.title, toast]);
 
   const handleToggleCaptions = () => {
     updateProfile({ captionsOn: !captionsOn });
@@ -853,6 +915,101 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
           </CardContent>
         </Card>
       )}
+
+      {showBreakPrompt && !showBreakQuiz && (
+        <Card className="border-2 border-primary/30 bg-primary/5 mt-2">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl" aria-hidden="true">⏰</span>
+              <div className="flex-1">
+                <p className="font-semibold mb-1">Time for a break!</p>
+                <p className="text-sm text-muted-foreground mb-3">
+                  You've been listening for {a11ySettings.sessionPacingMinutes} minutes. Rest your ears and mind.
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {a11ySettings.comprehensionCheckIns && (
+                    <Button
+                      size="sm"
+                      onClick={() => breakQuizMutation.mutate()}
+                      disabled={breakQuizMutation.isPending}
+                    >
+                      {breakQuizMutation.isPending ? "Generating…" : "Comprehension Quiz"}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => setShowBreakPrompt(false)}>
+                    Continue Listening
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showBreakQuiz && breakQuizQuestions.length > 0 && (
+        <Card className="border-2 border-primary/30 mt-2">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold">Comprehension Check</h3>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowBreakQuiz(false)} aria-label="Close quiz">
+                <span aria-hidden="true">✕</span>
+              </Button>
+            </div>
+            <div className="space-y-4">
+              {breakQuizQuestions.map((q, qi) => (
+                <div key={qi}>
+                  <p className="text-sm font-medium mb-2">{qi + 1}. {q.question}</p>
+                  <div className="space-y-1">
+                    {q.options.map((opt, oi) => {
+                      const answered = breakQuizAnswers[qi] !== null;
+                      const isSelected = breakQuizAnswers[qi] === oi;
+                      const isCorrect = oi === q.correct;
+                      return (
+                        <Button
+                          key={oi}
+                          variant="outline"
+                          size="sm"
+                          className={`w-full text-left h-auto py-1.5 px-3 text-sm ${answered && isCorrect ? "border-green-500 bg-green-50 text-green-800" : answered && isSelected ? "border-red-400 bg-red-50 text-red-800" : answered ? "opacity-50" : ""}`}
+                          onClick={() => {
+                            if (breakQuizAnswers[qi] !== null) return;
+                            const updated = [...breakQuizAnswers];
+                            updated[qi] = oi;
+                            setBreakQuizAnswers(updated);
+                          }}
+                          disabled={answered}
+                        >
+                          {answered && isCorrect && <span className="mr-2">✓</span>}
+                          {answered && isSelected && !isCorrect && <span className="mr-2">✗</span>}
+                          {opt}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {breakQuizAnswers.every(a => a !== null) && (
+              <div className="mt-3 text-sm font-medium">
+                Score: {breakQuizAnswers.filter((a, i) => a === breakQuizQuestions[i].correct).length} / {breakQuizQuestions.length}
+                <Button size="sm" className="ml-3" onClick={() => setShowBreakQuiz(false)}>Done</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="mt-2 flex justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={handleDownloadDaisy}
+          title="Download DAISY accessibility package"
+        >
+          <span className="mr-1" aria-hidden="true">♿</span>
+          DAISY Export
+        </Button>
+      </div>
         </div>{/* end right column */}
       </div>{/* end two-column flex */}
     </div>
