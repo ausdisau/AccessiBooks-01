@@ -41,7 +41,10 @@ import {
   Radio,
   Play,
   CheckCircle,
+  Music2,
 } from "lucide-react";
+import { useAudioContext } from "@/contexts/AudioContext";
+import { useKaraokeAlignment } from "@/hooks/use-karaoke-alignment";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -248,6 +251,17 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [quizAnswers, setQuizAnswers] = useState<(number | null)[]>([]);
   const [showQuiz, setShowQuiz] = useState(false);
   const [showBreakPrompt, setShowBreakPrompt] = useState(false);
+  const [followAlong, setFollowAlong] = useState(() => {
+    return localStorage.getItem("karaoke-follow-along") === "true";
+  });
+
+  const audioCtx = useAudioContext();
+  const isAudioMatchingBook = audioCtx.currentBook?.id === book.id;
+  const karaokeTimeMs = followAlong && isAudioMatchingBook ? audioCtx.currentTime * 1000 : 0;
+  const { isAvailable: karaokeAvailable, activeWordIndex: karaokeWordIndex } = useKaraokeAlignment(
+    followAlong && isAudioMatchingBook ? book.id : null,
+    karaokeTimeMs
+  );
 
   const explainMutation = useMutation({
     mutationFn: async (passage: string) => {
@@ -574,6 +588,20 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   }, [words, currentPage]);
 
   const pageContent = useMemo(() => getPageContent(), [getPageContent]);
+
+  useEffect(() => {
+    localStorage.setItem("karaoke-follow-along", String(followAlong));
+  }, [followAlong]);
+
+  useEffect(() => {
+    if (!followAlong || !isAudioMatchingBook || karaokeWordIndex === null) return;
+    const targetPage = Math.floor(karaokeWordIndex / WORDS_PER_PAGE) + 1;
+    if (targetPage !== currentPage && targetPage >= 1 && targetPage <= totalPages) {
+      setCurrentPage(targetPage);
+      saveProgress(targetPage);
+      contentRef.current?.scrollTo(0, 0);
+    }
+  }, [karaokeWordIndex, followAlong, isAudioMatchingBook, totalPages, saveProgress]);
 
   useEffect(() => {
     if (!words.length || currentPage >= totalPages) return;
@@ -913,6 +941,23 @@ function TextReader({ book, onBack }: EbookReaderProps) {
               <BarChart3 className="h-4 w-4" />
             </Button>
             <Button
+              variant={followAlong ? "default" : "ghost"}
+              size="icon"
+              className={`h-8 w-8 ${followAlong ? "bg-green-600 text-white hover:bg-green-700" : ""}`}
+              onClick={() => setFollowAlong(v => !v)}
+              aria-label={followAlong ? "Follow Along active — click to disable" : "Enable Follow Along (karaoke mode)"}
+              title={
+                followAlong
+                  ? "Follow Along ON"
+                  : !isAudioMatchingBook && audioCtx.currentBook
+                  ? "Audio is playing a different book"
+                  : "Follow Along — highlights words as audio plays"
+              }
+              disabled={!isAudioMatchingBook && !followAlong}
+            >
+              <Music2 className="h-4 w-4" />
+            </Button>
+            <Button
               variant={easyEnglishMode ? "default" : "ghost"}
               size="icon"
               className={`h-8 w-8 ${easyEnglishMode ? "bg-purple-600 text-white hover:bg-purple-700" : ""}`}
@@ -1120,6 +1165,43 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           />
         </div>
 
+        {followAlong && (
+          <div
+            className={`mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm ${
+              settings.theme === "dark"
+                ? "bg-green-900/30 border border-green-700/40"
+                : "bg-green-50 border border-green-200"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-center gap-2">
+              <Music2 className="h-4 w-4 text-green-600 flex-shrink-0" aria-hidden="true" />
+              <span className={settings.theme === "dark" ? "text-green-200" : "text-green-800"}>
+                {!isAudioMatchingBook
+                  ? "Follow Along: play this book's audio to sync"
+                  : !karaokeAvailable
+                  ? "Follow Along: no transcript available for this book"
+                  : karaokeWordIndex !== null
+                  ? "Follow Along active — words highlighted as audio plays"
+                  : "Follow Along ready — start audio to begin"}
+              </span>
+            </div>
+            {isAudioMatchingBook && karaokeAvailable && (
+              <Badge
+                variant="secondary"
+                className={
+                  settings.theme === "dark"
+                    ? "bg-green-800 text-green-100 border-green-600 text-xs"
+                    : "bg-green-100 text-green-800 border-green-300 text-xs"
+                }
+              >
+                {audioCtx.isPlaying ? "Syncing" : "Paused"}
+              </Badge>
+            )}
+          </div>
+        )}
+
         <div className={`mb-4 border rounded-lg p-3 ${settings.theme === "dark" ? "bg-gray-800/50 border-gray-700" : "bg-muted/30 border-border"}`}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
@@ -1267,28 +1349,38 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                       </div>
                       <span>{easyEnglishText}</span>
                     </div>
-                  ) : highlightedWordIndex !== null ? (
-                    <HighlightedText
-                      text={pageContent}
-                      activeWordIndex={highlightedWordIndex}
-                      darkMode={settings.theme === "dark"}
-                      annotations={currentPageAnnotations}
-                      searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
-                      bionicReading={bionicReading}
-                      symbolOverlay={symbolOverlay}
-                      precomputed={nextPageDataRef.current?.page === currentPage ? nextPageDataRef.current.precomputed : undefined}
-                    />
-                  ) : (
-                    <AnnotatedText
-                      text={pageContent}
-                      annotations={currentPageAnnotations}
-                      searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
-                      darkMode={settings.theme === "dark"}
-                      bionicReading={bionicReading}
-                      symbolOverlay={symbolOverlay}
-                      precomputed={nextPageDataRef.current?.page === currentPage ? nextPageDataRef.current.precomputed : undefined}
-                    />
-                  )}
+                  ) : (() => {
+                    const karaokeActive = followAlong && isAudioMatchingBook && karaokeWordIndex !== null && karaokeAvailable;
+                    const karaokePageWordIndex = karaokeActive ? karaokeWordIndex % WORDS_PER_PAGE : null;
+                    const activeIdx = karaokeActive ? karaokePageWordIndex : highlightedWordIndex;
+                    const precomp = nextPageDataRef.current?.page === currentPage ? nextPageDataRef.current.precomputed : undefined;
+                    const sq = searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : "";
+                    if (activeIdx !== null && activeIdx !== undefined) {
+                      return (
+                        <HighlightedText
+                          text={pageContent}
+                          activeWordIndex={activeIdx}
+                          darkMode={settings.theme === "dark"}
+                          annotations={currentPageAnnotations}
+                          searchQuery={sq}
+                          bionicReading={bionicReading}
+                          symbolOverlay={symbolOverlay}
+                          precomputed={precomp}
+                        />
+                      );
+                    }
+                    return (
+                      <AnnotatedText
+                        text={pageContent}
+                        annotations={currentPageAnnotations}
+                        searchQuery={sq}
+                        darkMode={settings.theme === "dark"}
+                        bionicReading={bionicReading}
+                        symbolOverlay={symbolOverlay}
+                        precomputed={precomp}
+                      />
+                    );
+                  })()}
                   {!pageContent && !easyEnglishMode && (
                     <p className="text-center text-muted-foreground italic">Content not available for preview</p>
                   )}
