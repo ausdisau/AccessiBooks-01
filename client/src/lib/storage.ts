@@ -55,6 +55,7 @@ export interface AccessibilitySettings {
   comprehensionCheckIns?: boolean;
   symbolOverlay?: boolean;
   switchAccessMode?: boolean;
+  karaokeFollowAlong?: boolean;
 }
 
 export const localStorageService = {
