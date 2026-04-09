@@ -1,4 +1,4 @@
-import { Book, TITLE_PRICING, TIER_DISCOUNTS, type SubscriptionTier } from "@shared/schema";
+import { Book, TITLE_PRICING } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { usePurchaseCheckout } from "@/hooks/use-purchases";
 import { useSubscription } from "@/hooks/use-subscription";
 import { BookAccessibilityRatings } from "@/components/book-accessibility-ratings";
 import { Separator } from "@/components/ui/separator";
+import { useBookPrefetch } from "@/hooks/use-book-prefetch";
 
 interface BookCardProps {
   book: Book;
@@ -44,6 +45,7 @@ const sourceLabels: Record<string, string> = {
 export function BookCard({ book, onPlayBook, compact = false, owned = false }: BookCardProps) {
   const { purchaseTitle, isPurchasing } = usePurchaseCheckout();
   const { tier, discountRate } = useSubscription();
+  const { onMouseEnter, onMouseLeave, onFocus } = useBookPrefetch(book);
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -60,16 +62,23 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
   const finalPrice = discountRate > 0 ? Math.round(pricing.base * (1 - discountRate)) : pricing.base;
   const priceLabel = `$${(finalPrice / 100).toFixed(2)}`;
 
+  const quickStartLabel = isEbookOrMagazine
+    ? `Read ${book.title}`
+    : `Listen to ${book.title}`;
+
   if (compact) {
     return (
-      <Card 
-        className="hover:shadow-lg transition-shadow cursor-pointer group" 
+      <Card
+        className="hover:shadow-lg transition-shadow cursor-pointer group"
         data-testid={`card-book-${book.id}`}
         onClick={() => onPlayBook(book)}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPlayBook(book); } }}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
         tabIndex={0}
         role="button"
         aria-label={`${isEbookOrMagazine ? "Read" : "Play"} ${book.title} by ${book.author}. ${typeConfig.label}`}
+        onFocus={onFocus}
       >
         <CardContent className="p-2.5 sm:p-3">
           <div className="relative">
@@ -81,25 +90,30 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
               className="w-full h-28 sm:h-32 object-cover rounded-md mb-2"
               iconSize="h-8 w-8"
             />
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
-              {isEbookOrMagazine ? (
-                <BookOpenIcon className="h-10 w-10 text-white" />
-              ) : (
-                <Play className="h-10 w-10 text-white fill-white" />
-              )}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity rounded-md flex flex-col items-center justify-center gap-2 mb-2">
+              <button
+                type="button"
+                aria-label={quickStartLabel}
+                onClick={(e) => { e.stopPropagation(); onPlayBook(book); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 text-gray-900 text-xs font-semibold hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+              >
+                {isEbookOrMagazine ? (
+                  <><BookOpenIcon className="h-3.5 w-3.5" aria-hidden="true" />Read</>
+                ) : (
+                  <><Play className="h-3.5 w-3.5 fill-gray-900" aria-hidden="true" />Listen</>
+                )}
+              </button>
             </div>
-            
-            {/* Content type badge */}
-            <Badge 
+
+            <Badge
               className={`absolute top-2 left-2 text-xs px-1.5 py-0.5 ${typeConfig.color} text-white`}
               aria-label={typeConfig.label}
             >
               <TypeIcon className="h-3 w-3 mr-1" aria-hidden="true" />
               {typeConfig.label}
             </Badge>
-            
           </div>
-          
+
           <h3 className="text-sm font-medium line-clamp-2" data-testid={`text-title-${book.id}`}>
             {book.title}
           </h3>
@@ -115,7 +129,12 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
   }
 
   return (
-    <Card className="hover:shadow-lg transition-shadow focus-within:ring-2 focus-within:ring-ring" data-testid={`card-book-${book.id}`}>
+    <Card
+      className="hover:shadow-lg transition-shadow focus-within:ring-2 focus-within:ring-ring"
+      data-testid={`card-book-${book.id}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       <CardContent className="p-4 sm:p-6">
         <div className="relative mb-4">
           <BookCover
@@ -126,18 +145,16 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
             className="w-full h-40 sm:h-48 object-cover rounded-md"
             iconSize="h-12 w-12"
           />
-          
-          {/* Content type badge */}
-          <Badge 
+
+          <Badge
             className={`absolute top-2 left-2 ${typeConfig.color} text-white`}
             aria-label={typeConfig.label}
           >
             <TypeIcon className="h-3 w-3 mr-1" aria-hidden="true" />
             {typeConfig.label}
           </Badge>
-          
         </div>
-        
+
         <h3 className="text-base sm:text-lg font-semibold mb-2" data-testid={`text-title-${book.id}`}>
           {book.title}
         </h3>
@@ -145,7 +162,7 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
           by {book.author}
         </p>
         <p className="text-sm text-muted-foreground mb-1" data-testid={`text-duration-${book.id}`}>
-          {isEbookOrMagazine 
+          {isEbookOrMagazine
             ? (book.pageCount ? `${book.pageCount} pages` : typeConfig.label)
             : formatDuration(book.duration)
           }
@@ -153,12 +170,14 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
         {sourceLabels[book.source] && (
           <p className="text-xs text-muted-foreground/70 mb-3">via {sourceLabels[book.source]}</p>
         )}
-        
+
         <div className="space-y-2">
           <Button
             className="w-full"
             onClick={() => onPlayBook(book)}
+            onFocus={onFocus}
             data-testid={`button-play-${book.id}`}
+            aria-label={quickStartLabel}
           >
             {isEbookOrMagazine ? (
               <>
