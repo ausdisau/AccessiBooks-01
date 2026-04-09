@@ -30,14 +30,15 @@ export function useKaraokeAlignment(bookId: string | null, currentTimeMs: number
   const activeWordIndex = useMemo(() => {
     if (!data?.available || !data.words.length) return null;
     const t = currentTimeMs;
+    const words = data.words;
 
     let lo = 0;
-    let hi = data.words.length - 1;
+    let hi = words.length - 1;
     let result = -1;
 
     while (lo <= hi) {
       const mid = (lo + hi) >>> 1;
-      const w = data.words[mid];
+      const w = words[mid];
       if (w.startMs <= t && w.endMs > t) {
         result = mid;
         break;
@@ -50,7 +51,10 @@ export function useKaraokeAlignment(bookId: string | null, currentTimeMs: number
     }
 
     if (result < 0) return null;
-    return data.words[result].wordIndex;
+    const candidate = words[result];
+    // If time is past the last word's end, nothing is active
+    if (t >= candidate.endMs && result === words.length - 1) return null;
+    return candidate.wordIndex;
   }, [data, currentTimeMs]);
 
   return {

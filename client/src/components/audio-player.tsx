@@ -48,7 +48,7 @@ import { useAudioContext } from "@/contexts/AudioContext";
 import { InteractiveTranscript } from "./interactive-transcript";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 interface AudioPlayerProps {
   book: Book;
@@ -182,6 +182,18 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const handleToggleFollowAlong = () => {
     updateProfile({ karaokeFollowAlong: !followAlong });
   };
+
+  const { data: alignmentData } = useQuery<{ available: boolean }>({
+    queryKey: ["/api/books", book.id, "word-alignment"],
+    queryFn: async () => {
+      const res = await fetch(`/api/books/${book.id}/word-alignment`);
+      if (!res.ok) return { available: false };
+      return res.json();
+    },
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+  const alignmentAvailable = alignmentData?.available ?? false;
 
   const hasChapters = chapters.length > 0;
   const canGoPrev = currentChapterIndex > 0;
@@ -747,19 +759,21 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 </Button>
               )}
 
-              <Button
-                variant={followAlong ? "default" : "outline"}
-                size="sm"
-                onClick={handleToggleFollowAlong}
-                className={`gap-1 ${followAlong ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}`}
-                aria-label={followAlong ? "Follow Along active — click to disable" : "Enable Follow Along (sync ebook text with audio)"}
-                aria-pressed={followAlong}
-                title={followAlong ? "Follow Along: ON — ebook text highlights as audio plays" : "Follow Along: OFF — enable to sync ebook reader with audio"}
-                data-testid="button-follow-along"
-              >
-                <Music2 className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Follow Along</span>
-              </Button>
+              {alignmentAvailable && (
+                <Button
+                  variant={followAlong ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleToggleFollowAlong}
+                  className={`gap-1 ${followAlong ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}`}
+                  aria-label={followAlong ? "Follow Along active — click to disable" : "Enable Follow Along (sync ebook text with audio)"}
+                  aria-pressed={followAlong}
+                  title={followAlong ? "Follow Along: ON — ebook text highlights as audio plays" : "Follow Along: OFF — enable to sync ebook reader with audio"}
+                  data-testid="button-follow-along"
+                >
+                  <Music2 className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">Follow Along</span>
+                </Button>
+              )}
             </div>
             
             <div className="flex items-center gap-2">
