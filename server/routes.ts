@@ -593,8 +593,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const url = new URL(book.contentUrl);
               const isAllowed = allowedDomains.some(domain => url.hostname.includes(domain));
               if (isAllowed) {
-                const response = await fetch(book.contentUrl);
-                if (response.ok) {
+                const response = await fetch(book.contentUrl, {
+                  headers: { "Range": "bytes=0-102399" },
+                });
+                if (response.ok || response.status === 206) {
                   const ct = response.headers.get("content-type") || "";
                   if (ct.includes("text/plain") || ct.includes("text/html")) {
                     const text = await response.text();
