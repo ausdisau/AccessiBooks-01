@@ -20,6 +20,13 @@ export function getDefaultA11ySettings(): AccessibilitySettings {
     wordSpacing: 0,
     colorVisionMode: "none",
     focusMode: false,
+    bionicReading: false,
+    colourOverlay: "",
+    colourOverlayOpacity: 0.15,
+    sessionPacingMinutes: 0,
+    comprehensionCheckIns: false,
+    symbolOverlay: false,
+    switchAccessMode: false,
   };
 }
 

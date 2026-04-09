@@ -48,6 +48,13 @@ export interface AccessibilitySettings {
   captionPosition?: "above" | "below";
   focusMode?: boolean;
   voiceControlEnabled?: boolean;
+  bionicReading?: boolean;
+  colourOverlay?: string;
+  colourOverlayOpacity?: number;
+  sessionPacingMinutes?: number;
+  comprehensionCheckIns?: boolean;
+  symbolOverlay?: boolean;
+  switchAccessMode?: boolean;
 }
 
 export const localStorageService = {
@@ -144,6 +151,13 @@ export const localStorageService = {
       captionPosition: "below",
       focusMode: false,
       voiceControlEnabled: false,
+      bionicReading: false,
+      colourOverlay: "",
+      colourOverlayOpacity: 0.15,
+      sessionPacingMinutes: 0,
+      comprehensionCheckIns: false,
+      symbolOverlay: false,
+      switchAccessMode: false,
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);

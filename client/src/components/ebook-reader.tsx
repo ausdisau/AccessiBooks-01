@@ -111,6 +111,36 @@ const HIGHLIGHT_COLORS = [
 
 const WORDS_PER_PAGE = 300;
 
+const SYMBOL_MAP: Record<string, string> = {
+  dog: "🐕", cat: "🐈", house: "🏠", book: "📚", happy: "😊", sad: "😢",
+  man: "👨", woman: "👩", child: "👧", walk: "🚶", run: "🏃", eat: "🍽️",
+  sleep: "😴", car: "🚗", tree: "🌳", water: "💧", fire: "🔥", sun: "☀️",
+  moon: "🌙", star: "⭐", love: "❤️", family: "👨‍👩‍👧", school: "🏫",
+  money: "💰", food: "🍎", music: "🎵", phone: "📱", computer: "💻",
+  king: "👑", queen: "👑", prince: "🤴", princess: "👸", knight: "⚔️",
+  castle: "🏰", ship: "🚢", sea: "🌊", mountain: "⛰️", forest: "🌲",
+  bird: "🐦", horse: "🐴", fish: "🐟", flower: "🌸", rain: "🌧️",
+  night: "🌙", day: "☀️", time: "⏰", death: "💀", life: "✨",
+  sword: "⚔️", magic: "🪄", dark: "🌑", light: "💡", voice: "🗣️",
+  eye: "👁️", heart: "❤️", hand: "✋", face: "😐", door: "🚪",
+  road: "🛣️", town: "🏘️", city: "🏙️", farm: "🌾", river: "🏞️",
+};
+
+function applyBionicReading(word: string): [string, string] {
+  const clean = word.replace(/[^a-zA-Z]/g, "");
+  if (clean.length <= 1) return [word, ""];
+  const mid = Math.max(1, Math.ceil(clean.length / 2));
+  const firstIdx = word.indexOf(clean[0]);
+  const bold = word.slice(0, firstIdx + mid);
+  const rest = word.slice(firstIdx + mid);
+  return [bold, rest];
+}
+
+function getSymbol(word: string): string | null {
+  const clean = word.toLowerCase().replace(/[^a-z]/g, "");
+  return SYMBOL_MAP[clean] ?? null;
+}
+
 type ContentFormat = "text" | "pdf" | "epub" | "unknown";
 
 function detectContentFormat(book: Book): ContentFormat {
@@ -208,7 +238,62 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const readerContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
+
+  const [a11ySettings, setA11ySettings] = useState(() => localStorageService.getSettings());
+  useEffect(() => {
+    const sync = () => setA11ySettings(localStorageService.getSettings());
+    document.addEventListener("accessibooks:settings-changed", sync);
+    return () => document.removeEventListener("accessibooks:settings-changed", sync);
+  }, []);
+
+  const bionicReading = !!a11ySettings.bionicReading;
+  const symbolOverlay = !!a11ySettings.symbolOverlay;
+
+  const [quizQuestions, setQuizQuestions] = useState<{ question: string; options: string[]; correct: number }[]>([]);
+  const [quizAnswers, setQuizAnswers] = useState<(number | null)[]>([]);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [showBreakPrompt, setShowBreakPrompt] = useState(false);
+
+  const explainMutation = useMutation({
+    mutationFn: async (passage: string) => {
+      const res = await apiRequest("POST", "/api/ai/explain-passage", {
+        passage,
+        context: book.description?.slice(0, 200),
+      });
+      if (!res.ok) throw new Error("Explanation failed");
+      return res.json() as Promise<{ explanation: string }>;
+    },
+  });
+
+  const quizMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/ai/chapter-checkin", {
+        chapterText: pageContent,
+        title: book.title,
+      });
+      if (!res.ok) throw new Error("Quiz failed");
+      return res.json() as Promise<{ questions: { question: string; options: string[]; correct: number }[] }>;
+    },
+    onSuccess: (data) => {
+      setQuizQuestions(data.questions ?? []);
+      setQuizAnswers((data.questions ?? []).map(() => null));
+      setShowQuiz(true);
+      setShowBreakPrompt(false);
+    },
+  });
+
+  useEffect(() => {
+    const pacingMinutes = a11ySettings.sessionPacingMinutes ?? 0;
+    if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+    if (pacingMinutes > 0) {
+      sessionTimerRef.current = setInterval(() => {
+        setShowBreakPrompt(true);
+      }, pacingMinutes * 60 * 1000);
+    }
+    return () => { if (sessionTimerRef.current) clearInterval(sessionTimerRef.current); };
+  }, [a11ySettings.sessionPacingMinutes]);
   const { isPremium, isPlus } = useSubscription();
   const { user: authUser } = useAuth();
   const isAdmin = authUser?.role === "admin";
@@ -1171,6 +1256,8 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                       darkMode={settings.theme === "dark"}
                       annotations={currentPageAnnotations}
                       searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
+                      bionicReading={bionicReading}
+                      symbolOverlay={symbolOverlay}
                     />
                   ) : (
                     <AnnotatedText
@@ -1178,6 +1265,8 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                       annotations={currentPageAnnotations}
                       searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
                       darkMode={settings.theme === "dark"}
+                      bionicReading={bionicReading}
+                      symbolOverlay={symbolOverlay}
                     />
                   )}
                   {!pageContent && !easyEnglishMode && (
@@ -1214,10 +1303,30 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                     placeholder="Add a note (optional)..."
                     className="h-8 text-sm"
                   />
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button size="sm" onClick={addAnnotation}><Highlighter className="h-3.5 w-3.5 mr-1" />Save Highlight</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setShowAnnotationPanel(false); setSelectedText(""); }}><X className="h-3.5 w-3.5 mr-1" />Cancel</Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => explainMutation.mutate(selectedText)}
+                      disabled={explainMutation.isPending}
+                    >
+                      <Sparkles className="h-3.5 w-3.5 mr-1" />
+                      {explainMutation.isPending ? "Explaining…" : "AI Explain"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setShowAnnotationPanel(false); setSelectedText(""); explainMutation.reset(); }}><X className="h-3.5 w-3.5 mr-1" />Cancel</Button>
                   </div>
+                  {explainMutation.data && (
+                    <div className={`rounded-lg p-3 text-sm ${settings.theme === "dark" ? "bg-primary/10 border border-primary/30 text-gray-200" : "bg-primary/5 border border-primary/20 text-gray-800"}`}>
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <p>{explainMutation.data.explanation}</p>
+                      </div>
+                    </div>
+                  )}
+                  {explainMutation.isError && (
+                    <p className="text-xs text-destructive">Could not generate explanation. Please try again.</p>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -1268,6 +1377,92 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             >
               Export All Notes
             </Button>
+          </div>
+        )}
+
+        {showBreakPrompt && !showQuiz && (
+          <div className={`mt-4 p-4 rounded-lg border-2 border-primary/30 ${settings.theme === "dark" ? "bg-gray-800" : "bg-primary/5"}`}>
+            <div className="flex items-start gap-3">
+              <span className="text-2xl" aria-hidden="true">⏰</span>
+              <div className="flex-1">
+                <p className={`font-semibold mb-1 ${theme.text}`}>Time for a break!</p>
+                <p className={`text-sm mb-3 ${theme.mutedText}`}>
+                  You've been reading for {a11ySettings.sessionPacingMinutes} minutes. Take a short rest for your eyes and mind.
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {a11ySettings.comprehensionCheckIns && (
+                    <Button
+                      size="sm"
+                      onClick={() => quizMutation.mutate()}
+                      disabled={quizMutation.isPending}
+                    >
+                      <Sparkles className="h-3.5 w-3.5 mr-1" />
+                      {quizMutation.isPending ? "Generating quiz…" : "Take Comprehension Quiz"}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => setShowBreakPrompt(false)}>
+                    Continue Reading
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showQuiz && quizQuestions.length > 0 && (
+          <div className={`mt-4 p-4 rounded-lg border-2 border-primary/30 ${settings.theme === "dark" ? "bg-gray-800" : "bg-white"}`} role="dialog" aria-label="Comprehension quiz">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={`font-semibold flex items-center gap-2 ${theme.text}`}>
+                <Sparkles className="h-4 w-4 text-primary" /> Comprehension Check
+              </h3>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowQuiz(false)} aria-label="Close quiz">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-5">
+              {quizQuestions.map((q, qi) => (
+                <div key={qi}>
+                  <p className={`text-sm font-medium mb-2 ${theme.text}`}>{qi + 1}. {q.question}</p>
+                  <div className="space-y-1.5">
+                    {q.options.map((opt, oi) => {
+                      const answered = quizAnswers[qi] !== null;
+                      const isSelected = quizAnswers[qi] === oi;
+                      const isCorrect = oi === q.correct;
+                      let btnClass = "w-full text-left h-auto py-1.5 px-3 text-sm ";
+                      if (answered) {
+                        if (isCorrect) btnClass += "border-green-500 bg-green-50 text-green-800";
+                        else if (isSelected) btnClass += "border-red-400 bg-red-50 text-red-800";
+                        else btnClass += "opacity-50";
+                      }
+                      return (
+                        <Button
+                          key={oi}
+                          variant="outline"
+                          className={btnClass}
+                          onClick={() => {
+                            if (quizAnswers[qi] !== null) return;
+                            const updated = [...quizAnswers];
+                            updated[qi] = oi;
+                            setQuizAnswers(updated);
+                          }}
+                          disabled={answered}
+                        >
+                          {answered && isCorrect && <span className="mr-2">✓</span>}
+                          {answered && isSelected && !isCorrect && <span className="mr-2">✗</span>}
+                          {opt}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {quizAnswers.every(a => a !== null) && (
+              <div className={`mt-4 p-3 rounded text-sm font-medium ${theme.text}`}>
+                Score: {quizAnswers.filter((a, i) => a === quizQuestions[i].correct).length} / {quizQuestions.length}
+                <Button size="sm" className="ml-3" onClick={() => setShowQuiz(false)}>Done</Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1344,16 +1539,40 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   );
 }
 
+function renderWordContent(word: string, bionicReading: boolean, symbolOverlay: boolean) {
+  const symbol = symbolOverlay ? getSymbol(word) : null;
+  let wordEl: React.ReactNode;
+  if (bionicReading) {
+    const [bold, rest] = applyBionicReading(word);
+    wordEl = <><strong>{bold}</strong>{rest}</>;
+  } else {
+    wordEl = word;
+  }
+  if (symbol) {
+    return (
+      <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", verticalAlign: "bottom" }}>
+        <span style={{ fontSize: "0.6em", lineHeight: 1, opacity: 0.85 }} aria-hidden="true">{symbol}</span>
+        {wordEl}
+      </span>
+    );
+  }
+  return wordEl;
+}
+
 function AnnotatedText({
   text,
   annotations,
   searchQuery,
   darkMode,
+  bionicReading = false,
+  symbolOverlay = false,
 }: {
   text: string;
   annotations: Annotation[];
   searchQuery: string;
   darkMode: boolean;
+  bionicReading?: boolean;
+  symbolOverlay?: boolean;
 }) {
   const wordsArr = text.split(/\s+/);
 
@@ -1377,7 +1596,7 @@ function AnnotatedText({
 
         return (
           <span key={i} className={className} style={style} title={ann?.note || undefined}>
-            {word}{" "}
+            {renderWordContent(word, bionicReading, symbolOverlay)}{" "}
           </span>
         );
       })}
@@ -1391,12 +1610,16 @@ function HighlightedText({
   darkMode,
   annotations,
   searchQuery,
+  bionicReading = false,
+  symbolOverlay = false,
 }: {
   text: string;
   activeWordIndex: number;
   darkMode: boolean;
   annotations: Annotation[];
   searchQuery: string;
+  bionicReading?: boolean;
+  symbolOverlay?: boolean;
 }) {
   const wordsArr = text.split(/\s+/);
   const activeRef = useRef<HTMLSpanElement>(null);
@@ -1429,7 +1652,7 @@ function HighlightedText({
 
         return (
           <span key={i} ref={isActive ? activeRef : null} className={className} style={style} title={ann?.note || undefined}>
-            {word}{" "}
+            {renderWordContent(word, bionicReading, symbolOverlay)}{" "}
           </span>
         );
       })}

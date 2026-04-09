@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, useMemo, useCallback, memo } from "react";
+import { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallback, memo } from "react";
 import { Route, Switch, Link, useLocation, useRoute, Router } from "wouter";
 import { QueryClientProvider, useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "./lib/queryClient";
@@ -2338,6 +2338,8 @@ function App() {
             </Route>
           </Switch>
           <AccessibilityWidget />
+          <ColourOverlayRenderer />
+          <SwitchAccessScanner />
           <FocusModeExitButton />
           <Toaster />
         </AudioProvider>
@@ -2424,6 +2426,142 @@ function AudioAdManager() {
       onComplete={onAdComplete}
       onUpgrade={onAdUpgrade}
     />
+  );
+}
+
+function ColourOverlayRenderer() {
+  const [overlay, setOverlay] = useState(() => {
+    const s = localStorageService.getSettings();
+    return { color: s.colourOverlay ?? "", opacity: s.colourOverlayOpacity ?? 0.15 };
+  });
+
+  useEffect(() => {
+    const sync = () => {
+      const s = localStorageService.getSettings();
+      setOverlay({ color: s.colourOverlay ?? "", opacity: s.colourOverlayOpacity ?? 0.15 });
+    };
+    document.addEventListener("accessibooks:settings-changed", sync);
+    return () => document.removeEventListener("accessibooks:settings-changed", sync);
+  }, []);
+
+  if (!overlay.color) return null;
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: overlay.color,
+        opacity: overlay.opacity,
+        pointerEvents: "none",
+        zIndex: 9990,
+        mixBlendMode: "multiply",
+      }}
+    />
+  );
+}
+
+function SwitchAccessScanner() {
+  const [enabled, setEnabled] = useState(() => !!localStorageService.getSettings().switchAccessMode);
+  const [scanIndex, setScanIndex] = useState(-1);
+  const scanRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elementsRef = useRef<HTMLElement[]>([]);
+
+  useEffect(() => {
+    const sync = () => setEnabled(!!localStorageService.getSettings().switchAccessMode);
+    document.addEventListener("accessibooks:settings-changed", sync);
+    return () => document.removeEventListener("accessibooks:settings-changed", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) {
+      if (scanRef.current) clearInterval(scanRef.current);
+      elementsRef.current.forEach(el => el.classList.remove("switch-access-focus"));
+      setScanIndex(-1);
+      return;
+    }
+
+    const SCAN_INTERVAL = 1200;
+    const SELECTOR = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const startScan = () => {
+      elementsRef.current = Array.from(document.querySelectorAll<HTMLElement>(SELECTOR)).filter(
+        el => el.offsetParent !== null && !el.closest('[aria-hidden="true"]')
+      );
+      setScanIndex(0);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (scanRef.current) {
+          clearInterval(scanRef.current);
+          scanRef.current = null;
+          setScanIndex(-1);
+        }
+        startScan();
+        scanRef.current = setInterval(() => {
+          setScanIndex(prev => {
+            const next = prev + 1;
+            if (next >= elementsRef.current.length) {
+              clearInterval(scanRef.current!);
+              scanRef.current = null;
+              return -1;
+            }
+            return next;
+          });
+        }, SCAN_INTERVAL);
+      } else if (e.code === "Enter" && scanIndex >= 0) {
+        e.preventDefault();
+        if (scanRef.current) { clearInterval(scanRef.current); scanRef.current = null; }
+        const target = elementsRef.current[scanIndex];
+        target?.click();
+        setScanIndex(-1);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (scanRef.current) clearInterval(scanRef.current);
+    };
+  }, [enabled, scanIndex]);
+
+  useEffect(() => {
+    elementsRef.current.forEach((el, i) => {
+      if (i === scanIndex) {
+        el.classList.add("switch-access-focus");
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } else {
+        el.classList.remove("switch-access-focus");
+      }
+    });
+  }, [scanIndex]);
+
+  if (!enabled) return null;
+
+  return (
+    <div
+      aria-live="polite"
+      aria-label="Switch access scanning active. Press Space to start scanning, Enter to select."
+      style={{
+        position: "fixed",
+        bottom: 128,
+        left: 16,
+        zIndex: 9995,
+        background: "hsl(var(--primary))",
+        color: "hsl(var(--primary-foreground))",
+        padding: "4px 10px",
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: 600,
+        pointerEvents: "none",
+        opacity: 0.9,
+      }}
+    >
+      {scanIndex >= 0 ? `Scanning ${scanIndex + 1}/${elementsRef.current.length}` : "Switch Access: Space to scan"}
+    </div>
   );
 }
 
