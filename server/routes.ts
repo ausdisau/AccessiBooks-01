@@ -47,6 +47,7 @@ import {
 import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature } from "./stripe";
 import { TIER_PRICING, TITLE_PRICING, TIER_DISCOUNTS, TIER_FEATURES, type SubscriptionTier, purchases } from "@shared/schema";
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
+import { apiCache, CACHE_TTL } from "./apiCache";
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
 import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./amazon";
@@ -549,13 +550,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/books/:id/prewarm - Pre-warm server cache for faster content delivery
-  app.post("/api/books/:id/prewarm", async (req, res) => {
+  app.post("/api/books/:id/prewarm", async (req: any, res) => {
     try {
       const { id } = req.params;
       const book = await storage.getBook(id);
       if (!book) {
         return res.status(404).json({ warmed: false, reason: "not found" });
       }
+
+      apiCache.set(`prewarm:book:${id}`, book, CACHE_TTL.BOOKS);
+
+      if (req.isAuthenticated && req.isAuthenticated()) {
+        const userId = req.user?.claims?.sub || req.user?.id;
+        if (userId) {
+          const signedUrl = generateSignedStreamUrl(id, userId);
+          apiCache.set(`prewarm:stream-url:${id}:${userId}`, signedUrl, 10 * 60 * 1000);
+        }
+      }
+
+      if (book.contentType === "ebook" || book.contentType === "magazine") {
+        const urlLower = (book.contentUrl || "").toLowerCase();
+        let format = "text";
+        if (urlLower.endsWith(".pdf")) format = "pdf";
+        else if (urlLower.endsWith(".epub")) format = "epub";
+        apiCache.set(`prewarm:ebook-format:${id}`, format, CACHE_TTL.METADATA);
+      }
+
       storage.getBookChapters(id).catch(() => {});
       res.json({ warmed: true, id });
     } catch {

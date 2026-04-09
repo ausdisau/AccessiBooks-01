@@ -141,6 +141,12 @@ function getSymbol(word: string): string | null {
   return SYMBOL_MAP[clean] ?? null;
 }
 
+interface PrecomputedWord {
+  word: string;
+  bio: [string, string] | null;
+  symbol: string | null;
+}
+
 type ContentFormat = "text" | "pdf" | "epub" | "unknown";
 
 function detectContentFormat(book: Book): ContentFormat {
@@ -555,12 +561,12 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const nextPageCacheRef = useRef<{ page: number; content: string } | null>(null);
+  const nextPageDataRef = useRef<{ page: number; content: string; precomputed: PrecomputedWord[] } | null>(null);
 
   const getPageContent = useCallback(() => {
     if (!words.length) return "";
-    if (nextPageCacheRef.current?.page === currentPage) {
-      return nextPageCacheRef.current.content;
+    if (nextPageDataRef.current?.page === currentPage) {
+      return nextPageDataRef.current.content;
     }
     const startIdx = (currentPage - 1) * WORDS_PER_PAGE;
     const endIdx = startIdx + WORDS_PER_PAGE;
@@ -575,10 +581,19 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     const timeout = setTimeout(() => {
       const startIdx = (nextPage - 1) * WORDS_PER_PAGE;
       const endIdx = startIdx + WORDS_PER_PAGE;
-      nextPageCacheRef.current = { page: nextPage, content: words.slice(startIdx, endIdx).join(" ") };
+      const nextWords = words.slice(startIdx, endIdx);
+      nextPageDataRef.current = {
+        page: nextPage,
+        content: nextWords.join(" "),
+        precomputed: nextWords.map((w) => ({
+          word: w,
+          bio: bionicReading ? applyBionicReading(w) : null,
+          symbol: symbolOverlay ? getSymbol(w) : null,
+        })),
+      };
     }, 0);
     return () => clearTimeout(timeout);
-  }, [currentPage, totalPages, words]);
+  }, [currentPage, totalPages, words, bionicReading, symbolOverlay]);
 
   const performSearch = useCallback((query: string) => {
     if (!query.trim() || !content) {
@@ -1261,6 +1276,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                       searchQuery={searchResults.length > 0 && searchResults[currentSearchIdx]?.page === currentPage ? searchQuery : ""}
                       bionicReading={bionicReading}
                       symbolOverlay={symbolOverlay}
+                      precomputed={nextPageDataRef.current?.page === currentPage ? nextPageDataRef.current.precomputed : undefined}
                     />
                   ) : (
                     <AnnotatedText
@@ -1270,6 +1286,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                       darkMode={settings.theme === "dark"}
                       bionicReading={bionicReading}
                       symbolOverlay={symbolOverlay}
+                      precomputed={nextPageDataRef.current?.page === currentPage ? nextPageDataRef.current.precomputed : undefined}
                     />
                   )}
                   {!pageContent && !easyEnglishMode && (
@@ -1562,6 +1579,25 @@ function renderWordContent(word: string, bionicReading: boolean, symbolOverlay: 
   return wordEl;
 }
 
+function renderPrecomputedWordNode(pre: PrecomputedWord): React.ReactNode {
+  let wordEl: React.ReactNode;
+  if (pre.bio) {
+    const [bold, rest] = pre.bio;
+    wordEl = <><strong>{bold}</strong>{rest}</>;
+  } else {
+    wordEl = pre.word;
+  }
+  if (pre.symbol) {
+    return (
+      <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", verticalAlign: "bottom" }}>
+        <span style={{ fontSize: "0.6em", lineHeight: 1, opacity: 0.85 }} aria-hidden="true">{pre.symbol}</span>
+        {wordEl}
+      </span>
+    );
+  }
+  return wordEl;
+}
+
 function AnnotatedText({
   text,
   annotations,
@@ -1569,6 +1605,7 @@ function AnnotatedText({
   darkMode,
   bionicReading = false,
   symbolOverlay = false,
+  precomputed,
 }: {
   text: string;
   annotations: Annotation[];
@@ -1576,14 +1613,17 @@ function AnnotatedText({
   darkMode: boolean;
   bionicReading?: boolean;
   symbolOverlay?: boolean;
+  precomputed?: PrecomputedWord[];
 }) {
   const wordsArr = text.split(/\s+/);
 
   return (
     <span>
       {wordsArr.map((word, i) => {
+        const pre = precomputed?.[i];
+        const displayWord = pre?.word ?? word;
         const ann = annotations.find(a => i >= a.startOffset && i < a.endOffset);
-        const isSearchMatch = searchQuery && word.toLowerCase().includes(searchQuery.toLowerCase());
+        const isSearchMatch = searchQuery && displayWord.toLowerCase().includes(searchQuery.toLowerCase());
 
         let className = "";
         let style: React.CSSProperties = {};
@@ -1599,7 +1639,7 @@ function AnnotatedText({
 
         return (
           <span key={i} className={className} style={style} title={ann?.note || undefined}>
-            {renderWordContent(word, bionicReading, symbolOverlay)}{" "}
+            {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay)}{" "}
           </span>
         );
       })}
@@ -1615,6 +1655,7 @@ function HighlightedText({
   searchQuery,
   bionicReading = false,
   symbolOverlay = false,
+  precomputed,
 }: {
   text: string;
   activeWordIndex: number;
@@ -1623,6 +1664,7 @@ function HighlightedText({
   searchQuery: string;
   bionicReading?: boolean;
   symbolOverlay?: boolean;
+  precomputed?: PrecomputedWord[];
 }) {
   const wordsArr = text.split(/\s+/);
   const activeRef = useRef<HTMLSpanElement>(null);
@@ -1636,9 +1678,11 @@ function HighlightedText({
   return (
     <span>
       {wordsArr.map((word, i) => {
+        const pre = precomputed?.[i];
+        const displayWord = pre?.word ?? word;
         const isActive = i === activeWordIndex;
         const ann = annotations.find(a => i >= a.startOffset && i < a.endOffset);
-        const isSearchMatch = searchQuery && word.toLowerCase().includes(searchQuery.toLowerCase());
+        const isSearchMatch = searchQuery && displayWord.toLowerCase().includes(searchQuery.toLowerCase());
 
         let className = "";
         let style: React.CSSProperties = {};
@@ -1655,7 +1699,7 @@ function HighlightedText({
 
         return (
           <span key={i} ref={isActive ? activeRef : null} className={className} style={style} title={ann?.note || undefined}>
-            {renderWordContent(word, bionicReading, symbolOverlay)}{" "}
+            {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay)}{" "}
           </span>
         );
       })}
