@@ -19,6 +19,7 @@ interface A11yProfile {
   dyslexiaFont: boolean;
   focusHighlight: boolean;
   darkMode: boolean;
+  karaokeFollowAlong: boolean;
 }
 
 interface A11yPreset {
@@ -42,6 +43,7 @@ const DEFAULT_PROFILE: A11yProfile = {
   dyslexiaFont: false,
   focusHighlight: true,
   darkMode: false,
+  karaokeFollowAlong: false,
 };
 
 function profileFromLocalStorage(): A11yProfile {
@@ -56,6 +58,7 @@ function profileFromLocalStorage(): A11yProfile {
     lineSpacing: settings.lineHeight || DEFAULT_PROFILE.lineSpacing,
     captionsOn: settings.captionsOn ?? DEFAULT_PROFILE.captionsOn,
     captionPosition: settings.captionPosition ?? DEFAULT_PROFILE.captionPosition,
+    karaokeFollowAlong: settings.karaokeFollowAlong ?? DEFAULT_PROFILE.karaokeFollowAlong,
   };
 }
 
@@ -71,6 +74,7 @@ function syncToLocalStorage(profile: A11yProfile) {
     lineHeight: profile.lineSpacing,
     captionsOn: profile.captionsOn,
     captionPosition: profile.captionPosition,
+    karaokeFollowAlong: profile.karaokeFollowAlong,
   });
 }
 

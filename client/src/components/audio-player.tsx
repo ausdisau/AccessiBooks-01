@@ -42,6 +42,7 @@ import {
   Subtitles,
   ArrowUpDown,
   Keyboard,
+  Music2,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { InteractiveTranscript } from "./interactive-transcript";
@@ -175,6 +176,11 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
   const handleToggleCaptionPosition = () => {
     updateProfile({ captionPosition: captionPosition === "above" ? "below" : "above" });
+  };
+
+  const followAlong = profile.karaokeFollowAlong ?? false;
+  const handleToggleFollowAlong = () => {
+    updateProfile({ karaokeFollowAlong: !followAlong });
   };
 
   const hasChapters = chapters.length > 0;
@@ -740,6 +746,20 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
                 </Button>
               )}
+
+              <Button
+                variant={followAlong ? "default" : "outline"}
+                size="sm"
+                onClick={handleToggleFollowAlong}
+                className={`gap-1 ${followAlong ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}`}
+                aria-label={followAlong ? "Follow Along active — click to disable" : "Enable Follow Along (sync ebook text with audio)"}
+                aria-pressed={followAlong}
+                title={followAlong ? "Follow Along: ON — ebook text highlights as audio plays" : "Follow Along: OFF — enable to sync ebook reader with audio"}
+                data-testid="button-follow-along"
+              >
+                <Music2 className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Follow Along</span>
+              </Button>
             </div>
             
             <div className="flex items-center gap-2">
