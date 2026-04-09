@@ -13,6 +13,8 @@ import { useBookPrefetch } from "@/hooks/use-book-prefetch";
 interface BookCardProps {
   book: Book;
   onPlayBook: (book: Book) => void;
+  onListenBook?: (book: Book) => void;
+  onReadBook?: (book: Book) => void;
   compact?: boolean;
   owned?: boolean;
 }
@@ -42,9 +44,9 @@ const sourceLabels: Record<string, string> = {
   local: "",
 };
 
-export function BookCard({ book, onPlayBook, compact = false, owned = false }: BookCardProps) {
+export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact = false, owned = false }: BookCardProps) {
   const { purchaseTitle, isPurchasing } = usePurchaseCheckout();
-  const { tier, discountRate } = useSubscription();
+  const { discountRate } = useSubscription();
   const { onMouseEnter, onMouseLeave, onFocus } = useBookPrefetch(book);
 
   const formatDuration = (seconds: number) => {
@@ -62,9 +64,23 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
   const finalPrice = discountRate > 0 ? Math.round(pricing.base * (1 - discountRate)) : pricing.base;
   const priceLabel = `$${(finalPrice / 100).toFixed(2)}`;
 
-  const quickStartLabel = isEbookOrMagazine
-    ? `Read ${book.title}`
-    : `Listen to ${book.title}`;
+  const handleListen = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (onListenBook) {
+      onListenBook(book);
+    } else {
+      onPlayBook({ ...book, contentType: "audiobook" });
+    }
+  };
+
+  const handleRead = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (onReadBook) {
+      onReadBook(book);
+    } else {
+      onPlayBook({ ...book, contentType: "ebook" });
+    }
+  };
 
   if (compact) {
     return (
@@ -90,18 +106,26 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
               className="w-full h-28 sm:h-32 object-cover rounded-md mb-2"
               iconSize="h-8 w-8"
             />
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity rounded-md flex flex-col items-center justify-center gap-2 mb-2">
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity rounded-md flex flex-col items-center justify-center gap-2 mb-2">
               <button
                 type="button"
-                aria-label={quickStartLabel}
-                onClick={(e) => { e.stopPropagation(); onPlayBook(book); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 text-gray-900 text-xs font-semibold hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+                aria-label={`Listen to ${book.title}`}
+                onClick={handleListen}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleListen(e); } }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 text-gray-900 text-xs font-semibold hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
               >
-                {isEbookOrMagazine ? (
-                  <><BookOpenIcon className="h-3.5 w-3.5" aria-hidden="true" />Read</>
-                ) : (
-                  <><Play className="h-3.5 w-3.5 fill-gray-900" aria-hidden="true" />Listen</>
-                )}
+                <Play className="h-3 w-3 fill-gray-900" aria-hidden="true" />
+                Listen
+              </button>
+              <button
+                type="button"
+                aria-label={`Read ${book.title}`}
+                onClick={handleRead}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRead(e); } }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 text-gray-900 text-xs font-medium hover:bg-white/95 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+              >
+                <BookOpenIcon className="h-3 w-3" aria-hidden="true" />
+                Read
               </button>
             </div>
 
@@ -136,7 +160,7 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
       onMouseLeave={onMouseLeave}
     >
       <CardContent className="p-4 sm:p-6">
-        <div className="relative mb-4">
+        <div className="relative mb-4 group/cover">
           <BookCover
             bookId={book.id}
             coverImage={book.coverImage}
@@ -145,6 +169,28 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
             className="w-full h-40 sm:h-48 object-cover rounded-md"
             iconSize="h-12 w-12"
           />
+          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/cover:opacity-100 transition-opacity rounded-md flex flex-col items-center justify-center gap-2">
+            <button
+              type="button"
+              aria-label={`Listen to ${book.title}`}
+              onClick={handleListen}
+              onFocus={onFocus}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/95 text-gray-900 text-sm font-semibold hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+            >
+              <Play className="h-4 w-4 fill-gray-900" aria-hidden="true" />
+              Listen
+            </button>
+            <button
+              type="button"
+              aria-label={`Read ${book.title}`}
+              onClick={handleRead}
+              onFocus={onFocus}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/80 text-gray-900 text-sm font-medium hover:bg-white/95 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+            >
+              <BookOpenIcon className="h-4 w-4" aria-hidden="true" />
+              Read
+            </button>
+          </div>
 
           <Badge
             className={`absolute top-2 left-2 ${typeConfig.color} text-white`}
@@ -172,25 +218,29 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
         )}
 
         <div className="space-y-2">
-          <Button
-            className="w-full"
-            onClick={() => onPlayBook(book)}
-            onFocus={onFocus}
-            data-testid={`button-play-${book.id}`}
-            aria-label={quickStartLabel}
-          >
-            {isEbookOrMagazine ? (
-              <>
-                <BookOpenIcon className="h-4 w-4 mr-2" aria-hidden="true" />
-                Read Now
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-2" aria-hidden="true" />
-                Play Book
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              onClick={handleListen}
+              onFocus={onFocus}
+              data-testid={`button-listen-${book.id}`}
+              aria-label={`Listen to ${book.title}`}
+            >
+              <Play className="h-4 w-4 mr-2 fill-current" aria-hidden="true" />
+              Listen
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={handleRead}
+              onFocus={onFocus}
+              data-testid={`button-read-${book.id}`}
+              aria-label={`Read ${book.title}`}
+            >
+              <BookOpenIcon className="h-4 w-4 mr-2" aria-hidden="true" />
+              Read
+            </Button>
+          </div>
 
           {owned ? (
             <div className="flex items-center justify-center gap-1 text-xs text-green-600 dark:text-green-400">
