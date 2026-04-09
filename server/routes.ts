@@ -536,8 +536,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const userId = req.user?.claims?.sub || req.user?.id;
-      
+
+      const streamCacheKey = `stream_url:${id}:${userId}`;
+      const cachedUrl = apiCache.get<string>(streamCacheKey);
+      if (cachedUrl) {
+        return res.json({ streamUrl: cachedUrl, expiresIn: 15 * 60 });
+      }
+
       const signedUrl = generateSignedStreamUrl(id, userId);
+      apiCache.set(streamCacheKey, signedUrl, 10 * 60 * 1000);
       
       res.json({ 
         streamUrl: signedUrl,
@@ -550,6 +557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/books/:id/prewarm - Pre-warm server cache for faster content delivery
+  // Warms the exact same cache keys consumed by the real reader/player endpoints.
   app.post("/api/books/:id/prewarm", async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -558,22 +566,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ warmed: false, reason: "not found" });
       }
 
-      apiCache.set(`prewarm:book:${id}`, book, CACHE_TTL.BOOKS);
-
+      // Warm stream URL cache (same key used by GET /api/books/:id/stream-url)
       if (req.isAuthenticated && req.isAuthenticated()) {
         const userId = req.user?.claims?.sub || req.user?.id;
         if (userId) {
-          const signedUrl = generateSignedStreamUrl(id, userId);
-          apiCache.set(`prewarm:stream-url:${id}:${userId}`, signedUrl, 10 * 60 * 1000);
+          const streamCacheKey = `stream_url:${id}:${userId}`;
+          if (!apiCache.has(streamCacheKey)) {
+            const signedUrl = generateSignedStreamUrl(id, userId);
+            apiCache.set(streamCacheKey, signedUrl, 10 * 60 * 1000);
+          }
         }
       }
 
-      if (book.contentType === "ebook" || book.contentType === "magazine") {
-        const urlLower = (book.contentUrl || "").toLowerCase();
-        let format = "text";
-        if (urlLower.endsWith(".pdf")) format = "pdf";
-        else if (urlLower.endsWith(".epub")) format = "epub";
-        apiCache.set(`prewarm:ebook-format:${id}`, format, CACHE_TTL.METADATA);
+      // Warm ebook text content cache (same key used by GET /api/ebook/:id/content)
+      if ((book.contentType === "ebook" || book.contentType === "magazine") && book.contentUrl) {
+        const ebookTextCacheKey = `ebook_text:${id}`;
+        if (!apiCache.has(ebookTextCacheKey)) {
+          const urlLower = book.contentUrl.toLowerCase();
+          const isTextContent = !urlLower.endsWith(".pdf") && !urlLower.endsWith(".epub");
+          if (isTextContent) {
+            const allowedDomains = [
+              "gutenberg.org", "archive.org", "gutendex.com", "standardebooks.org",
+              "manybooks.net", "feedbooks.com", "openstax.org", "wikipedia.org", "loyalbooks.com",
+            ];
+            try {
+              const url = new URL(book.contentUrl);
+              const isAllowed = allowedDomains.some(domain => url.hostname.includes(domain));
+              if (isAllowed) {
+                const response = await fetch(book.contentUrl);
+                if (response.ok) {
+                  const ct = response.headers.get("content-type") || "";
+                  if (ct.includes("text/plain") || ct.includes("text/html")) {
+                    const text = await response.text();
+                    apiCache.set(ebookTextCacheKey, text, CACHE_TTL.METADATA);
+                  }
+                }
+              }
+            } catch {
+            }
+          }
+        }
       }
 
       storage.getBookChapters(id).catch(() => {});
@@ -1033,6 +1065,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.send(sampleContent);
       }
 
+      // Check warm cache for text content (populated by prewarm endpoint)
+      const ebookTextCacheKey = `ebook_text:${id}`;
+      const cachedText = apiCache.get<string>(ebookTextCacheKey);
+      if (cachedText) {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.setHeader("X-Content-Source", "cache");
+        return res.send(cachedText);
+      }
+
       // Validate content URL against allowed domains
       const allowedDomains = [
         "gutenberg.org",
@@ -1066,6 +1107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Handle different content types
         if (contentType.includes("text/plain") || contentType.includes("text/html")) {
           const text = await response.text();
+          apiCache.set(ebookTextCacheKey, text, CACHE_TTL.METADATA);
           res.setHeader("Content-Type", "text/plain; charset=utf-8");
           res.send(text);
         } else if (contentType.includes("application/pdf")) {
