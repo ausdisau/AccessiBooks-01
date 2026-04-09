@@ -154,37 +154,24 @@ function detectContentFormat(book: Book): ContentFormat {
 }
 
 export function EbookReader({ book, onBack }: EbookReaderProps) {
-  const [detectedFormat, setDetectedFormat] = useState<ContentFormat>("unknown");
-  const [isDetecting, setIsDetecting] = useState(true);
-
-  useEffect(() => {
-    detectFormat();
-  }, [book.id]);
-
-  const detectFormat = async () => {
-    setIsDetecting(true);
-    const urlFormat = detectContentFormat(book);
-    if (urlFormat !== "text") {
-      setDetectedFormat(urlFormat);
-      setIsDetecting(false);
-      return;
-    }
-    try {
-      const response = await fetch(`/api/ebook/${book.id}/content`, { method: "HEAD" });
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/pdf")) {
-        setDetectedFormat("pdf");
-      } else if (contentType.includes("application/epub") || contentType.includes("application/zip")) {
-        setDetectedFormat("epub");
-      } else {
-        setDetectedFormat("text");
+  const { data: detectedFormat, isLoading: isDetecting } = useQuery<ContentFormat>({
+    queryKey: ["ebook-format", book.id],
+    queryFn: async () => {
+      const urlFormat = detectContentFormat(book);
+      if (urlFormat !== "text") return urlFormat;
+      try {
+        const response = await fetch(`/api/ebook/${book.id}/content`, { method: "HEAD" });
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/pdf")) return "pdf" as ContentFormat;
+        if (contentType.includes("application/epub") || contentType.includes("application/zip")) return "epub" as ContentFormat;
+        return "text" as ContentFormat;
+      } catch {
+        return "text" as ContentFormat;
       }
-    } catch {
-      setDetectedFormat("text");
-    } finally {
-      setIsDetecting(false);
-    }
-  };
+    },
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
 
   if (isDetecting) {
     return (
@@ -568,14 +555,30 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  const nextPageCacheRef = useRef<{ page: number; content: string } | null>(null);
+
   const getPageContent = useCallback(() => {
     if (!words.length) return "";
+    if (nextPageCacheRef.current?.page === currentPage) {
+      return nextPageCacheRef.current.content;
+    }
     const startIdx = (currentPage - 1) * WORDS_PER_PAGE;
     const endIdx = startIdx + WORDS_PER_PAGE;
     return words.slice(startIdx, endIdx).join(" ");
   }, [words, currentPage]);
 
   const pageContent = useMemo(() => getPageContent(), [getPageContent]);
+
+  useEffect(() => {
+    if (!words.length || currentPage >= totalPages) return;
+    const nextPage = currentPage + 1;
+    const timeout = setTimeout(() => {
+      const startIdx = (nextPage - 1) * WORDS_PER_PAGE;
+      const endIdx = startIdx + WORDS_PER_PAGE;
+      nextPageCacheRef.current = { page: nextPage, content: words.slice(startIdx, endIdx).join(" ") };
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [currentPage, totalPages, words]);
 
   const performSearch = useCallback((query: string) => {
     if (!query.trim() || !content) {

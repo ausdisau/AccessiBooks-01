@@ -548,6 +548,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/books/:id/prewarm - Pre-warm server cache for faster content delivery
+  app.post("/api/books/:id/prewarm", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const book = await storage.getBook(id);
+      if (!book) {
+        return res.status(404).json({ warmed: false, reason: "not found" });
+      }
+      storage.getBookChapters(id).catch(() => {});
+      res.json({ warmed: true, id });
+    } catch {
+      res.json({ warmed: false });
+    }
+  });
+
   // GET /api/books/:id/chapters - Get chapters for a book
   app.get("/api/books/:id/chapters", async (req, res) => {
     try {
