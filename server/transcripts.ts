@@ -18,7 +18,59 @@ const createTranscriptSchema = z.object({
   source: z.string().optional(),
 });
 
+interface WordAlignment {
+  word: string;
+  startMs: number;
+  endMs: number;
+  wordIndex: number;
+}
+
 export function registerTranscriptRoutes(app: Express) {
+  // GET /api/books/:id/word-alignment - Returns word-level timestamps for karaoke read-along
+  app.get("/api/books/:id/word-alignment", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const transcripts = await db
+        .select()
+        .from(bookTranscripts)
+        .where(eq(bookTranscripts.bookId, id))
+        .orderBy(asc(bookTranscripts.chapterIndex));
+
+      if (!transcripts.length) {
+        return res.json({ available: false, words: [] });
+      }
+
+      const words: WordAlignment[] = [];
+      let globalWordIndex = 0;
+
+      for (const transcript of transcripts) {
+        if (!Array.isArray(transcript.segments)) continue;
+        for (const segment of transcript.segments) {
+          if (!segment.text) continue;
+          const segWords = segment.text.trim().split(/\s+/).filter(Boolean);
+          const segStartMs = segment.start * 1000;
+          const segEndMs = segment.end * 1000;
+          const segDurationMs = segEndMs - segStartMs;
+          const msPerWord = segDurationMs / Math.max(segWords.length, 1);
+
+          for (let wi = 0; wi < segWords.length; wi++) {
+            words.push({
+              word: segWords[wi],
+              startMs: Math.round(segStartMs + wi * msPerWord),
+              endMs: Math.round(segStartMs + (wi + 1) * msPerWord),
+              wordIndex: globalWordIndex++,
+            });
+          }
+        }
+      }
+
+      res.json({ available: words.length > 0, words });
+    } catch (error) {
+      console.error("[Transcripts] Error building word alignment:", error);
+      res.status(500).json({ message: "Failed to build word alignment" });
+    }
+  });
+
   app.get("/api/books/:id/transcript", async (req, res) => {
     try {
       const { id } = req.params;
