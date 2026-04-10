@@ -450,6 +450,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [chapterPreviewText, setChapterPreviewText] = useState<string | null>(null);
   const [chapterPreviewTitle, setChapterPreviewTitle] = useState<string | null>(null);
   const [showChapterSignSummary, setShowChapterSignSummary] = useState(false);
+  const [chapterSignClip, setChapterSignClip] = useState<{ youtubeId: string; title: string } | null | undefined>(undefined);
   const prevPageRef = useRef<number>(1);
   const prevPageContentRef = useRef<string>("");
   const chapterPreviewMutation = useMutation({
@@ -834,6 +835,18 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       const tocEntry = tocEntries.find(e => e.page === currentPage);
       setChapterPreviewTitle(tocEntry?.title ?? null);
       setShowChapterSignSummary(false);
+      setChapterSignClip(undefined);
+
+      // Fetch curated sign language chapter clip for this book (undefined = loading, null = none available)
+      if (a11ySettings.showSignAtChapterEnd) {
+        const lang = a11ySettings.preferredSignLanguage ?? "ASL";
+        fetch(`/api/sign-language/chapter-summary?bookTitle=${encodeURIComponent(book.title.toLowerCase())}&lang=${lang}`)
+          .then(r => r.json())
+          .then((data: { youtubeId: string | null; title: string | null }) => {
+            setChapterSignClip(data.youtubeId ? { youtubeId: data.youtubeId, title: data.title ?? "" } : null);
+          })
+          .catch(() => setChapterSignClip(null));
+      }
 
       if (a11ySettings.chapterPreviews) {
         chapterPreviewMutation.mutate({ text: pageContent, chapterIdx: currentPage });
@@ -1896,15 +1909,18 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           </div>
         )}
 
-        {/* Sign language chapter summary button — shown at chapter boundaries when enabled */}
-        {chapterBoundaryPageRef.current === currentPage && a11ySettings.showSignAtChapterEnd && (
+        {/* Sign language chapter summary — only shown when a curated clip is available for this book */}
+        {chapterBoundaryPageRef.current === currentPage &&
+          a11ySettings.showSignAtChapterEnd &&
+          chapterSignClip !== undefined &&
+          chapterSignClip !== null && (
           <div className={`mt-4 p-4 rounded-lg border border-purple-200 dark:border-purple-800 ${settings.theme === "dark" ? "bg-purple-950/40" : "bg-purple-50"}`}>
             <div className="flex items-center gap-3 mb-3">
               <span className="text-2xl" aria-hidden="true">🤲</span>
               <div className="flex-1">
                 <p className={`font-semibold text-sm ${theme.text}`}>Watch in Sign Language</p>
                 <p className={`text-xs ${theme.mutedText}`}>
-                  {a11ySettings.preferredSignLanguage ?? "ASL"} chapter summary available
+                  {a11ySettings.preferredSignLanguage ?? "ASL"} storytelling available for this book
                 </p>
               </div>
               <button
@@ -1922,63 +1938,25 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                 variant="outline"
                 className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900"
                 onClick={() => setShowChapterSignSummary(true)}
-                aria-label={`Watch chapter summary in ${a11ySettings.preferredSignLanguage ?? "ASL"}`}
+                aria-label={`Watch "${chapterSignClip.title}" in ${a11ySettings.preferredSignLanguage ?? "ASL"}`}
               >
-                🤲 Watch chapter summary in {a11ySettings.preferredSignLanguage ?? "ASL"}
+                🤲 Watch in {a11ySettings.preferredSignLanguage ?? "ASL"}: {chapterSignClip.title}
               </Button>
             ) : (
               <div className="flex flex-col gap-2">
-                <p className={`text-xs ${theme.mutedText} mb-1`}>
-                  Sign language resources for this chapter — browse by keyword:
-                </p>
-                {/* Link to the sign language site with the book title as search context */}
-                <div className="flex flex-wrap gap-2">
-                  {(a11ySettings.preferredSignLanguage ?? "ASL") === "BSL" ? (
-                    <>
-                      <a
-                        href={`https://www.signbsl.com/sign/${encodeURIComponent((chapterPreviewTitle ?? book.title).split(" ")[0].toLowerCase())}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-purple-700 transition-colors"
-                        aria-label="Open SignBSL for chapter vocabulary"
-                      >
-                        Open SignBSL
-                      </a>
-                      <a
-                        href="https://www.signedstories.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 dark:border-purple-700 px-3 py-1.5 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors"
-                        aria-label="Browse Signed Stories library"
-                      >
-                        Signed Stories
-                      </a>
-                    </>
-                  ) : (
-                    <>
-                      <a
-                        href={`https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent((chapterPreviewTitle ?? book.title).split(" ")[0].toLowerCase())}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-purple-700 transition-colors"
-                        aria-label="Open HandSpeak for chapter vocabulary"
-                      >
-                        Open HandSpeak
-                      </a>
-                      <a
-                        href="https://www.aslu.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 dark:border-purple-700 px-3 py-1.5 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors"
-                        aria-label="Browse ASLU ASL university resources"
-                      >
-                        ASL University
-                      </a>
-                    </>
-                  )}
+                <p className={`text-xs font-medium ${theme.text} mb-1`}>{chapterSignClip.title}</p>
+                <div className="relative w-full rounded-lg overflow-hidden bg-black" style={{ paddingBottom: "56.25%" }}>
+                  <iframe
+                    className="absolute inset-0 w-full h-full"
+                    src={`https://www.youtube-nocookie.com/embed/${chapterSignClip.youtubeId}?rel=0&modestbranding=1`}
+                    title={chapterSignClip.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+                  />
                 </div>
                 <p className={`text-[10px] ${theme.mutedText} mt-1`}>
-                  Links open in a new tab — tap any keyword in the reader for its individual sign.
+                  Sign language storytelling — tap any word in the reader to look up its individual sign.
                 </p>
               </div>
             )}
