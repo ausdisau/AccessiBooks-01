@@ -449,6 +449,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [showChapterPreview, setShowChapterPreview] = useState(false);
   const [chapterPreviewText, setChapterPreviewText] = useState<string | null>(null);
   const [chapterPreviewTitle, setChapterPreviewTitle] = useState<string | null>(null);
+  const [showChapterSignSummary, setShowChapterSignSummary] = useState(false);
   const prevPageRef = useRef<number>(1);
   const prevPageContentRef = useRef<string>("");
   const chapterPreviewMutation = useMutation({
@@ -832,6 +833,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       chapterBoundaryPageRef.current = currentPage;
       const tocEntry = tocEntries.find(e => e.page === currentPage);
       setChapterPreviewTitle(tocEntry?.title ?? null);
+      setShowChapterSignSummary(false);
 
       if (a11ySettings.chapterPreviews) {
         chapterPreviewMutation.mutate({ text: pageContent, chapterIdx: currentPage });
@@ -1894,6 +1896,95 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           </div>
         )}
 
+        {/* Sign language chapter summary button — shown at chapter boundaries when enabled */}
+        {chapterBoundaryPageRef.current === currentPage && a11ySettings.showSignAtChapterEnd && (
+          <div className={`mt-4 p-4 rounded-lg border border-purple-200 dark:border-purple-800 ${settings.theme === "dark" ? "bg-purple-950/40" : "bg-purple-50"}`}>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-2xl" aria-hidden="true">🤲</span>
+              <div className="flex-1">
+                <p className={`font-semibold text-sm ${theme.text}`}>Watch in Sign Language</p>
+                <p className={`text-xs ${theme.mutedText}`}>
+                  {a11ySettings.preferredSignLanguage ?? "ASL"} chapter summary available
+                </p>
+              </div>
+              <button
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setShowChapterSignSummary(false)}
+                aria-label="Dismiss sign language summary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {!showChapterSignSummary ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900"
+                onClick={() => setShowChapterSignSummary(true)}
+                aria-label={`Watch chapter summary in ${a11ySettings.preferredSignLanguage ?? "ASL"}`}
+              >
+                🤲 Watch chapter summary in {a11ySettings.preferredSignLanguage ?? "ASL"}
+              </Button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <p className={`text-xs ${theme.mutedText} mb-1`}>
+                  Sign language resources for this chapter — browse by keyword:
+                </p>
+                {/* Link to the sign language site with the book title as search context */}
+                <div className="flex flex-wrap gap-2">
+                  {(a11ySettings.preferredSignLanguage ?? "ASL") === "BSL" ? (
+                    <>
+                      <a
+                        href={`https://www.signbsl.com/sign/${encodeURIComponent((chapterPreviewTitle ?? book.title).split(" ")[0].toLowerCase())}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-purple-700 transition-colors"
+                        aria-label="Open SignBSL for chapter vocabulary"
+                      >
+                        Open SignBSL
+                      </a>
+                      <a
+                        href="https://www.signedstories.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 dark:border-purple-700 px-3 py-1.5 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors"
+                        aria-label="Browse Signed Stories library"
+                      >
+                        Signed Stories
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <a
+                        href={`https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent((chapterPreviewTitle ?? book.title).split(" ")[0].toLowerCase())}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-purple-700 transition-colors"
+                        aria-label="Open HandSpeak for chapter vocabulary"
+                      >
+                        Open HandSpeak
+                      </a>
+                      <a
+                        href="https://www.aslu.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 dark:border-purple-700 px-3 py-1.5 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors"
+                        aria-label="Browse ASLU ASL university resources"
+                      >
+                        ASL University
+                      </a>
+                    </>
+                  )}
+                </div>
+                <p className={`text-[10px] ${theme.mutedText} mt-1`}>
+                  Links open in a new tab — tap any keyword in the reader for its individual sign.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
 
         <div className="flex items-center justify-between mt-6">
           <Button
@@ -2258,6 +2349,10 @@ function WordVocabPopup({
     isLoggedIn ? false : wordBankService.has(word)
   );
   const [showCelebration, setShowCelebration] = useState(false);
+  const [showSignVideo, setShowSignVideo] = useState(false);
+
+  const a11ySettingsForSign = localStorageService.getSettings();
+  const preferredLang = a11ySettingsForSign.preferredSignLanguage ?? "ASL";
 
   useEffect(() => {
     if (isLoggedIn && wordBankQuery.data) {
@@ -2281,6 +2376,15 @@ function WordVocabPopup({
         body: JSON.stringify({ word }),
       }).then(r => r.json()),
     staleTime: 24 * 60 * 60 * 1000,
+    retry: false,
+  });
+
+  const signQuery = useQuery<{ embedUrl: string | null; source: string | null }>({
+    queryKey: ["/api/sign-language", word, preferredLang],
+    queryFn: () =>
+      fetch(`/api/sign-language/${encodeURIComponent(word)}?lang=${preferredLang}`).then(r => r.json()),
+    staleTime: 24 * 60 * 60 * 1000,
+    enabled: showSignVideo,
     retry: false,
   });
 
@@ -2372,7 +2476,7 @@ function WordVocabPopup({
   const viewportW = window.innerWidth;
   const viewportH = window.innerHeight;
   const POPUP_W = 240;
-  const POPUP_H = 320;
+  const POPUP_H = showSignVideo ? 440 : 320;
 
   let top = rect.bottom + 8;
   let left = rect.left + rect.width / 2 - POPUP_W / 2;
@@ -2386,6 +2490,8 @@ function WordVocabPopup({
 
   const symbolUrl = symbolQuery.data?.url ?? null;
   const definition = defQuery.data?.definition ?? null;
+  const signEmbedUrl = signQuery.data?.embedUrl ?? null;
+  const signSource = signQuery.data?.source ?? null;
 
   const popup = (
     <>
@@ -2417,43 +2523,106 @@ function WordVocabPopup({
         </button>
       </div>
 
-      <div className="flex flex-col items-center gap-2">
-        {symbolQuery.isLoading ? (
-          <div className="w-24 h-24 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
-        ) : symbolUrl ? (
-          <img
-            src={symbolUrl}
-            alt={`Symbol for ${word}`}
-            className="w-24 h-24 object-contain rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800"
-            onError={e => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <span className="text-5xl select-none" aria-hidden="true">
-            {getSymbol(word)}
-          </span>
-        )}
-      </div>
+      {!showSignVideo && (
+        <div className="flex flex-col items-center gap-2">
+          {symbolQuery.isLoading ? (
+            <div className="w-24 h-24 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ) : symbolUrl ? (
+            <img
+              src={symbolUrl}
+              alt={`Symbol for ${word}`}
+              className="w-24 h-24 object-contain rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800"
+              onError={e => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          ) : (
+            <span className="text-5xl select-none" aria-hidden="true">
+              {getSymbol(word)}
+            </span>
+          )}
+        </div>
+      )}
 
-      <div className="text-xs text-muted-foreground text-center leading-relaxed min-h-[2.5rem]">
-        {defQuery.isLoading ? (
-          <span className="animate-pulse">Looking up definition…</span>
-        ) : definition ? (
-          definition.length > 120 ? definition.slice(0, 117) + "…" : definition
-        ) : (
-          <span className="italic">No definition found</span>
-        )}
-      </div>
+      {!showSignVideo && (
+        <div className="text-xs text-muted-foreground text-center leading-relaxed min-h-[2.5rem]">
+          {defQuery.isLoading ? (
+            <span className="animate-pulse">Looking up definition…</span>
+          ) : definition ? (
+            definition.length > 120 ? definition.slice(0, 117) + "…" : definition
+          ) : (
+            <span className="italic">No definition found</span>
+          )}
+        </div>
+      )}
 
-      <button
-        className="flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
-        onClick={speak}
-        aria-label={`Hear the word: ${word}`}
-      >
-        <Volume2 className="h-4 w-4" />
-        Hear it
-      </button>
+      {showSignVideo && (
+        <div className="flex flex-col gap-2">
+          {signQuery.isLoading ? (
+            <div className="flex items-center justify-center h-36 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse">
+              <span className="text-xs text-muted-foreground">Loading sign…</span>
+            </div>
+          ) : signEmbedUrl ? (
+            <>
+              <iframe
+                src={signEmbedUrl}
+                title={`${preferredLang} sign for: ${word}`}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700"
+                style={{ height: 160 }}
+                sandbox="allow-scripts allow-same-origin"
+                referrerPolicy="no-referrer"
+                aria-label={`${preferredLang} sign language video for "${word}" via ${signSource}`}
+              />
+              <p className="text-[10px] text-muted-foreground text-center">
+                {preferredLang} sign via{" "}
+                <a href={signEmbedUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                  {signSource}
+                </a>
+              </p>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-28 gap-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-200 dark:border-gray-700">
+              <span className="text-2xl" aria-hidden="true">🤲</span>
+              <p className="text-xs text-muted-foreground text-center px-2">
+                No {preferredLang} sign found for "{word}"
+              </p>
+              <a
+                href={preferredLang === "BSL"
+                  ? `https://www.signbsl.com/sign/${encodeURIComponent(word)}`
+                  : `https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent(word)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-primary underline"
+              >
+                Search {preferredLang === "BSL" ? "SignBSL" : "HandSpeak"}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          className="flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-2 py-2 text-xs font-medium hover:bg-primary/90 transition-colors"
+          onClick={speak}
+          aria-label={`Hear the word: ${word}`}
+        >
+          <Volume2 className="h-3.5 w-3.5" />
+          Hear it
+        </button>
+        <button
+          className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors border ${
+            showSignVideo
+              ? "bg-purple-100 dark:bg-purple-950 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300"
+              : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          }`}
+          onClick={() => setShowSignVideo(v => !v)}
+          aria-label={showSignVideo ? "Hide sign language video" : `Show ${preferredLang} sign for "${word}"`}
+          aria-pressed={showSignVideo}
+        >
+          🤲 {showSignVideo ? "Hide" : "Sign"}
+        </button>
+      </div>
 
       <button
         className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors border ${

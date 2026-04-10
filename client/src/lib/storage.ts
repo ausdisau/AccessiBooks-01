@@ -127,6 +127,8 @@ export interface AccessibilitySettings {
   switchAccessMode?: boolean;
   karaokeFollowAlong?: boolean;
   focusShell?: boolean;
+  preferredSignLanguage?: "BSL" | "ASL";
+  showSignAtChapterEnd?: boolean;
 }
 
 export const localStorageService = {

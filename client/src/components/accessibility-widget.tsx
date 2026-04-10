@@ -877,6 +877,50 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                   </div>
                 </div>
               </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span aria-hidden="true" className="text-base">🤲</span> Sign Language
+                </h3>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="preferred-sign-language" className="text-sm text-muted-foreground">
+                      Preferred sign language for word glossary
+                    </Label>
+                    <Select
+                      value={settings.preferredSignLanguage ?? "ASL"}
+                      onValueChange={(value) =>
+                        updateSettings({ preferredSignLanguage: value as "BSL" | "ASL" })
+                      }
+                    >
+                      <SelectTrigger id="preferred-sign-language" className="w-full" aria-label="Select preferred sign language">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ASL">ASL — American Sign Language</SelectItem>
+                        <SelectItem value="BSL">BSL — British Sign Language</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="show-sign-chapter-end" className="flex items-center gap-2 text-sm">
+                      <span aria-hidden="true">🤲</span> Sign Language at Chapter End
+                      <span className="text-xs text-muted-foreground font-normal ml-1">(ebook reader)</span>
+                    </Label>
+                    <Switch
+                      id="show-sign-chapter-end"
+                      checked={!!settings.showSignAtChapterEnd}
+                      onCheckedChange={(checked) => updateSettings({ showSignAtChapterEnd: checked })}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Tap any word in the ebook reader for its sign. The {settings.preferredSignLanguage ?? "ASL"} glossary is powered by{" "}
+                    {(settings.preferredSignLanguage ?? "ASL") === "BSL" ? "SignBSL.com" : "HandSpeak.com"}.
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </ScrollArea>
         </Card>
