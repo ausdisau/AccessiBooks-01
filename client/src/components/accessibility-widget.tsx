@@ -263,7 +263,9 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
       if (hasWidgetFields && fontSizeOk && lineHeightOk) {
         const merged: AccessibilitySettings = { ...defaults, ...serverProfile };
         setSettings(merged);
+        setFocusShellActive(!!merged.focusShell);
         localStorageService.saveSettings(merged);
+        document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
         setSyncStatus("saved");
         setTimeout(() => setSyncStatus("idle"), 2500);
       }
