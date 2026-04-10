@@ -118,6 +118,33 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const [breakQuizAnswers, setBreakQuizAnswers] = useState<(number | null)[]>([]);
   const [showBreakQuiz, setShowBreakQuiz] = useState(false);
 
+  const [showPicturePause, setShowPicturePause] = useState(false);
+  const [picturePauseChapter, setPicturePauseChapter] = useState<string | null>(null);
+  const lastPicturePauseTimeRef = useRef<number>(0);
+  const picturePauseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevChapterIndexRef = useRef<number>(-1);
+
+  const [chapterEndQuizQuestions, setChapterEndQuizQuestions] = useState<{ question: string; options: string[]; correct: number }[]>([]);
+  const [chapterEndQuizAnswers, setChapterEndQuizAnswers] = useState<(number | null)[]>([]);
+  const [showChapterEndQuiz, setShowChapterEndQuiz] = useState(false);
+  const chapterEndQuizMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/ai/chapter-checkin", {
+        chapterText: book.description ?? book.title ?? "audiobook chapter",
+        title: book.title,
+        bookId: String(book.id),
+        chapterIndex: currentChapterIndex,
+      });
+      if (!res.ok) throw new Error("Quiz failed");
+      return res.json() as Promise<{ questions: { question: string; options: string[]; correct: number }[] }>;
+    },
+    onSuccess: (data) => {
+      setChapterEndQuizQuestions(data.questions ?? []);
+      setChapterEndQuizAnswers((data.questions ?? []).map(() => null));
+      setShowChapterEndQuiz(true);
+    },
+  });
+
   useEffect(() => {
     const sync = () => setA11ySettings(localStorageService.getSettings());
     document.addEventListener("accessibooks:settings-changed", sync);
@@ -134,6 +161,40 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     }
     return () => { if (sessionTimerRef.current) clearInterval(sessionTimerRef.current); };
   }, [a11ySettings.sessionPacingMinutes]);
+
+  useEffect(() => {
+    if (picturePauseIntervalRef.current) clearInterval(picturePauseIntervalRef.current);
+    if (!a11ySettings.picturePauses) return;
+    picturePauseIntervalRef.current = setInterval(() => {
+      if (!isPlaying) return;
+      const now = Date.now();
+      if (now - lastPicturePauseTimeRef.current >= 5 * 60 * 1000) {
+        lastPicturePauseTimeRef.current = now;
+        setPicturePauseChapter(currentChapter?.title ?? null);
+        setShowPicturePause(true);
+      }
+    }, 30 * 1000);
+    return () => { if (picturePauseIntervalRef.current) clearInterval(picturePauseIntervalRef.current); };
+  }, [a11ySettings.picturePauses, isPlaying, currentChapter]);
+
+  useEffect(() => {
+    const prev = prevChapterIndexRef.current;
+    if (prev === -1) {
+      prevChapterIndexRef.current = currentChapterIndex;
+      return;
+    }
+    if (currentChapterIndex === prev) return;
+    prevChapterIndexRef.current = currentChapterIndex;
+
+    if (a11ySettings.picturePauses) {
+      lastPicturePauseTimeRef.current = Date.now();
+      setPicturePauseChapter(currentChapter?.title ?? null);
+      setShowPicturePause(true);
+    }
+    if (a11ySettings.comprehensionCheckIns && !showChapterEndQuiz) {
+      chapterEndQuizMutation.mutate();
+    }
+  }, [currentChapterIndex]);
 
   const breakQuizMutation = useMutation({
     mutationFn: async () => {
@@ -1026,6 +1087,96 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               <div className="mt-3 text-sm font-medium">
                 Score: {breakQuizAnswers.filter((a, i) => a === breakQuizQuestions[i].correct).length} / {breakQuizQuestions.length}
                 <Button size="sm" className="ml-3" onClick={() => setShowBreakQuiz(false)}>Done</Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {showPicturePause && a11ySettings.picturePauses && (
+        <Card className="border-2 border-purple-400/40 bg-purple-50 dark:bg-purple-950/40 mt-2">
+          <CardContent className="p-5">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="relative w-full max-w-xs mx-auto">
+                {book.coverImage ? (
+                  <img
+                    src={book.coverImage}
+                    alt={`Cover of ${book.title}`}
+                    className="w-full max-h-48 object-cover rounded-xl shadow-lg opacity-80"
+                  />
+                ) : (
+                  <div className="w-full h-40 rounded-xl bg-purple-200 dark:bg-purple-900 flex items-center justify-center">
+                    <span className="text-6xl" aria-hidden="true">🎧</span>
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="font-semibold text-base mb-1">
+                  {picturePauseChapter ? `Picture pause — ${picturePauseChapter}` : "Picture pause"}
+                </p>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Take a moment to think about what you just heard. What's happening in the story?
+                </p>
+              </div>
+              <Button
+                onClick={() => setShowPicturePause(false)}
+                aria-label="Resume listening"
+              >
+                Keep Going
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {showChapterEndQuiz && chapterEndQuizQuestions.length > 0 && (
+        <Card className="border-2 border-primary/30 mt-2">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold flex items-center gap-2">
+                <span aria-hidden="true">✨</span> Chapter Check-in
+              </h3>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowChapterEndQuiz(false)} aria-label="Close quiz">
+                <span aria-hidden="true">✕</span>
+              </Button>
+            </div>
+            <div className="space-y-4">
+              {chapterEndQuizQuestions.map((q, qi) => (
+                <div key={qi}>
+                  <p className="text-sm font-medium mb-2">{qi + 1}. {q.question}</p>
+                  <div className="space-y-1">
+                    {q.options.map((opt, oi) => {
+                      const answered = chapterEndQuizAnswers[qi] !== null;
+                      const isSelected = chapterEndQuizAnswers[qi] === oi;
+                      const isCorrect = oi === q.correct;
+                      return (
+                        <Button
+                          key={oi}
+                          variant="outline"
+                          size="sm"
+                          className={`w-full text-left h-auto py-1.5 px-3 text-sm ${answered && isCorrect ? "border-green-500 bg-green-50 text-green-800" : answered && isSelected ? "border-red-400 bg-red-50 text-red-800" : answered ? "opacity-50" : ""}`}
+                          onClick={() => {
+                            if (chapterEndQuizAnswers[qi] !== null) return;
+                            const updated = [...chapterEndQuizAnswers];
+                            updated[qi] = oi;
+                            setChapterEndQuizAnswers(updated);
+                          }}
+                          disabled={answered}
+                        >
+                          {answered && isCorrect && <span className="mr-2">✓</span>}
+                          {answered && isSelected && !isCorrect && <span className="mr-2">✗</span>}
+                          {opt}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {chapterEndQuizAnswers.every(a => a !== null) && (
+              <div className="mt-3 text-sm font-medium">
+                Score: {chapterEndQuizAnswers.filter((a, i) => a === chapterEndQuizQuestions[i].correct).length} / {chapterEndQuizQuestions.length}
+                <Button size="sm" className="ml-3" onClick={() => setShowChapterEndQuiz(false)}>Done</Button>
               </div>
             )}
           </CardContent>

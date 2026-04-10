@@ -823,17 +823,58 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                   </div>
                   {(settings.sessionPacingMinutes ?? 0) > 0 && (
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="comprehension-checkins" className="flex items-center gap-2 text-sm">
+                      <Label htmlFor="comprehension-checkins-break" className="flex items-center gap-2 text-sm">
                         <Brain className="h-3 w-3" /> AI Comprehension Quiz
                         <span className="text-xs text-muted-foreground font-normal">(at each break)</span>
                       </Label>
                       <Switch
-                        id="comprehension-checkins"
+                        id="comprehension-checkins-break"
                         checked={!!settings.comprehensionCheckIns}
                         onCheckedChange={(checked) => updateSettings({ comprehensionCheckIns: checked })}
                       />
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Brain className="h-4 w-4" /> Comprehension Support
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="chapter-previews" className="flex items-center gap-2 text-sm">
+                      <BookOpen className="h-3 w-3" /> Chapter Previews
+                      <span className="text-xs text-muted-foreground font-normal ml-1">(what's coming)</span>
+                    </Label>
+                    <Switch
+                      id="chapter-previews"
+                      checked={!!settings.chapterPreviews}
+                      onCheckedChange={(checked) => updateSettings({ chapterPreviews: checked })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="picture-pauses" className="flex items-center gap-2 text-sm">
+                      <Pause className="h-3 w-3" /> Picture Pauses
+                      <span className="text-xs text-muted-foreground font-normal ml-1">(every 5 min)</span>
+                    </Label>
+                    <Switch
+                      id="picture-pauses"
+                      checked={!!settings.picturePauses}
+                      onCheckedChange={(checked) => updateSettings({ picturePauses: checked })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="comprehension-checkins" className="flex items-center gap-2 text-sm">
+                      <Brain className="h-3 w-3" /> Comprehension Check-ins
+                      <span className="text-xs text-muted-foreground font-normal ml-1">(at chapters)</span>
+                    </Label>
+                    <Switch
+                      id="comprehension-checkins"
+                      checked={!!settings.comprehensionCheckIns}
+                      onCheckedChange={(checked) => updateSettings({ comprehensionCheckIns: checked })}
+                    />
+                  </div>
                 </div>
               </div>
             </CardContent>

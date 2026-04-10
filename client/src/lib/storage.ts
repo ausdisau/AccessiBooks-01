@@ -53,6 +53,8 @@ export interface AccessibilitySettings {
   colourOverlayOpacity?: number;
   sessionPacingMinutes?: number;
   comprehensionCheckIns?: boolean;
+  chapterPreviews?: boolean;
+  picturePauses?: boolean;
   symbolOverlay?: boolean;
   switchAccessMode?: boolean;
   karaokeFollowAlong?: boolean;
