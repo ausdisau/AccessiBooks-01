@@ -374,8 +374,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/books - Get books with optional pagination
   app.get("/api/books", async (req, res) => {
     try {
-      const { cursor, limit, source, contentType: ct, genre, search } = req.query;
+      const { cursor, limit, source, contentType: ct, genre, search, readingLevel } = req.query;
       const pageLimit = Math.min(parseInt(limit as string) || 100, 500);
+      const parsedReadingLevel = readingLevel ? parseInt(readingLevel as string) : undefined;
 
       const results = await storage.getBooksPaginated({
         cursor: cursor as string | undefined,
@@ -384,10 +385,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
         contentType: ct as string | undefined,
         genre: genre as string | undefined,
         search: search as string | undefined,
+        readingLevel: parsedReadingLevel && parsedReadingLevel >= 1 && parsedReadingLevel <= 4 ? parsedReadingLevel : undefined,
       });
       res.json(results);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch books" });
+    }
+  });
+
+  // GET /api/books/easy-read - Books at reading levels 1 and 2 (Very Easy + Easy)
+  app.get("/api/books/easy-read", async (req, res) => {
+    try {
+      const { cursor, limit } = req.query;
+      const pageLimit = Math.min(parseInt(limit as string) || 24, 100);
+
+      const [level1, level2] = await Promise.all([
+        storage.getBooksPaginated({ cursor: cursor as string | undefined, limit: Math.ceil(pageLimit / 2), readingLevel: 1 }),
+        storage.getBooksPaginated({ cursor: cursor as string | undefined, limit: Math.floor(pageLimit / 2), readingLevel: 2 }),
+      ]);
+
+      const combined = [...level1.data, ...level2.data];
+      res.json({ data: combined, total: (level1.total ?? 0) + (level2.total ?? 0) });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch Easy Read books" });
+    }
+  });
+
+  // POST /api/books/backfill-reading-levels - Compute and store reading levels for books that don't have one
+  app.post("/api/books/backfill-reading-levels", async (req: any, res) => {
+    try {
+      const { computeReadingLevel } = await import("./readingLevelUtils");
+      const batchSize = 200;
+      let updated = 0;
+      let cursor: string | undefined;
+
+      for (let i = 0; i < 50; i++) {
+        const result = await db.execute(
+          cursor
+            ? sql`SELECT id, description, genre FROM books WHERE reading_level IS NULL AND id > ${cursor} ORDER BY id ASC LIMIT ${batchSize}`
+            : sql`SELECT id, description, genre FROM books WHERE reading_level IS NULL ORDER BY id ASC LIMIT ${batchSize}`
+        );
+        const rows: any[] = (result as any).rows ?? (result as any) ?? [];
+        if (!Array.isArray(rows) || rows.length === 0) break;
+
+        for (const row of rows) {
+          const level = computeReadingLevel(row.description, row.genre);
+          await db.execute(sql`UPDATE books SET reading_level = ${level} WHERE id = ${row.id}`);
+          updated++;
+        }
+        cursor = rows[rows.length - 1].id;
+        if (rows.length < batchSize) break;
+      }
+
+      res.json({ updated, message: `Backfilled reading levels for ${updated} books` });
+    } catch (error: any) {
+      console.error("[ReadingLevel] Backfill error:", error?.message);
+      res.status(500).json({ message: "Backfill failed", error: error?.message });
     }
   });
 

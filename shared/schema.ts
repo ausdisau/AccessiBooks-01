@@ -27,6 +27,7 @@ export const books = pgTable("books", {
   isPremium: boolean("is_premium").notNull().default(false), // Whether content requires premium subscription
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
+  readingLevel: integer("reading_level"), // 1=Very Easy, 2=Easy, 3=Moderate, 4=Advanced (FK grade estimate)
 }, (table) => [
   index("idx_books_title").on(table.title),
   index("idx_books_author").on(table.author),

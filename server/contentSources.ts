@@ -1,4 +1,5 @@
 import type { Book } from "@shared/schema";
+import { computeReadingLevel } from "./readingLevelUtils";
 
 async function fetchWithTimeout(url: string, timeout = 15000): Promise<Response> {
   const controller = new AbortController();
@@ -80,6 +81,7 @@ function transformLoyalBook(entry: LoyalBooksEntry, index: number): Book {
     isPremium: false,
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(entry.description, entry.category || "Classic Literature"),
   };
 }
 
@@ -147,6 +149,7 @@ export async function searchLoyalBooks(query: string, limit = 10): Promise<Book[
         source: "loyalbooks",
         sourceId: m[1],
         totalTime: null,
+        readingLevel: computeReadingLevel(null, "Classic Literature"),
         language: "English",
         contentType: "audiobook",
         isPremium: false,
@@ -276,6 +279,7 @@ function transformStandardEbook(entry: StandardEbookEntry): Book {
     totalTime: null,
     language: entry.language === "en" ? "English" : entry.language,
     contentType: "ebook",
+    readingLevel: computeReadingLevel(entry.description, entry.subject),
     isPremium: false,
     pageCount: null,
     searchVector: null,
@@ -414,6 +418,7 @@ export async function fetchFeedbooks(limit = 20): Promise<Book[]> {
             isPremium: false,
             pageCount: null,
             searchVector: null,
+            readingLevel: computeReadingLevel(entry.description, entry.subject || "Literature"),
           });
         }
       });
@@ -455,6 +460,7 @@ export async function searchFeedbooks(query: string, limit = 10): Promise<Book[]
       isPremium: false,
       pageCount: null,
       searchVector: null,
+      readingLevel: computeReadingLevel(entry.description, entry.subject || "Literature"),
     }));
   } catch (error) {
     console.warn('Feedbooks search failed:', error instanceof Error ? error.message : 'Unknown');
@@ -538,6 +544,7 @@ function transformOpenStaxBook(book: OpenStaxBook, index: number): Book {
     isPremium: false,
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(book.description, `Educational - ${book.subject}`),
   };
 }
 
@@ -612,6 +619,7 @@ export async function fetchWikipediaSpokenArticles(limit = 20): Promise<Book[]> 
             isPremium: false,
             pageCount: null,
             searchVector: null,
+            readingLevel: computeReadingLevel(null, "Educational - Encyclopedia"),
           });
         }
       });
@@ -652,6 +660,7 @@ export async function searchWikipediaSpokenArticles(query: string, limit = 10): 
       isPremium: false,
       pageCount: null,
       searchVector: null,
+      readingLevel: computeReadingLevel(result.snippet?.replace(/<[^>]*>/g, '') || null, "Educational - Encyclopedia"),
     }));
   } catch (error) {
     console.warn('Wikipedia search failed:', error instanceof Error ? error.message : 'Unknown');
@@ -708,6 +717,7 @@ export async function fetchSerializedFictionPodcasts(limit = 15): Promise<Book[]
             isPremium: false,
             pageCount: null,
             searchVector: null,
+            readingLevel: computeReadingLevel(podcast.description || podcast.shortDescription || null, "Podcast - Fiction"),
           });
         }
       });
@@ -747,6 +757,7 @@ export async function searchSerializedFictionPodcasts(query: string, limit = 10)
       isPremium: false,
       pageCount: null,
       searchVector: null,
+      readingLevel: computeReadingLevel(podcast.description || podcast.shortDescription || null, "Podcast"),
     }));
   } catch (error) {
     console.warn('Podcast search failed:', error instanceof Error ? error.message : 'Unknown');
@@ -837,6 +848,7 @@ export async function fetchBBCPodcasts(limit = 12): Promise<Book[]> {
         isPremium: false,
         pageCount: null,
         searchVector: null,
+        readingLevel: computeReadingLevel(showDesc.substring(0, 500), podcast.genre),
       } as Book;
     } catch {
       return null;
@@ -883,6 +895,7 @@ export async function searchBBCPodcasts(query: string, limit = 5): Promise<Book[
         isPremium: false,
         pageCount: null,
         searchVector: null,
+        readingLevel: computeReadingLevel(showDesc.substring(0, 500), podcast.genre),
       });
     } catch {
       continue;
@@ -921,6 +934,7 @@ export async function fetchSpotifyPodcasts(spotifyClient: any, limit = 10): Prom
       isPremium: false,
       pageCount: null,
       searchVector: null,
+      readingLevel: computeReadingLevel(show.description?.substring(0, 500) || null, "Podcast"),
     }));
   } catch (error) {
     console.warn('Spotify podcast fetch failed:', error instanceof Error ? error.message : 'Unknown');
@@ -954,6 +968,7 @@ export async function searchSpotifyPodcasts(spotifyClient: any, query: string, l
       isPremium: false,
       pageCount: null,
       searchVector: null,
+      readingLevel: computeReadingLevel(show.description?.substring(0, 500) || null, "Podcast"),
     }));
   } catch (error) {
     console.warn('Spotify podcast search failed:', error instanceof Error ? error.message : 'Unknown');
