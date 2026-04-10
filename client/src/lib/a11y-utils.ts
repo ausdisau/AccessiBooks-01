@@ -30,6 +30,8 @@ export function getDefaultA11ySettings(): AccessibilitySettings {
     symbolOverlay: false,
     switchAccessMode: false,
     focusShell: false,
+    preferredSignLanguage: "ASL",
+    showSignAtChapterEnd: false,
   };
 }
 

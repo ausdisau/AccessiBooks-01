@@ -6484,6 +6484,67 @@ ${navEntries}
     }
   });
 
+  // === SIGN LANGUAGE GLOSSARY ===
+
+  // In-memory cache: key = "<lang>:<word>", value = { embedUrl, source } | null
+  const signCache = new Map<string, { embedUrl: string; source: string } | null>();
+
+  // GET /api/sign-language/:word?lang=BSL|ASL
+  // Returns an embeddable URL for a sign language video clip, or null if not found.
+  // BSL: uses SignBSL.com search (iframe-embeddable /definition/ pages)
+  // ASL: uses HandSpeak embed pattern
+  app.get("/api/sign-language/:word", async (req, res) => {
+    const word = (req.params.word ?? "").toLowerCase().replace(/[^a-z'-]/g, "").trim();
+    const lang = (req.query.lang as string ?? "ASL").toUpperCase() === "BSL" ? "BSL" : "ASL";
+
+    if (!word || word.length < 2) {
+      return res.json({ embedUrl: null, source: null });
+    }
+
+    const cacheKey = `${lang}:${word}`;
+    if (signCache.has(cacheKey)) {
+      return res.json(signCache.get(cacheKey));
+    }
+
+    try {
+      let result: { embedUrl: string; source: string } | null = null;
+
+      if (lang === "BSL") {
+        // SignBSL.com provides public, embeddable definition pages
+        // Pattern: https://www.signbsl.com/sign/<word>
+        // We verify existence by fetching the page (HEAD request)
+        const url = `https://www.signbsl.com/sign/${encodeURIComponent(word)}`;
+        try {
+          const check = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
+          if (check.ok && !check.url.includes("not-found") && !check.url.includes("404")) {
+            result = { embedUrl: url, source: "SignBSL" };
+          }
+        } catch {
+          // Network error — treat as not found
+        }
+      } else {
+        // ASL: HandSpeak video embed pattern
+        // HandSpeak provides direct video files at: https://www.handspeak.com/word/search/index.php?id=<slug>
+        // But for embedding we link to their public word page
+        const url = `https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent(word)}`;
+        try {
+          const check = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
+          if (check.ok) {
+            result = { embedUrl: url, source: "HandSpeak" };
+          }
+        } catch {
+          // Network error — treat as not found
+        }
+      }
+
+      // Cache for the process lifetime to minimise API calls
+      signCache.set(cacheKey, result);
+      res.json(result ?? { embedUrl: null, source: null });
+    } catch (error) {
+      res.json({ embedUrl: null, source: null });
+    }
+  });
+
   // === BOOK COMPLETION CERTIFICATES ===
 
   // POST /api/completions — record book completion (uses existing listeningHistory.completedAt)
