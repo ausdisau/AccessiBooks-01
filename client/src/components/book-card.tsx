@@ -2,7 +2,7 @@ import { Book, TITLE_PRICING } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon, ShoppingCart, Check as CheckIcon } from "lucide-react";
+import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon, ShoppingCart, Check as CheckIcon, GraduationCap } from "lucide-react";
 import { BookCover } from "@/components/book-cover";
 import { usePurchaseCheckout } from "@/hooks/use-purchases";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -23,6 +23,13 @@ const contentTypeConfig = {
   audiobook: { icon: Headphones, label: "Audiobook", color: "bg-blue-500" },
   ebook: { icon: BookOpen, label: "Ebook", color: "bg-green-500" },
   magazine: { icon: Newspaper, label: "Magazine", color: "bg-purple-500" },
+};
+
+const READING_LEVEL_CONFIG: Record<number, { label: string; color: string; ariaLabel: string }> = {
+  1: { label: "Very Easy", color: "bg-green-500", ariaLabel: "Reading level: Very Easy" },
+  2: { label: "Easy", color: "bg-teal-500", ariaLabel: "Reading level: Easy" },
+  3: { label: "Moderate", color: "bg-amber-500", ariaLabel: "Reading level: Moderate" },
+  4: { label: "Advanced", color: "bg-red-500", ariaLabel: "Reading level: Advanced" },
 };
 
 const sourceLabels: Record<string, string> = {
@@ -136,6 +143,15 @@ export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact =
               <TypeIcon className="h-3 w-3 mr-1" aria-hidden="true" />
               {typeConfig.label}
             </Badge>
+            {book.readingLevel && READING_LEVEL_CONFIG[book.readingLevel] && (
+              <Badge
+                className={`absolute top-2 right-2 text-xs px-1.5 py-0.5 ${READING_LEVEL_CONFIG[book.readingLevel].color} text-white`}
+                aria-label={READING_LEVEL_CONFIG[book.readingLevel].ariaLabel}
+              >
+                <GraduationCap className="h-3 w-3 mr-1" aria-hidden="true" />
+                {READING_LEVEL_CONFIG[book.readingLevel].label}
+              </Badge>
+            )}
           </div>
 
           <h3 className="text-sm font-medium line-clamp-2" data-testid={`text-title-${book.id}`}>
@@ -199,6 +215,15 @@ export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact =
             <TypeIcon className="h-3 w-3 mr-1" aria-hidden="true" />
             {typeConfig.label}
           </Badge>
+          {book.readingLevel && READING_LEVEL_CONFIG[book.readingLevel] && (
+            <Badge
+              className={`absolute top-2 right-2 ${READING_LEVEL_CONFIG[book.readingLevel].color} text-white`}
+              aria-label={READING_LEVEL_CONFIG[book.readingLevel].ariaLabel}
+            >
+              <GraduationCap className="h-3 w-3 mr-1" aria-hidden="true" />
+              {READING_LEVEL_CONFIG[book.readingLevel].label}
+            </Badge>
+          )}
         </div>
 
         <h3 className="text-base sm:text-lg font-semibold mb-2" data-testid={`text-title-${book.id}`}>

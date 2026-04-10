@@ -16,7 +16,7 @@ import { BookCarousel } from "@/components/book-carousel";
 import { DJSection } from "@/components/dj-section";
 import { PlaylistSection } from "@/components/playlist-section";
 import { PlaylistDetail } from "@/components/playlist-detail";
-import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles, Loader2, Crown, Headphones, Download, Shield, Zap, Check, X, Target } from "lucide-react";
+import { Search, Library as LibraryIcon, Clock, TrendingUp, Sparkles, Loader2, Crown, Headphones, Download, Shield, Zap, Check, X, Target, GraduationCap, BookHeart } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/use-subscription";
 import { Progress } from "@/components/ui/progress";
@@ -206,6 +206,108 @@ function PremiumUpsellCard({ onUpgrade }: { onUpgrade: () => void }) {
   );
 }
 
+const READING_LEVEL_BADGE_COLORS: Record<number, string> = {
+  1: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  2: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
+  3: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  4: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+};
+
+const READING_LEVEL_LABELS: Record<number, string> = {
+  1: "Very Easy",
+  2: "Easy",
+  3: "Moderate",
+  4: "Advanced",
+};
+
+function EasyReadShelf({ onSelectBook }: { onSelectBook: (book: Book) => void }) {
+  const { data, isLoading } = useQuery<{ data: Book[]; total: number }>({
+    queryKey: ["/api/books/easy-read"],
+    queryFn: () => fetch("/api/books/easy-read?limit=24").then(r => r.json()),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const books = data?.data ?? [];
+  if (!isLoading && books.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50/60 to-teal-50/60 dark:from-green-950/20 dark:to-teal-950/20 p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-xl bg-green-100 dark:bg-green-900">
+          <BookHeart className="h-5 w-5 text-green-600 dark:text-green-400" aria-hidden="true" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-foreground">Easy Read Catalog</h2>
+          <p className="text-xs text-muted-foreground">
+            Books at reading levels 1 &amp; 2 — great for all readers{data?.total ? ` · ${data.total.toLocaleString()} titles` : ""}
+          </p>
+        </div>
+        <div className="ml-auto flex gap-1.5">
+          {[1, 2].map(lvl => (
+            <span
+              key={lvl}
+              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${READING_LEVEL_BADGE_COLORS[lvl]}`}
+            >
+              {READING_LEVEL_LABELS[lvl]}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="animate-pulse rounded-lg bg-muted h-36" />
+          ))}
+        </div>
+      ) : (
+        <div
+          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3"
+          role="list"
+          aria-label="Easy Read books"
+        >
+          {books.slice(0, 12).map(book => (
+            <button
+              key={book.id}
+              role="listitem"
+              onClick={() => onSelectBook(book)}
+              className="group text-left rounded-xl overflow-hidden border border-border bg-card hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring transition-all"
+              aria-label={`Open ${book.title} by ${book.author}. Reading level: ${book.readingLevel ? READING_LEVEL_LABELS[book.readingLevel] : ""}`}
+            >
+              <div className="relative aspect-[3/4] bg-muted">
+                {book.coverImage ? (
+                  <img
+                    src={book.coverImage}
+                    alt=""
+                    aria-hidden="true"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <BookHeart className="h-8 w-8 text-muted-foreground/40" />
+                  </div>
+                )}
+                {book.readingLevel && (
+                  <span
+                    className={`absolute top-1.5 left-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${READING_LEVEL_BADGE_COLORS[book.readingLevel]}`}
+                  >
+                    {READING_LEVEL_LABELS[book.readingLevel]}
+                  </span>
+                )}
+              </div>
+              <div className="p-2">
+                <p className="text-xs font-semibold line-clamp-2 text-foreground leading-tight">{book.title}</p>
+                <p className="text-[10px] text-muted-foreground truncate mt-0.5">{book.author}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface LibraryProps {
   onSelectBook: (book: Book) => void;
 }
@@ -218,6 +320,7 @@ export function Library({ onSelectBook }: LibraryProps) {
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [readingLevelFilter, setReadingLevelFilter] = useState<string>("all");
   const { user } = useAuth();
   const { isPremium, isPaid, upgradeToTier } = useSubscription();
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -235,6 +338,7 @@ export function Library({ onSelectBook }: LibraryProps) {
     if (sourceFilter !== "all") params.set("source", sourceFilter);
     if (selectedGenre) params.set("genre", selectedGenre);
     if (debouncedSearch) params.set("search", debouncedSearch);
+    if (readingLevelFilter !== "all") params.set("readingLevel", readingLevelFilter);
     return params.toString();
   };
 
@@ -246,7 +350,7 @@ export function Library({ onSelectBook }: LibraryProps) {
     isLoading,
     error,
   } = useInfiniteQuery<{ data: Book[]; nextCursor: string | null; hasMore: boolean; total?: number }>({
-    queryKey: ["/api/books", sourceFilter, selectedGenre, debouncedSearch],
+    queryKey: ["/api/books", sourceFilter, selectedGenre, debouncedSearch, readingLevelFilter],
     queryFn: async ({ pageParam }) => {
       const qs = buildQueryString();
       const cursorParam = pageParam ? `&cursor=${pageParam}` : "";
@@ -396,6 +500,10 @@ export function Library({ onSelectBook }: LibraryProps) {
         <MagazineSection />
       )}
 
+      {!isLoading && !searchQuery && !selectedGenre && readingLevelFilter === "all" && (
+        <EasyReadShelf onSelectBook={onSelectBook} />
+      )}
+
       {!isLoading && !searchQuery && !selectedGenre && (
         <div className="space-y-8">
           {booksBySource.newest.length > 0 && (
@@ -525,7 +633,20 @@ export function Library({ onSelectBook }: LibraryProps) {
             </div>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto flex-wrap">
+            <Select value={readingLevelFilter} onValueChange={setReadingLevelFilter}>
+              <SelectTrigger className="w-full sm:w-36" data-testid="select-reading-level" aria-label="Filter by reading level">
+                <GraduationCap className="h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />
+                <SelectValue placeholder="Reading Level" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Levels</SelectItem>
+                <SelectItem value="1">Very Easy</SelectItem>
+                <SelectItem value="2">Easy</SelectItem>
+                <SelectItem value="3">Moderate</SelectItem>
+                <SelectItem value="4">Advanced</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={sourceFilter} onValueChange={setSourceFilter}>
               <SelectTrigger className="w-full sm:w-36" data-testid="select-source">
                 <SelectValue placeholder="All Sources" />

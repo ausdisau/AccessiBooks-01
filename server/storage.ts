@@ -1,4 +1,5 @@
 import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral } from "@shared/schema";
+import { computeReadingLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -41,6 +42,7 @@ export interface BookQueryOptions {
   contentType?: string;
   genre?: string;
   search?: string;
+  readingLevel?: number;
 }
 
 function mapRowToBook(row: any): Book {
@@ -64,6 +66,7 @@ function mapRowToBook(row: any): Book {
     isPremium: row.is_premium ?? row.isPremium ?? false,
     pageCount: row.page_count ?? row.pageCount ?? null,
     searchVector: row.search_vector || row.searchVector || null,
+    readingLevel: row.reading_level ?? row.readingLevel ?? computeReadingLevel(row.description, row.genre),
   };
 }
 
@@ -413,6 +416,7 @@ function transformExternalBook(externalBook: ExternalBook): Book {
     isPremium: false,
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(externalBook.description || null, externalBook.genre || null),
   };
 }
 
@@ -446,6 +450,7 @@ function transformOpenLibraryBook(openLibraryBook: OpenLibraryBook): Book {
     isPremium: false,
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(null, openLibraryBook.subject ? openLibraryBook.subject[0] : null),
   };
 }
 
@@ -493,6 +498,7 @@ function transformGoogleBooksVolume(volume: GoogleBooksVolume): Book {
     isPremium: isPremium,
     pageCount: volumeInfo.pageCount || null,
     searchVector: null,
+    readingLevel: computeReadingLevel(volumeInfo.description || null, volumeInfo.categories ? volumeInfo.categories[0] : null),
   };
 }
 
@@ -541,6 +547,7 @@ function transformiTunesAudiobook(itunes: iTunesAudiobook): Book {
     isPremium: true, // iTunes audiobooks are commercial
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(description, itunes.primaryGenreName || null),
   };
 }
 
@@ -596,6 +603,7 @@ function transformInternetArchiveDoc(doc: InternetArchiveDoc): Book {
     isPremium: false, // Internet Archive content is free
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(doc.description || null, subject || null),
   };
 }
 
@@ -615,6 +623,7 @@ function transformLibriVoxBook(libriVoxBook: LibriVoxBook): Book {
     ? parseInt(libriVoxBook.totaltimesecs) || 0
     : libriVoxBook.totaltimesecs || 0;
   
+  const libriVoxGenre = libriVoxBook.genres ? libriVoxBook.genres.join(", ") : "Classic Literature";
   return {
     id: `librivox-${libriVoxBook.id}`,
     title: libriVoxBook.title,
@@ -625,7 +634,7 @@ function transformLibriVoxBook(libriVoxBook: LibriVoxBook): Book {
     coverImage: `https://archive.org/services/img/${libriVoxBook.id}`, // LibriVox cover images
     audioUrl: audioUrl,
     contentUrl: null,
-    genre: libriVoxBook.genres ? libriVoxBook.genres.join(", ") : "Classic Literature",
+    genre: libriVoxGenre,
     publishedYear: libriVoxBook.copyright_year ? parseInt(libriVoxBook.copyright_year) : null,
     source: "librivox",
     sourceId: libriVoxBook.id,
@@ -635,6 +644,7 @@ function transformLibriVoxBook(libriVoxBook: LibriVoxBook): Book {
     isPremium: false, // LibriVox is free public domain
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(libriVoxBook.description || null, libriVoxGenre),
   };
 }
 
@@ -691,6 +701,7 @@ function transformGutenbergBook(gutenberg: GutenbergBook): Book {
     isPremium: false, // Gutenberg is free public domain
     pageCount: null,
     searchVector: null,
+    readingLevel: computeReadingLevel(`A classic from Project Gutenberg. ${gutenberg.subjects.slice(0, 3).join(", ")}`, genre),
   };
 }
 
@@ -823,7 +834,7 @@ export class ExternalAPIStorage implements IStorage {
   }
 
   private initializeFallbackData() {
-    const sampleBooks: Omit<Book, 'id' | 'searchVector'>[] = [
+    const sampleBooks: Omit<Book, 'id' | 'searchVector' | 'readingLevel'>[] = [
       {
         title: "The Great Gatsby",
         author: "F. Scott Fitzgerald",
@@ -942,7 +953,7 @@ export class ExternalAPIStorage implements IStorage {
 
     sampleBooks.forEach(book => {
       const id = randomUUID();
-      this.fallbackBooks.set(id, { ...book, id, searchVector: null });
+      this.fallbackBooks.set(id, { ...book, id, searchVector: null, readingLevel: computeReadingLevel(book.description || null, book.genre || null) });
     });
   }
 
@@ -1232,13 +1243,14 @@ export class ExternalAPIStorage implements IStorage {
       isPremium: insertBook.isPremium ?? false,
       pageCount: insertBook.pageCount ?? null,
       searchVector: null,
+      readingLevel: insertBook.readingLevel ?? null,
     };
     this.fallbackBooks.set(id, book);
     return book;
   }
 
   async getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>> {
-    const { cursor, limit = 50, source, contentType, genre, search } = options;
+    const { cursor, limit = 50, source, contentType, genre, search, readingLevel } = options;
 
     // If search is provided, use full-text search
     if (search) {
@@ -1260,25 +1272,36 @@ export class ExternalAPIStorage implements IStorage {
         ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
         : sql``;
 
+      // When filtering by readingLevel (computed from description/genre), over-fetch and filter in memory
+      const fetchLimit = readingLevel ? Math.min(limit * 20, 2000) : limit + 1;
+
       const rows = await db.execute(
-        sql`SELECT * FROM books ${whereClause} ORDER BY id ASC LIMIT ${limit + 1}`
+        sql`SELECT * FROM books ${whereClause} ORDER BY id ASC LIMIT ${fetchLimit}`
       );
 
       const allRows = (rows as any).rows || rows;
       if (!Array.isArray(allRows)) return { data: [], nextCursor: null, hasMore: false };
 
-      const hasMore = allRows.length > limit;
-      const pageRows = hasMore ? allRows.slice(0, limit) : allRows;
+      let mapped: Book[] = allRows.map(mapRowToBook);
 
-      const data: Book[] = pageRows.map(mapRowToBook);
+      if (readingLevel) {
+        mapped = mapped.filter(b => b.readingLevel === readingLevel);
+        const data = mapped.slice(0, limit);
+        const hasMore = mapped.length > limit;
+        const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+        return { data, nextCursor, hasMore, total: mapped.length };
+      }
 
-      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+      const hasMore = mapped.length > limit;
+      const pageRows = hasMore ? mapped.slice(0, limit) : mapped;
+
+      const nextCursor = hasMore && pageRows.length > 0 ? pageRows[pageRows.length - 1].id : null;
       
       const countResult = await db.execute(sql`SELECT COUNT(*) as count FROM books ${whereClause}`);
       const countRows = (countResult as any).rows || countResult;
       const total = parseInt(countRows?.[0]?.count || "0");
       
-      return { data, nextCursor, hasMore, total };
+      return { data: pageRows, nextCursor, hasMore, total };
     } catch (error) {
       console.warn('Paginated DB query failed:', error);
       return { data: [], nextCursor: null, hasMore: false, total: 0 };

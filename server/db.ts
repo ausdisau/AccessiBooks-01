@@ -211,6 +211,16 @@ export async function setupAdPlatformTables(): Promise<void> {
   }
 }
 
+export async function ensureReadingLevelColumn(): Promise<void> {
+  try {
+    await sql`ALTER TABLE books ADD COLUMN IF NOT EXISTS reading_level integer`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_books_reading_level ON books (reading_level)`;
+    console.log("[ReadingLevel] reading_level column ensured");
+  } catch (error: any) {
+    console.warn("[ReadingLevel] Column setup warning:", error.message);
+  }
+}
+
 export async function setupEasyEnglishTables(): Promise<void> {
   try {
     await sql`
