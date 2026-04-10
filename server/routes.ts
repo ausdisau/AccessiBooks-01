@@ -6492,26 +6492,36 @@ ${navEntries}
   // Curated chapter/book sign-language summary clips (SignedStories / YouTube / public domain)
   // Maps normalised book title keywords → { youtubeId, title, lang }
   // Only books with a genuine recorded sign-language summary are included.
-  const SIGNED_STORIES_MAP: Record<string, { youtubeId: string; title: string; lang: "BSL" | "ASL" | "both" }> = {
+  const SIGNED_STORIES_MAP: Record<string, { youtubeId: string; title: string; lang: "BSL" | "ASL" | "AUSLAN" | "both" }> = {
+    // BSL stories
     "alice": { youtubeId: "UtDRqHMkl5U", title: "Alice in Wonderland — BSL", lang: "BSL" },
     "wonderland": { youtubeId: "UtDRqHMkl5U", title: "Alice in Wonderland — BSL", lang: "BSL" },
     "three pigs": { youtubeId: "ZpFdyds6z9E", title: "Three Little Pigs — BSL", lang: "BSL" },
     "little pig": { youtubeId: "ZpFdyds6z9E", title: "Three Little Pigs — BSL", lang: "BSL" },
-    "cinderella": { youtubeId: "D_XHX4Kiwww", title: "Cinderella — ASL", lang: "ASL" },
-    "red riding": { youtubeId: "u5sS2lfNuCE", title: "Little Red Riding Hood — ASL", lang: "ASL" },
     "goldilocks": { youtubeId: "GQ8tN-cNAKs", title: "Goldilocks — BSL", lang: "BSL" },
     "jack beanstalk": { youtubeId: "u9sMnFkJvfg", title: "Jack and the Beanstalk — BSL", lang: "BSL" },
-    "snow white": { youtubeId: "2ZTXe7hMVpo", title: "Snow White — ASL storytelling", lang: "ASL" },
     "ugly duckling": { youtubeId: "Xk5kbOKvPL4", title: "The Ugly Duckling — BSL", lang: "BSL" },
+    // ASL stories
+    "cinderella": { youtubeId: "D_XHX4Kiwww", title: "Cinderella — ASL", lang: "ASL" },
+    "red riding": { youtubeId: "u5sS2lfNuCE", title: "Little Red Riding Hood — ASL", lang: "ASL" },
+    "snow white": { youtubeId: "2ZTXe7hMVpo", title: "Snow White — ASL storytelling", lang: "ASL" },
+    // AUSLAN stories (Deaf Connect / Australian signing community YouTube uploads)
+    "possum magic": { youtubeId: "1VcVqTnqiE0", title: "Possum Magic — Auslan", lang: "AUSLAN" },
+    "hairy maclary": { youtubeId: "FJbFBfmWLPs", title: "Hairy Maclary — Auslan", lang: "AUSLAN" },
+    "very hungry caterpillar": { youtubeId: "kBmBCH5DKXE", title: "The Very Hungry Caterpillar — Auslan", lang: "AUSLAN" },
+    "hungry caterpillar": { youtubeId: "kBmBCH5DKXE", title: "The Very Hungry Caterpillar — Auslan", lang: "AUSLAN" },
+    "wombat stew": { youtubeId: "TdTG7kVDhKU", title: "Wombat Stew — Auslan", lang: "AUSLAN" },
+    "dry place called home": { youtubeId: "p1HxM8-hKMo", title: "A Dry, Dry Place Called Home — Auslan", lang: "AUSLAN" },
   };
 
-  // GET /api/sign-language/chapter-summary?bookTitle=<title>&lang=BSL|ASL
+  // GET /api/sign-language/chapter-summary?bookTitle=<title>&lang=BSL|ASL|AUSLAN
   // Returns a curated YouTube embed ID for a sign language chapter summary video,
   // or null if no curated clip is available (so the UI hides the button).
   // MUST be registered BEFORE /:word to avoid Express matching "chapter-summary" as a word param.
   app.get("/api/sign-language/chapter-summary", async (req, res) => {
     const bookTitle = ((req.query.bookTitle as string) ?? "").toLowerCase();
-    const lang = ((req.query.lang as string) ?? "ASL").toUpperCase() === "BSL" ? "BSL" : "ASL";
+    const rawLang = ((req.query.lang as string) ?? "ASL").toUpperCase();
+    const lang: "BSL" | "ASL" | "AUSLAN" = rawLang === "BSL" ? "BSL" : rawLang === "AUSLAN" ? "AUSLAN" : "ASL";
 
     if (!bookTitle) return res.json({ youtubeId: null, title: null });
 
@@ -6524,14 +6534,15 @@ ${navEntries}
     res.json({ youtubeId: null, title: null });
   });
 
-  // GET /api/sign-language/:word?lang=BSL|ASL
+  // GET /api/sign-language/:word?lang=BSL|ASL|AUSLAN
   // Returns an embeddable media endpoint for a sign language word clip, or null if not found.
-  // BSL: SignBSL.com — they embed a <video> player on each definition page; we return the page URL
-  //      which the frontend iframes with sandbox="allow-scripts allow-same-origin"
-  // ASL: ASL-LEX and HandSpeak embed iframes — we use the HandSpeak iframe-compatible URL
+  // BSL:    SignBSL.com — per-word definition pages with embedded mp4 player
+  // ASL:    HandSpeak.com — per-word search pages with embedded video
+  // AUSLAN: Auslan Signbank (auslan.org.au) — per-word dictionary pages with embedded video
   app.get("/api/sign-language/:word", async (req, res) => {
     const word = (req.params.word ?? "").toLowerCase().replace(/[^a-z'-]/g, "").trim();
-    const lang = ((req.query.lang as string) ?? "ASL").toUpperCase() === "BSL" ? "BSL" : "ASL";
+    const rawLang = ((req.query.lang as string) ?? "ASL").toUpperCase();
+    const lang: "BSL" | "ASL" | "AUSLAN" = rawLang === "BSL" ? "BSL" : rawLang === "AUSLAN" ? "AUSLAN" : "ASL";
 
     if (!word || word.length < 2) {
       return res.json({ embedUrl: null, videoUrl: null, source: null });
@@ -6548,7 +6559,6 @@ ${navEntries}
       if (lang === "BSL") {
         // SignBSL.com: each word page loads an mp4 via their video player
         // Their pages are iframe-embeddable with allow-scripts allow-same-origin
-        // We verify the word page exists (non-404) to avoid showing broken iframes
         const pageUrl = `https://www.signbsl.com/sign/${encodeURIComponent(word)}`;
         try {
           const check = await fetch(pageUrl, {
@@ -6557,17 +6567,32 @@ ${navEntries}
             signal: AbortSignal.timeout(5000),
           });
           const text = await check.text().catch(() => "");
-          // SignBSL returns 200 for most words; check page has video content marker
           if (check.ok && text.includes("signbsl") && !text.toLowerCase().includes("page not found")) {
             result = { embedUrl: pageUrl, videoUrl: null, source: "SignBSL" };
           }
         } catch {
           // Network error / timeout — treat as not found
         }
+      } else if (lang === "AUSLAN") {
+        // Auslan Signbank: auslan.org.au/dictionary/words/<word>-1.html
+        // Each word has a dedicated page with an embedded video clip
+        const pageUrl = `https://www.auslan.org.au/dictionary/words/${encodeURIComponent(word)}-1.html`;
+        try {
+          const check = await fetch(pageUrl, {
+            method: "GET",
+            headers: { "User-Agent": "AccessiBooks/1.0 (accessibility research)" },
+            signal: AbortSignal.timeout(5000),
+          });
+          const text = await check.text().catch(() => "");
+          // Auslan Signbank pages for valid words contain the word in a definition header
+          if (check.ok && text.includes("auslan") && !text.toLowerCase().includes("page not found") && !text.toLowerCase().includes("404")) {
+            result = { embedUrl: pageUrl, videoUrl: null, source: "Auslan Signbank" };
+          }
+        } catch {
+          // Network error / timeout — treat as not found
+        }
       } else {
-        // ASL: HandSpeak word page is iframe-compatible (no X-Frame-Options block for same-language embeds)
-        // Format: https://www.handspeak.com/word/search/index.php?id=<word>
-        // We provide a direct deeplink that opens in iframe context
+        // ASL: HandSpeak word page
         const pageUrl = `https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent(word)}`;
         try {
           const check = await fetch(pageUrl, {
@@ -6576,7 +6601,6 @@ ${navEntries}
             signal: AbortSignal.timeout(5000),
           });
           const text = await check.text().catch(() => "");
-          // HandSpeak returns 200 with a page containing the word video if found
           if (check.ok && text.includes("handspeak") && !text.toLowerCase().includes("not found")) {
             result = { embedUrl: pageUrl, videoUrl: null, source: "HandSpeak" };
           }

@@ -892,7 +892,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                     <Select
                       value={settings.preferredSignLanguage ?? "ASL"}
                       onValueChange={(value) =>
-                        updateSettings({ preferredSignLanguage: value as "BSL" | "ASL" })
+                        updateSettings({ preferredSignLanguage: value as "BSL" | "ASL" | "AUSLAN" })
                       }
                     >
                       <SelectTrigger id="preferred-sign-language" className="w-full" aria-label="Select preferred sign language">
@@ -901,6 +901,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                       <SelectContent>
                         <SelectItem value="ASL">ASL — American Sign Language</SelectItem>
                         <SelectItem value="BSL">BSL — British Sign Language</SelectItem>
+                        <SelectItem value="AUSLAN">Auslan — Australian Sign Language</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -917,7 +918,11 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     Tap any word in the ebook reader for its sign. The {settings.preferredSignLanguage ?? "ASL"} glossary is powered by{" "}
-                    {(settings.preferredSignLanguage ?? "ASL") === "BSL" ? "SignBSL.com" : "HandSpeak.com"}.
+                    {(settings.preferredSignLanguage ?? "ASL") === "BSL"
+                      ? "SignBSL.com"
+                      : (settings.preferredSignLanguage ?? "ASL") === "AUSLAN"
+                      ? "Auslan Signbank (auslan.org.au)"
+                      : "HandSpeak.com"}.
                   </p>
                 </div>
               </div>

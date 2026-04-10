@@ -127,7 +127,7 @@ export interface AccessibilitySettings {
   switchAccessMode?: boolean;
   karaokeFollowAlong?: boolean;
   focusShell?: boolean;
-  preferredSignLanguage?: "BSL" | "ASL";
+  preferredSignLanguage?: "BSL" | "ASL" | "AUSLAN";
   showSignAtChapterEnd?: boolean;
 }
 
@@ -233,7 +233,7 @@ export const localStorageService = {
       symbolOverlay: false,
       switchAccessMode: false,
       focusShell: false,
-      preferredSignLanguage: "ASL",
+      preferredSignLanguage: "ASL" as "BSL" | "ASL" | "AUSLAN",
       showSignAtChapterEnd: false,
     };
     try {
