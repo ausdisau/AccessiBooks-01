@@ -1914,6 +1914,7 @@ function MainApp() {
                     <div id="stats-panel" role="region" aria-label="Statistics" data-testid="panel-stats" className="space-y-8">
                       <GamificationDashboard />
                       <BattlePassComponent />
+                      <AchievementsPage />
                       <YearInReview />
                       <ReferralSection />
                     </div>

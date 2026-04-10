@@ -261,6 +261,11 @@ function TextReader({ book, onBack }: EbookReaderProps) {
 
   const completionFiredRef = useRef(false);
 
+  // Reset when the book changes so each book triggers completion independently
+  useEffect(() => {
+    completionFiredRef.current = false;
+  }, [book.id]);
+
   // Fire completion event when user reaches the last page for the first time
   useEffect(() => {
     if (

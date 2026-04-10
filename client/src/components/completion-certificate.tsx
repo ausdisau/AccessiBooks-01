@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -273,6 +274,7 @@ interface CompletionModalProps {
 export function CompletionModal({ data, onClose, onSelectBook }: CompletionModalProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [showConfetti, setShowConfetti] = useState(false);
   const completedAt = useRef(new Date().toISOString());
 
@@ -399,9 +401,13 @@ export function CompletionModal({ data, onClose, onSelectBook }: CompletionModal
               variant="outline"
               size="sm"
               className="flex-1 gap-1.5"
-              onClick={onClose}
+              onClick={() => {
+                onClose();
+                navigate("/");
+              }}
+              aria-label="Return to library"
             >
-              Library
+              Keep Reading
             </Button>
           </div>
 
