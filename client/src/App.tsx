@@ -48,6 +48,7 @@ import { Footer } from "@/components/footer";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
+import { CompletionModal, type CompletionData } from "@/components/completion-certificate";
 import { TrialNudge } from "@/components/trial-nudge";
 import { localStorageService } from "@/lib/storage";
 import type { AccessibilitySettings } from "@/lib/storage";
@@ -85,6 +86,7 @@ const AdminPlatformDashboard = lazy(() => import('@/pages/ad-platform/admin-dash
 const SlotDetailPage = lazy(() => import('@/pages/ad-platform/slot-detail'));
 const DemoSlotPage = lazy(() => import('@/pages/ad-platform/demo-slot'));
 const WordBankPage = lazy(() => import('@/pages/word-bank').then(m => ({ default: m.WordBankPage })));
+const AchievementsPage = lazy(() => import('@/components/completion-certificate').then(m => ({ default: m.AchievementsPage })));
 
 function LoadingSpinner() {
   return (
@@ -106,6 +108,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/loans", label: "Loans", icon: <LibraryBig className="h-5 w-5" /> },
       { path: "/downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
       { path: "/word-bank", label: "Word Bank", icon: <GraduationCap className="h-5 w-5" /> },
+      { path: "/achievements", label: "Achievements", icon: <Trophy className="h-5 w-5" /> },
     ],
   },
   {
@@ -1523,16 +1526,37 @@ function MainApp() {
   } = useContentAccess();
   const { isPremium, upgradeToPremium } = useSubscription();
   const [engagementUpsell, setEngagementUpsell] = useState<{ type: "book_complete" | "streak_milestone" | "listening_milestone"; detail: string; open: boolean }>({ type: "book_complete", detail: "", open: false });
+  const [completionData, setCompletionData] = useState<CompletionData | null>(null);
 
+  // Listen for book completion events dispatched by ebook reader
   useEffect(() => {
-    if (isPremium) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as CompletionData;
+      if (detail?.bookId) setCompletionData(detail);
+    };
+    document.addEventListener("accessibooks:book-completed", handler);
+    return () => document.removeEventListener("accessibooks:book-completed", handler);
+  }, []);
+
+  // Fire completion + optional upsell when audiobook track ends
+  useEffect(() => {
     const audioCtx = onTrackEndCallback;
     audioCtx.current = () => {
-      if (isPremium) return;
-      const title = currentBook?.title || "a book";
-      const triggerId = `book_complete_${title.replace(/\s+/g, "_").toLowerCase()}`;
-      if (!hasShownUpsell(triggerId)) {
-        setEngagementUpsell({ type: "book_complete", detail: title, open: true });
+      if (currentBook) {
+        setCompletionData({
+          bookId: currentBook.id,
+          bookTitle: currentBook.title,
+          bookAuthor: currentBook.author,
+          bookCover: currentBook.coverImage ?? null,
+          contentType: "audiobook",
+        });
+      }
+      if (!isPremium) {
+        const title = currentBook?.title || "a book";
+        const triggerId = `book_complete_${title.replace(/\s+/g, "_").toLowerCase()}`;
+        if (!hasShownUpsell(triggerId)) {
+          setEngagementUpsell({ type: "book_complete", detail: title, open: true });
+        }
       }
     };
     return () => { audioCtx.current = null; };
@@ -2029,6 +2053,13 @@ function MainApp() {
                     </div>
                   </Suspense>
                 </Route>
+                <Route path="/achievements">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="achievements-panel" role="region" aria-label="Achievements" data-testid="panel-achievements">
+                      <AchievementsPage />
+                    </div>
+                  </Suspense>
+                </Route>
                 <Route>
                   <div id="library-panel" role="region" aria-label="Library" data-testid="panel-library">
                     <Library onSelectBook={handleSelectBook} />
@@ -2068,6 +2099,16 @@ function MainApp() {
         open={engagementUpsell.open}
         onOpenChange={(open) => setEngagementUpsell(prev => ({ ...prev, open }))}
         onUpgrade={(plan) => { setEngagementUpsell(prev => ({ ...prev, open: false })); upgradeToPremium(plan || "monthly"); }}
+      />
+
+      <CompletionModal
+        data={completionData}
+        onClose={() => setCompletionData(null)}
+        onSelectBook={(bookId) => {
+          const book = queryClient.getQueryData<Book[]>(["/api/books"])?.find(b => b.id === bookId);
+          if (book) handleSelectBook(book);
+          setCompletionData(null);
+        }}
       />
 
       {a11ySettings.voiceControlEnabled && voiceControl.isSupported && (
