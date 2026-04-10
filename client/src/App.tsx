@@ -2105,10 +2105,21 @@ function MainApp() {
       <CompletionModal
         data={completionData}
         onClose={() => setCompletionData(null)}
-        onSelectBook={(bookId) => {
-          const book = queryClient.getQueryData<Book[]>(["/api/books"])?.find(b => b.id === bookId);
-          if (book) handleSelectBook(book);
+        onSelectBook={async (bookId) => {
           setCompletionData(null);
+          const cached = (queryClient.getQueryData<{ data: Book[] }>(["/api/books"])?.data ?? []).find(b => b.id === bookId);
+          if (cached) {
+            handleSelectBook(cached);
+          } else {
+            try {
+              const res = await fetch(`/api/books/${bookId}`);
+              if (res.ok) {
+                const book: Book = await res.json();
+                handleSelectBook(book);
+              }
+            } catch {
+            }
+          }
         }}
       />
 
