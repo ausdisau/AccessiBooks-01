@@ -114,9 +114,6 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const [a11ySettings, setA11ySettings] = useState(() => localStorageService.getSettings());
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showBreakPrompt, setShowBreakPrompt] = useState(false);
-  const [breakQuizQuestions, setBreakQuizQuestions] = useState<{ question: string; options: string[]; correct: number }[]>([]);
-  const [breakQuizAnswers, setBreakQuizAnswers] = useState<(number | null)[]>([]);
-  const [showBreakQuiz, setShowBreakQuiz] = useState(false);
 
   const [showPicturePause, setShowPicturePause] = useState(false);
   const [picturePauseChapter, setPicturePauseChapter] = useState<string | null>(null);
@@ -246,22 +243,6 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     }
   }, [currentChapterIndex]);
 
-  const breakQuizMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/ai/chapter-checkin", {
-        chapterText: book.description ?? book.title ?? "audiobook",
-        title: book.title,
-      });
-      if (!res.ok) throw new Error("Quiz failed");
-      return res.json() as Promise<{ questions: { question: string; options: string[]; correct: number }[] }>;
-    },
-    onSuccess: (data) => {
-      setBreakQuizQuestions(data.questions ?? []);
-      setBreakQuizAnswers((data.questions ?? []).map(() => null));
-      setShowBreakQuiz(true);
-      setShowBreakPrompt(false);
-    },
-  });
 
   const handleDownloadDaisy = useCallback(async () => {
     try {
@@ -1061,7 +1042,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
         </Card>
       )}
 
-      {showBreakPrompt && !showBreakQuiz && (
+      {showBreakPrompt && !showPictureCheckin && (
         <Card className="border-2 border-primary/30 bg-primary/5 mt-2">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
@@ -1075,10 +1056,15 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   {a11ySettings.comprehensionCheckIns && (
                     <Button
                       size="sm"
-                      onClick={() => breakQuizMutation.mutate()}
-                      disabled={breakQuizMutation.isPending}
+                      onClick={() => {
+                        setShowBreakPrompt(false);
+                        const completedChapterTitle = currentChapter?.title ?? "";
+                        pictureCheckinMutation.mutate({ completedChapterTitle });
+                      }}
+                      disabled={pictureCheckinMutation.isPending}
                     >
-                      {breakQuizMutation.isPending ? "Generating…" : "Comprehension Quiz"}
+                      <span aria-hidden="true" className="mr-1">✨</span>
+                      {pictureCheckinMutation.isPending ? "Getting check-in…" : "Quick Chapter Check-in"}
                     </Button>
                   )}
                   <Button size="sm" variant="outline" onClick={() => setShowBreakPrompt(false)}>
@@ -1087,58 +1073,6 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {showBreakQuiz && breakQuizQuestions.length > 0 && (
-        <Card className="border-2 border-primary/30 mt-2">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">Comprehension Check</h3>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowBreakQuiz(false)} aria-label="Close quiz">
-                <span aria-hidden="true">✕</span>
-              </Button>
-            </div>
-            <div className="space-y-4">
-              {breakQuizQuestions.map((q, qi) => (
-                <div key={qi}>
-                  <p className="text-sm font-medium mb-2">{qi + 1}. {q.question}</p>
-                  <div className="space-y-1">
-                    {q.options.map((opt, oi) => {
-                      const answered = breakQuizAnswers[qi] !== null;
-                      const isSelected = breakQuizAnswers[qi] === oi;
-                      const isCorrect = oi === q.correct;
-                      return (
-                        <Button
-                          key={oi}
-                          variant="outline"
-                          size="sm"
-                          className={`w-full text-left h-auto py-1.5 px-3 text-sm ${answered && isCorrect ? "border-green-500 bg-green-50 text-green-800" : answered && isSelected ? "border-red-400 bg-red-50 text-red-800" : answered ? "opacity-50" : ""}`}
-                          onClick={() => {
-                            if (breakQuizAnswers[qi] !== null) return;
-                            const updated = [...breakQuizAnswers];
-                            updated[qi] = oi;
-                            setBreakQuizAnswers(updated);
-                          }}
-                          disabled={answered}
-                        >
-                          {answered && isCorrect && <span className="mr-2">✓</span>}
-                          {answered && isSelected && !isCorrect && <span className="mr-2">✗</span>}
-                          {opt}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {breakQuizAnswers.every(a => a !== null) && (
-              <div className="mt-3 text-sm font-medium">
-                Score: {breakQuizAnswers.filter((a, i) => a === breakQuizQuestions[i].correct).length} / {breakQuizQuestions.length}
-                <Button size="sm" className="ml-3" onClick={() => setShowBreakQuiz(false)}>Done</Button>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
