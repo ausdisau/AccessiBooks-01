@@ -396,23 +396,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/books/easy-read - Books at reading levels 1 and 2 (Very Easy + Easy)
   app.get("/api/books/easy-read", async (req, res) => {
     try {
-      const { cursor, limit } = req.query;
+      const { limit } = req.query;
       const pageLimit = Math.min(parseInt(limit as string) || 24, 100);
 
+      // Each level paginates independently from the start so we get a full combined result set
+      const half = Math.ceil(pageLimit / 2);
       const [level1, level2] = await Promise.all([
-        storage.getBooksPaginated({ cursor: cursor as string | undefined, limit: Math.ceil(pageLimit / 2), readingLevel: 1 }),
-        storage.getBooksPaginated({ cursor: cursor as string | undefined, limit: Math.floor(pageLimit / 2), readingLevel: 2 }),
+        storage.getBooksPaginated({ limit: half, readingLevel: 1 }),
+        storage.getBooksPaginated({ limit: pageLimit - half, readingLevel: 2 }),
       ]);
 
-      const combined = [...level1.data, ...level2.data];
-      res.json({ data: combined, total: (level1.total ?? 0) + (level2.total ?? 0) });
+      // Sort by ID for deterministic stable ordering and cap to pageLimit
+      const combined = [...level1.data, ...level2.data]
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .slice(0, pageLimit);
+
+      res.json({
+        data: combined,
+        hasMore: level1.hasMore || level2.hasMore,
+        total: (level1.total ?? 0) + (level2.total ?? 0),
+      });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch Easy Read books" });
     }
   });
 
-  // POST /api/books/backfill-reading-levels - Compute and store reading levels for books that don't have one
-  app.post("/api/books/backfill-reading-levels", async (req: any, res) => {
+  // POST /api/books/backfill-reading-levels - Admin-only: compute and store reading levels
+  app.post("/api/books/backfill-reading-levels", isAuthenticated, async (req: any, res) => {
+    // Restrict to admin users only
+    const userId = req.user?.id || req.user?.claims?.sub;
+    if (userId) {
+      try {
+        const userRows = await db.execute(sql`SELECT role FROM users WHERE id = ${userId}`);
+        const rows: any[] = (userRows as any).rows ?? [];
+        const role = rows[0]?.role;
+        if (role !== "admin") {
+          return res.status(403).json({ message: "Admin access required" });
+        }
+      } catch {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    } else {
+      return res.status(401).json({ message: "Authentication required" });
+    }
     try {
       const { computeReadingLevel } = await import("./readingLevelUtils");
       const batchSize = 200;
