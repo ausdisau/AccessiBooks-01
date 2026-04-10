@@ -20,7 +20,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus, Zap, HeartHandshake } from "lucide-react";
+import { Book as BookIcon, Play, Pause, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus, Zap, HeartHandshake, LayoutDashboard } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -366,25 +366,23 @@ function AppSidebar({ mode, onCloseDrawer }: {
       {sidebarNavGroups.map((group) => (
         <div key={group.label} className="mb-2 w-full flex flex-col items-center">
           {group.items.map((item) => (
-            <Tooltip key={item.path} delayDuration={0}>
-              <TooltipTrigger asChild>
-                <Link
-                  href={item.path}
-                  className={`flex items-center justify-center w-11 h-11 rounded-md transition-colors mb-0.5 ${
-                    isActive(item.path)
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                  aria-label={item.label}
-                  data-testid={`menu-${item.path.replace("/", "") || "library"}`}
-                >
-                  {item.icon}
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="font-medium">
+            <Link
+              key={item.path}
+              href={item.path}
+              className={`flex flex-col items-center justify-center w-14 py-1.5 rounded-md transition-colors mb-0.5 gap-0.5 ${
+                isActive(item.path)
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              aria-label={item.label}
+              aria-current={isActive(item.path) ? "page" : undefined}
+              data-testid={`menu-${item.path.replace("/", "") || "library"}`}
+            >
+              {item.icon}
+              <span className="text-[9px] font-medium leading-none tracking-tight truncate max-w-[48px] text-center">
                 {item.label}
-              </TooltipContent>
-            </Tooltip>
+              </span>
+            </Link>
           ))}
           <div className="w-8 h-px bg-border my-1.5" />
         </div>
@@ -398,7 +396,7 @@ function AppSidebar({ mode, onCloseDrawer }: {
       {mode !== "hidden" && (
         <aside
           className={`hidden md:flex flex-col shrink-0 bg-card border-r border-border h-[calc(100vh-4rem)] sticky top-16 transition-all duration-200 ${
-            mode === "full" ? "w-60" : "w-12"
+            mode === "full" ? "w-60" : "w-16"
           }`}
         >
           {mode === "full" ? makeFullNav() : railNav}
@@ -2341,6 +2339,7 @@ function App() {
           <ColourOverlayRenderer />
           <SwitchAccessScanner />
           <FocusModeExitButton />
+          <FocusShell />
           <Toaster />
         </AudioProvider>
       </Router>
@@ -2409,6 +2408,144 @@ function FocusModeExitButton() {
       <Focus className="h-4 w-4" aria-hidden="true" />
       Exit Focus Mode
     </button>
+  );
+}
+
+function FocusShell() {
+  const [active, setActive] = useState(() => !!localStorageService.getSettings().focusShell);
+  const [, navigate] = useLocation();
+  const { currentBook, isPlaying, togglePlayPause } = useAudioContext();
+
+  useEffect(() => {
+    const sync = () => setActive(!!localStorageService.getSettings().focusShell);
+    document.addEventListener("accessibooks:settings-changed", sync);
+    return () => document.removeEventListener("accessibooks:settings-changed", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitFocusShell();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [active]);
+
+  const exitFocusShell = () => {
+    const s = localStorageService.getSettings();
+    localStorageService.saveSettings({ ...s, focusShell: false });
+    document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
+    setActive(false);
+  };
+
+  const openHelp = () => {
+    document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility"));
+  };
+
+  const goLibrary = () => {
+    navigate("/");
+  };
+
+  if (!active) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] bg-background flex flex-col"
+      role="dialog"
+      aria-label="Focus Shell — simplified reading mode"
+      aria-modal="true"
+    >
+      {/* Spatial anchor: Library button — top-left */}
+      <button
+        onClick={goLibrary}
+        className="absolute top-4 left-4 flex items-center gap-2 px-4 py-3 rounded-2xl bg-primary text-primary-foreground text-base font-semibold shadow-lg hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        aria-label="Go to Library"
+        style={{ minWidth: 140 }}
+      >
+        <BookOpen className="h-6 w-6 flex-shrink-0" aria-hidden="true" />
+        <span>Library</span>
+      </button>
+
+      {/* Exit button — top-right */}
+      <button
+        onClick={exitFocusShell}
+        className="absolute top-4 right-4 flex items-center gap-2 px-3 py-3 rounded-2xl bg-muted text-muted-foreground text-sm font-medium shadow hover:bg-muted/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Exit Focus Shell"
+      >
+        <X className="h-5 w-5" aria-hidden="true" />
+        <span>Exit</span>
+      </button>
+
+      {/* Centre: book cover + title */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-20">
+        {currentBook ? (
+          <>
+            {currentBook.coverImage ? (
+              <img
+                src={currentBook.coverImage}
+                alt={`Cover for ${currentBook.title}`}
+                className="w-52 h-52 sm:w-64 sm:h-64 object-cover rounded-2xl shadow-2xl"
+              />
+            ) : (
+              <div className="w-52 h-52 sm:w-64 sm:h-64 rounded-2xl bg-muted flex items-center justify-center shadow-2xl">
+                <BookOpen className="h-20 w-20 text-muted-foreground" aria-hidden="true" />
+              </div>
+            )}
+            <div className="text-center max-w-sm">
+              <p className="text-2xl sm:text-3xl font-bold text-foreground leading-snug">
+                {currentBook.title}
+              </p>
+              {currentBook.author && (
+                <p className="text-base text-muted-foreground mt-1">{currentBook.author}</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="w-52 h-52 rounded-2xl bg-muted flex items-center justify-center shadow-xl">
+              <BookOpen className="h-20 w-20 text-muted-foreground" aria-hidden="true" />
+            </div>
+            <p className="text-xl font-semibold text-muted-foreground">No book playing</p>
+            <p className="text-sm text-muted-foreground">Go to Library to pick a book</p>
+          </>
+        )}
+      </div>
+
+      {/* Spatial anchor: Play/Pause — bottom-center */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+        <button
+          onClick={() => togglePlayPause()}
+          className="flex flex-col items-center justify-center w-28 h-28 rounded-full bg-primary text-primary-foreground shadow-2xl hover:bg-primary/90 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring focus-visible:ring-offset-4"
+          aria-label={isPlaying ? "Pause" : "Play"}
+          disabled={!currentBook}
+        >
+          {isPlaying ? (
+            <Pause className="h-12 w-12" aria-hidden="true" />
+          ) : (
+            <Play className="h-12 w-12 ml-1" aria-hidden="true" />
+          )}
+        </button>
+        <span className="text-sm font-semibold text-muted-foreground mt-1">
+          {isPlaying ? "Pause" : "Play"}
+        </span>
+      </div>
+
+      {/* Spatial anchor: Help/accessibility — bottom-right */}
+      <button
+        onClick={openHelp}
+        className="absolute bottom-8 right-6 flex flex-col items-center gap-1 px-4 py-3 rounded-2xl bg-muted text-muted-foreground text-sm font-medium shadow hover:bg-muted/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Open Accessibility Help"
+        style={{ minWidth: 90 }}
+      >
+        <Accessibility className="h-7 w-7" aria-hidden="true" />
+        <span>Help</span>
+      </button>
+
+      {/* Subtle hint at bottom */}
+      <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-muted-foreground/50 pointer-events-none">
+        Press <kbd className="bg-muted px-1 rounded text-[10px]">Esc</kbd> or tap Exit to leave Focus Shell
+      </p>
+    </div>
   );
 }
 
