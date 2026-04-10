@@ -2567,12 +2567,14 @@ function WordVocabPopup({
               <a
                 href={preferredLang === "BSL"
                   ? `https://www.signbsl.com/sign/${encodeURIComponent(word)}`
+                  : preferredLang === "AUSLAN"
+                  ? `https://www.auslan.org.au/dictionary/words/${encodeURIComponent(word)}-1.html`
                   : `https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent(word)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[10px] text-primary underline"
               >
-                Search {preferredLang === "BSL" ? "SignBSL" : "HandSpeak"}
+                Search {preferredLang === "BSL" ? "SignBSL" : preferredLang === "AUSLAN" ? "Auslan Signbank" : "HandSpeak"}
               </a>
             </div>
           )}
