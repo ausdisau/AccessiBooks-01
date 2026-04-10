@@ -51,7 +51,7 @@ import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell
 import { TrialNudge } from "@/components/trial-nudge";
 import { localStorageService } from "@/lib/storage";
 import type { AccessibilitySettings } from "@/lib/storage";
-import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon, Heart, Building2, Activity, LibraryBig } from "lucide-react";
+import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon, Heart, Building2, Activity, LibraryBig, GraduationCap } from "lucide-react";
 
 const EbookReader = lazy(() => import('@/components/ebook-reader').then(m => ({ default: m.EbookReader })));
 const AuthorPage = lazy(() => import('@/components/author-page').then(m => ({ default: m.AuthorPage })));
@@ -84,6 +84,7 @@ const PublisherDashboard = lazy(() => import('@/pages/ad-platform/publisher-dash
 const AdminPlatformDashboard = lazy(() => import('@/pages/ad-platform/admin-dashboard'));
 const SlotDetailPage = lazy(() => import('@/pages/ad-platform/slot-detail'));
 const DemoSlotPage = lazy(() => import('@/pages/ad-platform/demo-slot'));
+const WordBankPage = lazy(() => import('@/pages/word-bank').then(m => ({ default: m.WordBankPage })));
 
 function LoadingSpinner() {
   return (
@@ -104,6 +105,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/player", label: "Player", icon: <Play className="h-5 w-5" /> },
       { path: "/loans", label: "Loans", icon: <LibraryBig className="h-5 w-5" /> },
       { path: "/downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
+      { path: "/word-bank", label: "Word Bank", icon: <GraduationCap className="h-5 w-5" /> },
     ],
   },
   {
@@ -2017,6 +2019,13 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="accessible-picks-panel" role="region" aria-label="Accessible Picks" data-testid="panel-accessible-picks">
                       <AccessiblePicksPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/word-bank">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="word-bank-panel" role="region" aria-label="Word Bank" data-testid="panel-word-bank">
+                      <WordBankPage />
                     </div>
                   </Suspense>
                 </Route>

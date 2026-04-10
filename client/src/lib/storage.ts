@@ -5,6 +5,74 @@ const PROGRESS_KEY = "accessibooks_progress";
 const SETTINGS_KEY = "accessibooks_settings";
 const STATS_KEY = "accessibooks_stats";
 const COLLECTIONS_KEY = "accessibooks_collections";
+const WORD_BANK_KEY = "accessibooks:word-bank";
+
+export interface WordBankEntry {
+  id: string;
+  word: string;
+  definition: string | null;
+  imageUrl: string | null;
+  savedAt: string;
+}
+
+const WORD_BANK_MILESTONES = [1, 5, 10, 25, 50];
+
+export const wordBankService = {
+  getAll(): WordBankEntry[] {
+    try {
+      const stored = localStorage.getItem(WORD_BANK_KEY);
+      if (!stored) return [];
+      return JSON.parse(stored);
+    } catch {
+      return [];
+    }
+  },
+
+  has(word: string): boolean {
+    return this.getAll().some(e => e.word.toLowerCase() === word.toLowerCase());
+  },
+
+  add(word: string, definition: string | null, imageUrl: string | null): { entry: WordBankEntry; milestone: number | null } {
+    const entries = this.getAll();
+    const existingIdx = entries.findIndex(e => e.word.toLowerCase() === word.toLowerCase());
+    if (existingIdx >= 0) {
+      return { entry: entries[existingIdx], milestone: null };
+    }
+    const entry: WordBankEntry = {
+      id: crypto.randomUUID(),
+      word: word.toLowerCase(),
+      definition,
+      imageUrl,
+      savedAt: new Date().toISOString(),
+    };
+    const newEntries = [entry, ...entries];
+    try {
+      localStorage.setItem(WORD_BANK_KEY, JSON.stringify(newEntries));
+    } catch (error) {
+      console.error("Failed to save word bank entry:", error);
+    }
+    const newCount = newEntries.length;
+    const milestone = WORD_BANK_MILESTONES.includes(newCount) ? newCount : null;
+    return { entry, milestone };
+  },
+
+  remove(id: string): void {
+    const entries = this.getAll().filter(e => e.id !== id);
+    try {
+      localStorage.setItem(WORD_BANK_KEY, JSON.stringify(entries));
+    } catch (error) {
+      console.error("Failed to remove word bank entry:", error);
+    }
+  },
+
+  clear(): void {
+    try {
+      localStorage.removeItem(WORD_BANK_KEY);
+    } catch (error) {
+      console.error("Failed to clear word bank:", error);
+    }
+  },
+};
 
 export interface ListeningStats {
   totalSecondsListened: number;
