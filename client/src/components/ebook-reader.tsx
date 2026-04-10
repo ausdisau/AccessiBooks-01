@@ -382,6 +382,53 @@ function TextReader({ book, onBack }: EbookReaderProps) {
 
   const chapterBoundaryPageRef = useRef<number | null>(null);
 
+  interface ReaderPictureCheckinData {
+    question: string;
+    options: string[];
+    symbolUrls: (string | null)[];
+  }
+  const [showPictureCheckin, setShowPictureCheckin] = useState(false);
+  const [pictureCheckinData, setPictureCheckinData] = useState<ReaderPictureCheckinData | null>(null);
+  const [pictureCheckinSelected, setPictureCheckinSelected] = useState<number | null>(null);
+
+  const logReaderCheckinAction = (action: "answered" | "skipped") => {
+    try {
+      const key = "accessibooks:checkin-log";
+      const logs: unknown[] = JSON.parse(localStorage.getItem(key) ?? "[]");
+      logs.push({ bookId: String(book.id), chapterIdx: currentPage, action, ts: Date.now() });
+      localStorage.setItem(key, JSON.stringify(logs.slice(-100)));
+    } catch {}
+  };
+
+  const readerPictureCheckinMutation = useMutation({
+    mutationFn: async ({ text, chapterIdx }: { text: string; chapterIdx: number }) => {
+      const res = await apiRequest("POST", "/api/ai/chapter-picture-checkin", {
+        chapterText: text,
+        title: book.title,
+        bookId: String(book.id),
+        chapterIndex: chapterIdx,
+      });
+      if (!res.ok) throw new Error("Check-in failed");
+      return res.json() as Promise<{ question: string; options: string[] }>;
+    },
+    onSuccess: async (data) => {
+      const urls = await Promise.all(
+        (data.options ?? []).map(async (w: string) => {
+          try {
+            const r = await fetch(`/api/symbols/${encodeURIComponent(w.toLowerCase())}`);
+            const d = await r.json() as { url: string | null };
+            return d.url ?? null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      setPictureCheckinData({ question: data.question, options: data.options, symbolUrls: urls });
+      setPictureCheckinSelected(null);
+      setShowPictureCheckin(true);
+    },
+  });
+
   useEffect(() => {
     const pacingMinutes = a11ySettings.sessionPacingMinutes ?? 0;
     if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
@@ -698,8 +745,8 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       if (a11ySettings.chapterPreviews) {
         chapterPreviewMutation.mutate({ text: pageContent, chapterIdx: currentPage });
       }
-      if (a11ySettings.comprehensionCheckIns && !showQuiz && !showBreakPrompt) {
-        quizMutation.mutate();
+      if (a11ySettings.comprehensionCheckIns && !showPictureCheckin) {
+        readerPictureCheckinMutation.mutate({ text: pageContent, chapterIdx: currentPage });
       }
     }
   }, [currentPage, pageContent]);
@@ -1397,7 +1444,37 @@ function TextReader({ book, onBack }: EbookReaderProps) {
         <div className={`relative overflow-hidden rounded-lg ${pageTransition !== "none" ? "transition-transform duration-300" : ""}`}>
           <Card className={`${theme.cardBg} transition-colors duration-300 ${pageTransition === "slide-left" ? "animate-slide-in-left" : pageTransition === "slide-right" ? "animate-slide-in-right" : ""}`}>
             <CardContent className="p-6 sm:p-8 md:p-12">
-              {showPaywall ? (
+              {(showChapterPreview || chapterPreviewMutation.isPending) && a11ySettings.chapterPreviews ? (
+                <div
+                  className="flex flex-col items-center gap-5 text-center py-4"
+                  role="note"
+                  aria-label="Chapter preview"
+                >
+                  <span className="text-5xl" aria-hidden="true">📖</span>
+                  <div className="max-w-sm">
+                    <p className={`font-semibold text-base mb-2 ${theme.text}`}>
+                      {chapterPreviewTitle ? `Coming up: ${chapterPreviewTitle}` : "Coming up next"}
+                    </p>
+                    {chapterPreviewMutation.isPending ? (
+                      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" />
+                        Preparing a preview…
+                      </div>
+                    ) : (
+                      <p className={`text-sm leading-relaxed ${theme.mutedText}`}>{chapterPreviewText}</p>
+                    )}
+                  </div>
+                  {!chapterPreviewMutation.isPending && (
+                    <Button
+                      size="lg"
+                      onClick={() => setShowChapterPreview(false)}
+                      aria-label="Dismiss chapter preview and start reading"
+                    >
+                      Start Reading
+                    </Button>
+                  )}
+                </div>
+              ) : showPaywall ? (
                 <div className="text-center py-8 space-y-4">
                   <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto">
                     <Lock className="h-8 w-8 text-purple-500" />
@@ -1601,37 +1678,79 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           </div>
         )}
 
-        {(showChapterPreview || chapterPreviewMutation.isPending) && a11ySettings.chapterPreviews && (
+        {showPictureCheckin && pictureCheckinData && a11ySettings.comprehensionCheckIns && (
           <div
-            className={`mt-4 p-5 rounded-xl border-2 border-blue-400/40 ${settings.theme === "dark" ? "bg-blue-950/60" : "bg-blue-50"}`}
-            role="note"
-            aria-label="Chapter preview"
+            className={`mt-4 p-4 rounded-lg border-2 border-primary/30 ${settings.theme === "dark" ? "bg-gray-800" : "bg-white"}`}
+            role="dialog"
+            aria-label="Chapter check-in"
           >
-            <div className="flex items-start gap-3">
-              <span className="text-2xl" aria-hidden="true">📖</span>
-              <div className="flex-1 min-w-0">
-                <p className={`font-semibold text-sm mb-1 ${theme.text}`}>
-                  {chapterPreviewTitle ? `Coming up: ${chapterPreviewTitle}` : "Coming up next"}
-                </p>
-                {chapterPreviewMutation.isPending ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" />
-                    Preparing a preview…
-                  </div>
-                ) : (
-                  <p className={`text-sm leading-relaxed mb-3 ${theme.text}`}>{chapterPreviewText}</p>
-                )}
-                {!chapterPreviewMutation.isPending && (
-                  <Button
-                    size="sm"
-                    onClick={() => setShowChapterPreview(false)}
-                    aria-label="Dismiss chapter preview and start reading"
-                  >
-                    Start Reading
-                  </Button>
-                )}
-              </div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={`font-semibold flex items-center gap-2 text-sm ${theme.text}`}>
+                <Sparkles className="h-4 w-4 text-primary" /> Chapter Check-in
+                <span className={`text-xs font-normal ml-1 ${theme.mutedText}`}>(not a test!)</span>
+              </h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => { logReaderCheckinAction("skipped"); setShowPictureCheckin(false); }}
+                aria-label="Skip check-in"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
+            {readerPictureCheckinMutation.isPending ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" />
+                Getting your check-in ready…
+              </div>
+            ) : (
+              <>
+                <p className={`text-sm font-medium mb-4 ${theme.text}`}>{pictureCheckinData.question}</p>
+                <div className="flex flex-wrap gap-3 justify-center mb-4">
+                  {pictureCheckinData.options.map((opt, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setPictureCheckinSelected(i);
+                        logReaderCheckinAction("answered");
+                        setTimeout(() => setShowPictureCheckin(false), 900);
+                      }}
+                      disabled={pictureCheckinSelected !== null}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-colors min-w-[80px] ${
+                        pictureCheckinSelected === i
+                          ? "border-primary bg-primary/10"
+                          : `border-gray-200 dark:border-gray-700 hover:border-primary/60 ${settings.theme === "dark" ? "bg-gray-900" : "bg-white"}`
+                      }`}
+                      aria-label={opt}
+                      aria-pressed={pictureCheckinSelected === i}
+                    >
+                      {pictureCheckinData.symbolUrls[i] ? (
+                        <img
+                          src={pictureCheckinData.symbolUrls[i]!}
+                          alt={opt}
+                          className="w-16 h-16 object-contain"
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                          <span className="text-2xl" aria-hidden="true">🖼️</span>
+                        </div>
+                      )}
+                      <span className={`text-xs font-medium capitalize ${theme.text}`}>{opt}</span>
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`text-xs w-full ${theme.mutedText}`}
+                  onClick={() => { logReaderCheckinAction("skipped"); setShowPictureCheckin(false); }}
+                >
+                  Skip for now
+                </Button>
+              </>
+            )}
           </div>
         )}
 
@@ -1664,62 +1783,6 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           </div>
         )}
 
-        {showQuiz && quizQuestions.length > 0 && (
-          <div className={`mt-4 p-4 rounded-lg border-2 border-primary/30 ${settings.theme === "dark" ? "bg-gray-800" : "bg-white"}`} role="dialog" aria-label="Comprehension quiz">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className={`font-semibold flex items-center gap-2 ${theme.text}`}>
-                <Sparkles className="h-4 w-4 text-primary" /> Comprehension Check
-              </h3>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowQuiz(false)} aria-label="Close quiz">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="space-y-5">
-              {quizQuestions.map((q, qi) => (
-                <div key={qi}>
-                  <p className={`text-sm font-medium mb-2 ${theme.text}`}>{qi + 1}. {q.question}</p>
-                  <div className="space-y-1.5">
-                    {q.options.map((opt, oi) => {
-                      const answered = quizAnswers[qi] !== null;
-                      const isSelected = quizAnswers[qi] === oi;
-                      const isCorrect = oi === q.correct;
-                      let btnClass = "w-full text-left h-auto py-1.5 px-3 text-sm ";
-                      if (answered) {
-                        if (isCorrect) btnClass += "border-green-500 bg-green-50 text-green-800";
-                        else if (isSelected) btnClass += "border-red-400 bg-red-50 text-red-800";
-                        else btnClass += "opacity-50";
-                      }
-                      return (
-                        <Button
-                          key={oi}
-                          variant="outline"
-                          className={btnClass}
-                          onClick={() => {
-                            if (quizAnswers[qi] !== null) return;
-                            const updated = [...quizAnswers];
-                            updated[qi] = oi;
-                            setQuizAnswers(updated);
-                          }}
-                          disabled={answered}
-                        >
-                          {answered && isCorrect && <span className="mr-2">✓</span>}
-                          {answered && isSelected && !isCorrect && <span className="mr-2">✗</span>}
-                          {opt}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {quizAnswers.every(a => a !== null) && (
-              <div className={`mt-4 p-3 rounded text-sm font-medium ${theme.text}`}>
-                Score: {quizAnswers.filter((a, i) => a === quizQuestions[i].correct).length} / {quizQuestions.length}
-                <Button size="sm" className="ml-3" onClick={() => setShowQuiz(false)}>Done</Button>
-              </div>
-            )}
-          </div>
-        )}
 
         <div className="flex items-center justify-between mt-6">
           <Button
