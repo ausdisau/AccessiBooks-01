@@ -5999,6 +5999,89 @@ ${navEntries}
     }
   });
 
+  // ─── Symbol-Supported Text Endpoints ─────────────────────────────────────
+
+  // GET /api/symbols/:word — proxy ARASAAC pictogram search with server-side cache
+  app.get("/api/symbols/:word", async (req, res) => {
+    const word = (req.params.word ?? "").toLowerCase().replace(/[^a-z\s-]/g, "").trim().slice(0, 50);
+    if (!word) return res.json({ url: null, id: null });
+
+    const cacheKey = `arasaac:${word}`;
+    const cached = apiCache.get<{ url: string | null; id: number | null }>(cacheKey);
+    if (cached) return res.json(cached);
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 5000);
+      const resp = await fetch(
+        `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(word)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(tid);
+
+      if (!resp.ok) {
+        const empty = { url: null, id: null };
+        apiCache.set(cacheKey, empty, CACHE_TTL.METADATA);
+        return res.json(empty);
+      }
+
+      const data = await resp.json() as Array<{ _id: number }>;
+      if (!Array.isArray(data) || !data.length) {
+        const empty = { url: null, id: null };
+        apiCache.set(cacheKey, empty, CACHE_TTL.METADATA);
+        return res.json(empty);
+      }
+
+      const id = data[0]._id;
+      const url = `https://static.arasaac.org/pictograms/${id}/${id}_500.png`;
+      const result = { url, id };
+      apiCache.set(cacheKey, result, 24 * 60 * 60 * 1000);
+      return res.json(result);
+    } catch {
+      return res.json({ url: null, id: null });
+    }
+  });
+
+  // POST /api/symbols/define — return a plain-English word definition (free dictionary API, then null)
+  app.post("/api/symbols/define", async (req, res) => {
+    const { word } = req.body as { word?: string };
+    if (!word || typeof word !== "string") {
+      return res.status(400).json({ message: "word is required" });
+    }
+    const clean = word.toLowerCase().replace(/[^a-z\s-]/g, "").trim().slice(0, 50);
+    if (!clean) return res.json({ definition: null });
+
+    const cacheKey = `definition:${clean}`;
+    const cached = apiCache.get<{ definition: string | null }>(cacheKey);
+    if (cached) return res.json(cached);
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 4000);
+      const dictRes = await fetch(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(clean)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(tid);
+
+      if (dictRes.ok) {
+        const data = await dictRes.json() as Array<{
+          meanings: Array<{ definitions: Array<{ definition: string }> }>;
+        }>;
+        const def = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition;
+        if (def) {
+          const result = { definition: def };
+          apiCache.set(cacheKey, result, 24 * 60 * 60 * 1000);
+          return res.json(result);
+        }
+      }
+    } catch {}
+
+    const empty = { definition: null };
+    apiCache.set(cacheKey, empty, CACHE_TTL.METADATA);
+    return res.json(empty);
+  });
+
   registerListeningPartyRoutes(app);
   registerStreamingQueueRoutes(app);
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -42,6 +43,8 @@ import {
   Play,
   CheckCircle,
   Music2,
+  Shapes,
+  Volume2,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { useKaraokeAlignment } from "@/hooks/use-karaoke-alignment";
@@ -255,6 +258,20 @@ function TextReader({ book, onBack }: EbookReaderProps) {
 
   const { profile: a11yProfile } = usePreferencesKernel();
   const followAlong = a11yProfile.karaokeFollowAlong ?? false;
+
+  const [clickedWordData, setClickedWordData] = useState<{ word: string; rect: DOMRect } | null>(null);
+
+  const handleToggleSymbolOverlay = () => {
+    const newSettings = { ...a11ySettings, symbolOverlay: !a11ySettings.symbolOverlay };
+    localStorageService.saveSettings(newSettings);
+    document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
+  };
+
+  const handleWordClick = useCallback((word: string, rect: DOMRect) => {
+    const clean = word.replace(/[^a-zA-Z'-]/g, "");
+    if (!clean || clean.length < 2) return;
+    setClickedWordData({ word: clean.toLowerCase(), rect });
+  }, []);
 
   const audioCtx = useAudioContext();
   const isAudioMatchingBook = audioCtx.currentBook?.id === book.id;
@@ -938,6 +955,17 @@ function TextReader({ book, onBack }: EbookReaderProps) {
               <BarChart3 className="h-4 w-4" />
             </Button>
             <Button
+              variant={symbolOverlay ? "default" : "ghost"}
+              size="icon"
+              className={`h-8 w-8 ${symbolOverlay ? "bg-amber-500 text-white hover:bg-amber-600" : ""}`}
+              onClick={handleToggleSymbolOverlay}
+              aria-label={symbolOverlay ? "Hide symbols" : "Show Symbols (picture vocabulary)"}
+              aria-pressed={symbolOverlay}
+              title={symbolOverlay ? "Symbols: ON — tap any word for picture + definition" : "Show Symbols — display pictures above keywords"}
+            >
+              <Shapes className="h-4 w-4" />
+            </Button>
+            <Button
               variant={easyEnglishMode ? "default" : "ghost"}
               size="icon"
               className={`h-8 w-8 ${easyEnglishMode ? "bg-purple-600 text-white hover:bg-purple-700" : ""}`}
@@ -1346,6 +1374,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                           bionicReading={bionicReading}
                           symbolOverlay={symbolOverlay}
                           precomputed={precomp}
+                          onWordClick={handleWordClick}
                         />
                       );
                     }
@@ -1358,6 +1387,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                         bionicReading={bionicReading}
                         symbolOverlay={symbolOverlay}
                         precomputed={precomp}
+                        onWordClick={handleWordClick}
                       />
                     );
                   })()}
@@ -1613,6 +1643,14 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             {Math.round((currentPage / totalPages) * 100)}% complete
           </p>
         </div>
+      {clickedWordData && (
+        <WordVocabPopup
+          word={clickedWordData.word}
+          rect={clickedWordData.rect}
+          onClose={() => setClickedWordData(null)}
+        />
+      )}
+
       </main>
 
       <style>{`
@@ -1678,6 +1716,7 @@ function AnnotatedText({
   bionicReading = false,
   symbolOverlay = false,
   precomputed,
+  onWordClick,
 }: {
   text: string;
   annotations: Annotation[];
@@ -1686,6 +1725,7 @@ function AnnotatedText({
   bionicReading?: boolean;
   symbolOverlay?: boolean;
   precomputed?: PrecomputedWord[];
+  onWordClick?: (word: string, rect: DOMRect) => void;
 }) {
   const wordsArr = text.split(/\s+/);
 
@@ -1709,8 +1749,36 @@ function AnnotatedText({
           className = darkMode ? "bg-yellow-500/40 text-white rounded px-0.5" : "bg-yellow-300 rounded px-0.5";
         }
 
+        const clickable = !!onWordClick;
+        if (clickable) {
+          className = (className ? className + " " : "") + "cursor-pointer hover:underline hover:decoration-dotted";
+        }
+
+        const handleClick = onWordClick
+          ? (e: React.MouseEvent<HTMLSpanElement>) => {
+              onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+            }
+          : undefined;
+        const handleKeyDown = onWordClick
+          ? (e: React.KeyboardEvent<HTMLSpanElement>) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+              }
+            }
+          : undefined;
+
         return (
-          <span key={i} className={className} style={style} title={ann?.note || undefined}>
+          <span
+            key={i}
+            className={className}
+            style={style}
+            title={ann?.note || undefined}
+            onClick={handleClick}
+            onKeyDown={handleKeyDown}
+            role={clickable ? "button" : undefined}
+            tabIndex={clickable ? 0 : undefined}
+          >
             {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay)}{" "}
           </span>
         );
@@ -1728,6 +1796,7 @@ function HighlightedText({
   bionicReading = false,
   symbolOverlay = false,
   precomputed,
+  onWordClick,
 }: {
   text: string;
   activeWordIndex: number;
@@ -1737,6 +1806,7 @@ function HighlightedText({
   bionicReading?: boolean;
   symbolOverlay?: boolean;
   precomputed?: PrecomputedWord[];
+  onWordClick?: (word: string, rect: DOMRect) => void;
 }) {
   const wordsArr = text.split(/\s+/);
   const activeRef = useRef<HTMLSpanElement>(null);
@@ -1769,12 +1839,178 @@ function HighlightedText({
           className = darkMode ? "bg-yellow-500/40 rounded px-0.5" : "bg-yellow-300 rounded px-0.5";
         }
 
+        const clickable = !!onWordClick;
+        if (clickable) {
+          className = (className ? className + " " : "") + "cursor-pointer hover:underline hover:decoration-dotted";
+        }
+
+        const handleClick = onWordClick
+          ? (e: React.MouseEvent<HTMLSpanElement>) => {
+              onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+            }
+          : undefined;
+        const handleKeyDown = onWordClick
+          ? (e: React.KeyboardEvent<HTMLSpanElement>) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+              }
+            }
+          : undefined;
+
         return (
-          <span key={i} ref={isActive ? activeRef : null} className={className} style={style} title={ann?.note || undefined}>
+          <span
+            key={i}
+            ref={isActive ? activeRef : null}
+            className={className}
+            style={style}
+            title={ann?.note || undefined}
+            onClick={handleClick}
+            onKeyDown={handleKeyDown}
+            role={clickable ? "button" : undefined}
+            tabIndex={clickable ? 0 : undefined}
+          >
             {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay)}{" "}
           </span>
         );
       })}
     </span>
   );
+}
+
+function WordVocabPopup({
+  word,
+  rect,
+  onClose,
+}: {
+  word: string;
+  rect: DOMRect;
+  onClose: () => void;
+}) {
+  const symbolQuery = useQuery<{ url: string | null; id: number | null }>({
+    queryKey: ["/api/symbols", word],
+    queryFn: () => fetch(`/api/symbols/${encodeURIComponent(word)}`).then(r => r.json()),
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: false,
+  });
+
+  const defQuery = useQuery<{ definition: string | null }>({
+    queryKey: ["/api/symbols/define", word],
+    queryFn: () =>
+      fetch("/api/symbols/define", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word }),
+      }).then(r => r.json()),
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: false,
+  });
+
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [onClose]);
+
+  const speak = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(word);
+      utt.rate = 0.85;
+      window.speechSynthesis.speak(utt);
+    }
+  };
+
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const POPUP_W = 240;
+  const POPUP_H = 280;
+
+  let top = rect.bottom + 8;
+  let left = rect.left + rect.width / 2 - POPUP_W / 2;
+
+  if (top + POPUP_H > viewportH - 16) {
+    top = rect.top - POPUP_H - 8;
+  }
+  if (left < 8) left = 8;
+  if (left + POPUP_W > viewportW - 8) left = viewportW - POPUP_W - 8;
+  if (top < 8) top = 8;
+
+  const symbolUrl = symbolQuery.data?.url ?? null;
+  const definition = defQuery.data?.definition ?? null;
+
+  const popup = (
+    <div
+      ref={popupRef}
+      className="fixed z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-4 flex flex-col gap-3 select-none"
+      style={{ top, left, width: POPUP_W }}
+      role="dialog"
+      aria-label={`Picture vocabulary for: ${word}`}
+      aria-modal="false"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-base font-bold text-foreground truncate capitalize">{word}</span>
+        <button
+          className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-muted-foreground"
+          onClick={onClose}
+          aria-label="Close vocabulary popup"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="flex flex-col items-center gap-2">
+        {symbolQuery.isLoading ? (
+          <div className="w-24 h-24 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+        ) : symbolUrl ? (
+          <img
+            src={symbolUrl}
+            alt={`Symbol for ${word}`}
+            className="w-24 h-24 object-contain rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800"
+            onError={e => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        ) : (
+          <span className="text-5xl select-none" aria-hidden="true">
+            {getSymbol(word)}
+          </span>
+        )}
+      </div>
+
+      <div className="text-xs text-muted-foreground text-center leading-relaxed min-h-[2.5rem]">
+        {defQuery.isLoading ? (
+          <span className="animate-pulse">Looking up definition…</span>
+        ) : definition ? (
+          definition.length > 120 ? definition.slice(0, 117) + "…" : definition
+        ) : (
+          <span className="italic">No definition found</span>
+        )}
+      </div>
+
+      <button
+        className="flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
+        onClick={speak}
+        aria-label={`Hear the word: ${word}`}
+      >
+        <Volume2 className="h-4 w-4" />
+        Hear it
+      </button>
+    </div>
+  );
+
+  return createPortal(popup, document.body);
 }
