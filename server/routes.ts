@@ -6042,6 +6042,49 @@ ${navEntries}
     }
   });
 
+  // POST /api/symbols/keywords — OpenAI-based keyword extraction (nouns/verbs/adjectives) for a page of text
+  app.post("/api/symbols/keywords", async (req, res) => {
+    const { text } = req.body as { text?: string };
+    if (!text || typeof text !== "string" || !text.trim()) {
+      return res.json({ keywords: [] });
+    }
+    const excerpt = text.slice(0, 1200);
+    const hashKey = `keywords:${excerpt.slice(0, 80).replace(/\W+/g, "_")}`;
+    const cached = apiCache.get<{ keywords: string[] }>(hashKey);
+    if (cached) return res.json(cached);
+
+    try {
+      const { openai } = await import("./replit_integrations/image/client");
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              'Extract the 12–18 most important concrete nouns, action verbs, and descriptive adjectives from the given text. These will have pictograms shown above them to support low-literacy readers. Respond ONLY with valid JSON: {"keywords": ["word1","word2",...]}. Lowercase only, no punctuation, no duplicates, no stop words.',
+          },
+          { role: "user", content: excerpt },
+        ],
+        max_tokens: 200,
+        response_format: { type: "json_object" },
+      });
+      const raw = completion.choices[0]?.message?.content ?? "{}";
+      let parsed: { keywords: string[] };
+      try {
+        parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed.keywords)) parsed = { keywords: [] };
+      } catch {
+        parsed = { keywords: [] };
+      }
+      parsed.keywords = parsed.keywords.slice(0, 20).map(w => w.toLowerCase().replace(/[^a-z\s-]/g, "").trim()).filter(Boolean);
+      apiCache.set(hashKey, parsed, 24 * 60 * 60 * 1000);
+      return res.json(parsed);
+    } catch (err) {
+      console.error("keywords endpoint error:", err);
+      return res.json({ keywords: [] });
+    }
+  });
+
   // POST /api/symbols/define — return a plain-English word definition (free dictionary API, then null)
   app.post("/api/symbols/define", async (req, res) => {
     const { word } = req.body as { word?: string };

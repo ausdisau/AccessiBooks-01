@@ -260,6 +260,53 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const followAlong = a11yProfile.karaokeFollowAlong ?? false;
 
   const [clickedWordData, setClickedWordData] = useState<{ word: string; rect: DOMRect } | null>(null);
+  const [pageSymbolImageCache, setPageSymbolImageCache] = useState<Record<string, string | null>>({});
+  const symbolFetchRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!symbolOverlay || !pageContent) {
+      setPageSymbolImageCache({});
+      return;
+    }
+    const cacheKey = `${currentPage}:${pageContent.slice(0, 60)}`;
+    if (symbolFetchRef.current === cacheKey) return;
+    symbolFetchRef.current = cacheKey;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const kwRes = await fetch("/api/symbols/keywords", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: pageContent }),
+        });
+        if (cancelled || !kwRes.ok) return;
+        const { keywords } = await kwRes.json() as { keywords: string[] };
+        if (!keywords?.length) return;
+
+        const results = await Promise.all(
+          keywords.map(async (w: string) => {
+            try {
+              const r = await fetch(`/api/symbols/${encodeURIComponent(w)}`);
+              const d = await r.json() as { url: string | null };
+              return [w, d.url] as [string, string | null];
+            } catch {
+              return [w, null] as [string, null];
+            }
+          })
+        );
+
+        if (!cancelled) {
+          const cache: Record<string, string | null> = {};
+          for (const [w, url] of results) cache[w] = url;
+          setPageSymbolImageCache(cache);
+        }
+      } catch {}
+    })();
+
+    return () => { cancelled = true; };
+  }, [symbolOverlay, pageContent, currentPage]);
 
   const handleToggleSymbolOverlay = () => {
     const newSettings = { ...a11ySettings, symbolOverlay: !a11ySettings.symbolOverlay };
@@ -1373,6 +1420,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                           searchQuery={sq}
                           bionicReading={bionicReading}
                           symbolOverlay={symbolOverlay}
+                          symbolImageCache={pageSymbolImageCache}
                           precomputed={precomp}
                           onWordClick={handleWordClick}
                         />
@@ -1386,6 +1434,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                         darkMode={settings.theme === "dark"}
                         bionicReading={bionicReading}
                         symbolOverlay={symbolOverlay}
+                        symbolImageCache={pageSymbolImageCache}
                         precomputed={precomp}
                         onWordClick={handleWordClick}
                       />
@@ -1669,8 +1718,12 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   );
 }
 
-function renderWordContent(word: string, bionicReading: boolean, symbolOverlay: boolean) {
-  const symbol = symbolOverlay ? getSymbol(word) : null;
+function renderWordContent(
+  word: string,
+  bionicReading: boolean,
+  symbolOverlay: boolean,
+  symbolImageCache?: Record<string, string | null>
+) {
   let wordEl: React.ReactNode;
   if (bionicReading) {
     const [bold, rest] = applyBionicReading(word);
@@ -1678,10 +1731,30 @@ function renderWordContent(word: string, bionicReading: boolean, symbolOverlay: 
   } else {
     wordEl = word;
   }
-  if (symbol) {
+
+  if (!symbolOverlay) return wordEl;
+
+  const wordLc = word.toLowerCase().replace(/[^a-z'-]/g, "");
+  const arasaacUrl = symbolImageCache ? (symbolImageCache[wordLc] ?? null) : null;
+  const emoji = getSymbol(word);
+
+  if (arasaacUrl) {
     return (
       <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", verticalAlign: "bottom" }}>
-        <span style={{ fontSize: "0.6em", lineHeight: 1, opacity: 0.85 }} aria-hidden="true">{symbol}</span>
+        <img
+          src={arasaacUrl}
+          alt=""
+          aria-hidden="true"
+          style={{ height: "1.6em", width: "1.6em", objectFit: "contain", marginBottom: "1px" }}
+        />
+        {wordEl}
+      </span>
+    );
+  }
+  if (emoji) {
+    return (
+      <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", verticalAlign: "bottom" }}>
+        <span style={{ fontSize: "0.6em", lineHeight: 1, opacity: 0.85 }} aria-hidden="true">{emoji}</span>
         {wordEl}
       </span>
     );
@@ -1715,6 +1788,7 @@ function AnnotatedText({
   darkMode,
   bionicReading = false,
   symbolOverlay = false,
+  symbolImageCache,
   precomputed,
   onWordClick,
 }: {
@@ -1724,6 +1798,7 @@ function AnnotatedText({
   darkMode: boolean;
   bionicReading?: boolean;
   symbolOverlay?: boolean;
+  symbolImageCache?: Record<string, string | null>;
   precomputed?: PrecomputedWord[];
   onWordClick?: (word: string, rect: DOMRect) => void;
 }) {
@@ -1779,7 +1854,7 @@ function AnnotatedText({
             role={clickable ? "button" : undefined}
             tabIndex={clickable ? 0 : undefined}
           >
-            {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay)}{" "}
+            {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay, symbolImageCache)}{" "}
           </span>
         );
       })}
@@ -1795,6 +1870,7 @@ function HighlightedText({
   searchQuery,
   bionicReading = false,
   symbolOverlay = false,
+  symbolImageCache,
   precomputed,
   onWordClick,
 }: {
@@ -1805,6 +1881,7 @@ function HighlightedText({
   searchQuery: string;
   bionicReading?: boolean;
   symbolOverlay?: boolean;
+  symbolImageCache?: Record<string, string | null>;
   precomputed?: PrecomputedWord[];
   onWordClick?: (word: string, rect: DOMRect) => void;
 }) {
@@ -1870,7 +1947,7 @@ function HighlightedText({
             role={clickable ? "button" : undefined}
             tabIndex={clickable ? 0 : undefined}
           >
-            {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay)}{" "}
+            {pre ? renderPrecomputedWordNode(pre) : renderWordContent(word, bionicReading, symbolOverlay, symbolImageCache)}{" "}
           </span>
         );
       })}
