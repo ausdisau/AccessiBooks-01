@@ -24,7 +24,7 @@ import path from "path";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startNotificationScheduler } from "./notificationTriggers";
-import { setupFullTextSearch, setupEasyEnglishTables, setupAdPlatformTables, ensureReadingLevelColumn } from "./db";
+import { setupFullTextSearch, setupEasyEnglishTables, setupAdPlatformTables, ensureReadingLevelColumn, setupWordBankTable } from "./db";
 import { startDailySpendResetCron } from "./auctionEngine";
 import { storage } from "./storage";
 
@@ -111,6 +111,7 @@ app.use((req, res, next) => {
     setupEasyEnglishTables().catch(err => console.warn("[EasyEnglish] Setup failed:", err));
     setupAdPlatformTables().catch(err => console.warn("[AdPlatform] Setup failed:", err));
     ensureReadingLevelColumn().catch(err => console.warn("[ReadingLevel] Setup failed:", err));
+    setupWordBankTable().then(available => (storage as any)._wordBankDbAvailable = available).catch(() => {});
     startDailySpendResetCron();
     
     // Runtime API ingestion: fetch from external APIs and persist to DB

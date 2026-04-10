@@ -6376,6 +6376,46 @@ ${navEntries}
   registerListeningPartyRoutes(app);
   registerStreamingQueueRoutes(app);
 
+  // ── Personal Word Bank ─────────────────────────────────────────────────────
+  app.get("/api/word-bank", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const entries = await storage.getWordBankEntries(userId);
+      res.json(entries);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch word bank" });
+    }
+  });
+
+  app.post("/api/word-bank", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { word, definition, imageUrl } = req.body;
+      if (!word || typeof word !== "string") {
+        return res.status(400).json({ message: "word is required" });
+      }
+      const entry = await storage.addWordBankEntry(userId, {
+        word: word.trim().toLowerCase(),
+        definition: definition ?? null,
+        imageUrl: imageUrl ?? null,
+      });
+      res.status(201).json(entry);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to add word to bank" });
+    }
+  });
+
+  app.delete("/api/word-bank/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      const { id } = req.params;
+      await storage.removeWordBankEntry(userId, id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to remove word from bank" });
+    }
+  });
+
   const httpServer = createServer(app);
   setupListeningPartyWS(httpServer);
   return httpServer;

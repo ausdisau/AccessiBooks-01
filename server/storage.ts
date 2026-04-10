@@ -1,4 +1,4 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry } from "@shared/schema";
 import { computeReadingLevel, genrePatternsForLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
 import session from "express-session";
@@ -144,7 +144,12 @@ export interface IStorage {
   completeReferral(code: string, referredUserId: string): Promise<void>;
   getUserReferrals(userId: string): Promise<Referral[]>;
   getUserReferralCode(userId: string): Promise<string>;
-  
+
+  // Word Bank
+  getWordBankEntries(userId: string): Promise<DbWordBankEntry[]>;
+  addWordBankEntry(userId: string, data: { word: string; definition: string | null; imageUrl: string | null }): Promise<DbWordBankEntry>;
+  removeWordBankEntry(userId: string, entryId: string): Promise<boolean>;
+
   sessionStore: session.Store;
 }
 
@@ -2888,6 +2893,57 @@ export class ExternalAPIStorage implements IStorage {
     const code = this.generateCode();
     await db.update(users).set({ referralCode: code }).where(eq(users.id, userId));
     return code;
+  }
+
+  // Word Bank — in-memory fallback when DB table is unavailable (512MB limit)
+  _wordBankDbAvailable = false;
+  private _wordBankMemory = new Map<string, DbWordBankEntry[]>();
+
+  async getWordBankEntries(userId: string): Promise<DbWordBankEntry[]> {
+    if (this._wordBankDbAvailable) {
+      try {
+        return await db.select().from(wordBankEntries)
+          .where(eq(wordBankEntries.userId, userId))
+          .orderBy(desc(wordBankEntries.savedAt));
+      } catch {}
+    }
+    return this._wordBankMemory.get(userId) ?? [];
+  }
+
+  async addWordBankEntry(userId: string, data: { word: string; definition: string | null; imageUrl: string | null }): Promise<DbWordBankEntry> {
+    if (this._wordBankDbAvailable) {
+      try {
+        const [entry] = await db.insert(wordBankEntries)
+          .values({ userId, word: data.word.toLowerCase(), definition: data.definition, imageUrl: data.imageUrl })
+          .returning();
+        return entry;
+      } catch {}
+    }
+    const entry: DbWordBankEntry = {
+      id: randomUUID(),
+      userId,
+      word: data.word.toLowerCase(),
+      definition: data.definition ?? null,
+      imageUrl: data.imageUrl ?? null,
+      savedAt: new Date(),
+    };
+    const existing = this._wordBankMemory.get(userId) ?? [];
+    this._wordBankMemory.set(userId, [entry, ...existing]);
+    return entry;
+  }
+
+  async removeWordBankEntry(userId: string, entryId: string): Promise<boolean> {
+    if (this._wordBankDbAvailable) {
+      try {
+        await db.delete(wordBankEntries).where(
+          and(eq(wordBankEntries.id, entryId), eq(wordBankEntries.userId, userId))
+        );
+        return true;
+      } catch {}
+    }
+    const existing = this._wordBankMemory.get(userId) ?? [];
+    this._wordBankMemory.set(userId, existing.filter(e => e.id !== entryId));
+    return true;
   }
 }
 
