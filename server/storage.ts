@@ -76,6 +76,7 @@ export interface IStorage {
   getBookCount(filters?: { source?: string; contentType?: string; genre?: string }): Promise<number>;
   getBook(id: string): Promise<Book | undefined>;
   createBook(book: InsertBook): Promise<Book>;
+  updateBook(id: string, updates: Partial<Omit<InsertBook, 'id'>>, opts?: { preserveReadingLevel?: boolean }): Promise<Book | undefined>;
   searchBooks(query: string): Promise<Book[]>;
   refreshRuntimeBooks(): Promise<{ inserted: number; skipped: number }>;
   
@@ -1247,6 +1248,63 @@ export class ExternalAPIStorage implements IStorage {
     };
     this.fallbackBooks.set(id, book);
     return book;
+  }
+
+  async updateBook(
+    id: string,
+    updates: Partial<Omit<InsertBook, 'id'>>,
+    opts: { preserveReadingLevel?: boolean } = {}
+  ): Promise<Book | undefined> {
+    // Determine reading level for the update
+    let newReadingLevel: number | null | undefined = updates.readingLevel;
+
+    // If caller did not supply an explicit readingLevel and description/genre changed, recompute
+    if (!opts.preserveReadingLevel && updates.readingLevel === undefined) {
+      if (updates.description !== undefined || updates.genre !== undefined) {
+        const current = await this.getBook(id);
+        if (current) {
+          const desc = updates.description !== undefined ? updates.description : current.description;
+          const genre = updates.genre !== undefined ? updates.genre : current.genre;
+          newReadingLevel = computeReadingLevel(desc ?? null, genre ?? null);
+        }
+      }
+    }
+
+    // Update fallback store if present
+    if (this.fallbackBooks.has(id)) {
+      const existing = this.fallbackBooks.get(id)!;
+      const merged: Book = {
+        ...existing,
+        ...updates,
+        readingLevel: newReadingLevel !== undefined ? newReadingLevel : existing.readingLevel,
+      };
+      this.fallbackBooks.set(id, merged);
+      return merged;
+    }
+
+    // Persist to DB
+    try {
+      const setClauses: any[] = [];
+      if (updates.title !== undefined) setClauses.push(sql`title = ${updates.title}`);
+      if (updates.author !== undefined) setClauses.push(sql`author = ${updates.author}`);
+      if (updates.narrator !== undefined) setClauses.push(sql`narrator = ${updates.narrator}`);
+      if (updates.description !== undefined) setClauses.push(sql`description = ${updates.description}`);
+      if (updates.genre !== undefined) setClauses.push(sql`genre = ${updates.genre}`);
+      if (updates.coverImage !== undefined) setClauses.push(sql`cover_image = ${updates.coverImage}`);
+      if (updates.audioUrl !== undefined) setClauses.push(sql`audio_url = ${updates.audioUrl}`);
+      if (updates.contentUrl !== undefined) setClauses.push(sql`content_url = ${updates.contentUrl}`);
+      if (updates.isPremium !== undefined) setClauses.push(sql`is_premium = ${updates.isPremium}`);
+      if (newReadingLevel !== undefined) setClauses.push(sql`reading_level = ${newReadingLevel}`);
+
+      if (setClauses.length > 0) {
+        await db.execute(sql`UPDATE books SET ${sql.join(setClauses, sql`, `)} WHERE id = ${id}`);
+        this.invalidateCache('all_books');
+      }
+      return await this.getBook(id);
+    } catch (err) {
+      console.warn('[updateBook] DB update failed:', err);
+      return await this.getBook(id);
+    }
   }
 
   async getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>> {

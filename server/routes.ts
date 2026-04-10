@@ -470,6 +470,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PATCH /api/admin/books/:id - Admin: update book metadata and/or override reading level
+  app.patch("/api/admin/books/:id", isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.id || req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+    try {
+      const userRows = await db.execute(sql`SELECT role FROM users WHERE id = ${userId}`);
+      const userArr: any[] = (userRows as any).rows ?? [];
+      if (userArr[0]?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+    } catch {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    try {
+      const { id } = req.params;
+      const { readingLevel, description, genre, title, author, narrator, coverImage, audioUrl, contentUrl, isPremium } = req.body;
+
+      const updates: Record<string, any> = {};
+      if (title !== undefined) updates.title = title;
+      if (author !== undefined) updates.author = author;
+      if (narrator !== undefined) updates.narrator = narrator;
+      if (description !== undefined) updates.description = description;
+      if (genre !== undefined) updates.genre = genre;
+      if (coverImage !== undefined) updates.coverImage = coverImage;
+      if (audioUrl !== undefined) updates.audioUrl = audioUrl;
+      if (contentUrl !== undefined) updates.contentUrl = contentUrl;
+      if (isPremium !== undefined) updates.isPremium = isPremium;
+      if (readingLevel !== undefined) updates.readingLevel = readingLevel === null ? null : parseInt(readingLevel);
+
+      const updated = await storage.updateBook(id, updates, {
+        preserveReadingLevel: readingLevel !== undefined, // Explicit override; do not auto-recompute
+      });
+
+      if (!updated) return res.status(404).json({ message: "Book not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update book" });
+    }
+  });
+
   // GET /api/books/search - Search books (with optional SoundCloud/Google Play augmentation)
   app.get("/api/books/search", async (req, res) => {
     try {
