@@ -6,6 +6,7 @@ import { z } from "zod";
 import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated } from "./multiAuth";
+import { registerMagicLinkRoutes } from "./auth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
 import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, resetAndRestartExpandedSources, getSeededBookCount } from "./catalogSeeder";
@@ -129,6 +130,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Setup multi-provider authentication: local, Google, Facebook, Microsoft (Passport.js)
   setupMultiAuth(app);
+
+  // Register magic link request/verify routes (auth.ts)
+  registerMagicLinkRoutes(app);
   
   // Setup Auth0 M2M API routes
   setupAuth0Routes(app);

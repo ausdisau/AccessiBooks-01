@@ -20,7 +20,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { sendEmail } from "./mailer";
-import { sendViaAgentMail } from "./agentMailer";
+import { sendViaResend } from "./resendMailer";
 
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -277,6 +277,14 @@ export function setupAuth(app: Express) {
     res.json(userWithoutPassword);
   });
 
+  registerMagicLinkRoutes(app);
+}
+
+/**
+ * Register magic link routes without duplicating session/passport setup.
+ * Called directly from routes.ts after setupMultiAuth().
+ */
+export function registerMagicLinkRoutes(app: Express) {
   // Magic link: request
   app.post("/api/auth/magic-link/request", async (req, res) => {
     const { email } = req.body;
@@ -309,18 +317,23 @@ export function setupAuth(app: Express) {
 <p style="color:#888;font-size:12px">If you didn't request this link, you can safely ignore this email.</p>`,
     };
 
-    // 1. Try AgentMail (no external credentials required)
-    const sentViaAgentMail = await sendViaAgentMail(emailPayload);
-    if (!sentViaAgentMail) {
-      // 2. Fall back to SMTP if configured
-      const sentViaSmtp = await sendEmail(emailPayload);
-      if (!sentViaSmtp) {
-        // 3. Final fallback: link already logged above — nothing more to do
-        console.warn(`[MagicLink] No email delivery method available — link logged to console only`);
-      }
+    // 1. Try Resend (primary — requires RESEND_API_KEY)
+    const sentViaResend = await sendViaResend(emailPayload);
+    // 2. Fall back to SMTP if configured
+    const sentViaSmtp = sentViaResend ? false : await sendEmail(emailPayload);
+    const emailSent = sentViaResend || sentViaSmtp;
+
+    if (!emailSent) {
+      // No email service configured — return the link in the response for dev/demo use
+      console.warn(`[MagicLink] No email delivery method configured. Returning devLink in response.`);
+      return res.json({
+        message: "No email service configured",
+        emailSent: false,
+        devLink: link,
+      });
     }
 
-    res.json({ message: "Magic link sent — check your inbox" });
+    res.json({ message: "Magic link sent — check your inbox", emailSent: true });
   });
 
   // Magic link: verify
@@ -338,8 +351,7 @@ export function setupAuth(app: Express) {
     const { email } = result;
     let user = await storage.getUserByEmail(email);
     if (!user) {
-      const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "") + "_" + randomBytes(3).toString("hex");
-      user = await storage.createUser({ email, username, password: "MAGIC_LINK_USER", firstName: "", lastName: "" });
+      user = await storage.createUser({ email, authProvider: "magic_link", firstName: null, lastName: null });
       console.log(`[MagicLink] Created new user: ${user.id}`);
     }
     req.login(user, (err) => {
