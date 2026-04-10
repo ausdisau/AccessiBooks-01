@@ -2257,7 +2257,7 @@ function WordVocabPopup({
     mutationFn: async (data: { word: string; definition: string | null; imageUrl: string | null }) => {
       const res = await apiRequest("POST", "/api/word-bank", data);
       if (!res.ok) throw new Error("Save failed");
-      return res.json() as Promise<{ entry: { id: string; word: string }; milestone: number | null }>;
+      return res.json() as Promise<{ entry: { id: string; word: string }; milestone: number | null; alreadySaved: boolean }>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/word-bank"] });
@@ -2317,7 +2317,9 @@ function WordVocabPopup({
     if (isLoggedIn) {
       try {
         const result = await saveMutation.mutateAsync({ word, definition, imageUrl });
-        if (result.milestone !== null) {
+        if (result.alreadySaved) {
+          toast({ title: `"${word}" is already in your Word Bank` });
+        } else if (result.milestone !== null) {
           triggerMilestone(result.milestone);
         } else {
           toast({ title: `"${word}" saved to Word Bank` });
@@ -2478,20 +2480,23 @@ function WordContextMenu({
 
   const menuRef = useRef<HTMLDivElement>(null);
   const saveMutation = useMutation({
-    mutationFn: async (): Promise<{ milestone: number | null }> => {
+    mutationFn: async (): Promise<{ milestone: number | null; alreadySaved: boolean }> => {
       if (isLoggedIn) {
         const res = await apiRequest("POST", "/api/word-bank", { word, definition: null, imageUrl: null });
         if (!res.ok) throw new Error("Save failed");
-        const data = await res.json() as { entry: { id: string }; milestone: number | null };
-        return { milestone: data.milestone };
+        const data = await res.json() as { entry: { id: string }; milestone: number | null; alreadySaved: boolean };
+        return { milestone: data.milestone, alreadySaved: data.alreadySaved };
       } else {
         const { milestone } = wordBankService.add(word, null, null);
-        return { milestone };
+        return { milestone, alreadySaved: false };
       }
     },
     onSuccess: (data) => {
       if (isLoggedIn) queryClient.invalidateQueries({ queryKey: ["/api/word-bank"] });
-      if (data.milestone !== null) {
+      if (data.alreadySaved) {
+        toast({ title: `"${word}" is already in your Word Bank` });
+        onClose();
+      } else if (data.milestone !== null) {
         triggerMilestone(data.milestone);
         // onClose will be called by triggerMilestone's timer
       } else {
