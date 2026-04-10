@@ -1370,7 +1370,14 @@ export class ExternalAPIStorage implements IStorage {
               const hasMore = mapped.length > limit;
               const data = mapped.slice(0, limit);
               const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
-              return { data, nextCursor, hasMore };
+              // Fetch count for this level so callers can display accurate totals
+              let total = 0;
+              try {
+                const countRes = await db.execute(sql`SELECT COUNT(*) as count FROM books ${gpWhere}`);
+                const countRows = (countRes as any).rows || countRes;
+                total = parseInt(countRows?.[0]?.count || '0');
+              } catch { /* non-fatal */ }
+              return { data, nextCursor, hasMore, total };
             }
           }
         } catch (gpErr) {
