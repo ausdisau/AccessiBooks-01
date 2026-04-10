@@ -1243,7 +1243,7 @@ export class ExternalAPIStorage implements IStorage {
       isPremium: insertBook.isPremium ?? false,
       pageCount: insertBook.pageCount ?? null,
       searchVector: null,
-      readingLevel: insertBook.readingLevel ?? null,
+      readingLevel: insertBook.readingLevel ?? computeReadingLevel(insertBook.description ?? null, insertBook.genre ?? null),
     };
     this.fallbackBooks.set(id, book);
     return book;
@@ -1272,9 +1272,40 @@ export class ExternalAPIStorage implements IStorage {
         ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
         : sql``;
 
-      // When filtering by readingLevel (computed from description/genre), over-fetch and filter in memory
-      const fetchLimit = readingLevel ? Math.min(limit * 20, 2000) : limit + 1;
+      // When filtering by readingLevel, first try DB-level filter; fall back to full in-memory scan
+      if (readingLevel) {
+        try {
+          const rlConditions = [...conditions, sql`reading_level = ${readingLevel}`];
+          const rlWhere = rlConditions.length > 0
+            ? sql`WHERE ${sql.join(rlConditions, sql` AND `)}`
+            : sql``;
+          const rlRows = await db.execute(
+            sql`SELECT * FROM books ${rlWhere} ORDER BY id ASC LIMIT ${limit + 1}`
+          );
+          const rlData = (rlRows as any).rows || rlRows;
+          if (Array.isArray(rlData)) {
+            const hasMore = rlData.length > limit;
+            const data = rlData.slice(0, limit).map(mapRowToBook);
+            const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+            return { data, nextCursor, hasMore };
+          }
+        } catch {
+          // reading_level column not available – fall through to in-memory scan
+        }
+        // In-memory fallback: scan all rows after cursor, filter by computed level
+        const scanRows = await db.execute(
+          sql`SELECT * FROM books ${whereClause} ORDER BY id ASC`
+        );
+        const scanData = (scanRows as any).rows || scanRows;
+        if (!Array.isArray(scanData)) return { data: [], nextCursor: null, hasMore: false };
+        const filtered = scanData.map(mapRowToBook).filter(b => b.readingLevel === readingLevel);
+        const data = filtered.slice(0, limit);
+        const hasMore = filtered.length > limit;
+        const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+        return { data, nextCursor, hasMore, total: filtered.length };
+      }
 
+      const fetchLimit = limit + 1;
       const rows = await db.execute(
         sql`SELECT * FROM books ${whereClause} ORDER BY id ASC LIMIT ${fetchLimit}`
       );
@@ -1283,14 +1314,6 @@ export class ExternalAPIStorage implements IStorage {
       if (!Array.isArray(allRows)) return { data: [], nextCursor: null, hasMore: false };
 
       let mapped: Book[] = allRows.map(mapRowToBook);
-
-      if (readingLevel) {
-        mapped = mapped.filter(b => b.readingLevel === readingLevel);
-        const data = mapped.slice(0, limit);
-        const hasMore = mapped.length > limit;
-        const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
-        return { data, nextCursor, hasMore, total: mapped.length };
-      }
 
       const hasMore = mapped.length > limit;
       const pageRows = hasMore ? mapped.slice(0, limit) : mapped;
