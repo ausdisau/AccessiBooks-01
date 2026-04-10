@@ -6484,6 +6484,133 @@ ${navEntries}
     }
   });
 
+  // === BOOK COMPLETION CERTIFICATES ===
+
+  // POST /api/completions — record book completion (uses existing listeningHistory.completedAt)
+  app.post("/api/completions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { bookId, bookTitle, bookAuthor, bookCover, totalDuration } = req.body;
+      if (!bookId || !bookTitle) {
+        return res.status(400).json({ message: "bookId and bookTitle are required" });
+      }
+
+      // Find existing listening history row for this user+book
+      const rows = await db.select()
+        .from(listeningHistory)
+        .where(and(eq(listeningHistory.userId, userId), eq(listeningHistory.bookId, bookId)))
+        .orderBy(desc(listeningHistory.lastPlayedAt))
+        .limit(1);
+
+      if (rows.length > 0) {
+        const existing = rows[0];
+        if (!existing.completedAt) {
+          await db.update(listeningHistory)
+            .set({ completedAt: new Date() })
+            .where(eq(listeningHistory.id, existing.id));
+        }
+      } else {
+        await db.insert(listeningHistory).values({
+          userId,
+          bookId,
+          bookTitle,
+          bookAuthor: bookAuthor || null,
+          bookCover: bookCover || null,
+          currentTime: 0,
+          totalDuration: totalDuration || null,
+          completedAt: new Date(),
+          playCount: 1,
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Completions] Failed to record:", error);
+      res.status(500).json({ message: "Failed to record completion" });
+    }
+  });
+
+  // GET /api/completions — get all completed books for current user
+  app.get("/api/completions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const completed = await db.select()
+        .from(listeningHistory)
+        .where(and(
+          eq(listeningHistory.userId, userId),
+          sql`${listeningHistory.completedAt} IS NOT NULL`,
+        ))
+        .orderBy(desc(listeningHistory.completedAt));
+
+      res.json(completed);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch completions" });
+    }
+  });
+
+  // GET /api/completions/next-read/:bookId — single "read this next" recommendation
+  app.get("/api/completions/next-read/:bookId", async (req: any, res) => {
+    try {
+      const { bookId } = req.params;
+      const userId = req.user?.id || req.user?.claims?.sub;
+
+      // Use storage.getBooks() to avoid selecting columns that may not exist in DB (e.g. reading_level)
+      const allBooks = await storage.getBooks();
+      const sourceBook = allBooks.find(b => b.id === bookId);
+
+      // Get completed book IDs to exclude
+      const excludeIds = new Set<string>([bookId]);
+      if (userId) {
+        try {
+          const completedRows = await db.select({ bookId: listeningHistory.bookId })
+            .from(listeningHistory)
+            .where(and(
+              eq(listeningHistory.userId, userId),
+              sql`${listeningHistory.completedAt} IS NOT NULL`,
+            ));
+          completedRows.forEach(r => excludeIds.add(r.bookId));
+        } catch {}
+      }
+
+      let candidate: typeof allBooks[0] | undefined;
+
+      if (sourceBook?.genre) {
+        // Same genre, prefer matching reading level
+        const sameGenre = allBooks.filter(b => b.genre === sourceBook.genre && !excludeIds.has(b.id));
+        // Shuffle for variety
+        const shuffled = [...sameGenre].sort(() => Math.random() - 0.5);
+        // Prefer same reading level, fallback to any in genre
+        candidate = shuffled.find(b => b.readingLevel === sourceBook.readingLevel)
+          ?? shuffled[0];
+      }
+
+      if (!candidate) {
+        // Fallback: random book not yet completed
+        const others = allBooks.filter(b => !excludeIds.has(b.id));
+        const shuffled = [...others].sort(() => Math.random() - 0.5);
+        candidate = shuffled[0];
+      }
+
+      if (!candidate) return res.json(null);
+
+      res.json({
+        id: candidate.id,
+        title: candidate.title,
+        author: candidate.author,
+        coverImage: candidate.coverImage,
+        genre: candidate.genre,
+        contentType: candidate.contentType,
+      });
+    } catch (error) {
+      console.error("[NextRead] Error:", error);
+      res.status(500).json({ message: "Failed to fetch recommendation" });
+    }
+  });
+
   app.delete("/api/word-bank/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;

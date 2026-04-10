@@ -259,6 +259,32 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const { profile: a11yProfile } = usePreferencesKernel();
   const followAlong = a11yProfile.karaokeFollowAlong ?? false;
 
+  const completionFiredRef = useRef(false);
+
+  // Fire completion event when user reaches the last page for the first time
+  useEffect(() => {
+    if (
+      !completionFiredRef.current &&
+      totalPages > 1 &&
+      currentPage === totalPages &&
+      !isLoading &&
+      content
+    ) {
+      completionFiredRef.current = true;
+      document.dispatchEvent(
+        new CustomEvent("accessibooks:book-completed", {
+          detail: {
+            bookId: book.id,
+            bookTitle: book.title,
+            bookAuthor: book.author,
+            bookCover: book.coverImage,
+            contentType: "ebook",
+          },
+        }),
+      );
+    }
+  }, [currentPage, totalPages, isLoading, content, book]);
+
   const [clickedWordData, setClickedWordData] = useState<{ word: string; rect: DOMRect } | null>(null);
   const [wordContextMenu, setWordContextMenu] = useState<{ word: string; x: number; y: number } | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
