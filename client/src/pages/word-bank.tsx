@@ -25,7 +25,7 @@ function normalizeEntry(raw: ApiWordEntry | WordBankEntry): ApiWordEntry {
     word: raw.word,
     definition: raw.definition ?? null,
     imageUrl: raw.imageUrl ?? null,
-    savedAt: typeof (raw as any).savedAt === "string" ? (raw as any).savedAt : new Date((raw as any).savedAt).toISOString(),
+    savedAt: raw.savedAt,
   };
 }
 
