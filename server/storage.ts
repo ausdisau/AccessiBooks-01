@@ -147,7 +147,7 @@ export interface IStorage {
 
   // Word Bank
   getWordBankEntries(userId: string): Promise<DbWordBankEntry[]>;
-  addWordBankEntry(userId: string, data: { word: string; definition: string | null; imageUrl: string | null }): Promise<DbWordBankEntry>;
+  addWordBankEntry(userId: string, data: { word: string; definition: string | null; imageUrl: string | null }): Promise<{ entry: DbWordBankEntry; isNew: boolean }>;
   removeWordBankEntry(userId: string, entryId: string): Promise<boolean>;
   setWordBankDbAvailable(available: boolean): void;
   getWordBankCount(userId: string): Promise<number>;
@@ -2921,26 +2921,33 @@ export class ExternalAPIStorage implements IStorage {
     return this._wordBankMemory.get(userId) ?? [];
   }
 
-  async addWordBankEntry(userId: string, data: { word: string; definition: string | null; imageUrl: string | null }): Promise<DbWordBankEntry> {
+  async addWordBankEntry(userId: string, data: { word: string; definition: string | null; imageUrl: string | null }): Promise<{ entry: DbWordBankEntry; isNew: boolean }> {
+    const normalizedWord = data.word.toLowerCase();
     if (this._wordBankDbAvailable) {
       try {
+        const [existing] = await db.select().from(wordBankEntries)
+          .where(and(eq(wordBankEntries.userId, userId), eq(wordBankEntries.word, normalizedWord)))
+          .limit(1);
+        if (existing) return { entry: existing, isNew: false };
         const [entry] = await db.insert(wordBankEntries)
-          .values({ userId, word: data.word.toLowerCase(), definition: data.definition, imageUrl: data.imageUrl })
+          .values({ userId, word: normalizedWord, definition: data.definition, imageUrl: data.imageUrl })
           .returning();
-        return entry;
+        return { entry, isNew: true };
       } catch {}
     }
+    const memList = this._wordBankMemory.get(userId) ?? [];
+    const existingMem = memList.find(e => e.word === normalizedWord);
+    if (existingMem) return { entry: existingMem, isNew: false };
     const entry: DbWordBankEntry = {
       id: randomUUID(),
       userId,
-      word: data.word.toLowerCase(),
+      word: normalizedWord,
       definition: data.definition ?? null,
       imageUrl: data.imageUrl ?? null,
       savedAt: new Date(),
     };
-    const existing = this._wordBankMemory.get(userId) ?? [];
-    this._wordBankMemory.set(userId, [entry, ...existing]);
-    return entry;
+    this._wordBankMemory.set(userId, [entry, ...memList]);
+    return { entry, isNew: true };
   }
 
   async removeWordBankEntry(userId: string, entryId: string): Promise<boolean> {

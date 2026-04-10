@@ -6406,7 +6406,7 @@ ${navEntries}
         if (!definition) definition = enrichmentCached.definition;
         if (!imageUrl) imageUrl = enrichmentCached.imageUrl;
       } else {
-        // Fetch definition from free dictionary API
+        // Fetch definition — free dictionary API first, OpenAI fallback
         if (!definition) {
           try {
             const ctrl = new AbortController();
@@ -6422,6 +6422,26 @@ ${navEntries}
               }>;
               definition = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition ?? null;
             }
+          } catch {}
+        }
+
+        // OpenAI fallback: generate a plain-English definition if dictionary lookup gave nothing
+        if (!definition) {
+          try {
+            const { openai } = await import("./replit_integrations/image/client");
+            const completion = await openai.chat.completions.create({
+              model: "gpt-4.1-mini",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a vocabulary helper for low-literacy readers. When given a single word, provide one short, plain-English definition in 15 words or fewer. Reply with ONLY the definition text, no punctuation outside the sentence.",
+                },
+                { role: "user", content: clean },
+              ],
+              max_tokens: 60,
+            });
+            const aiDef = completion.choices[0]?.message?.content?.trim();
+            if (aiDef && aiDef.length > 2) definition = aiDef;
           } catch {}
         }
 
@@ -6448,14 +6468,17 @@ ${navEntries}
         apiCache.set(enrichmentCacheKey, { definition, imageUrl }, 24 * 60 * 60 * 1000);
       }
 
-      const entry = await storage.addWordBankEntry(userId, { word: clean, definition, imageUrl });
+      const { entry, isNew } = await storage.addWordBankEntry(userId, { word: clean, definition, imageUrl });
 
-      // Milestone detection: count entries after save
-      const MILESTONES = [1, 5, 10, 25, 50];
-      const count = await storage.getWordBankCount(userId);
-      const milestone = MILESTONES.includes(count) ? count : null;
+      // Milestone detection: only for newly inserted entries, not duplicates
+      let milestone: number | null = null;
+      if (isNew) {
+        const MILESTONES = [1, 5, 10, 25, 50];
+        const count = await storage.getWordBankCount(userId);
+        milestone = MILESTONES.includes(count) ? count : null;
+      }
 
-      res.status(201).json({ entry, milestone });
+      res.status(201).json({ entry, milestone, alreadySaved: !isNew });
     } catch (error) {
       res.status(500).json({ message: "Failed to add word to bank" });
     }
