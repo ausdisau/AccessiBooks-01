@@ -75,6 +75,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
   const [toc, setToc] = useState<NavItem[]>([]);
   const [currentLocation, setCurrentLocation] = useState<string>("");
   const [progress, setProgress] = useState(0);
+  const completionFiredRef = useRef(false);
   
   const viewerRef = useRef<HTMLDivElement>(null);
   const epubRef = useRef<EpubBook | null>(null);
@@ -83,6 +84,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
   const epubUrl = `/api/ebook/${book.id}/content`;
 
   useEffect(() => {
+    completionFiredRef.current = false;
     loadEpub();
     
     return () => {
@@ -128,7 +130,23 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
           localStorage.setItem(`epub-location-${book.id}`, location.start.cfi);
         }
         if (location.start?.percentage !== undefined) {
-          setProgress(Math.round(location.start.percentage * 100));
+          const pct = Math.round(location.start.percentage * 100);
+          setProgress(pct);
+          // Fire completion event when user reaches the end of the epub (99%+ or atEnd flag)
+          if (!completionFiredRef.current && (pct >= 99 || location.atEnd)) {
+            completionFiredRef.current = true;
+            document.dispatchEvent(
+              new CustomEvent("accessibooks:book-completed", {
+                detail: {
+                  bookId: book.id,
+                  bookTitle: book.title,
+                  bookAuthor: book.author,
+                  bookCover: book.coverImage,
+                  contentType: "ebook",
+                },
+              }),
+            );
+          }
         }
       });
 

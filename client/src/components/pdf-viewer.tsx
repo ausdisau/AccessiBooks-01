@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -27,12 +27,32 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const completionFiredRef = useRef(false);
 
   const pdfUrl = `/api/ebook/${book.id}/content`;
 
   useEffect(() => {
+    completionFiredRef.current = false;
     loadBookmarks();
   }, [book.id]);
+
+  // Fire completion event when user reaches the last page for the first time
+  useEffect(() => {
+    if (!completionFiredRef.current && numPages > 1 && currentPage === numPages && !isLoading) {
+      completionFiredRef.current = true;
+      document.dispatchEvent(
+        new CustomEvent("accessibooks:book-completed", {
+          detail: {
+            bookId: book.id,
+            bookTitle: book.title,
+            bookAuthor: book.author,
+            bookCover: book.coverImage,
+            contentType: "ebook",
+          },
+        }),
+      );
+    }
+  }, [currentPage, numPages, isLoading, book]);
 
   const loadBookmarks = () => {
     const saved = localStorage.getItem(`pdf-bookmarks-${book.id}`);
