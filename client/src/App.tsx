@@ -473,13 +473,17 @@ function LoginModal({
   const [magicLinkMode, setMagicLinkMode] = useState(false);
   const [magicLinkEmail, setMagicLinkEmail] = useState("");
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [magicDevLink, setMagicDevLink] = useState<string | null>(null);
 
   const magicLinkMutation = useMutation({
     mutationFn: async (email: string) => {
       const response = await apiRequest("POST", "/api/auth/magic-link/request", { email });
-      return response.json();
+      return response.json() as Promise<{ message: string; emailSent?: boolean; devLink?: string }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.emailSent === false && data.devLink) {
+        setMagicDevLink(data.devLink);
+      }
       setMagicLinkSent(true);
     },
     onError: (error: Error) => {
@@ -600,7 +604,7 @@ function LoginModal({
   const hasSocialProviders = providers?.google || providers?.facebook || providers?.microsoft;
 
   return (
-    <Dialog open={open} onOpenChange={(val) => { if (!val) { setShowEmailForm(false); setMagicLinkMode(false); setMagicLinkSent(false); setMagicLinkEmail(""); } onOpenChange(val); }}>
+    <Dialog open={open} onOpenChange={(val) => { if (!val) { setShowEmailForm(false); setMagicLinkMode(false); setMagicLinkSent(false); setMagicLinkEmail(""); setMagicDevLink(null); } onOpenChange(val); }}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden">
         <DialogTitle className="sr-only">
           {isRegistering ? "Create Account" : "Sign In"}
@@ -611,11 +615,19 @@ function LoginModal({
               <Headphones className="h-6 w-6 text-primary" />
             </div>
             <h2 className="text-2xl font-bold">
-              {magicLinkMode ? (magicLinkSent ? "Check Your Inbox" : "Magic Link Sign In") : (isRegistering ? "Create Account" : "Welcome Back")}
+              {magicLinkMode
+                ? (magicLinkSent
+                    ? (magicDevLink ? "Sign In Link Ready" : "Check Your Inbox")
+                    : "Magic Link Sign In")
+                : (isRegistering ? "Create Account" : "Welcome Back")}
             </h2>
             <p className="text-muted-foreground mt-1 text-sm">
               {magicLinkMode
-                ? (magicLinkSent ? `We sent a sign-in link to ${magicLinkEmail}` : "Enter your email and we'll send you a sign-in link")
+                ? (magicLinkSent
+                    ? (magicDevLink
+                        ? "No email service is configured. Use the link below to sign in."
+                        : `We sent a sign-in link to ${magicLinkEmail}`)
+                    : "Enter your email and we'll send you a sign-in link")
                 : (isRegistering ? "Join thousands of audiobook lovers" : "Sign in to continue listening")
               }
             </p>
@@ -678,23 +690,40 @@ function LoginModal({
           {magicLinkMode ? (
             magicLinkSent ? (
               <div className="text-center space-y-4">
-                <div className="mx-auto w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <Mail className="h-8 w-8 text-green-600 dark:text-green-400" />
+                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center ${magicDevLink ? "bg-amber-100 dark:bg-amber-900/30" : "bg-green-100 dark:bg-green-900/30"}`}>
+                  <Mail className={`h-8 w-8 ${magicDevLink ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`} />
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  The link expires in 15 minutes. Check your spam folder if you don't see it.
-                </p>
+                {magicDevLink ? (
+                  <>
+                    <a
+                      href={magicDevLink}
+                      className="block w-full"
+                    >
+                      <Button className="w-full" size="lg">
+                        <Zap className="mr-2 h-4 w-4" />
+                        Click here to sign in
+                      </Button>
+                    </a>
+                    <p className="text-xs text-muted-foreground border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 rounded-md p-2">
+                      To send real emails, add a <strong>RESEND_API_KEY</strong> in your secrets. This link is only shown when no email service is configured.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    The link expires in 15 minutes. Check your spam folder if you don't see it.
+                  </p>
+                )}
                 <Button
                   variant="ghost"
                   className="w-full"
-                  onClick={() => { setMagicLinkSent(false); setMagicLinkEmail(""); }}
+                  onClick={() => { setMagicLinkSent(false); setMagicLinkEmail(""); setMagicDevLink(null); }}
                 >
-                  Send to a different email
+                  {magicDevLink ? "Try a different email" : "Send to a different email"}
                 </Button>
                 <Button
                   variant="link"
                   className="w-full text-muted-foreground"
-                  onClick={() => { setMagicLinkMode(false); setMagicLinkSent(false); setMagicLinkEmail(""); }}
+                  onClick={() => { setMagicLinkMode(false); setMagicLinkSent(false); setMagicLinkEmail(""); setMagicDevLink(null); }}
                 >
                   Back to sign in
                 </Button>
