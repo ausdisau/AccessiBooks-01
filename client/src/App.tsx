@@ -50,6 +50,7 @@ import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
 import { TrialNudge } from "@/components/trial-nudge";
 import { localStorageService } from "@/lib/storage";
+import type { AccessibilitySettings } from "@/lib/storage";
 import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon, Heart, Building2, Activity, LibraryBig } from "lucide-react";
 
 const EbookReader = lazy(() => import('@/components/ebook-reader').then(m => ({ default: m.EbookReader })));
@@ -2415,6 +2416,13 @@ function FocusShell() {
   const [active, setActive] = useState(() => !!localStorageService.getSettings().focusShell);
   const [, navigate] = useLocation();
   const { currentBook, isPlaying, togglePlayPause } = useAudioContext();
+  const { isAuthenticated } = useAuth();
+
+  const saveMutation = useMutation({
+    mutationFn: async (settings: AccessibilitySettings) => {
+      await apiRequest("PUT", "/api/a11y/preferences", { profile: settings });
+    },
+  });
 
   useEffect(() => {
     const sync = () => setActive(!!localStorageService.getSettings().focusShell);
@@ -2425,24 +2433,30 @@ function FocusShell() {
   useEffect(() => {
     if (!active) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") exitFocusShell();
+      if (e.key === "Escape") exitShell(false);
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [active]);
 
-  const exitFocusShell = () => {
+  const exitShell = (openA11y = false) => {
     const s = localStorageService.getSettings();
-    localStorageService.saveSettings({ ...s, focusShell: false });
+    const updated = { ...s, focusShell: false };
+    localStorageService.saveSettings(updated);
     document.dispatchEvent(new CustomEvent("accessibooks:settings-changed"));
     setActive(false);
-  };
-
-  const openHelp = () => {
-    document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility"));
+    if (isAuthenticated) {
+      saveMutation.mutate(updated);
+    }
+    if (openA11y) {
+      setTimeout(() => {
+        document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility"));
+      }, 80);
+    }
   };
 
   const goLibrary = () => {
+    exitShell(false);
     navigate("/");
   };
 
@@ -2468,7 +2482,7 @@ function FocusShell() {
 
       {/* Exit button — top-right */}
       <button
-        onClick={exitFocusShell}
+        onClick={() => exitShell(false)}
         className="absolute top-4 right-4 flex items-center gap-2 px-3 py-3 rounded-2xl bg-muted text-muted-foreground text-sm font-medium shadow hover:bg-muted/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Exit Focus Shell"
       >
@@ -2532,7 +2546,7 @@ function FocusShell() {
 
       {/* Spatial anchor: Help/accessibility — bottom-right */}
       <button
-        onClick={openHelp}
+        onClick={() => exitShell(true)}
         className="absolute bottom-8 right-6 flex flex-col items-center gap-1 px-4 py-3 rounded-2xl bg-muted text-muted-foreground text-sm font-medium shadow hover:bg-muted/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Open Accessibility Help"
         style={{ minWidth: 90 }}
