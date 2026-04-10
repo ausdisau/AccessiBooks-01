@@ -102,7 +102,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
     items: [
       { path: "/", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
       { path: "/player", label: "Player", icon: <Play className="h-5 w-5" /> },
-      { path: "/loans", label: "My Loans", icon: <LibraryBig className="h-5 w-5" /> },
+      { path: "/loans", label: "Loans", icon: <LibraryBig className="h-5 w-5" /> },
       { path: "/downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
     ],
   },
@@ -110,8 +110,8 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
     label: "Discover",
     items: [
       { path: "/feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
-      { path: "/accessible-picks", label: "Accessible Picks", icon: <HeartHandshake className="h-5 w-5" /> },
-      { path: "/queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
+      { path: "/accessible-picks", label: "Picks", icon: <HeartHandshake className="h-5 w-5" /> },
+      { path: "/queue", label: "Queue", icon: <ListMusic className="h-5 w-5" /> },
       { path: "/party", label: "Party", icon: <Radio className="h-5 w-5" /> },
       { path: "/social", label: "Social", icon: <Users className="h-5 w-5" /> },
     ],
@@ -182,10 +182,12 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           className="p-2"
         >
           <Menu className="h-6 w-6" />
+          <span className="hidden md:inline ml-1.5 text-sm font-medium">Menu</span>
         </Button>
         <AccessiBooksLogo />
-        <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden" aria-label="Search">
+        <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden flex items-center gap-1" aria-label="Search">
           {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
+          <span className="text-xs font-medium">{mobileSearchOpen ? "Close" : "Search"}</span>
         </Button>
       </div>
 
@@ -2461,7 +2463,6 @@ function FocusShell() {
   };
 
   const goLibrary = () => {
-    exitShell(false);
     navigate("/");
   };
 
@@ -2551,7 +2552,7 @@ function FocusShell() {
 
       {/* Spatial anchor: Help/accessibility — bottom-right */}
       <button
-        onClick={() => exitShell(true)}
+        onClick={() => document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility"))}
         className="absolute bottom-8 right-6 flex flex-col items-center gap-1 px-4 py-3 rounded-2xl bg-muted text-muted-foreground text-sm font-medium shadow hover:bg-muted/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Open Accessibility Help"
         style={{ minWidth: 90 }}

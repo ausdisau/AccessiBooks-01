@@ -160,6 +160,7 @@ export const localStorageService = {
       comprehensionCheckIns: false,
       symbolOverlay: false,
       switchAccessMode: false,
+      focusShell: false,
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);
