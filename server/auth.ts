@@ -19,8 +19,8 @@ import { scrypt, randomBytes, timingSafeEqual, createHmac } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
-import { sendEmail } from "./mailer";
-import { sendViaResend } from "./resendMailer";
+import { sendEmail, isEmailConfigured } from "./mailer";
+import { sendViaResend, isResendConfigured } from "./resendMailer";
 
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -317,6 +317,22 @@ export function registerMagicLinkRoutes(app: Express) {
 <p style="color:#888;font-size:12px">If you didn't request this link, you can safely ignore this email.</p>`,
     };
 
+    const noEmailServiceConfigured = !isResendConfigured() && !isEmailConfigured();
+
+    if (noEmailServiceConfigured) {
+      // No email provider configured at all — safe to return devLink only in non-production
+      if (process.env.NODE_ENV === "production") {
+        console.error("[MagicLink] No email service configured in production!");
+        return res.status(503).json({ message: "Email delivery unavailable. Contact support." });
+      }
+      console.warn(`[MagicLink] No email delivery method configured. Returning devLink for development.`);
+      return res.json({
+        message: "No email service configured",
+        emailSent: false,
+        devLink: link,
+      });
+    }
+
     // 1. Try Resend (primary — requires RESEND_API_KEY)
     const sentViaResend = await sendViaResend(emailPayload);
     // 2. Fall back to SMTP if configured
@@ -324,13 +340,9 @@ export function registerMagicLinkRoutes(app: Express) {
     const emailSent = sentViaResend || sentViaSmtp;
 
     if (!emailSent) {
-      // No email service configured — return the link in the response for dev/demo use
-      console.warn(`[MagicLink] No email delivery method configured. Returning devLink in response.`);
-      return res.json({
-        message: "No email service configured",
-        emailSent: false,
-        devLink: link,
-      });
+      // Provider is configured but sending failed (transient error) — do NOT expose devLink
+      console.error(`[MagicLink] Email delivery failed for ${maskedEmail} — provider returned error.`);
+      return res.status(503).json({ message: "Failed to send magic link. Please try again shortly." });
     }
 
     res.json({ message: "Magic link sent — check your inbox", emailSent: true });
