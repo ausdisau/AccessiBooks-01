@@ -38,7 +38,7 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
 
   // Fire completion event when user reaches the last page for the first time
   useEffect(() => {
-    if (!completionFiredRef.current && numPages > 1 && currentPage === numPages && !isLoading) {
+    if (!completionFiredRef.current && numPages >= 1 && currentPage === numPages && !isLoading) {
       completionFiredRef.current = true;
       document.dispatchEvent(
         new CustomEvent("accessibooks:book-completed", {

@@ -270,7 +270,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   useEffect(() => {
     if (
       !completionFiredRef.current &&
-      totalPages > 1 &&
+      totalPages >= 1 &&
       currentPage === totalPages &&
       !isLoading &&
       content
