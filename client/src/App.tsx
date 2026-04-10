@@ -191,9 +191,6 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           className="shrink-0 flex items-center gap-1.5 rounded-lg px-1 py-0.5 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <AccessiBooksLogo />
-          <span className="hidden lg:flex flex-col">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-primary leading-none">Library</span>
-          </span>
         </Link>
         <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden flex items-center gap-1" aria-label="Search">
           {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
@@ -1138,10 +1135,10 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
               onClick={() => setCoachOpen(true)}
               aria-label="Open Accessibility Coach"
               data-testid="button-accessibility-coach"
-              className="p-2 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
-              title="Accessibility Coach"
+              className="flex items-center gap-1 p-2 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
             >
-              <HeartHandshake className="h-5 w-5" />
+              <HeartHandshake className="h-4 w-4" />
+              <span className="text-xs font-medium">Coach</span>
             </Button>
             <Button
               variant="ghost"
@@ -1149,10 +1146,10 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
               onClick={() => setChatOpen(true)}
               aria-label="Open AI chat assistant"
               data-testid="button-ai-chat"
-              className="p-2"
-              title="AI Assistant"
+              className="flex items-center gap-1 p-2"
             >
-              <MessageCircle className="h-5 w-5" />
+              <MessageCircle className="h-4 w-4" />
+              <span className="text-xs font-medium">Chat</span>
             </Button>
             <Button variant="ghost" onClick={openLogin} data-testid="nav-sign-in">
               Sign In
@@ -1165,14 +1162,15 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
           {/* Mobile Menu Button */}
           <Button 
             variant="ghost" 
-            size="icon" 
-            className="md:hidden"
+            size="sm" 
+            className="md:hidden flex items-center gap-1 px-2"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileMenuOpen}
             data-testid="mobile-menu-toggle"
           >
-            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            <span className="text-xs font-medium">{mobileMenuOpen ? "Close" : "Menu"}</span>
           </Button>
         </div>
         
@@ -1805,10 +1803,10 @@ function MainApp() {
                 <li>
                   <button 
                     onClick={handleBackToLibrary}
-                    className="text-muted-foreground hover:text-primary transition-colors flex items-center"
+                    className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
                   >
-                    <Home className="h-4 w-4" />
-                    <span className="sr-only">Home</span>
+                    <Home className="h-4 w-4" aria-hidden="true" />
+                    <span className="text-xs font-medium">Home</span>
                   </button>
                 </li>
                 <li className="flex items-center">
