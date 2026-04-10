@@ -233,6 +233,8 @@ export const localStorageService = {
       symbolOverlay: false,
       switchAccessMode: false,
       focusShell: false,
+      preferredSignLanguage: "ASL",
+      showSignAtChapterEnd: false,
     };
     try {
       const stored = localStorage.getItem(SETTINGS_KEY);
