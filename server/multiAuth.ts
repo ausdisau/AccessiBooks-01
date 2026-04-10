@@ -29,10 +29,22 @@ passport.use(
     { usernameField: "email", passwordField: "password" },
     async (email, password, done) => {
       try {
-        const [user] = await db
-          .select()
-          .from(users)
-          .where(eq(users.email, email));
+        // Try DB first, then fall back to in-memory store (used when DB is full)
+        let user: typeof users.$inferSelect | undefined;
+        try {
+          const [dbUser] = await db
+            .select()
+            .from(users)
+            .where(eq(users.email, email));
+          user = dbUser;
+        } catch {
+          // DB query failed — fall through to in-memory check below
+        }
+
+        // Check in-memory store if not found in DB (covers DB-full registration fallback)
+        if (!user) {
+          user = storage.getMemUserByEmail(email) as typeof users.$inferSelect | undefined;
+        }
 
         if (!user) {
           return done(null, false, { message: "Invalid email or password" });
@@ -247,10 +259,8 @@ export function setupMultiAuth(app: Express) {
   // Deserialize user from session (retrieve full user by string ID)
   passport.deserializeUser(async (id: string, done) => {
     try {
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, id));
+      // storage.getUser already checks in-memory store before hitting the DB
+      const user = await storage.getUser(id);
       done(null, user || null);
     } catch (error) {
       done(error);
@@ -300,11 +310,16 @@ export function setupMultiAuth(app: Express) {
         return res.status(400).json({ message: "Invalid role. Must be advertiser or publisher." });
       }
 
-      // Check if user exists
-      const [existingUser] = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, email));
+      // Check if email is already taken — both in DB and in the in-memory fallback store
+      let existingUser: any = storage.getMemUserByEmail(email);
+      if (!existingUser) {
+        try {
+          const [dbUser] = await db.select().from(users).where(eq(users.email, email));
+          existingUser = dbUser;
+        } catch {
+          // DB query failed — if we can't check, allow the attempt (createUser will handle it)
+        }
+      }
 
       if (existingUser) {
         return res.status(400).json({ message: "Email already registered" });
@@ -313,27 +328,24 @@ export function setupMultiAuth(app: Express) {
       // Hash password
       const passwordHash = await bcrypt.hash(password, 10);
 
-      // Create user
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          email,
-          passwordHash,
-          firstName: firstName || null,
-          lastName: lastName || null,
-          authProvider: "local",
-          role: role || null,
-          companyName: companyName || null,
-          website: website || null,
-        })
-        .returning();
+      // Create user via storage abstraction (handles DB-full fallback automatically)
+      const newUser = await storage.createUser({
+        email,
+        passwordHash,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        authProvider: "local",
+        role: role || null,
+        companyName: companyName || null,
+        website: website || null,
+      } as any);
 
       // Log them in
       req.login(newUser, (err) => {
         if (err) {
           return res.status(500).json({ message: "Login failed after registration" });
         }
-        const { passwordHash, ...userWithoutPassword } = newUser;
+        const { passwordHash: _pw, ...userWithoutPassword } = newUser as any;
         return res.json(userWithoutPassword);
       });
     } catch (error) {

@@ -1600,6 +1600,10 @@ export class ExternalAPIStorage implements IStorage {
 
   // User management methods integrating with external API
   async getUser(id: string): Promise<User | undefined> {
+    // Check in-memory store first (covers DB-full registration fallback)
+    const memUser = this.localUsers.get(id);
+    if (memUser) return memUser;
+
     try {
       console.log(`Fetching user ${id} from database...`);
       const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -1640,6 +1644,11 @@ export class ExternalAPIStorage implements IStorage {
     // For OAuth-based auth, we don't have usernames
     console.log(`getUserByUsername is deprecated, using email lookup instead`);
     return this.getUserByEmail(username);
+  }
+
+  /** Returns a user that was stored in memory (e.g. due to DB-full fallback). */
+  getMemUserByEmail(email: string): User | undefined {
+    return Array.from(this.localUsers.values()).find((u) => u.email === email);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
@@ -1701,7 +1710,46 @@ export class ExternalAPIStorage implements IStorage {
       console.log('User created successfully:', user.id);
       this.localUsers.set(user.id, user);
       return user;
-    } catch (error) {
+    } catch (error: any) {
+      // Detect NeonDB / PostgreSQL storage-full errors (code 53100 or known message)
+      const isStorageFull =
+        error?.cause?.code === "53100" ||
+        (typeof error?.message === "string" && error.message.includes("could not extend file")) ||
+        (typeof error?.cause?.message === "string" && error.cause.message.includes("could not extend file"));
+
+      if (isStorageFull) {
+        console.warn('[Auth] DB storage limit reached — storing new user in memory (session-only)');
+        const { randomUUID } = await import("crypto");
+        const now = new Date();
+        const memUser = {
+          id: randomUUID(),
+          email: insertUser.email ?? null,
+          firstName: insertUser.firstName ?? null,
+          lastName: insertUser.lastName ?? null,
+          passwordHash: insertUser.passwordHash ?? null,
+          authProvider: insertUser.authProvider || "local",
+          providerId: insertUser.providerId ?? null,
+          profileImageUrl: insertUser.profileImageUrl ?? null,
+          subscriptionTier: "free",
+          stripeCustomerId: null,
+          stripeSubscriptionId: null,
+          subscriptionEndDate: null,
+          stripeEasyEnglishSubscriptionItemId: null,
+          createdAt: now,
+          updatedAt: now,
+          referralCode: null,
+          referralCredits: 0,
+          name: null,
+          emailVerified: null,
+          image: null,
+          role: (insertUser as any).role ?? null,
+          companyName: (insertUser as any).companyName ?? null,
+          website: (insertUser as any).website ?? null,
+        } as User;
+        this.localUsers.set(memUser.id, memUser);
+        return memUser;
+      }
+
       console.error('Failed to create user:', error);
       throw error;
     }
