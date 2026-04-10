@@ -219,6 +219,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           title="Accessibility Coach"
         >
           <HeartHandshake className="h-5 w-5" />
+          <span className="hidden md:inline ml-1.5 text-sm font-medium">Coach</span>
         </Button>
 
         <Button
@@ -231,6 +232,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           title="AI Assistant"
         >
           <MessageCircle className="h-5 w-5" />
+          <span className="hidden md:inline ml-1.5 text-sm font-medium">Chat</span>
         </Button>
         
         {user && (
@@ -2361,10 +2363,13 @@ function AuthGatedRoute({ children, redirectTo }: { children: React.ReactNode; r
 
 function FocusModeExitButton() {
   const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
+  const [focusShell, setFocusShellState] = useState(() => !!localStorageService.getSettings().focusShell);
 
   useEffect(() => {
     const syncState = () => {
-      setFocusModeState(!!localStorageService.getSettings().focusMode);
+      const s = localStorageService.getSettings();
+      setFocusModeState(!!s.focusMode);
+      setFocusShellState(!!s.focusShell);
     };
     document.addEventListener("accessibooks:settings-changed", syncState);
     return () => {
@@ -2372,7 +2377,7 @@ function FocusModeExitButton() {
     };
   }, []);
 
-  if (!focusMode) return null;
+  if (!focusMode || focusShell) return null;
 
   const exitFocusMode = () => {
     const s = localStorageService.getSettings();
