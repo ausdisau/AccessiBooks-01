@@ -311,13 +311,13 @@ export function setupMultiAuth(app: Express) {
       }
 
       // Check if email is already taken — both in DB and in the in-memory fallback store
-      let existingUser: any = storage.getMemUserByEmail(email);
+      let existingUser = storage.getMemUserByEmail(email);
       if (!existingUser) {
         try {
           const [dbUser] = await db.select().from(users).where(eq(users.email, email));
           existingUser = dbUser;
-        } catch {
-          // DB query failed — if we can't check, allow the attempt (createUser will handle it)
+        } catch (dbCheckError) {
+          console.warn("[Auth] DB email-existence check failed, allowing attempt (createUser will handle uniqueness):", dbCheckError instanceof Error ? dbCheckError.message : String(dbCheckError));
         }
       }
 
@@ -338,18 +338,24 @@ export function setupMultiAuth(app: Express) {
         role: role || null,
         companyName: companyName || null,
         website: website || null,
-      } as any);
+      });
 
       // Log them in
       req.login(newUser, (err) => {
         if (err) {
           return res.status(500).json({ message: "Login failed after registration" });
         }
-        const { passwordHash: _pw, ...userWithoutPassword } = newUser as any;
+        const { passwordHash: _pw, ...userWithoutPassword } = newUser;
         return res.json(userWithoutPassword);
       });
     } catch (error) {
       console.error("Registration error:", error);
+      // Unique-constraint violation (race condition on duplicate email) — return 400 not 500
+      const pgCode = (error as { cause?: { code?: string } })?.cause?.code
+        ?? (error as { code?: string })?.code;
+      if (pgCode === "23505") {
+        return res.status(400).json({ message: "Email already registered" });
+      }
       res.status(500).json({ message: "Registration failed" });
     }
   });
