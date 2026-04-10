@@ -1,3 +1,13 @@
+/**
+ * replitAuth.ts — Replit OIDC authentication strategy (optional)
+ *
+ * Responsibility: OpenID Connect login via Replit's identity service.
+ * Active only in Replit-hosted environments (requires REPL_ID and ISSUER_URL env vars).
+ *
+ * Owns its own session configuration (getSession()) used when Replit auth is active.
+ * Does NOT overlap with the email/password auth in auth.ts or OAuth in multiAuth.ts —
+ * these are alternative sign-in mechanisms, not duplicates.
+ */
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 

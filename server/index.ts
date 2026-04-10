@@ -1,3 +1,22 @@
+/**
+ * index.ts — Express application entry point
+ *
+ * Auth system (all registered via registerRoutes → routes.ts):
+ *   auth.ts       — Primary auth: email/password local strategy, magic-link, session setup,
+ *                   and all /api/auth/* REST endpoints.
+ *   multiAuth.ts  — OAuth strategies (Google, Facebook, Microsoft, Auth0) via Passport.
+ *                   Provides isAuthenticated middleware.
+ *   auth0.ts      — Auth0 SDK integration for Management API + JWT token validation.
+ *                   Only activated when AUTH0_* env vars are present.
+ *   replitAuth.ts — Replit OIDC strategy. Only activated in Replit-hosted environments.
+ *
+ * Ad system:
+ *   adPlatformRoutes.ts — Display-ad bidding platform (AdBid): campaigns, display ads,
+ *                         slots, wallet, publisher earnings, Vickrey auction serving.
+ *   selfServeAds.ts     — Audio self-serve ads: audio campaigns, creatives, upload URLs.
+ *                         Also exports ad selection functions used by adMediation.ts.
+ *   adMediation.ts      — Audio ad waterfall (programmatic VAST → self-serve → house ads).
+ */
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
 import fs from "fs";

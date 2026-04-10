@@ -1,3 +1,19 @@
+/**
+ * adPlatformRoutes.ts — Display Ad Bidding Platform (AdBid) REST API
+ *
+ * Responsibility: All routes for the AdBid display-ad marketplace:
+ *   - /api/ad/campaigns   — advertiser campaign CRUD
+ *   - /api/ad/display-ads — display ad creative CRUD and status workflow
+ *   - /api/ad/slots       — publisher slot management (with embed snippet generation)
+ *   - /api/ad/wallet      — advertiser wallet balance
+ *   - /api/ad/earnings    — publisher earnings
+ *   - /api/serve/:slotId  — public ad serving endpoint (Vickrey auction)
+ *   - /api/click/:id      — idempotent click tracking and redirect
+ *   - /api/ad/auction/:slotId — legacy internal auction endpoint
+ *
+ * NOT responsible for audio self-serve ads — see selfServeAds.ts for those.
+ * Uses role-based access control (advertiser / publisher / admin).
+ */
 import { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
 import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";

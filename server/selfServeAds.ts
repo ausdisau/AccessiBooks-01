@@ -1,3 +1,18 @@
+/**
+ * selfServeAds.ts — Audio Self-Serve Ad Platform API
+ *
+ * Responsibility: Audio ad campaigns with audio creatives (recorded or uploaded files):
+ *   - /api/self-serve-ads/campaigns          — campaign CRUD
+ *   - /api/self-serve-ads/campaigns/:id/creatives — audio creative management
+ *   - /api/self-serve-ads/campaigns/:id/stats    — impression/click stats
+ *   - /api/self-serve-ads/upload-url             — object storage pre-signed upload URL
+ *   - /api/self-serve-ads/audio/*                — audio file serving proxy
+ *
+ * Also exports selectSelfServeAd(), recordImpression(), recordImpressionEvent()
+ * used by adMediation.ts when programmatic providers return no fill.
+ *
+ * NOT responsible for display (banner/image) ads — see adPlatformRoutes.ts for those.
+ */
 import { Router, Request, Response } from "express";
 import { db } from "./db";
 import { adCampaigns, adCreatives, adImpressions } from "@shared/schema";

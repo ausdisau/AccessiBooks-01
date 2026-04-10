@@ -1,4 +1,16 @@
-// Based on javascript_auth_all_persistance blueprint - modified for external API integration
+/**
+ * auth.ts — Local Passport auth system (primary, actively used)
+ *
+ * Responsibility: email/password local auth, magic-link login, and all
+ * /api/auth/* REST endpoints (register, login, logout, providers, magic-link).
+ * Sets up express-session and passport serialization for the main app.
+ *
+ * Auth system overview (see server/index.ts for registration order):
+ *   auth.ts       — email/password + magic-link + session setup (this file)
+ *   multiAuth.ts  — OAuth strategies: Google, Facebook, Microsoft, Auth0 via passport
+ *   auth0.ts      — Auth0 Management/Authentication SDK + JWT token validation
+ *   replitAuth.ts — Replit OIDC strategy (used if REPL_ID/ISSUER_URL env vars set)
+ */
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
