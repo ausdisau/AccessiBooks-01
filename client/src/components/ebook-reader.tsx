@@ -2487,8 +2487,24 @@ function WordContextMenu({
         const data = await res.json() as { entry: { id: string }; milestone: number | null; alreadySaved: boolean };
         return { milestone: data.milestone, alreadySaved: data.alreadySaved };
       } else {
-        const { milestone } = wordBankService.add(word, null, null);
-        return { milestone, alreadySaved: false };
+        // Guest: enrich definition + image client-side before writing to localStorage
+        let definition: string | null = null;
+        let imageUrl: string | null = null;
+        try {
+          const [defRes, imgRes] = await Promise.all([
+            fetch("/api/symbols/define", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ word }),
+            }).then(r => r.json() as Promise<{ definition: string | null }>),
+            fetch(`/api/symbols/${encodeURIComponent(word)}`).then(r => r.json() as Promise<{ url: string | null }>),
+          ]);
+          definition = defRes.definition ?? null;
+          imageUrl = imgRes.url ?? null;
+        } catch {}
+        const wasAlreadySaved = wordBankService.has(word);
+        const { milestone } = wordBankService.add(word, definition, imageUrl);
+        return { milestone, alreadySaved: wasAlreadySaved };
       }
     },
     onSuccess: (data) => {
