@@ -191,6 +191,9 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
   const [settings, setSettings] = useState<AccessibilitySettings>(() =>
     localStorageService.getSettings()
   );
+  const [focusShellActive, setFocusShellActive] = useState(
+    () => !!localStorageService.getSettings().focusShell
+  );
   const [readingGuideY, setReadingGuideY] = useState(0);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "saved" | "error">("idle");
 
@@ -208,6 +211,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
     const handler = (e: Event) => {
       if ((e as CustomEvent).detail?.source === "widget") return;
       const stored = localStorageService.getSettings();
+      setFocusShellActive(!!stored.focusShell);
       setSettings((prev) => {
         const changed = (Object.keys(stored) as (keyof AccessibilitySettings)[]).some(
           (k) => (stored as Record<string, unknown>)[k] !== (prev as Record<string, unknown>)[k]
@@ -354,20 +358,22 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
 
   return (
     <>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 250, height: '40px', width: '40px', borderRadius: '50%', fontSize: '16px' }}
-        className="shadow-md opacity-70 hover:opacity-100 transition-opacity bg-primary text-primary-foreground flex items-center justify-center border-0 cursor-pointer"
-        aria-label="Open accessibility menu"
-        aria-expanded={isOpen}
-        data-testid="accessibility-widget-toggle"
-      >
-        <Accessibility style={{ height: '20px', width: '20px' }} />
-      </button>
+      {!focusShellActive && (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 50, height: '40px', width: '40px', borderRadius: '50%', fontSize: '16px' }}
+          className="shadow-md opacity-70 hover:opacity-100 transition-opacity bg-primary text-primary-foreground flex items-center justify-center border-0 cursor-pointer"
+          aria-label="Open accessibility menu"
+          aria-expanded={isOpen}
+          data-testid="accessibility-widget-toggle"
+        >
+          <Accessibility style={{ height: '20px', width: '20px' }} />
+        </button>
+      )}
 
       {isOpen && (
         <Card 
-          style={{ position: 'fixed', bottom: '64px', right: '16px', zIndex: 300, width: '360px', maxHeight: '80vh', fontSize: '14px' }}
+          style={{ position: 'fixed', bottom: '64px', right: '16px', zIndex: 50, width: '360px', maxHeight: '80vh', fontSize: '14px' }}
           className="shadow-2xl border-2"
           role="region"
           aria-labelledby="a11y-panel-title"
