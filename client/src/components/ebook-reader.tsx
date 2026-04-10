@@ -266,6 +266,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   useEffect(() => {
     if (!symbolOverlay || !pageContent) {
       setPageSymbolImageCache({});
+      symbolFetchRef.current = "";
       return;
     }
     const cacheKey = `${currentPage}:${pageContent.slice(0, 60)}`;
