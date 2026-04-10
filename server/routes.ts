@@ -6390,16 +6390,72 @@ ${navEntries}
   app.post("/api/word-bank", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
-      const { word, definition, imageUrl } = req.body;
+      const { word, definition: clientDefinition, imageUrl: clientImageUrl } = req.body;
       if (!word || typeof word !== "string") {
         return res.status(400).json({ message: "word is required" });
       }
-      const entry = await storage.addWordBankEntry(userId, {
-        word: word.trim().toLowerCase(),
-        definition: definition ?? null,
-        imageUrl: imageUrl ?? null,
-      });
-      res.status(201).json(entry);
+      const clean = word.trim().toLowerCase().slice(0, 50);
+
+      // Server-side enrichment: look up definition and image when not supplied by client
+      let definition: string | null = clientDefinition ?? null;
+      let imageUrl: string | null = clientImageUrl ?? null;
+
+      const enrichmentCacheKey = `wb-enrich:${clean}`;
+      const enrichmentCached = apiCache.get<{ definition: string | null; imageUrl: string | null }>(enrichmentCacheKey);
+      if (enrichmentCached) {
+        if (!definition) definition = enrichmentCached.definition;
+        if (!imageUrl) imageUrl = enrichmentCached.imageUrl;
+      } else {
+        // Fetch definition from free dictionary API
+        if (!definition) {
+          try {
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 3000);
+            const dictRes = await fetch(
+              `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(clean)}`,
+              { signal: ctrl.signal }
+            );
+            clearTimeout(tid);
+            if (dictRes.ok) {
+              const data = await dictRes.json() as Array<{
+                meanings: Array<{ definitions: Array<{ definition: string }> }>;
+              }>;
+              definition = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition ?? null;
+            }
+          } catch {}
+        }
+
+        // Fetch ARASAAC pictogram image when absent
+        if (!imageUrl) {
+          try {
+            const ctrl2 = new AbortController();
+            const tid2 = setTimeout(() => ctrl2.abort(), 3000);
+            const picRes = await fetch(
+              `https://api.arasaac.org/v1/pictograms/en/search/${encodeURIComponent(clean)}`,
+              { signal: ctrl2.signal }
+            );
+            clearTimeout(tid2);
+            if (picRes.ok) {
+              const picData = await picRes.json() as Array<{ _id: number }>;
+              if (Array.isArray(picData) && picData.length > 0) {
+                const id = picData[0]._id;
+                imageUrl = `https://static.arasaac.org/pictograms/${id}/${id}_500.png`;
+              }
+            }
+          } catch {}
+        }
+
+        apiCache.set(enrichmentCacheKey, { definition, imageUrl }, 24 * 60 * 60 * 1000);
+      }
+
+      const entry = await storage.addWordBankEntry(userId, { word: clean, definition, imageUrl });
+
+      // Milestone detection: count entries after save
+      const MILESTONES = [1, 5, 10, 25, 50];
+      const count = await storage.getWordBankCount(userId);
+      const milestone = MILESTONES.includes(count) ? count : null;
+
+      res.status(201).json({ entry, milestone });
     } catch (error) {
       res.status(500).json({ message: "Failed to add word to bank" });
     }

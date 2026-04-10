@@ -149,6 +149,8 @@ export interface IStorage {
   getWordBankEntries(userId: string): Promise<DbWordBankEntry[]>;
   addWordBankEntry(userId: string, data: { word: string; definition: string | null; imageUrl: string | null }): Promise<DbWordBankEntry>;
   removeWordBankEntry(userId: string, entryId: string): Promise<boolean>;
+  setWordBankDbAvailable(available: boolean): void;
+  getWordBankCount(userId: string): Promise<number>;
 
   sessionStore: session.Store;
 }
@@ -2896,8 +2898,17 @@ export class ExternalAPIStorage implements IStorage {
   }
 
   // Word Bank — in-memory fallback when DB table is unavailable (512MB limit)
-  _wordBankDbAvailable = false;
+  private _wordBankDbAvailable = false;
   private _wordBankMemory = new Map<string, DbWordBankEntry[]>();
+
+  setWordBankDbAvailable(available: boolean): void {
+    this._wordBankDbAvailable = available;
+  }
+
+  async getWordBankCount(userId: string): Promise<number> {
+    const entries = await this.getWordBankEntries(userId);
+    return entries.length;
+  }
 
   async getWordBankEntries(userId: string): Promise<DbWordBankEntry[]> {
     if (this._wordBankDbAvailable) {

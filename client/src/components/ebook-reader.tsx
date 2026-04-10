@@ -2257,7 +2257,7 @@ function WordVocabPopup({
     mutationFn: async (data: { word: string; definition: string | null; imageUrl: string | null }) => {
       const res = await apiRequest("POST", "/api/word-bank", data);
       if (!res.ok) throw new Error("Save failed");
-      return res.json();
+      return res.json() as Promise<{ entry: { id: string; word: string }; milestone: number | null }>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/word-bank"] });
@@ -2316,11 +2316,9 @@ function WordVocabPopup({
 
     if (isLoggedIn) {
       try {
-        await saveMutation.mutateAsync({ word, definition, imageUrl });
-        const newCount = (wordBankQuery.data?.length ?? 0) + 1;
-        const milestones = [1, 5, 10, 25, 50];
-        if (milestones.includes(newCount)) {
-          triggerMilestone(newCount);
+        const result = await saveMutation.mutateAsync({ word, definition, imageUrl });
+        if (result.milestone !== null) {
+          triggerMilestone(result.milestone);
         } else {
           toast({ title: `"${word}" saved to Word Bank` });
         }
@@ -2463,22 +2461,43 @@ function WordContextMenu({
   const { toast } = useToast();
   const { user: authUser } = useAuth();
   const isLoggedIn = !!authUser;
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  const triggerMilestone = (milestone: number) => {
+    const milestoneMessages: Record<number, string> = {
+      1: "You saved your first word! 🎉",
+      5: "5 words saved — you're building a vocabulary! 📖",
+      10: "10 words! Keep it up! ⭐",
+      25: "25 words — impressive! 🏆",
+      50: "50 words! You're a word explorer! 🚀",
+    };
+    setShowCelebration(true);
+    toast({ title: milestoneMessages[milestone] || `${milestone} words saved!`, description: "Visit your Word Bank to review them." });
+    setTimeout(() => { setShowCelebration(false); onClose(); }, 2000);
+  };
 
   const menuRef = useRef<HTMLDivElement>(null);
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{ milestone: number | null }> => {
       if (isLoggedIn) {
         const res = await apiRequest("POST", "/api/word-bank", { word, definition: null, imageUrl: null });
         if (!res.ok) throw new Error("Save failed");
-        return res.json();
+        const data = await res.json() as { entry: { id: string }; milestone: number | null };
+        return { milestone: data.milestone };
       } else {
-        wordBankService.add(word, null, null);
+        const { milestone } = wordBankService.add(word, null, null);
+        return { milestone };
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       if (isLoggedIn) queryClient.invalidateQueries({ queryKey: ["/api/word-bank"] });
-      toast({ title: `"${word}" saved to Word Bank` });
-      onClose();
+      if (data.milestone !== null) {
+        triggerMilestone(data.milestone);
+        // onClose will be called by triggerMilestone's timer
+      } else {
+        toast({ title: `"${word}" saved to Word Bank` });
+        onClose();
+      }
     },
     onError: () => {
       toast({ title: "Could not save word", variant: "destructive" });
@@ -2510,35 +2529,42 @@ function WordContextMenu({
   const menuY = y + MENU_H > viewportH - 8 ? y - MENU_H : y;
 
   const menu = (
-    <div
-      ref={menuRef}
-      className="fixed z-[100] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px] select-none"
-      style={{ top: menuY, left: menuX }}
-      role="menu"
-      aria-label={`Actions for: ${word}`}
-    >
-      <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border mb-1 capitalize">
-        {word}
+    <>
+      {showCelebration && (
+        <div className="pointer-events-none fixed inset-0 z-[200] flex items-center justify-center">
+          <span className="text-6xl animate-bounce-once block">🎉</span>
+        </div>
+      )}
+      <div
+        ref={menuRef}
+        className="fixed z-[100] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px] select-none"
+        style={{ top: menuY, left: menuX }}
+        role="menu"
+        aria-label={`Actions for: ${word}`}
+      >
+        <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border mb-1 capitalize">
+          {word}
+        </div>
+        <button
+          className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2 transition-colors"
+          role="menuitem"
+          onClick={() => { onClose(); onOpenVocab(word); }}
+        >
+          <BookOpen className="h-3.5 w-3.5 text-primary" />
+          View definition
+        </button>
+        <button
+          className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2 transition-colors"
+          role="menuitem"
+          disabled={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
+          data-testid="ctx-save-to-word-bank"
+        >
+          <Bookmark className="h-3.5 w-3.5 text-amber-500" />
+          {saveMutation.isPending ? "Saving…" : "Save to Word Bank"}
+        </button>
       </div>
-      <button
-        className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2 transition-colors"
-        role="menuitem"
-        onClick={() => { onClose(); onOpenVocab(word); }}
-      >
-        <BookOpen className="h-3.5 w-3.5 text-primary" />
-        View definition
-      </button>
-      <button
-        className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2 transition-colors"
-        role="menuitem"
-        disabled={saveMutation.isPending}
-        onClick={() => saveMutation.mutate()}
-        data-testid="ctx-save-to-word-bank"
-      >
-        <Bookmark className="h-3.5 w-3.5 text-amber-500" />
-        {saveMutation.isPending ? "Saving…" : "Save to Word Bank"}
-      </button>
-    </div>
+    </>
   );
   return createPortal(menu, document.body);
 }
