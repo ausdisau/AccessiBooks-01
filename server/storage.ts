@@ -1693,7 +1693,7 @@ export class ExternalAPIStorage implements IStorage {
     try {
       console.log('Creating user in database...');
       
-      // Create user in PostgreSQL database
+      // Create user in PostgreSQL database (persist all provided fields)
       const [user] = await db
         .insert(users)
         .values({
@@ -1704,6 +1704,9 @@ export class ExternalAPIStorage implements IStorage {
           authProvider: insertUser.authProvider || "local",
           providerId: insertUser.providerId,
           profileImageUrl: insertUser.profileImageUrl,
+          role: insertUser.role,
+          companyName: insertUser.companyName,
+          website: insertUser.website,
         })
         .returning();
       
@@ -1719,7 +1722,6 @@ export class ExternalAPIStorage implements IStorage {
 
       if (isStorageFull) {
         console.warn('[Auth] DB storage limit reached — storing new user in memory (session-only)');
-        const { randomUUID } = await import("crypto");
         const now = new Date();
         const memUser = {
           id: randomUUID(),
@@ -1730,21 +1732,21 @@ export class ExternalAPIStorage implements IStorage {
           authProvider: insertUser.authProvider || "local",
           providerId: insertUser.providerId ?? null,
           profileImageUrl: insertUser.profileImageUrl ?? null,
-          subscriptionTier: "free",
-          stripeCustomerId: null,
-          stripeSubscriptionId: null,
-          subscriptionEndDate: null,
-          stripeEasyEnglishSubscriptionItemId: null,
+          subscriptionTier: insertUser.subscriptionTier ?? "free",
+          stripeCustomerId: insertUser.stripeCustomerId ?? null,
+          stripeSubscriptionId: insertUser.stripeSubscriptionId ?? null,
+          subscriptionEndDate: insertUser.subscriptionEndDate ?? null,
+          stripeEasyEnglishSubscriptionItemId: insertUser.stripeEasyEnglishSubscriptionItemId ?? null,
           createdAt: now,
           updatedAt: now,
-          referralCode: null,
-          referralCredits: 0,
-          name: null,
-          emailVerified: null,
-          image: null,
-          role: (insertUser as any).role ?? null,
-          companyName: (insertUser as any).companyName ?? null,
-          website: (insertUser as any).website ?? null,
+          referralCode: insertUser.referralCode ?? null,
+          referralCredits: insertUser.referralCredits ?? 0,
+          name: insertUser.name ?? null,
+          emailVerified: insertUser.emailVerified ?? null,
+          image: insertUser.image ?? null,
+          role: insertUser.role ?? null,
+          companyName: insertUser.companyName ?? null,
+          website: insertUser.website ?? null,
         } as User;
         this.localUsers.set(memUser.id, memUser);
         return memUser;
