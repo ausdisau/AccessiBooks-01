@@ -179,12 +179,15 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           onClick={onToggleSidebar}
           aria-label="Toggle navigation menu"
           data-testid="hamburger-menu-btn"
-          className="p-2"
+          className="p-2 flex items-center gap-1.5"
         >
           <Menu className="h-6 w-6" />
-          <span className="hidden md:inline ml-1.5 text-sm font-medium">Menu</span>
+          <span className="text-sm font-medium">Menu</span>
         </Button>
-        <AccessiBooksLogo />
+        {/* Library spatial anchor — top-left (mirrors Focus Shell top-left Library button) */}
+        <Link href="/" aria-label="Go to Library — top-left navigation anchor" className="shrink-0">
+          <AccessiBooksLogo />
+        </Link>
         <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden flex items-center gap-1" aria-label="Search">
           {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
           <span className="text-xs font-medium">{mobileSearchOpen ? "Close" : "Search"}</span>
@@ -204,11 +207,11 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           onClick={() => setDonateOpen(true)}
           aria-label="Donate to Australian Disability Ltd"
           data-testid="button-donate"
-          className="p-2 relative text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950"
+          className="hidden sm:flex items-center gap-1 p-2 relative text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950"
           title="Donate"
         >
-          <Gift className="h-5 w-5" />
-          <span className="hidden md:inline ml-1.5 text-sm font-medium">Donate</span>
+          <Gift className="h-4 w-4" />
+          <span className="text-xs font-medium">Donate</span>
         </Button>
 
         <Button
@@ -217,11 +220,11 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           onClick={() => setCoachOpen(true)}
           aria-label="Open Accessibility Coach"
           data-testid="button-accessibility-coach"
-          className="p-2 relative text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
+          className="hidden sm:flex items-center gap-1 p-2 relative text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
           title="Accessibility Coach"
         >
-          <HeartHandshake className="h-5 w-5" />
-          <span className="hidden md:inline ml-1.5 text-sm font-medium">Coach</span>
+          <HeartHandshake className="h-4 w-4" />
+          <span className="text-xs font-medium">Coach</span>
         </Button>
 
         <Button
@@ -230,11 +233,11 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           onClick={() => setChatOpen(true)}
           aria-label="Open AI chat assistant"
           data-testid="button-ai-chat"
-          className="p-2 relative"
+          className="hidden sm:flex items-center gap-1 p-2 relative"
           title="AI Assistant"
         >
-          <MessageCircle className="h-5 w-5" />
-          <span className="hidden md:inline ml-1.5 text-sm font-medium">Chat</span>
+          <MessageCircle className="h-4 w-4" />
+          <span className="text-xs font-medium">Chat</span>
         </Button>
         
         {user && (
@@ -262,7 +265,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
                   className="flex items-center gap-1"
                 >
                   <Settings className="h-4 w-4" />
-                  <span className="hidden md:inline text-xs font-medium">Plan</span>
+                  <span className="text-xs font-medium">Plan</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
@@ -279,7 +282,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
               className="flex items-center gap-1"
             >
               <LogOut className="h-4 w-4" />
-              <span className="hidden md:inline text-xs font-medium">Sign out</span>
+              <span className="text-xs font-medium">Sign out</span>
             </Button>
           </div>
         )}
@@ -2565,10 +2568,6 @@ function FocusShell() {
         <span>Help</span>
       </button>
 
-      {/* Subtle hint at bottom */}
-      <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-muted-foreground/50 pointer-events-none">
-        Press <kbd className="bg-muted px-1 rounded text-[10px]">Esc</kbd> or tap Exit to leave Focus Shell
-      </p>
     </div>
   );
 }

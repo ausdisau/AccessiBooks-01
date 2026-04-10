@@ -213,10 +213,11 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
             </Button>
           </div>
 
-          {/* Tablet and desktop full layout */}
-          <div className="hidden md:flex items-center gap-2 sm:gap-4">
+          {/* Tablet and desktop full layout — 3-column: info | controls (center) | progress */}
+          <div className="hidden md:grid md:grid-cols-3 items-center gap-2 sm:gap-4">
+            {/* Left: Book info — spatial anchor: bottom-left */}
             <div
-              className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer hover:bg-accent/50 rounded-lg p-1 -m-1 transition-colors"
+              className="flex items-center gap-3 min-w-0 cursor-pointer hover:bg-accent/50 rounded-lg p-1 -m-1 transition-colors"
               onClick={onExpand}
             >
               {currentBook.coverImage ? (
@@ -246,29 +247,8 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 flex-1 max-w-md">
-              <span className="text-xs text-muted-foreground w-12 text-right">
-                {formatTime(currentTime)}
-              </span>
-              <div className="flex-1 px-2">
-                <Slider
-                  value={[currentTime]}
-                  max={duration || 100}
-                  step={1}
-                  onValueChange={([value]) => seekTo(value)}
-                  onPointerDown={() => setIsDragging(true)}
-                  onPointerUp={() => setIsDragging(false)}
-                  aria-label="Playback progress"
-                  data-testid="mini-player-progress"
-                  className={isDragging ? "cursor-grabbing" : "cursor-pointer"}
-                />
-              </div>
-              <span className="text-xs text-muted-foreground w-12">
-                -{formatTime(remainingTime)}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1">
+            {/* Center: Transport controls — spatial anchor: bottom-center (mirrors Focus Shell) */}
+            <div className="flex items-center justify-center gap-1" aria-label="Playback controls">
               <Button
                 variant="ghost"
                 size="icon"
@@ -314,7 +294,29 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
                   <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold">30</span>
                 </div>
               </Button>
+            </div>
 
+            {/* Right: Progress + expand */}
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground w-12 text-right">
+                {formatTime(currentTime)}
+              </span>
+              <div className="flex-1 px-2">
+                <Slider
+                  value={[currentTime]}
+                  max={duration || 100}
+                  step={1}
+                  onValueChange={([value]) => seekTo(value)}
+                  onPointerDown={() => setIsDragging(true)}
+                  onPointerUp={() => setIsDragging(false)}
+                  aria-label="Playback progress"
+                  data-testid="mini-player-progress"
+                  className={isDragging ? "cursor-grabbing" : "cursor-pointer"}
+                />
+              </div>
+              <span className="text-xs text-muted-foreground w-12">
+                -{formatTime(remainingTime)}
+              </span>
               {onExpand && (
                 <Button
                   variant="ghost"
