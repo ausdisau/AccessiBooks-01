@@ -345,6 +345,8 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       const res = await apiRequest("POST", "/api/ai/chapter-checkin", {
         chapterText: pageContent,
         title: book.title,
+        bookId: String(book.id),
+        chapterIndex: currentPage,
       });
       if (!res.ok) throw new Error("Quiz failed");
       return res.json() as Promise<{ questions: { question: string; options: string[]; correct: number }[] }>;
@@ -356,6 +358,29 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       setShowBreakPrompt(false);
     },
   });
+
+  const [showChapterPreview, setShowChapterPreview] = useState(false);
+  const [chapterPreviewText, setChapterPreviewText] = useState<string | null>(null);
+  const [chapterPreviewTitle, setChapterPreviewTitle] = useState<string | null>(null);
+  const prevPageRef = useRef<number>(1);
+  const chapterPreviewMutation = useMutation({
+    mutationFn: async ({ text, chapterIdx }: { text: string; chapterIdx: number }) => {
+      const res = await apiRequest("POST", "/api/ai/chapter-preview", {
+        chapterText: text,
+        title: book.title,
+        bookId: String(book.id),
+        chapterIndex: chapterIdx,
+      });
+      if (!res.ok) throw new Error("Preview failed");
+      return res.json() as Promise<{ preview: string }>;
+    },
+    onSuccess: (data) => {
+      setChapterPreviewText(data.preview ?? null);
+      setShowChapterPreview(true);
+    },
+  });
+
+  const chapterBoundaryPageRef = useRef<number | null>(null);
 
   useEffect(() => {
     const pacingMinutes = a11ySettings.sessionPacingMinutes ?? 0;
@@ -654,6 +679,30 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   }, [words, currentPage]);
 
   const pageContent = useMemo(() => getPageContent(), [getPageContent]);
+
+  useEffect(() => {
+    const prev = prevPageRef.current;
+    prevPageRef.current = currentPage;
+    if (currentPage === 1) return;
+    if (!pageContent) return;
+
+    const isChapterBoundary = tocEntries.length > 0
+      ? tocEntries.some(e => e.page === currentPage && e.page !== prev)
+      : currentPage > prev && (currentPage - 1) % 15 === 0;
+
+    if (isChapterBoundary) {
+      chapterBoundaryPageRef.current = currentPage;
+      const tocEntry = tocEntries.find(e => e.page === currentPage);
+      setChapterPreviewTitle(tocEntry?.title ?? null);
+
+      if (a11ySettings.chapterPreviews) {
+        chapterPreviewMutation.mutate({ text: pageContent, chapterIdx: currentPage });
+      }
+      if (a11ySettings.comprehensionCheckIns && !showQuiz && !showBreakPrompt) {
+        quizMutation.mutate();
+      }
+    }
+  }, [currentPage, pageContent]);
 
   useEffect(() => {
     if (!followAlong || !isAudioMatchingBook || karaokeWordIndex === null) return;
@@ -1549,6 +1598,40 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             >
               Export All Notes
             </Button>
+          </div>
+        )}
+
+        {(showChapterPreview || chapterPreviewMutation.isPending) && a11ySettings.chapterPreviews && (
+          <div
+            className={`mt-4 p-5 rounded-xl border-2 border-blue-400/40 ${settings.theme === "dark" ? "bg-blue-950/60" : "bg-blue-50"}`}
+            role="note"
+            aria-label="Chapter preview"
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-2xl" aria-hidden="true">📖</span>
+              <div className="flex-1 min-w-0">
+                <p className={`font-semibold text-sm mb-1 ${theme.text}`}>
+                  {chapterPreviewTitle ? `Coming up: ${chapterPreviewTitle}` : "Coming up next"}
+                </p>
+                {chapterPreviewMutation.isPending ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" />
+                    Preparing a preview…
+                  </div>
+                ) : (
+                  <p className={`text-sm leading-relaxed mb-3 ${theme.text}`}>{chapterPreviewText}</p>
+                )}
+                {!chapterPreviewMutation.isPending && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowChapterPreview(false)}
+                    aria-label="Dismiss chapter preview and start reading"
+                  >
+                    Start Reading
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

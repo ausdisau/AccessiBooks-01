@@ -25,6 +25,8 @@ export function getDefaultA11ySettings(): AccessibilitySettings {
     colourOverlayOpacity: 0.15,
     sessionPacingMinutes: 0,
     comprehensionCheckIns: false,
+    chapterPreviews: false,
+    picturePauses: false,
     symbolOverlay: false,
     switchAccessMode: false,
     focusShell: false,

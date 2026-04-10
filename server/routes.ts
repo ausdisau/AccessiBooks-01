@@ -5955,6 +5955,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ─── AI Accessibility Features ────────────────────────────────────────────
 
+  // In-memory caches for AI comprehension content (avoids repeat OpenAI calls)
+  const chapterPreviewCache = new Map<string, string>();
+  const chapterCheckinCache = new Map<string, { questions: { question: string; options: string[]; correct: number }[] }>();
+
+  app.post("/api/ai/chapter-preview", async (req: any, res) => {
+    try {
+      const { chapterText, title, bookId, chapterIndex } = req.body as {
+        chapterText?: string;
+        title?: string;
+        bookId?: string;
+        chapterIndex?: number;
+      };
+      if (!chapterText || typeof chapterText !== "string" || chapterText.trim().length === 0) {
+        return res.status(400).json({ message: "chapterText is required" });
+      }
+
+      const cacheKey = bookId && chapterIndex !== undefined ? `${bookId}:${chapterIndex}` : "";
+      if (cacheKey && chapterPreviewCache.has(cacheKey)) {
+        return res.json({ preview: chapterPreviewCache.get(cacheKey), fromCache: true });
+      }
+
+      const { openai } = await import("./replit_integrations/image/client");
+      const excerpt = chapterText.slice(0, 1500);
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You help readers with learning disabilities prepare for each chapter. Write a 2-3 sentence plain-English preview of what happens in the passage below. Use very simple words. Start with 'In this part,' or 'In this chapter,'. No spoilers beyond the text given.",
+          },
+          {
+            role: "user",
+            content: `${title ? `Book: ${title}\n\n` : ""}Text excerpt:\n${excerpt}`,
+          },
+        ],
+        max_tokens: 120,
+      });
+      const preview = completion.choices[0]?.message?.content?.trim() ?? "Get ready to read the next part of the story.";
+      if (cacheKey) chapterPreviewCache.set(cacheKey, preview);
+      res.json({ preview, fromCache: false });
+    } catch (err) {
+      console.error("chapter-preview error:", err);
+      res.status(500).json({ message: "AI preview generation failed" });
+    }
+  });
+
   app.post("/api/ai/explain-passage", async (req: any, res) => {
     try {
       const { passage, context } = req.body as { passage?: string; context?: string };
@@ -5989,10 +6036,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/ai/chapter-checkin", async (req: any, res) => {
     try {
-      const { chapterText, title } = req.body as { chapterText?: string; title?: string };
+      const { chapterText, title, bookId, chapterIndex } = req.body as {
+        chapterText?: string;
+        title?: string;
+        bookId?: string;
+        chapterIndex?: number;
+      };
       if (!chapterText || typeof chapterText !== "string" || chapterText.trim().length === 0) {
         return res.status(400).json({ message: "chapterText is required" });
       }
+
+      const cacheKey = bookId && chapterIndex !== undefined ? `${bookId}:${chapterIndex}` : "";
+      if (cacheKey && chapterCheckinCache.has(cacheKey)) {
+        return res.json({ ...chapterCheckinCache.get(cacheKey)!, fromCache: true });
+      }
+
       const { openai } = await import("./replit_integrations/image/client");
       const excerpt = chapterText.slice(0, 2000);
       const completion = await openai.chat.completions.create({
@@ -6018,6 +6076,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch {
         parsed = { questions: [] };
       }
+      if (cacheKey && parsed.questions?.length > 0) chapterCheckinCache.set(cacheKey, parsed);
       res.json(parsed);
     } catch (err) {
       console.error("chapter-checkin error:", err);
