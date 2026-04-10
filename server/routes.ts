@@ -399,20 +399,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { limit } = req.query;
       const pageLimit = Math.min(parseInt(limit as string) || 24, 100);
 
-      // Each level paginates independently from the start so we get a full combined result set
-      const half = Math.ceil(pageLimit / 2);
+      // Fetch all available books at each level (up to pageLimit each) then combine.
+      // By fetching the full pageLimit from each level we can backfill from whichever
+      // level has more books, ensuring we always return up to pageLimit results.
       const [level1, level2] = await Promise.all([
-        storage.getBooksPaginated({ limit: half, readingLevel: 1 }),
-        storage.getBooksPaginated({ limit: pageLimit - half, readingLevel: 2 }),
+        storage.getBooksPaginated({ limit: pageLimit, readingLevel: 1 }),
+        storage.getBooksPaginated({ limit: pageLimit, readingLevel: 2 }),
       ]);
 
-      // Sort by ID for deterministic stable ordering and cap to pageLimit
-      const combined = [...level1.data, ...level2.data]
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .slice(0, pageLimit);
+      // Interleave and de-duplicate by ID, then sort by ID for stable ordering
+      const seen = new Set<string>();
+      const combined: typeof level1.data = [];
+      for (const book of [...level1.data, ...level2.data]) {
+        if (!seen.has(book.id)) { seen.add(book.id); combined.push(book); }
+      }
+      combined.sort((a, b) => a.id.localeCompare(b.id));
 
       res.json({
-        data: combined,
+        data: combined.slice(0, pageLimit),
         hasMore: level1.hasMore || level2.hasMore,
         total: (level1.total ?? 0) + (level2.total ?? 0),
       });

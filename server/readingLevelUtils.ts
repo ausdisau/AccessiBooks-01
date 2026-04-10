@@ -213,6 +213,16 @@ export function computeReadingLevel(
   return 3;
 }
 
+/**
+ * Return the genre keyword patterns associated with a specific reading level.
+ * Useful for building SQL LIKE conditions when the reading_level column is unavailable.
+ */
+export function genrePatternsForLevel(level: number): string[] {
+  return Object.entries(GENRE_LEVEL_MAP)
+    .filter(([, l]) => l === level)
+    .map(([key]) => key);
+}
+
 export const READING_LEVEL_LABELS: Record<number, string> = {
   1: "Very Easy",
   2: "Easy",

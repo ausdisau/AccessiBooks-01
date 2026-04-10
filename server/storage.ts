@@ -1,5 +1,5 @@
 import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral } from "@shared/schema";
-import { computeReadingLevel } from "./readingLevelUtils";
+import { computeReadingLevel, genrePatternsForLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -1258,9 +1258,9 @@ export class ExternalAPIStorage implements IStorage {
     // Determine reading level for the update
     let newReadingLevel: number | null | undefined = updates.readingLevel;
 
-    // If caller did not supply an explicit readingLevel and description/genre changed, recompute
+    // If caller did not supply an explicit readingLevel and description/genre/contentUrl changed, recompute
     if (!opts.preserveReadingLevel && updates.readingLevel === undefined) {
-      if (updates.description !== undefined || updates.genre !== undefined) {
+      if (updates.description !== undefined || updates.genre !== undefined || updates.contentUrl !== undefined) {
         const current = await this.getBook(id);
         if (current) {
           const desc = updates.description !== undefined ? updates.description : current.description;
@@ -1310,11 +1310,14 @@ export class ExternalAPIStorage implements IStorage {
   async getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>> {
     const { cursor, limit = 50, source, contentType, genre, search, readingLevel } = options;
 
-    // If search is provided, use full-text search
+    // If search is provided, use full-text search (then apply any remaining filters in-memory)
     if (search) {
-      const results = await this.searchBooksDB(search, limit + 1);
-      const hasMore = results.length > limit;
-      const data = hasMore ? results.slice(0, limit) : results;
+      // Over-fetch when readingLevel filter is active so we have enough matching results
+      const searchLimit = readingLevel ? limit * 20 : limit + 1;
+      const results = await this.searchBooksDB(search, searchLimit);
+      const filtered = readingLevel ? results.filter(b => b.readingLevel === readingLevel) : results;
+      const hasMore = filtered.length > limit;
+      const data = hasMore ? filtered.slice(0, limit) : filtered;
       const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
       return { data, nextCursor, hasMore };
     }
@@ -1348,19 +1351,32 @@ export class ExternalAPIStorage implements IStorage {
             return { data, nextCursor, hasMore };
           }
         } catch {
-          // reading_level column not available – fall through to in-memory scan
+          // reading_level column not available – fall through to genre-pattern SQL filter
         }
-        // In-memory fallback: scan all rows after cursor, filter by computed level
-        const scanRows = await db.execute(
-          sql`SELECT * FROM books ${whereClause} ORDER BY id ASC`
-        );
-        const scanData = (scanRows as any).rows || scanRows;
-        if (!Array.isArray(scanData)) return { data: [], nextCursor: null, hasMore: false };
-        const filtered = scanData.map(mapRowToBook).filter(b => b.readingLevel === readingLevel);
-        const data = filtered.slice(0, limit);
-        const hasMore = filtered.length > limit;
-        const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
-        return { data, nextCursor, hasMore, total: filtered.length };
+        // Genre-pattern fallback: use ILIKE conditions on genre column (no full table scan)
+        try {
+          const patterns = genrePatternsForLevel(readingLevel);
+          if (patterns.length > 0) {
+            const genreLikeConditions = patterns.map(p => sql`LOWER(genre) LIKE ${'%' + p.toLowerCase() + '%'}`);
+            const genreOr = sql`(${sql.join(genreLikeConditions, sql` OR `)})`;
+            const gpConditions = [...conditions, genreOr];
+            const gpWhere = sql`WHERE ${sql.join(gpConditions, sql` AND `)}`;
+            const gpRows = await db.execute(
+              sql`SELECT * FROM books ${gpWhere} ORDER BY id ASC LIMIT ${limit + 1}`
+            );
+            const gpData = (gpRows as any).rows || gpRows;
+            if (Array.isArray(gpData)) {
+              const mapped = gpData.map(mapRowToBook);
+              const hasMore = mapped.length > limit;
+              const data = mapped.slice(0, limit);
+              const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+              return { data, nextCursor, hasMore };
+            }
+          }
+        } catch (gpErr) {
+          console.warn('[getBooksPaginated] Genre-pattern fallback failed:', gpErr);
+        }
+        return { data: [], nextCursor: null, hasMore: false };
       }
 
       const fetchLimit = limit + 1;
