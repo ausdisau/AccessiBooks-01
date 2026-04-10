@@ -277,12 +277,19 @@ export function setupAuth(app: Express) {
     res.json(userWithoutPassword);
   });
 
-  registerMagicLinkRoutes(app);
+  // NOTE: magic link routes are registered directly in routes.ts via
+  // registerMagicLinkRoutes(). Do NOT call it here to avoid double-registration.
 }
 
 /**
- * Register magic link routes without duplicating session/passport setup.
- * Called directly from routes.ts after setupMultiAuth().
+ * Register magic link request/verify routes.
+ * Called from routes.ts after setupMultiAuth() — do NOT also call from setupAuth().
+ *
+ * Required env vars for email delivery (at least one):
+ *   RESEND_API_KEY     — Resend.com API key (primary)
+ *   RESEND_FROM_EMAIL  — Verified sender address for Resend (e.g. "Name <addr@yourdomain.com>")
+ *   SMTP_HOST / SMTP_USER / SMTP_PASS — SMTP credentials (fallback)
+ * When neither is configured (development only), returns devLink in JSON response.
  */
 export function registerMagicLinkRoutes(app: Express) {
   // Magic link: request
