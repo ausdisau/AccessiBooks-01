@@ -356,7 +356,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        style={{ position: 'fixed', bottom: '16px', left: '16px', zIndex: 50, height: '40px', width: '40px', borderRadius: '50%', fontSize: '16px' }}
+        style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 50, height: '40px', width: '40px', borderRadius: '50%', fontSize: '16px' }}
         className="shadow-md opacity-70 hover:opacity-100 transition-opacity bg-primary text-primary-foreground flex items-center justify-center border-0 cursor-pointer"
         aria-label="Open accessibility menu"
         aria-expanded={isOpen}
@@ -367,7 +367,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
 
       {isOpen && (
         <Card 
-          style={{ position: 'fixed', bottom: '64px', left: '16px', zIndex: 50, width: '360px', maxHeight: '80vh', fontSize: '14px' }}
+          style={{ position: 'fixed', bottom: '64px', right: '16px', zIndex: 50, width: '360px', maxHeight: '80vh', fontSize: '14px' }}
           className="shadow-2xl border-2"
           role="region"
           aria-labelledby="a11y-panel-title"
