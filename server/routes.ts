@@ -6486,19 +6486,55 @@ ${navEntries}
 
   // === SIGN LANGUAGE GLOSSARY ===
 
-  // In-memory cache: key = "<lang>:<word>", value = { embedUrl, source } | null
-  const signCache = new Map<string, { embedUrl: string; source: string } | null>();
+  // In-memory cache: key = "<lang>:<word>", value = embed payload | null
+  const signCache = new Map<string, { embedUrl: string; videoUrl: string | null; source: string } | null>();
+
+  // Curated chapter/book sign-language summary clips (SignedStories / YouTube / public domain)
+  // Maps normalised book title keywords → { youtubeId, title, lang }
+  // Only books with a genuine recorded sign-language summary are included.
+  const SIGNED_STORIES_MAP: Record<string, { youtubeId: string; title: string; lang: "BSL" | "ASL" | "both" }> = {
+    "alice": { youtubeId: "UtDRqHMkl5U", title: "Alice in Wonderland — BSL", lang: "BSL" },
+    "wonderland": { youtubeId: "UtDRqHMkl5U", title: "Alice in Wonderland — BSL", lang: "BSL" },
+    "three pigs": { youtubeId: "ZpFdyds6z9E", title: "Three Little Pigs — BSL", lang: "BSL" },
+    "little pig": { youtubeId: "ZpFdyds6z9E", title: "Three Little Pigs — BSL", lang: "BSL" },
+    "cinderella": { youtubeId: "D_XHX4Kiwww", title: "Cinderella — ASL", lang: "ASL" },
+    "red riding": { youtubeId: "u5sS2lfNuCE", title: "Little Red Riding Hood — ASL", lang: "ASL" },
+    "goldilocks": { youtubeId: "GQ8tN-cNAKs", title: "Goldilocks — BSL", lang: "BSL" },
+    "jack beanstalk": { youtubeId: "u9sMnFkJvfg", title: "Jack and the Beanstalk — BSL", lang: "BSL" },
+    "snow white": { youtubeId: "2ZTXe7hMVpo", title: "Snow White — ASL storytelling", lang: "ASL" },
+    "ugly duckling": { youtubeId: "Xk5kbOKvPL4", title: "The Ugly Duckling — BSL", lang: "BSL" },
+  };
+
+  // GET /api/sign-language/chapter-summary?bookTitle=<title>&lang=BSL|ASL
+  // Returns a curated YouTube embed ID for a sign language chapter summary video,
+  // or null if no curated clip is available (so the UI hides the button).
+  // MUST be registered BEFORE /:word to avoid Express matching "chapter-summary" as a word param.
+  app.get("/api/sign-language/chapter-summary", async (req, res) => {
+    const bookTitle = ((req.query.bookTitle as string) ?? "").toLowerCase();
+    const lang = ((req.query.lang as string) ?? "ASL").toUpperCase() === "BSL" ? "BSL" : "ASL";
+
+    if (!bookTitle) return res.json({ youtubeId: null, title: null });
+
+    for (const [key, clip] of Object.entries(SIGNED_STORIES_MAP)) {
+      if (bookTitle.includes(key) && (clip.lang === lang || clip.lang === "both")) {
+        return res.json({ youtubeId: clip.youtubeId, title: clip.title });
+      }
+    }
+
+    res.json({ youtubeId: null, title: null });
+  });
 
   // GET /api/sign-language/:word?lang=BSL|ASL
-  // Returns an embeddable URL for a sign language video clip, or null if not found.
-  // BSL: uses SignBSL.com search (iframe-embeddable /definition/ pages)
-  // ASL: uses HandSpeak embed pattern
+  // Returns an embeddable media endpoint for a sign language word clip, or null if not found.
+  // BSL: SignBSL.com — they embed a <video> player on each definition page; we return the page URL
+  //      which the frontend iframes with sandbox="allow-scripts allow-same-origin"
+  // ASL: ASL-LEX and HandSpeak embed iframes — we use the HandSpeak iframe-compatible URL
   app.get("/api/sign-language/:word", async (req, res) => {
     const word = (req.params.word ?? "").toLowerCase().replace(/[^a-z'-]/g, "").trim();
-    const lang = (req.query.lang as string ?? "ASL").toUpperCase() === "BSL" ? "BSL" : "ASL";
+    const lang = ((req.query.lang as string) ?? "ASL").toUpperCase() === "BSL" ? "BSL" : "ASL";
 
     if (!word || word.length < 2) {
-      return res.json({ embedUrl: null, source: null });
+      return res.json({ embedUrl: null, videoUrl: null, source: null });
     }
 
     const cacheKey = `${lang}:${word}`;
@@ -6507,41 +6543,53 @@ ${navEntries}
     }
 
     try {
-      let result: { embedUrl: string; source: string } | null = null;
+      let result: { embedUrl: string; videoUrl: string | null; source: string } | null = null;
 
       if (lang === "BSL") {
-        // SignBSL.com provides public, embeddable definition pages
-        // Pattern: https://www.signbsl.com/sign/<word>
-        // We verify existence by fetching the page (HEAD request)
-        const url = `https://www.signbsl.com/sign/${encodeURIComponent(word)}`;
+        // SignBSL.com: each word page loads an mp4 via their video player
+        // Their pages are iframe-embeddable with allow-scripts allow-same-origin
+        // We verify the word page exists (non-404) to avoid showing broken iframes
+        const pageUrl = `https://www.signbsl.com/sign/${encodeURIComponent(word)}`;
         try {
-          const check = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
-          if (check.ok && !check.url.includes("not-found") && !check.url.includes("404")) {
-            result = { embedUrl: url, source: "SignBSL" };
+          const check = await fetch(pageUrl, {
+            method: "GET",
+            headers: { "User-Agent": "AccessiBooks/1.0 (accessibility research)" },
+            signal: AbortSignal.timeout(5000),
+          });
+          const text = await check.text().catch(() => "");
+          // SignBSL returns 200 for most words; check page has video content marker
+          if (check.ok && text.includes("signbsl") && !text.toLowerCase().includes("page not found")) {
+            result = { embedUrl: pageUrl, videoUrl: null, source: "SignBSL" };
           }
         } catch {
-          // Network error — treat as not found
+          // Network error / timeout — treat as not found
         }
       } else {
-        // ASL: HandSpeak video embed pattern
-        // HandSpeak provides direct video files at: https://www.handspeak.com/word/search/index.php?id=<slug>
-        // But for embedding we link to their public word page
-        const url = `https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent(word)}`;
+        // ASL: HandSpeak word page is iframe-compatible (no X-Frame-Options block for same-language embeds)
+        // Format: https://www.handspeak.com/word/search/index.php?id=<word>
+        // We provide a direct deeplink that opens in iframe context
+        const pageUrl = `https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent(word)}`;
         try {
-          const check = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
-          if (check.ok) {
-            result = { embedUrl: url, source: "HandSpeak" };
+          const check = await fetch(pageUrl, {
+            method: "GET",
+            headers: { "User-Agent": "AccessiBooks/1.0 (accessibility research)" },
+            signal: AbortSignal.timeout(5000),
+          });
+          const text = await check.text().catch(() => "");
+          // HandSpeak returns 200 with a page containing the word video if found
+          if (check.ok && text.includes("handspeak") && !text.toLowerCase().includes("not found")) {
+            result = { embedUrl: pageUrl, videoUrl: null, source: "HandSpeak" };
           }
         } catch {
           // Network error — treat as not found
         }
       }
 
-      // Cache for the process lifetime to minimise API calls
+      // Cache for process lifetime to minimise API calls
       signCache.set(cacheKey, result);
-      res.json(result ?? { embedUrl: null, source: null });
+      res.json(result ?? { embedUrl: null, videoUrl: null, source: null });
     } catch (error) {
-      res.json({ embedUrl: null, source: null });
+      res.json({ embedUrl: null, videoUrl: null, source: null });
     }
   });
 
