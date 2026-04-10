@@ -27,6 +27,7 @@ export function getDefaultA11ySettings(): AccessibilitySettings {
     comprehensionCheckIns: false,
     symbolOverlay: false,
     switchAccessMode: false,
+    focusShell: false,
   };
 }
 

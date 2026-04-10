@@ -1,3 +1,15 @@
+/**
+ * pages/ad-platform/advertiser-dashboard.tsx — Display Ad Bidding Platform (AdBid)
+ *
+ * This dashboard is for users with role="advertiser" in the AdBid display-ad marketplace.
+ * Manages display ad campaigns (with image/text creatives), ad wallet top-ups,
+ * and analytics. Only accessible in the /ad-platform section.
+ * API: /api/ad/*
+ *
+ * NOT to be confused with components/advertiser-dashboard.tsx, which handles audio
+ * self-serve ads for regular app users at /advertise.
+ * API: /api/self-serve-ads/*
+ */
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";

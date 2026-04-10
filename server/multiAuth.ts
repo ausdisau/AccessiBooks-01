@@ -1,3 +1,13 @@
+/**
+ * multiAuth.ts — OAuth social login strategies (active, used alongside auth.ts)
+ *
+ * Responsibility: registers Passport strategies for Google, Facebook, Microsoft,
+ * and Auth0 (when the corresponding env vars are set). Also provides the
+ * isAuthenticated middleware used throughout the server.
+ *
+ * Does NOT own session setup — that is done in auth.ts.
+ * Does NOT handle Auth0 JWT token verification — that is in auth0.ts.
+ */
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";

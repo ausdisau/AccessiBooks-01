@@ -1,3 +1,13 @@
+/**
+ * auth0.ts — Auth0 SDK integration (optional, only active when AUTH0_* env vars are set)
+ *
+ * Responsibility: Auth0 Management API (user management), Authentication API
+ * (machine-to-machine login), and JWKS-based JWT token verification for
+ * API requests bearing Auth0 access tokens.
+ *
+ * Does NOT set up session or Passport strategies — those are in multiAuth.ts.
+ * Only activated when AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET are present.
+ */
 import { ManagementClient, AuthenticationClient } from "auth0";
 import type { Express, Request, Response } from "express";
 import { storage } from "./storage";

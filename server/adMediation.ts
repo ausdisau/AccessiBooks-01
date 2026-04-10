@@ -1,3 +1,21 @@
+/**
+ * adMediation.ts — Programmatic Audio Ad Mediation Layer
+ *
+ * Responsibility: Waterfall ad selection for audio playback ads (pre-roll/mid-roll):
+ *   1. Try VAST-compatible programmatic providers in priority order
+ *      (AdsWizz, Triton Digital, AdPersonam — activated via env vars)
+ *   2. Fall back to self-serve audio ads from selfServeAds.ts
+ *   3. Fall back to house ads (internal promotional messages)
+ *
+ * Routes registered:
+ *   - GET /api/ads/request   — request an audio ad (preroll or midroll)
+ *   - POST /api/ads/tracking — fire VAST tracking pixels server-side
+ *   - GET /api/ads/providers — list configured providers and their status
+ *   - GET /api/ads/analytics — in-memory ad request analytics
+ *
+ * NOT responsible for display (banner) ads — see adPlatformRoutes.ts.
+ * NOT responsible for ad campaign CRUD — see selfServeAds.ts.
+ */
 import { Router, Request, Response } from "express";
 import { resolveVAST, selectBestCreative, selectBestCompanion, type VASTAd, type VASTCreative, type VASTCompanion, type VASTTrackingEvents } from "./vastParser";
 import { selectSelfServeAd, recordImpression, recordImpressionEvent } from "./selfServeAds";

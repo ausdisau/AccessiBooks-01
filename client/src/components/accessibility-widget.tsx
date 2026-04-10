@@ -48,6 +48,7 @@ import {
   Droplets,
   FlipHorizontal,
   UserCog,
+  LayoutDashboard,
 } from "lucide-react";
 
 const CVD_SVG_ID = "a11y-cvd-filters";
@@ -741,6 +742,24 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
                       checked={!!settings.switchAccessMode}
                       onCheckedChange={(checked) => updateSettings({ switchAccessMode: checked })}
                     />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="focus-shell" className="flex items-center gap-2 text-sm">
+                        <LayoutDashboard className="h-3 w-3" /> Focus Shell
+                        <span className="text-xs text-muted-foreground font-normal">(simplified 3-button view)</span>
+                      </Label>
+                      <Switch
+                        id="focus-shell"
+                        checked={!!settings.focusShell}
+                        onCheckedChange={(checked) => updateSettings({ focusShell: checked })}
+                      />
+                    </div>
+                    {!!settings.focusShell && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 pl-5">
+                        Focus Shell is active — all app chrome hidden. Open this panel or press <kbd className="bg-muted px-1 rounded text-[10px]">Esc</kbd> to exit.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

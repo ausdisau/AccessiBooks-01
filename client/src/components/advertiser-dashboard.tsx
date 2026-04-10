@@ -1,3 +1,14 @@
+/**
+ * advertiser-dashboard.tsx — Audio Self-Serve Advertiser Dashboard
+ *
+ * This dashboard is for AUDIO ad campaigns (self-serve audio ads with recorded/uploaded
+ * audio creatives). It is used at the /advertise route for regular authenticated users.
+ * API: /api/self-serve-ads/*
+ *
+ * NOT to be confused with pages/ad-platform/advertiser-dashboard.tsx, which is the
+ * display ad bidding platform (AdBid) for users with role="advertiser".
+ * API: /api/ad/*
+ */
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";

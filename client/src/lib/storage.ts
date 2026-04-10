@@ -56,6 +56,7 @@ export interface AccessibilitySettings {
   symbolOverlay?: boolean;
   switchAccessMode?: boolean;
   karaokeFollowAlong?: boolean;
+  focusShell?: boolean;
 }
 
 export const localStorageService = {
