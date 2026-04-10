@@ -134,6 +134,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const [showPictureCheckin, setShowPictureCheckin] = useState(false);
   const [pictureCheckinData, setPictureCheckinData] = useState<PictureCheckinData | null>(null);
   const [pictureCheckinSelected, setPictureCheckinSelected] = useState<number | null>(null);
+  const [checkinConfirmed, setCheckinConfirmed] = useState(false);
 
   const logCheckinAction = (action: "answered" | "skipped") => {
     try {
@@ -145,9 +146,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   };
 
   const pictureCheckinMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ completedChapterTitle }: { completedChapterTitle: string }) => {
+      const chapterContext = completedChapterTitle
+        ? `${book.title} — ${completedChapterTitle}`
+        : book.description ?? book.title ?? "audiobook chapter";
       const res = await apiRequest("POST", "/api/ai/chapter-picture-checkin", {
-        chapterText: book.description ?? book.title ?? "audiobook chapter",
+        chapterText: chapterContext,
         title: book.title,
         bookId: String(book.id),
         chapterIndex: currentChapterIndex,
@@ -237,7 +241,8 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
       triggerPicturePause(currentChapter?.title ?? null);
     }
     if (a11ySettings.comprehensionCheckIns && !showPictureCheckin) {
-      pictureCheckinMutation.mutate();
+      const completedChapterTitle = chapters[prev]?.title ?? "";
+      pictureCheckinMutation.mutate({ completedChapterTitle });
     }
   }, [currentChapterIndex]);
 
@@ -1203,6 +1208,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" />
                 Getting your check-in ready…
               </div>
+            ) : checkinConfirmed ? (
+              <div className="flex flex-col items-center gap-3 py-6 animate-in fade-in zoom-in duration-300">
+                <span className="text-5xl" aria-hidden="true">🎉</span>
+                <p className="font-semibold text-base text-foreground">Great job!</p>
+                <p className="text-sm text-muted-foreground">Keep on listening!</p>
+              </div>
             ) : (
               <>
                 <p className="text-sm font-medium mb-4">{pictureCheckinData.question}</p>
@@ -1213,7 +1224,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                       onClick={() => {
                         setPictureCheckinSelected(i);
                         logCheckinAction("answered");
-                        setTimeout(() => setShowPictureCheckin(false), 900);
+                        setCheckinConfirmed(true);
+                        setTimeout(() => {
+                          setShowPictureCheckin(false);
+                          setCheckinConfirmed(false);
+                          setPictureCheckinSelected(null);
+                        }, 1500);
                       }}
                       disabled={pictureCheckinSelected !== null}
                       className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-colors min-w-[80px] ${
