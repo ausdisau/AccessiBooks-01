@@ -1,14 +1,41 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { wordBankService, WordBankEntry } from "@/lib/storage";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Volume2, BookOpen, Search } from "lucide-react";
+import { Trash2, Volume2, BookOpen, Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 
-function WordCard({ entry, onDelete }: { entry: WordBankEntry; onDelete: (id: string) => void }) {
+interface ApiWordEntry {
+  id: string;
+  word: string;
+  definition: string | null;
+  imageUrl: string | null;
+  savedAt: string;
+}
+
+function normalizeEntry(raw: ApiWordEntry | WordBankEntry): ApiWordEntry {
+  return {
+    id: raw.id,
+    word: raw.word,
+    definition: raw.definition ?? null,
+    imageUrl: raw.imageUrl ?? null,
+    savedAt: typeof (raw as any).savedAt === "string" ? (raw as any).savedAt : new Date((raw as any).savedAt).toISOString(),
+  };
+}
+
+function WordCard({
+  entry,
+  onDelete,
+}: {
+  entry: ApiWordEntry;
+  onDelete: (id: string) => void;
+}) {
   const { toast } = useToast();
 
   const handleSpeak = () => {
@@ -21,7 +48,6 @@ function WordCard({ entry, onDelete }: { entry: WordBankEntry; onDelete: (id: st
   };
 
   const handleDelete = () => {
-    wordBankService.remove(entry.id);
     onDelete(entry.id);
     toast({ title: `"${entry.word}" removed from Word Bank` });
   };
@@ -53,7 +79,9 @@ function WordCard({ entry, onDelete }: { entry: WordBankEntry; onDelete: (id: st
               src={entry.imageUrl}
               alt={`Symbol for ${entry.word}`}
               className="w-20 h-20 object-contain rounded-lg border border-border bg-muted/30"
-              onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              onError={e => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
             />
           </div>
         ) : (
@@ -90,22 +118,52 @@ function WordCard({ entry, onDelete }: { entry: WordBankEntry; onDelete: (id: st
 }
 
 export function WordBankPage() {
-  const [entries, setEntries] = useState<WordBankEntry[]>(() => wordBankService.getAll());
+  const { user } = useAuth();
+  const isLoggedIn = !!user;
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    const sync = () => setEntries(wordBankService.getAll());
-    window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
-  }, []);
+  const apiQuery = useQuery<ApiWordEntry[]>({
+    queryKey: ["/api/word-bank"],
+    enabled: isLoggedIn,
+    retry: false,
+  });
+
+  const localEntries: ApiWordEntry[] = !isLoggedIn
+    ? wordBankService.getAll().map(normalizeEntry)
+    : [];
+
+  const entries: ApiWordEntry[] = isLoggedIn
+    ? (apiQuery.data ?? []).map(normalizeEntry)
+    : localEntries;
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (isLoggedIn) {
+        await apiRequest("DELETE", `/api/word-bank/${id}`);
+      } else {
+        wordBankService.remove(id);
+      }
+    },
+    onSuccess: () => {
+      if (isLoggedIn) {
+        queryClient.invalidateQueries({ queryKey: ["/api/word-bank"] });
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to remove word", variant: "destructive" });
+    },
+  });
 
   const handleDelete = (id: string) => {
-    setEntries(prev => prev.filter(e => e.id !== id));
+    deleteMutation.mutate(id);
   };
 
   const filtered = searchQuery.trim()
     ? entries.filter(e => e.word.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : entries;
+
+  const isLoading = isLoggedIn && apiQuery.isLoading;
 
   return (
     <div className="space-y-6" data-testid="word-bank-page">
@@ -140,7 +198,11 @@ export function WordBankPage() {
         </div>
       )}
 
-      {entries.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : entries.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
             <BookOpen className="h-8 w-8 text-muted-foreground/40" />

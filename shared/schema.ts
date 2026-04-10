@@ -1869,3 +1869,19 @@ export const insertBidSchema = createInsertSchema(bids).omit({ id: true, created
 export type InsertBid = z.infer<typeof insertBidSchema>;
 export type Bid = typeof bids.$inferSelect;
 
+// Personal Word Bank: words saved by users while reading
+export const wordBankEntries = pgTable("word_bank_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  word: varchar("word").notNull(),
+  definition: text("definition"),
+  imageUrl: text("image_url"),
+  savedAt: timestamp("saved_at").defaultNow(),
+}, (t) => [
+  index("idx_word_bank_user").on(t.userId),
+]);
+
+export const insertWordBankEntrySchema = createInsertSchema(wordBankEntries).omit({ id: true, savedAt: true });
+export type InsertWordBankEntry = z.infer<typeof insertWordBankEntrySchema>;
+export type DbWordBankEntry = typeof wordBankEntries.$inferSelect;
+

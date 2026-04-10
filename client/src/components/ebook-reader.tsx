@@ -260,6 +260,9 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const followAlong = a11yProfile.karaokeFollowAlong ?? false;
 
   const [clickedWordData, setClickedWordData] = useState<{ word: string; rect: DOMRect } | null>(null);
+  const [wordContextMenu, setWordContextMenu] = useState<{ word: string; x: number; y: number } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef<{ x: number; y: number; target: EventTarget | null }>({ x: 0, y: 0, target: null });
   const [pageSymbolImageCache, setPageSymbolImageCache] = useState<Record<string, string | null>>({});
   const symbolFetchRef = useRef<string>("");
 
@@ -319,6 +322,59 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     const clean = word.replace(/[^a-zA-Z'-]/g, "");
     if (!clean || clean.length < 2) return;
     setClickedWordData({ word: clean.toLowerCase(), rect });
+  }, []);
+
+  const extractWordFromTarget = (target: EventTarget | null): string | null => {
+    if (!target) return null;
+    const el = target as HTMLElement;
+    const span = el.closest("[role='button']") as HTMLElement | null;
+    if (!span) return null;
+    const text = span.textContent?.replace(/[^a-zA-Z'-]/g, "") ?? "";
+    return text.length >= 2 ? text.toLowerCase() : null;
+  };
+
+  const handleContentContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const word = extractWordFromTarget(e.target);
+    if (!word) return;
+    e.preventDefault();
+    setWordContextMenu({ word, x: e.clientX, y: e.clientY });
+  }, []);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const onPointerDown = (e: PointerEvent) => {
+      longPressStartRef.current = { x: e.clientX, y: e.clientY, target: e.target };
+      const timer = setTimeout(() => {
+        const word = extractWordFromTarget(longPressStartRef.current.target);
+        if (!word) return;
+        setWordContextMenu({ word, x: longPressStartRef.current.x, y: longPressStartRef.current.y });
+      }, 550);
+      longPressTimerRef.current = timer;
+    };
+    const onPointerUp = () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      const dx = e.clientX - longPressStartRef.current.x;
+      const dy = e.clientY - longPressStartRef.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 8 && longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("pointermove", onPointerMove);
+    return () => {
+      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("pointermove", onPointerMove);
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    };
   }, []);
 
   const audioCtx = useAudioContext();
@@ -1519,6 +1575,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                     wordSpacing: settings.fontFamily === "dyslexia" ? "0.1em" : undefined,
                   }}
                   onMouseUp={handleTextSelection}
+                  onContextMenu={handleContentContextMenu}
                 >
                   {easyEnglishMode && easyEnglishText ? (
                     <div>
@@ -1869,6 +1926,19 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           onClose={() => setClickedWordData(null)}
         />
       )}
+      {wordContextMenu && (
+        <WordContextMenu
+          word={wordContextMenu.word}
+          x={wordContextMenu.x}
+          y={wordContextMenu.y}
+          onClose={() => setWordContextMenu(null)}
+          onOpenVocab={(w) => {
+            setWordContextMenu(null);
+            const syntheticRect = new DOMRect(wordContextMenu.x, wordContextMenu.y, 0, 0);
+            setClickedWordData({ word: w, rect: syntheticRect });
+          }}
+        />
+      )}
 
       </main>
 
@@ -1883,6 +1953,14 @@ function TextReader({ book, onBack }: EbookReaderProps) {
         }
         .animate-slide-in-left { animation: slideInLeft 0.3s ease-out; }
         .animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
+        @keyframes bounceOnce {
+          0%, 100% { transform: scale(1) translateY(0); }
+          20% { transform: scale(1.3) translateY(-20px); }
+          40% { transform: scale(0.9) translateY(0); }
+          60% { transform: scale(1.15) translateY(-10px); }
+          80% { transform: scale(1) translateY(0); }
+        }
+        .animate-bounce-once { animation: bounceOnce 0.8s ease-in-out; }
       `}</style>
     </div>
   );
@@ -2135,7 +2213,26 @@ function WordVocabPopup({
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [saved, setSaved] = useState(() => wordBankService.has(word));
+  const { user: authUser } = useAuth();
+  const isLoggedIn = !!authUser;
+
+  const wordBankQuery = useQuery<Array<{ id: string; word: string }>>({
+    queryKey: ["/api/word-bank"],
+    enabled: isLoggedIn,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const [saved, setSaved] = useState(() =>
+    isLoggedIn ? false : wordBankService.has(word)
+  );
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  useEffect(() => {
+    if (isLoggedIn && wordBankQuery.data) {
+      setSaved(wordBankQuery.data.some(e => e.word.toLowerCase() === word.toLowerCase()));
+    }
+  }, [wordBankQuery.data, isLoggedIn, word]);
 
   const symbolQuery = useQuery<{ url: string | null; id: number | null }>({
     queryKey: ["/api/symbols", word],
@@ -2154,6 +2251,17 @@ function WordVocabPopup({
       }).then(r => r.json()),
     staleTime: 24 * 60 * 60 * 1000,
     retry: false,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: { word: string; definition: string | null; imageUrl: string | null }) => {
+      const res = await apiRequest("POST", "/api/word-bank", data);
+      if (!res.ok) throw new Error("Save failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/word-bank"] });
+    },
   });
 
   const popupRef = useRef<HTMLDivElement>(null);
@@ -2184,26 +2292,49 @@ function WordVocabPopup({
     }
   };
 
-  const handleSave = () => {
-    if (saved) return;
+  const triggerMilestone = (milestone: number) => {
+    const milestoneMessages: Record<number, string> = {
+      1: "You saved your first word! 🎉",
+      5: "5 words saved — you're building a vocabulary! 📖",
+      10: "10 words! Keep it up! ⭐",
+      25: "25 words — impressive! 🏆",
+      50: "50 words! You're a word explorer! 🚀",
+    };
+    setShowCelebration(true);
+    setTimeout(() => setShowCelebration(false), 2000);
+    toast({
+      title: milestoneMessages[milestone] || `${milestone} words saved!`,
+      description: "Visit your Word Bank to review them.",
+    });
+  };
+
+  const handleSave = async () => {
+    if (saved || saveMutation.isPending) return;
     const definition = defQuery.data?.definition ?? null;
     const imageUrl = symbolQuery.data?.url ?? null;
-    const { milestone } = wordBankService.add(word, definition, imageUrl);
     setSaved(true);
-    if (milestone !== null) {
-      const milestoneMessages: Record<number, string> = {
-        1: "You saved your first word! 🎉",
-        5: "5 words saved — you're building a vocabulary! 📖",
-        10: "10 words! Keep it up! ⭐",
-        25: "25 words — impressive! 🏆",
-        50: "50 words! You're a word explorer! 🚀",
-      };
-      toast({
-        title: milestoneMessages[milestone] || `${milestone} words saved!`,
-        description: "Visit your Word Bank to review them.",
-      });
+
+    if (isLoggedIn) {
+      try {
+        await saveMutation.mutateAsync({ word, definition, imageUrl });
+        const newCount = (wordBankQuery.data?.length ?? 0) + 1;
+        const milestones = [1, 5, 10, 25, 50];
+        if (milestones.includes(newCount)) {
+          triggerMilestone(newCount);
+        } else {
+          toast({ title: `"${word}" saved to Word Bank` });
+        }
+      } catch {
+        setSaved(false);
+        toast({ title: "Could not save word", variant: "destructive" });
+      }
     } else {
-      toast({ title: `"${word}" saved to Word Bank` });
+      const { milestone } = wordBankService.add(word, definition, imageUrl);
+      if (milestone !== null) {
+        triggerMilestone(milestone);
+      } else {
+        toast({ title: `"${word}" saved to Word Bank` });
+      }
     }
   };
 
@@ -2226,6 +2357,16 @@ function WordVocabPopup({
   const definition = defQuery.data?.definition ?? null;
 
   const popup = (
+    <>
+    {showCelebration && createPortal(
+      <div className="pointer-events-none fixed inset-0 z-[200] flex items-center justify-center">
+        <div className="word-bank-celebrate text-center">
+          <span className="text-6xl animate-bounce-once block">🎉</span>
+          <span className="sr-only">Milestone reached!</span>
+        </div>
+      </div>,
+      document.body
+    )}
     <div
       ref={popupRef}
       className="fixed z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-4 flex flex-col gap-3 select-none"
@@ -2287,10 +2428,12 @@ function WordVocabPopup({
         className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors border ${
           saved
             ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 cursor-default"
-            : "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
+            : saveMutation.isPending
+              ? "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-500 dark:text-amber-400 cursor-wait opacity-70"
+              : "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
         }`}
         onClick={handleSave}
-        disabled={saved}
+        disabled={saved || saveMutation.isPending}
         aria-label={saved ? `"${word}" is already in your Word Bank` : `Save "${word}" to Word Bank`}
         data-testid="btn-save-to-word-bank"
       >
@@ -2298,7 +2441,104 @@ function WordVocabPopup({
         {saved ? "Saved to Word Bank" : "Save to Word Bank"}
       </button>
     </div>
+    </>
   );
 
   return createPortal(popup, document.body);
+}
+
+function WordContextMenu({
+  word,
+  x,
+  y,
+  onClose,
+  onOpenVocab,
+}: {
+  word: string;
+  x: number;
+  y: number;
+  onClose: () => void;
+  onOpenVocab: (word: string) => void;
+}) {
+  const { toast } = useToast();
+  const { user: authUser } = useAuth();
+  const isLoggedIn = !!authUser;
+
+  const menuRef = useRef<HTMLDivElement>(null);
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (isLoggedIn) {
+        const res = await apiRequest("POST", "/api/word-bank", { word, definition: null, imageUrl: null });
+        if (!res.ok) throw new Error("Save failed");
+        return res.json();
+      } else {
+        wordBankService.add(word, null, null);
+      }
+    },
+    onSuccess: () => {
+      if (isLoggedIn) queryClient.invalidateQueries({ queryKey: ["/api/word-bank"] });
+      toast({ title: `"${word}" saved to Word Bank` });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Could not save word", variant: "destructive" });
+    },
+  });
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  const MENU_W = 180;
+  const MENU_H = 80;
+  const menuX = x + MENU_W > viewportW - 8 ? x - MENU_W : x;
+  const menuY = y + MENU_H > viewportH - 8 ? y - MENU_H : y;
+
+  const menu = (
+    <div
+      ref={menuRef}
+      className="fixed z-[100] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px] select-none"
+      style={{ top: menuY, left: menuX }}
+      role="menu"
+      aria-label={`Actions for: ${word}`}
+    >
+      <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border mb-1 capitalize">
+        {word}
+      </div>
+      <button
+        className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2 transition-colors"
+        role="menuitem"
+        onClick={() => { onClose(); onOpenVocab(word); }}
+      >
+        <BookOpen className="h-3.5 w-3.5 text-primary" />
+        View definition
+      </button>
+      <button
+        className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2 transition-colors"
+        role="menuitem"
+        disabled={saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+        data-testid="ctx-save-to-word-bank"
+      >
+        <Bookmark className="h-3.5 w-3.5 text-amber-500" />
+        {saveMutation.isPending ? "Saving…" : "Save to Word Bank"}
+      </button>
+    </div>
+  );
+  return createPortal(menu, document.body);
 }

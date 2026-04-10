@@ -262,3 +262,24 @@ export async function setupEasyEnglishTables(): Promise<void> {
     console.warn("[EasyEnglish] Table setup warning:", error.message);
   }
 }
+
+export async function setupWordBankTable(): Promise<boolean> {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS word_bank_entries (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        word varchar NOT NULL,
+        definition text,
+        image_url text,
+        saved_at timestamp DEFAULT now()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_word_bank_user ON word_bank_entries(user_id)`;
+    console.log("[WordBank] Table setup successful");
+    return true;
+  } catch (error: any) {
+    console.warn("[WordBank] Table setup warning (in-memory fallback active):", error.message);
+    return false;
+  }
+}
