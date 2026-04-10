@@ -120,30 +120,77 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
   const [showPicturePause, setShowPicturePause] = useState(false);
   const [picturePauseChapter, setPicturePauseChapter] = useState<string | null>(null);
+  const [picturePauseSymbolUrl, setPicturePauseSymbolUrl] = useState<string | null>(null);
   const lastPicturePauseTimeRef = useRef<number>(0);
   const picturePauseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevChapterIndexRef = useRef<number>(-1);
+  const picturePauseWasPlayingRef = useRef<boolean>(false);
 
-  const [chapterEndQuizQuestions, setChapterEndQuizQuestions] = useState<{ question: string; options: string[]; correct: number }[]>([]);
-  const [chapterEndQuizAnswers, setChapterEndQuizAnswers] = useState<(number | null)[]>([]);
-  const [showChapterEndQuiz, setShowChapterEndQuiz] = useState(false);
-  const chapterEndQuizMutation = useMutation({
+  interface PictureCheckinData {
+    question: string;
+    options: string[];
+    symbolUrls: (string | null)[];
+  }
+  const [showPictureCheckin, setShowPictureCheckin] = useState(false);
+  const [pictureCheckinData, setPictureCheckinData] = useState<PictureCheckinData | null>(null);
+  const [pictureCheckinSelected, setPictureCheckinSelected] = useState<number | null>(null);
+
+  const logCheckinAction = (action: "answered" | "skipped") => {
+    try {
+      const key = "accessibooks:checkin-log";
+      const logs: unknown[] = JSON.parse(localStorage.getItem(key) ?? "[]");
+      logs.push({ bookId: String(book.id), chapterIdx: currentChapterIndex, action, ts: Date.now() });
+      localStorage.setItem(key, JSON.stringify(logs.slice(-100)));
+    } catch {}
+  };
+
+  const pictureCheckinMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/ai/chapter-checkin", {
+      const res = await apiRequest("POST", "/api/ai/chapter-picture-checkin", {
         chapterText: book.description ?? book.title ?? "audiobook chapter",
         title: book.title,
         bookId: String(book.id),
         chapterIndex: currentChapterIndex,
       });
-      if (!res.ok) throw new Error("Quiz failed");
-      return res.json() as Promise<{ questions: { question: string; options: string[]; correct: number }[] }>;
+      if (!res.ok) throw new Error("Check-in failed");
+      return res.json() as Promise<{ question: string; options: string[] }>;
     },
-    onSuccess: (data) => {
-      setChapterEndQuizQuestions(data.questions ?? []);
-      setChapterEndQuizAnswers((data.questions ?? []).map(() => null));
-      setShowChapterEndQuiz(true);
+    onSuccess: async (data) => {
+      const urls = await Promise.all(
+        (data.options ?? []).map(async (w: string) => {
+          try {
+            const r = await fetch(`/api/symbols/${encodeURIComponent(w.toLowerCase())}`);
+            const d = await r.json() as { url: string | null };
+            return d.url ?? null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      setPictureCheckinData({ question: data.question, options: data.options, symbolUrls: urls });
+      setPictureCheckinSelected(null);
+      setShowPictureCheckin(true);
     },
   });
+
+  const triggerPicturePause = useCallback((chapterTitle: string | null) => {
+    picturePauseWasPlayingRef.current = isPlaying;
+    if (isPlaying) togglePlayPause();
+    setPicturePauseChapter(chapterTitle);
+    const keyword = (chapterTitle ?? book.title ?? "story").split(/\s+/)[0].toLowerCase().replace(/[^a-z]/g, "");
+    fetch(`/api/symbols/${encodeURIComponent(keyword)}`)
+      .then(r => r.json())
+      .then((d: { url: string | null }) => setPicturePauseSymbolUrl(d.url ?? null))
+      .catch(() => setPicturePauseSymbolUrl(null));
+    setShowPicturePause(true);
+  }, [isPlaying, togglePlayPause, book.title]);
+
+  const handlePicturePauseKeepGoing = useCallback(() => {
+    setShowPicturePause(false);
+    setPicturePauseSymbolUrl(null);
+    if (picturePauseWasPlayingRef.current && !isPlaying) togglePlayPause();
+    picturePauseWasPlayingRef.current = false;
+  }, [isPlaying, togglePlayPause]);
 
   useEffect(() => {
     const sync = () => setA11ySettings(localStorageService.getSettings());
@@ -170,12 +217,11 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
       const now = Date.now();
       if (now - lastPicturePauseTimeRef.current >= 5 * 60 * 1000) {
         lastPicturePauseTimeRef.current = now;
-        setPicturePauseChapter(currentChapter?.title ?? null);
-        setShowPicturePause(true);
+        triggerPicturePause(currentChapter?.title ?? null);
       }
     }, 30 * 1000);
     return () => { if (picturePauseIntervalRef.current) clearInterval(picturePauseIntervalRef.current); };
-  }, [a11ySettings.picturePauses, isPlaying, currentChapter]);
+  }, [a11ySettings.picturePauses, isPlaying, currentChapter, triggerPicturePause]);
 
   useEffect(() => {
     const prev = prevChapterIndexRef.current;
@@ -188,11 +234,10 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
     if (a11ySettings.picturePauses) {
       lastPicturePauseTimeRef.current = Date.now();
-      setPicturePauseChapter(currentChapter?.title ?? null);
-      setShowPicturePause(true);
+      triggerPicturePause(currentChapter?.title ?? null);
     }
-    if (a11ySettings.comprehensionCheckIns && !showChapterEndQuiz) {
-      chapterEndQuizMutation.mutate();
+    if (a11ySettings.comprehensionCheckIns && !showPictureCheckin) {
+      pictureCheckinMutation.mutate();
     }
   }, [currentChapterIndex]);
 
@@ -1094,18 +1139,27 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
       )}
 
       {showPicturePause && a11ySettings.picturePauses && (
-        <Card className="border-2 border-purple-400/40 bg-purple-50 dark:bg-purple-950/40 mt-2">
+        <Card className="border-2 border-purple-400/40 bg-purple-50 dark:bg-purple-950/40 mt-2" role="dialog" aria-label="Picture pause">
           <CardContent className="p-5">
             <div className="flex flex-col items-center gap-4 text-center">
-              <div className="relative w-full max-w-xs mx-auto">
-                {book.coverImage ? (
+              <div className="w-32 h-32 flex items-center justify-center">
+                {picturePauseSymbolUrl ? (
+                  <img
+                    src={picturePauseSymbolUrl}
+                    alt={`Symbol for ${picturePauseChapter ?? book.title}`}
+                    className="w-32 h-32 object-contain rounded-xl border border-purple-200 dark:border-purple-700 bg-white dark:bg-gray-900 p-2"
+                    onError={e => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : book.coverImage ? (
                   <img
                     src={book.coverImage}
                     alt={`Cover of ${book.title}`}
-                    className="w-full max-h-48 object-cover rounded-xl shadow-lg opacity-80"
+                    className="w-28 h-28 object-cover rounded-xl shadow-lg opacity-80"
                   />
                 ) : (
-                  <div className="w-full h-40 rounded-xl bg-purple-200 dark:bg-purple-900 flex items-center justify-center">
+                  <div className="w-28 h-28 rounded-xl bg-purple-200 dark:bg-purple-900 flex items-center justify-center">
                     <span className="text-6xl" aria-hidden="true">🎧</span>
                   </div>
                 )}
@@ -1115,13 +1169,10 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   {picturePauseChapter ? `Picture pause — ${picturePauseChapter}` : "Picture pause"}
                 </p>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Take a moment to think about what you just heard. What's happening in the story?
+                  Take a moment to think about what you just heard. What is happening in the story?
                 </p>
               </div>
-              <Button
-                onClick={() => setShowPicturePause(false)}
-                aria-label="Resume listening"
-              >
+              <Button onClick={handlePicturePauseKeepGoing} aria-label="Resume listening">
                 Keep Going
               </Button>
             </div>
@@ -1129,55 +1180,75 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
         </Card>
       )}
 
-      {showChapterEndQuiz && chapterEndQuizQuestions.length > 0 && (
-        <Card className="border-2 border-primary/30 mt-2">
+      {showPictureCheckin && pictureCheckinData && a11ySettings.comprehensionCheckIns && (
+        <Card className="border-2 border-primary/30 mt-2" role="dialog" aria-label="Chapter check-in">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold flex items-center gap-2">
+              <h3 className="font-semibold flex items-center gap-2 text-sm">
                 <span aria-hidden="true">✨</span> Chapter Check-in
+                <span className="text-xs text-muted-foreground font-normal ml-1">(not a test!)</span>
               </h3>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowChapterEndQuiz(false)} aria-label="Close quiz">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => { logCheckinAction("skipped"); setShowPictureCheckin(false); }}
+                aria-label="Skip check-in"
+              >
                 <span aria-hidden="true">✕</span>
               </Button>
             </div>
-            <div className="space-y-4">
-              {chapterEndQuizQuestions.map((q, qi) => (
-                <div key={qi}>
-                  <p className="text-sm font-medium mb-2">{qi + 1}. {q.question}</p>
-                  <div className="space-y-1">
-                    {q.options.map((opt, oi) => {
-                      const answered = chapterEndQuizAnswers[qi] !== null;
-                      const isSelected = chapterEndQuizAnswers[qi] === oi;
-                      const isCorrect = oi === q.correct;
-                      return (
-                        <Button
-                          key={oi}
-                          variant="outline"
-                          size="sm"
-                          className={`w-full text-left h-auto py-1.5 px-3 text-sm ${answered && isCorrect ? "border-green-500 bg-green-50 text-green-800" : answered && isSelected ? "border-red-400 bg-red-50 text-red-800" : answered ? "opacity-50" : ""}`}
-                          onClick={() => {
-                            if (chapterEndQuizAnswers[qi] !== null) return;
-                            const updated = [...chapterEndQuizAnswers];
-                            updated[qi] = oi;
-                            setChapterEndQuizAnswers(updated);
-                          }}
-                          disabled={answered}
-                        >
-                          {answered && isCorrect && <span className="mr-2">✓</span>}
-                          {answered && isSelected && !isCorrect && <span className="mr-2">✗</span>}
-                          {opt}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {chapterEndQuizAnswers.every(a => a !== null) && (
-              <div className="mt-3 text-sm font-medium">
-                Score: {chapterEndQuizAnswers.filter((a, i) => a === chapterEndQuizQuestions[i].correct).length} / {chapterEndQuizQuestions.length}
-                <Button size="sm" className="ml-3" onClick={() => setShowChapterEndQuiz(false)}>Done</Button>
+            {pictureCheckinMutation.isPending ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <span className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin inline-block" />
+                Getting your check-in ready…
               </div>
+            ) : (
+              <>
+                <p className="text-sm font-medium mb-4">{pictureCheckinData.question}</p>
+                <div className="flex flex-wrap gap-3 justify-center mb-4">
+                  {pictureCheckinData.options.map((opt, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setPictureCheckinSelected(i);
+                        logCheckinAction("answered");
+                        setTimeout(() => setShowPictureCheckin(false), 900);
+                      }}
+                      disabled={pictureCheckinSelected !== null}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-colors min-w-[80px] ${
+                        pictureCheckinSelected === i
+                          ? "border-primary bg-primary/10"
+                          : "border-gray-200 dark:border-gray-700 hover:border-primary/60 bg-white dark:bg-gray-900"
+                      }`}
+                      aria-label={opt}
+                      aria-pressed={pictureCheckinSelected === i}
+                    >
+                      {pictureCheckinData.symbolUrls[i] ? (
+                        <img
+                          src={pictureCheckinData.symbolUrls[i]!}
+                          alt={opt}
+                          className="w-16 h-16 object-contain"
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                          <span className="text-2xl" aria-hidden="true">🖼️</span>
+                        </div>
+                      )}
+                      <span className="text-xs font-medium capitalize text-foreground">{opt}</span>
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground w-full"
+                  onClick={() => { logCheckinAction("skipped"); setShowPictureCheckin(false); }}
+                >
+                  Skip for now
+                </Button>
+              </>
             )}
           </CardContent>
         </Card>

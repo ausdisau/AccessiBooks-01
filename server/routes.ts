@@ -5958,6 +5958,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // In-memory caches for AI comprehension content (avoids repeat OpenAI calls)
   const chapterPreviewCache = new Map<string, string>();
   const chapterCheckinCache = new Map<string, { questions: { question: string; options: string[]; correct: number }[] }>();
+  const pictureCheckinCache = new Map<string, { question: string; options: string[] }>();
 
   app.post("/api/ai/chapter-preview", async (req: any, res) => {
     try {
@@ -5999,6 +6000,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("chapter-preview error:", err);
       res.status(500).json({ message: "AI preview generation failed" });
+    }
+  });
+
+  app.post("/api/ai/chapter-picture-checkin", async (req: any, res) => {
+    try {
+      const { chapterText, title, bookId, chapterIndex } = req.body as {
+        chapterText?: string;
+        title?: string;
+        bookId?: string;
+        chapterIndex?: number;
+      };
+      if (!chapterText || typeof chapterText !== "string" || chapterText.trim().length === 0) {
+        return res.status(400).json({ message: "chapterText is required" });
+      }
+
+      const cacheKey = bookId && chapterIndex !== undefined ? `pic:${bookId}:${chapterIndex}` : "";
+      if (cacheKey && pictureCheckinCache.has(cacheKey)) {
+        return res.json({ ...pictureCheckinCache.get(cacheKey)!, fromCache: true });
+      }
+
+      const { openai } = await import("./replit_integrations/image/client");
+      const excerpt = chapterText.slice(0, 1000);
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              'You help readers with learning disabilities reflect on what they just read. Generate ONE simple reflective question and 2-3 single-word answer options. The options should be concrete nouns, emotions, or simple concepts that can be illustrated with a picture symbol. Respond ONLY with valid JSON: {"question": "...", "options": ["word1", "word2", "word3"]}. Keep the question very simple. Do NOT include correct/wrong answers — this is not a test.',
+          },
+          {
+            role: "user",
+            content: `${title ? `Book: ${title}\n\n` : ""}Text excerpt:\n${excerpt}`,
+          },
+        ],
+        max_tokens: 120,
+        response_format: { type: "json_object" },
+      });
+      const raw = completion.choices[0]?.message?.content ?? "{}";
+      let parsed: { question: string; options: string[] };
+      try {
+        parsed = JSON.parse(raw);
+        if (!parsed.question || !Array.isArray(parsed.options) || parsed.options.length < 2) {
+          parsed = { question: "What was this part of the story about?", options: ["adventure", "friendship", "mystery"] };
+        }
+      } catch {
+        parsed = { question: "What was this part of the story about?", options: ["adventure", "friendship", "mystery"] };
+      }
+      if (cacheKey) pictureCheckinCache.set(cacheKey, parsed);
+      res.json(parsed);
+    } catch (err) {
+      console.error("chapter-picture-checkin error:", err);
+      res.status(500).json({ message: "AI picture check-in failed" });
     }
   });
 
