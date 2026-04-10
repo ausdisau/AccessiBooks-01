@@ -57,7 +57,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { localStorageService } from "@/lib/storage";
+import { localStorageService, wordBankService } from "@/lib/storage";
 import { PdfViewer } from "./pdf-viewer";
 import { EpubViewer } from "./epub-viewer";
 import { TTSPlayer } from "./tts-player";
@@ -2134,6 +2134,9 @@ function WordVocabPopup({
   rect: DOMRect;
   onClose: () => void;
 }) {
+  const { toast } = useToast();
+  const [saved, setSaved] = useState(() => wordBankService.has(word));
+
   const symbolQuery = useQuery<{ url: string | null; id: number | null }>({
     queryKey: ["/api/symbols", word],
     queryFn: () => fetch(`/api/symbols/${encodeURIComponent(word)}`).then(r => r.json()),
@@ -2181,10 +2184,33 @@ function WordVocabPopup({
     }
   };
 
+  const handleSave = () => {
+    if (saved) return;
+    const definition = defQuery.data?.definition ?? null;
+    const imageUrl = symbolQuery.data?.url ?? null;
+    const { milestone } = wordBankService.add(word, definition, imageUrl);
+    setSaved(true);
+    if (milestone !== null) {
+      const milestoneMessages: Record<number, string> = {
+        1: "You saved your first word! 🎉",
+        5: "5 words saved — you're building a vocabulary! 📖",
+        10: "10 words! Keep it up! ⭐",
+        25: "25 words — impressive! 🏆",
+        50: "50 words! You're a word explorer! 🚀",
+      };
+      toast({
+        title: milestoneMessages[milestone] || `${milestone} words saved!`,
+        description: "Visit your Word Bank to review them.",
+      });
+    } else {
+      toast({ title: `"${word}" saved to Word Bank` });
+    }
+  };
+
   const viewportW = window.innerWidth;
   const viewportH = window.innerHeight;
   const POPUP_W = 240;
-  const POPUP_H = 280;
+  const POPUP_H = 320;
 
   let top = rect.bottom + 8;
   let left = rect.left + rect.width / 2 - POPUP_W / 2;
@@ -2255,6 +2281,21 @@ function WordVocabPopup({
       >
         <Volume2 className="h-4 w-4" />
         Hear it
+      </button>
+
+      <button
+        className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors border ${
+          saved
+            ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 cursor-default"
+            : "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
+        }`}
+        onClick={handleSave}
+        disabled={saved}
+        aria-label={saved ? `"${word}" is already in your Word Bank` : `Save "${word}" to Word Bank`}
+        data-testid="btn-save-to-word-bank"
+      >
+        <Bookmark className="h-4 w-4" />
+        {saved ? "Saved to Word Bank" : "Save to Word Bank"}
       </button>
     </div>
   );

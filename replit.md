@@ -2,7 +2,7 @@
 
 ## Overview
 
-AccessiBooks is an audiobook player application designed for accessibility, providing a comprehensive library management system and an advanced audio player. It aggregates audiobooks and ebooks from various external sources, offering features like high contrast mode, dyslexia-friendly fonts, keyboard navigation, Bionic Reading, Colour Overlay (Irlen tint), Symbol Overlay, Session Pacing, AI Comprehension Support Suite (Chapter Previews, Picture Pauses, Comprehension Check-ins), Switch Access Scanning, DAISY export, and AI Image Descriptions. The project aims to deliver an inclusive audiobook experience, targeting the growing market of audiobook consumers, particularly those with accessibility needs, and seeks broad adoption through its feature set and ease of use.
+AccessiBooks is an audiobook player application designed for accessibility, providing a comprehensive library management system and an advanced audio player. It aggregates audiobooks and ebooks from various external sources, offering features like high contrast mode, dyslexia-friendly fonts, keyboard navigation, Bionic Reading, Colour Overlay (Irlen tint), Symbol Overlay, Session Pacing, AI Comprehension Support Suite (Chapter Previews, Picture Pauses, Comprehension Check-ins), Switch Access Scanning, DAISY export, AI Image Descriptions, and Personal Word Bank. The project aims to deliver an inclusive audiobook experience, targeting the growing market of audiobook consumers, particularly those with accessibility needs, and seeks broad adoption through its feature set and ease of use.
 
 ## User Preferences
 
