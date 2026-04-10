@@ -259,8 +259,10 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
                   size="sm"
                   aria-label="Subscription settings"
                   data-testid="button-subscription"
+                  className="flex items-center gap-1"
                 >
                   <Settings className="h-4 w-4" />
+                  <span className="hidden md:inline text-xs font-medium">Plan</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
@@ -274,8 +276,10 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
               onClick={handleLogout}
               aria-label="Sign out"
               data-testid="button-logout"
+              className="flex items-center gap-1"
             >
               <LogOut className="h-4 w-4" />
+              <span className="hidden md:inline text-xs font-medium">Sign out</span>
             </Button>
           </div>
         )}
@@ -2552,7 +2556,7 @@ function FocusShell() {
 
       {/* Spatial anchor: Help/accessibility — bottom-right */}
       <button
-        onClick={() => document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility"))}
+        onClick={() => exitShell(true)}
         className="absolute bottom-8 right-6 flex flex-col items-center gap-1 px-4 py-3 rounded-2xl bg-muted text-muted-foreground text-sm font-medium shadow hover:bg-muted/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Open Accessibility Help"
         style={{ minWidth: 90 }}
