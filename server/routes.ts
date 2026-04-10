@@ -503,7 +503,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (audioUrl !== undefined) updates.audioUrl = audioUrl;
       if (contentUrl !== undefined) updates.contentUrl = contentUrl;
       if (isPremium !== undefined) updates.isPremium = isPremium;
-      if (readingLevel !== undefined) updates.readingLevel = readingLevel === null ? null : parseInt(readingLevel);
+      if (readingLevel !== undefined) {
+        if (readingLevel !== null) {
+          const rl = parseInt(readingLevel);
+          if (isNaN(rl) || rl < 1 || rl > 4) {
+            return res.status(400).json({ message: "readingLevel must be null or an integer between 1 and 4" });
+          }
+          updates.readingLevel = rl;
+        } else {
+          updates.readingLevel = null;
+        }
+      }
 
       const updated = await storage.updateBook(id, updates, {
         preserveReadingLevel: readingLevel !== undefined, // Explicit override; do not auto-recompute
