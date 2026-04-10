@@ -185,8 +185,15 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
           <span className="text-sm font-medium">Menu</span>
         </Button>
         {/* Library spatial anchor — top-left (mirrors Focus Shell top-left Library button) */}
-        <Link href="/" aria-label="Go to Library — top-left navigation anchor" className="shrink-0">
+        <Link
+          href="/"
+          aria-label="Go to Library"
+          className="shrink-0 flex items-center gap-1.5 rounded-lg px-1 py-0.5 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <AccessiBooksLogo />
+          <span className="hidden lg:flex flex-col">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-primary leading-none">Library</span>
+          </span>
         </Link>
         <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden flex items-center gap-1" aria-label="Search">
           {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
@@ -2477,7 +2484,8 @@ function FocusShell() {
 
   return (
     <div
-      className="fixed inset-0 z-[200] bg-background flex flex-col"
+      className="fixed inset-0 bg-background flex flex-col"
+      style={{ zIndex: 9998 }}
       role="dialog"
       aria-label="Focus Shell — simplified reading mode"
       aria-modal="true"
@@ -2624,12 +2632,17 @@ function ColourOverlayRenderer() {
 
 function SwitchAccessScanner() {
   const [enabled, setEnabled] = useState(() => !!localStorageService.getSettings().switchAccessMode);
+  const [focusShellActive, setFocusShellActive] = useState(() => !!localStorageService.getSettings().focusShell);
   const [scanIndex, setScanIndex] = useState(-1);
   const scanRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elementsRef = useRef<HTMLElement[]>([]);
 
   useEffect(() => {
-    const sync = () => setEnabled(!!localStorageService.getSettings().switchAccessMode);
+    const sync = () => {
+      const s = localStorageService.getSettings();
+      setEnabled(!!s.switchAccessMode);
+      setFocusShellActive(!!s.focusShell);
+    };
     document.addEventListener("accessibooks:settings-changed", sync);
     return () => document.removeEventListener("accessibooks:settings-changed", sync);
   }, []);
@@ -2699,7 +2712,7 @@ function SwitchAccessScanner() {
     });
   }, [scanIndex]);
 
-  if (!enabled) return null;
+  if (!enabled || focusShellActive) return null;
 
   return (
     <div
