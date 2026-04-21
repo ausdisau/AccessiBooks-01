@@ -127,15 +127,20 @@ test.describe("Account & Settings page — Free user (real auth)", () => {
     // pace each change with a small pause to ensure each PUT actually fires.
     const pause = () => page.waitForTimeout(700);
 
-    // Toggle a representative slice of controls (one of each "kind"):
-    //   - a switch (suppress-animated)
-    //   - a switch starting ON (auto-advance)
-    //   - a radio group (rewarded-always)
-    //   - a select (skip-forward → 30, playback-speed → 1.5×)
+    // Toggle EVERY control on the Settings page — switches, the rewarded-ad
+    // radio group, every select. The shared 500 ms debounce means we have to
+    // pace each change with a small pause; otherwise back-to-back changes
+    // coalesce into a single PUT and earlier values get dropped.
     await page.locator("#suppress-animated").click();
     await pause();
 
-    await page.locator("#auto-advance").click();
+    await page.locator("#auto-advance").click(); // default ON -> OFF
+    await pause();
+
+    await page.locator("#transcript-default").click();
+    await pause();
+
+    await page.locator("#reduce-distraction").click();
     await pause();
 
     await page.locator("#rewarded-always").click();
@@ -145,11 +150,19 @@ test.describe("Account & Settings page — Free user (real auth)", () => {
     await page.getByRole("option", { name: "30 seconds", exact: true }).click();
     await pause();
 
+    await page.locator("#skip-back").click();
+    await page.getByRole("option", { name: "5 seconds", exact: true }).click();
+    await pause();
+
     await page.locator("#playback-speed").click();
     await page.getByRole("option", { name: "1.5×" }).click();
     await pause();
 
-    // Hit the live backend directly to verify the values were truly saved.
+    await page.locator("#sleep-timer").click();
+    await page.getByRole("option", { name: "30 minutes", exact: true }).click();
+    await pause();
+
+    // Hit the live backend directly to verify every value was truly saved.
     const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
     await expect
       .poll(
@@ -161,17 +174,21 @@ test.describe("Account & Settings page — Free user (real auth)", () => {
           const body = await res.json();
           return body?.profile ?? null;
         },
-        { timeout: 8000, intervals: [300, 500, 800] },
+        { timeout: 10000, intervals: [300, 500, 800] },
       )
       .toMatchObject({
         suppressAnimatedAds: true,
         autoAdvanceChapters: false,
+        transcriptOpenByDefault: true,
+        reduceDistractionMode: true,
         rewardedAdPreference: "always",
         preferredSkipForward: 30,
+        preferredSkipBack: 5,
         playbackSpeed: 1.5,
+        sleepTimerDefault: 30,
       });
 
-    // Refresh the page; controls should reflect the persisted values.
+    // Refresh the page; every control should reflect the persisted value.
     await page.reload();
     await expect(page.locator('[data-testid="panel-settings"] h1')).toBeVisible({
       timeout: 30000,
@@ -179,9 +196,13 @@ test.describe("Account & Settings page — Free user (real auth)", () => {
 
     await expect(page.locator("#suppress-animated")).toHaveAttribute("data-state", "checked");
     await expect(page.locator("#auto-advance")).toHaveAttribute("data-state", "unchecked");
+    await expect(page.locator("#transcript-default")).toHaveAttribute("data-state", "checked");
+    await expect(page.locator("#reduce-distraction")).toHaveAttribute("data-state", "checked");
     await expect(page.locator("#rewarded-always")).toHaveAttribute("data-state", "checked");
     await expect(page.locator("#skip-forward")).toContainText("30 seconds");
+    await expect(page.locator("#skip-back")).toContainText("5 seconds");
     await expect(page.locator("#playback-speed")).toContainText("1.5×");
+    await expect(page.locator("#sleep-timer")).toContainText("30 minutes");
   });
 });
 
