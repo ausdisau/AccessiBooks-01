@@ -25,7 +25,13 @@ import { sendViaResend, isResendConfigured } from "./resendMailer";
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 function getMagicLinkSecret(): string {
-  return process.env.SESSION_SECRET || process.env.MAGIC_LINK_SECRET || "magic-link-dev-secret-change-in-prod";
+  const secret = process.env.MAGIC_LINK_SECRET || process.env.SESSION_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("MAGIC_LINK_SECRET must be set in production");
+  }
+  console.warn("[WARN] MAGIC_LINK_SECRET not set — using insecure default. Set this before deploying.");
+  return "magic-link-dev-secret-change-in-prod";
 }
 
 function createMagicToken(email: string): string {
@@ -93,11 +99,14 @@ async function comparePasswords(supplied: string, stored: string): Promise<boole
 }
 
 export function setupAuth(app: Express) {
-  const SESSION_SECRET = process.env.SESSION_SECRET;
-  
-  if (!SESSION_SECRET) {
-    throw new Error('SESSION_SECRET environment variable is required for security');
-  }
+  const SESSION_SECRET = process.env.SESSION_SECRET ?? (
+    process.env.NODE_ENV === "production"
+      ? (() => { throw new Error("SESSION_SECRET must be set in production"); })()
+      : (() => {
+          console.warn("[WARN] SESSION_SECRET not set — using insecure default. Set this before deploying.");
+          return "development-secret-change-in-production";
+        })()
+  );
   
   const sessionSettings: session.SessionOptions = {
     secret: SESSION_SECRET,

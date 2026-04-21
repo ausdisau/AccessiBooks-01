@@ -67,11 +67,26 @@ export function registerObjectStorageRoutes(app: Express): void {
    *
    * GET /objects/:objectPath(*)
    *
-   * This serves files from object storage. For public files, no auth needed.
-   * For protected files, add authentication middleware and ACL checks.
+   * - /objects/public/<...>  → resolved against PUBLIC_OBJECT_SEARCH_PATHS
+   *   (no auth required; used for AI-generated book covers and other public assets)
+   * - /objects/<...>         → resolved against PRIVATE_OBJECT_DIR (the
+   *   uploads bucket). Add auth middleware if you need ACL gating.
    */
   app.get("/objects/:objectPath(*)", async (req, res) => {
     try {
+      // Public-prefix path: /objects/public/<rest>
+      const publicPrefix = "/objects/public/";
+      if (req.path.startsWith(publicPrefix)) {
+        const rest = req.path.slice(publicPrefix.length);
+        // searchPublicObject prepends the public search path bucket; we look up
+        // using "public/<rest>" so the on-bucket layout is public/<rest>
+        const file = await objectStorageService.searchPublicObject(`public/${rest}`);
+        if (!file) {
+          return res.status(404).json({ error: "Object not found" });
+        }
+        return objectStorageService.downloadObject(file, res);
+      }
+
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
       await objectStorageService.downloadObject(objectFile, res);
     } catch (error) {

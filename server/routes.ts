@@ -37,16 +37,12 @@ import {
 } from "./easyEnglish";
 import { easyEnglishCache } from "@shared/schema";
 import { 
-  ensureCoversDir, 
   getGeneratedCoverUrl, 
   hasGeneratedCover, 
   buildCoverPrompt, 
-  queueCoverGeneration, 
-  getPendingCovers,
-  markCoverGenerated,
-  listGeneratedCovers,
   generateCoverForBook,
-  generateCoversForBooks
+  generateCoversForBooks,
+  listGeneratedCovers
 } from "./coverGenerator";
 import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature, tierFromPriceId, extractSubscriptionPriceId } from "./stripe";
 import { StripeSubscriptionService } from "./subscriptionService";
@@ -914,19 +910,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Ensure generated covers directory exists
-  ensureCoversDir();
-
   // GET /api/books/:id/cover - Get or check for generated cover
   app.get("/api/books/:id/cover", async (req, res) => {
     try {
       const { id: bookId } = req.params;
-      const generatedUrl = getGeneratedCoverUrl(bookId);
-      
+      const generatedUrl = await getGeneratedCoverUrl(bookId);
+
       if (generatedUrl) {
         return res.json({ hasGeneratedCover: true, coverUrl: generatedUrl });
       }
-      
+
       res.json({ hasGeneratedCover: false, coverUrl: null });
     } catch (error) {
       console.error("Error checking cover:", error);
@@ -934,70 +927,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/books/:id/cover/request - Request cover generation for a book
+  // POST /api/books/:id/cover/request - Request immediate cover generation for a book
   app.post("/api/books/:id/cover/request", async (req, res) => {
     try {
       const { id: bookId } = req.params;
-      
+
       // Check if already generated
-      if (hasGeneratedCover(bookId)) {
-        return res.json({ 
-          status: "exists", 
-          coverUrl: getGeneratedCoverUrl(bookId) 
+      if (await hasGeneratedCover(bookId)) {
+        return res.json({
+          status: "exists",
+          coverUrl: await getGeneratedCoverUrl(bookId),
         });
       }
-      
+
       // Get book details
       const book = await storage.getBook(bookId);
       if (!book) {
         return res.status(404).json({ message: "Book not found" });
       }
-      
-      // Queue for generation
-      const pending = queueCoverGeneration(
+
+      // Generate immediately (async, returns placeholder on failure)
+      const result = await generateCoverForBook(
         bookId,
         book.title,
         book.author,
         book.genre || undefined,
         book.contentType || 'audiobook'
       );
-      
-      if (pending) {
-        res.json({ 
-          status: "queued", 
-          prompt: pending.prompt,
-          outputPath: pending.outputPath,
-          bookId: pending.bookId,
-          title: pending.title,
-          author: pending.author
-        });
-      } else {
-        res.json({ 
-          status: "exists", 
-          coverUrl: getGeneratedCoverUrl(bookId) 
-        });
-      }
+
+      res.json({
+        status: result.status === 'generated' ? 'generated' : result.status === 'skipped' ? 'exists' : 'error',
+        coverUrl: result.coverUrl,
+        bookId,
+        title: book.title,
+        author: book.author,
+      });
     } catch (error) {
       console.error("Error requesting cover generation:", error);
       res.status(500).json({ message: "Failed to request cover generation" });
     }
   });
 
-  // GET /api/covers/pending - Get list of books needing covers
-  app.get("/api/covers/pending", async (req, res) => {
-    try {
-      const pending = getPendingCovers();
-      res.json(pending);
-    } catch (error) {
-      console.error("Error getting pending covers:", error);
-      res.status(500).json({ message: "Failed to get pending covers" });
-    }
+  // GET /api/covers/pending - Deprecated: pending queue replaced by synchronous generation
+  app.get("/api/covers/pending", async (_req, res) => {
+    res.json([]);
   });
 
-  // GET /api/covers/generated - List all generated covers
-  app.get("/api/covers/generated", async (req, res) => {
+  // GET /api/covers/generated - List generated covers (from object storage)
+  app.get("/api/covers/generated", async (_req, res) => {
     try {
-      const covers = listGeneratedCovers();
+      const covers = await listGeneratedCovers();
       res.json(covers);
     } catch (error) {
       console.error("Error listing generated covers:", error);
@@ -1005,16 +984,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/covers/:id/complete - Mark a cover as generated (called after AI generation)
+  // POST /api/covers/:id/complete - No-op (kept for API compatibility)
   app.post("/api/covers/:id/complete", async (req, res) => {
-    try {
-      const { id: bookId } = req.params;
-      markCoverGenerated(bookId);
-      res.json({ success: true, coverUrl: getGeneratedCoverUrl(bookId) });
-    } catch (error) {
-      console.error("Error marking cover complete:", error);
-      res.status(500).json({ message: "Failed to mark cover complete" });
-    }
+    const { id: bookId } = req.params;
+    const coverUrl = await getGeneratedCoverUrl(bookId);
+    res.json({ success: true, coverUrl });
   });
 
   // POST /api/books/:id/cover/generate - Generate a cover for a single book using AI
@@ -1050,7 +1024,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const dbResult = await storage.getBooksPaginated({ limit: 200 });
-      const booksNeedingCovers = dbResult.data.filter(b => !b.coverImage && !hasGeneratedCover(b.id));
+      const candidates = dbResult.data.filter(b => !b.coverImage);
+      const hasCoverFlags = await Promise.all(candidates.map(b => hasGeneratedCover(b.id)));
+      const booksNeedingCovers = candidates.filter((_, i) => !hasCoverFlags[i]);
 
       res.write(`data: ${JSON.stringify({ type: 'start', total: booksNeedingCovers.length })}\n\n`);
 
@@ -1084,8 +1060,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/covers/stats", async (req, res) => {
     try {
       const total = await storage.getBookCount();
-      const generated = listGeneratedCovers();
-
+      const generated = await listGeneratedCovers();
       res.json({
         total,
         withOriginalCover: total,

@@ -231,8 +231,17 @@ export function setupMultiAuth(app: Express) {
   
   const isProduction = process.env.NODE_ENV === 'production';
   
+  const SESSION_SECRET = process.env.SESSION_SECRET ?? (
+    isProduction
+      ? (() => { throw new Error("SESSION_SECRET must be set in production"); })()
+      : (() => {
+          console.warn("[WARN] SESSION_SECRET not set — using insecure default. Set this before deploying.");
+          return "development-secret-change-in-production";
+        })()
+  );
+
   sessionMiddlewareInstance = session({
-    secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
+    secret: SESSION_SECRET,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
@@ -379,8 +388,13 @@ export function setupMultiAuth(app: Express) {
     })(req, res, next);
   });
 
+  const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  const facebookEnabled = !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET);
+  const microsoftEnabled = !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
+  const auth0Enabled = !!(process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0_CLIENT_SECRET);
+
   // Google OAuth
-  if (process.env.GOOGLE_CLIENT_ID) {
+  if (googleEnabled) {
     app.get("/api/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
     app.get(
       "/api/auth/google/callback",
@@ -390,7 +404,7 @@ export function setupMultiAuth(app: Express) {
   }
 
   // Facebook OAuth
-  if (process.env.FACEBOOK_APP_ID) {
+  if (facebookEnabled) {
     app.get("/api/auth/facebook", passport.authenticate("facebook", { scope: ["email"] }));
     app.get(
       "/api/auth/facebook/callback",
@@ -400,7 +414,7 @@ export function setupMultiAuth(app: Express) {
   }
 
   // Microsoft OAuth
-  if (process.env.MICROSOFT_CLIENT_ID) {
+  if (microsoftEnabled) {
     app.get("/api/auth/microsoft", passport.authenticate("microsoft"));
     app.get(
       "/api/auth/microsoft/callback",
@@ -410,7 +424,7 @@ export function setupMultiAuth(app: Express) {
   }
 
   // Auth0 OAuth
-  if (process.env.AUTH0_DOMAIN) {
+  if (auth0Enabled) {
     app.get("/api/auth/auth0", passport.authenticate("auth0"));
     app.get(
       "/api/auth/auth0/callback",
@@ -422,11 +436,11 @@ export function setupMultiAuth(app: Express) {
   // Get available auth providers
   app.get("/api/auth/providers", (req, res) => {
     res.json({
-      local: true, // Always available
-      google: !!process.env.GOOGLE_CLIENT_ID, // Via Passport
-      facebook: !!process.env.FACEBOOK_APP_ID, // Via Passport
-      microsoft: !!process.env.MICROSOFT_CLIENT_ID, // Via Passport
-      auth0: !!(process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0_CLIENT_SECRET), // Auth0 M2M API
+      local: true,
+      google: googleEnabled,
+      facebook: facebookEnabled,
+      microsoft: microsoftEnabled,
+      auth0: auth0Enabled,
     });
   });
 
