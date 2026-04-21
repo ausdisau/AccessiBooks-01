@@ -467,12 +467,14 @@ export const isAuthenticated = isLocalAuthenticated;
  *
  * Example: app.post("/api/ai/foo", requireTier(["plus", "premium"]), handler)
  */
-export const requireTier = (allowedTiers: Array<"free" | "plus" | "premium">) => {
+type Tier = "free" | "plus" | "premium";
+
+export const requireTier = (allowedTiers: Tier[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
+    if (!req.isAuthenticated() || !req.user) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const tier = (req.user as any).subscriptionTier || "free";
+    const tier = (req.user.subscriptionTier ?? "free") as Tier;
     if (!allowedTiers.includes(tier)) {
       return res.status(403).json({
         message: `This feature requires a ${allowedTiers.join(" or ")} subscription`,

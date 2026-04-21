@@ -102,7 +102,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Initialize synchronously from the user's tier so ad-skip / quality decisions
   // made before the first /api/subscription/status fetch don't leak premium
   // behaviour to free users (or block paying users on first paint).
-  const initialTier = (user as any)?.subscriptionTier;
+  const initialTier = user?.subscriptionTier;
   const isPremiumRef = useRef(initialTier === "premium" || initialTier === "plus");
   const externalChapterEndRef = useRef<(() => void) | null>(null);
   const stallRecoveryTimerRef = useRef<NodeJS.Timeout | null>(null);

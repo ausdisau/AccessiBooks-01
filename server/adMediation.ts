@@ -306,14 +306,15 @@ const analytics: AdAnalytics = {
 export function registerAdMediationRoutes(router: Router) {
   router.get("/api/ads/request", async (req: Request, res: Response) => {
     try {
-      // Ad-safety: never serve ads to paid (Plus or Premium) subscribers.
-      // Free / unauthenticated users still receive ads.
-      const reqAny = req as any;
-      if (reqAny.isAuthenticated && reqAny.isAuthenticated() && reqAny.user) {
-        const tier = reqAny.user.subscriptionTier;
-        if (tier === "plus" || tier === "premium") {
-          return res.status(204).end();
-        }
+      // Ad-safety: require authentication, and never serve ads to paid (Plus or
+      // Premium) subscribers. Unauthenticated callers receive 401; paid users
+      // receive 204 No Content; free users receive the ad.
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const tier = (req.user as { subscriptionTier?: string }).subscriptionTier;
+      if (tier === "plus" || tier === "premium") {
+        return res.status(204).end();
       }
 
       const adType = (req.query.type as string) === "midroll" ? "midroll" : "preroll";

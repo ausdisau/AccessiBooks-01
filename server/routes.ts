@@ -2265,18 +2265,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             if (session.mode === "subscription" && userId) {
-              // Resolve actual tier from the subscription's price ID instead of
-              // assuming "premium" — Plus checkouts also flow through here.
-              let resolvedTier: "plus" | "premium" = "premium";
+              // Resolve actual tier from the subscription's price ID. On unknown
+              // price IDs we fall back to "free" (non-upgrade) for ad-safety: a
+              // missing/misconfigured STRIPE_*_PRICE_ID env var must never silently
+              // grant higher entitlements than the customer paid for.
+              let resolvedTier: "free" | "plus" | "premium" = "free";
+              let resolvedPriceId: string | null = null;
               try {
                 if (stripe && session.subscription) {
                   const sub = await stripe.subscriptions.retrieve(session.subscription as string);
-                  const priceId = extractSubscriptionPriceId(sub);
-                  const tier = tierFromPriceId(priceId);
+                  resolvedPriceId = extractSubscriptionPriceId(sub);
+                  const tier = tierFromPriceId(resolvedPriceId);
                   if (tier) {
                     resolvedTier = tier;
                   } else {
-                    console.warn(`[Stripe] Unknown priceId ${priceId} on checkout.session.completed for user ${userId} — defaulting to premium`);
+                    console.error(`[Stripe] Unknown priceId=${resolvedPriceId} on checkout.session.completed for user=${userId} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
                   }
                 }
               } catch (e) {
@@ -2294,10 +2297,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 type: "subscription",
                 status: "completed",
                 amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
-                description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : "Premium"} subscription`,
+                description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : resolvedTier === "premium" ? "Premium" : "subscription (unmapped price)"}`,
                 receiptUrl: session.receipt_url || null,
               });
-              console.log(`User ${userId} upgraded to ${resolvedTier} via checkout`);
+              console.log(`User ${userId} subscription tier set to ${resolvedTier} via checkout (priceId=${resolvedPriceId})`);
             } else if (session.metadata?.type === "donation") {
               if (userId) {
                 await recordTransaction({
@@ -2338,8 +2341,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const status = subscription.status;
               const isActive = status === "active" || status === "trialing";
 
-              // Resolve actual tier from the subscription's price ID. Falls back to
-              // "premium" when env vars are missing (preserves prior behavior).
+              // Resolve actual tier from the subscription's price ID. On unknown
+              // price IDs we fall back to "free" (non-upgrade) — see fallback
+              // rationale above on checkout.session.completed.
               let resolvedTier: "free" | "plus" | "premium" = "free";
               if (isActive) {
                 const priceId = extractSubscriptionPriceId(subscription);
@@ -2347,8 +2351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (tier) {
                   resolvedTier = tier;
                 } else {
-                  console.warn(`[Stripe] Unknown priceId ${priceId} on customer.subscription.updated for user ${user.id} — defaulting to premium`);
-                  resolvedTier = "premium";
+                  console.error(`[Stripe] Unknown priceId=${priceId} on customer.subscription.updated for user=${user.id} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
                 }
               }
 
@@ -2586,18 +2589,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("Could not fetch subscription details:", e);
           }
           
-          // Resolve actual tier from the subscription's price ID instead of
-          // assuming "premium" — Plus checkouts also flow through here.
-          let resolvedTier: "plus" | "premium" = "premium";
+          // Resolve actual tier from the subscription's price ID. On unknown
+          // price IDs we fall back to "free" (non-upgrade) — see rationale on
+          // the modern checkout.session.completed handler above.
+          let resolvedTier: "free" | "plus" | "premium" = "free";
+          let resolvedPriceId: string | null = null;
           try {
             if (stripe) {
               const subForTier = await stripe.subscriptions.retrieve(subscriptionId as string);
-              const priceId = extractSubscriptionPriceId(subForTier);
-              const tier = tierFromPriceId(priceId);
+              resolvedPriceId = extractSubscriptionPriceId(subForTier);
+              const tier = tierFromPriceId(resolvedPriceId);
               if (tier) {
                 resolvedTier = tier;
               } else {
-                console.warn(`[Stripe] Unknown priceId ${priceId} on checkout.session.completed (legacy) for user ${userId} — defaulting to premium`);
+                console.error(`[Stripe] Unknown priceId=${resolvedPriceId} on checkout.session.completed (legacy) for user=${userId} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
               }
             }
           } catch (e) {
@@ -2617,9 +2622,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "subscription",
             status: "completed",
             amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
-            description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : "Premium"} subscription`,
+            description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : resolvedTier === "premium" ? "Premium" : "subscription (unmapped price)"}`,
           });
-          console.log(`User ${userId} upgraded to ${resolvedTier} with customer ${customerId}`);
+          console.log(`User ${userId} subscription tier set to ${resolvedTier} (legacy) with customer ${customerId} (priceId=${resolvedPriceId})`);
         }
         break;
       }
@@ -2712,11 +2717,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else if (subUpdated.status === "active" || subUpdated.status === "trialing") {
             // Sync tier on every active/trialing update — handles tier upgrades/downgrades
             // (e.g., user switches from Plus to Premium via Stripe Customer Portal).
+            // Unknown price IDs resolve to "free" (non-upgrade) for ad-safety.
             const priceId = extractSubscriptionPriceId(subUpdated);
             const tier = tierFromPriceId(priceId);
-            const resolvedTier: "plus" | "premium" = tier || "premium";
+            const resolvedTier: "free" | "plus" | "premium" = tier || "free";
             if (!tier) {
-              console.warn(`[Stripe] Unknown priceId ${priceId} on customer.subscription.updated (legacy) for user ${userId} — defaulting to premium`);
+              console.error(`[Stripe] Unknown priceId=${priceId} on customer.subscription.updated (legacy) for user=${userId} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
             }
             const endDate = subUpdated.current_period_end
               ? new Date(subUpdated.current_period_end * 1000)
