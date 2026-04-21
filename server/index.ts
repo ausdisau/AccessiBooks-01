@@ -26,6 +26,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startNotificationScheduler } from "./notificationTriggers";
 import { setupFullTextSearch, setupEasyEnglishTables, setupAdPlatformTables, ensureReadingLevelColumn, setupWordBankTable, ensureEntitlementSchema } from "./db";
+import { seedPlans } from "./seed";
 import { startDailySpendResetCron } from "./auctionEngine";
 import { storage } from "./storage";
 
@@ -115,6 +116,7 @@ app.use((req, res, next) => {
     ensureReadingLevelColumn().catch(err => console.warn("[ReadingLevel] Setup failed:", err));
     setupWordBankTable().then(available => storage.setWordBankDbAvailable(available)).catch(() => {});
     ensureEntitlementSchema().catch(err => console.warn("[Entitlements] Schema setup failed:", err));
+    seedPlans().catch(err => console.warn("[Seed] Plans seed failed:", err));
     startDailySpendResetCron();
     
     // Runtime API ingestion: fetch from external APIs and persist to DB

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db } from "./db";
 import { paymentTransactions, users } from "@shared/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, gte } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
 import { storage } from "./storage";
 import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY } from "./stripe";
@@ -228,6 +228,84 @@ export function registerBillingRoutes(app: any) {
     } catch (err) {
       console.error("[Billing] Portal session error:", err);
       res.status(500).json({ error: "Failed to create billing portal" });
+    }
+  });
+
+  router.get("/admin/revenue", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+
+      const [userRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+      if (userRow?.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const [totals] = await db.select({
+        totalRevenueCents: sql<number>`COALESCE(SUM(CASE WHEN ${paymentTransactions.status} = 'completed' THEN ${paymentTransactions.amountCents} ELSE 0 END), 0)`,
+        subscriptionRevenueCents: sql<number>`COALESCE(SUM(CASE WHEN ${paymentTransactions.status} = 'completed' AND ${paymentTransactions.type} IN ('subscription', 'subscription_renewal') THEN ${paymentTransactions.amountCents} ELSE 0 END), 0)`,
+        adSpendCents: sql<number>`COALESCE(SUM(CASE WHEN ${paymentTransactions.status} = 'completed' AND ${paymentTransactions.type} = 'ad_spend' THEN ${paymentTransactions.amountCents} ELSE 0 END), 0)`,
+        totalTransactions: sql<number>`COUNT(*)`,
+      }).from(paymentTransactions);
+
+      const [mrrStats] = await db.select({
+        mrrCents: sql<number>`COALESCE(SUM(CASE WHEN ${paymentTransactions.status} = 'completed' AND ${paymentTransactions.type} IN ('subscription', 'subscription_renewal') THEN ${paymentTransactions.amountCents} ELSE 0 END), 0)`,
+      }).from(paymentTransactions)
+        .where(gte(paymentTransactions.createdAt, thirtyDaysAgo));
+
+      const [weeklyStats] = await db.select({
+        revenueCents: sql<number>`COALESCE(SUM(CASE WHEN ${paymentTransactions.status} = 'completed' THEN ${paymentTransactions.amountCents} ELSE 0 END), 0)`,
+        newTransactions: sql<number>`COUNT(*)`,
+      }).from(paymentTransactions)
+        .where(gte(paymentTransactions.createdAt, sevenDaysAgo));
+
+      const tierCounts = await db.select({
+        tier: users.subscriptionTier,
+        count: sql<number>`COUNT(*)`,
+      }).from(users)
+        .groupBy(users.subscriptionTier);
+
+      const tierBreakdown: Record<string, number> = { free: 0, plus: 0, premium: 0 };
+      for (const row of tierCounts) {
+        if (row.tier) tierBreakdown[row.tier] = Number(row.count);
+      }
+      const totalUsers = Object.values(tierBreakdown).reduce((a, b) => a + b, 0);
+      const paidUsers = (tierBreakdown.plus || 0) + (tierBreakdown.premium || 0);
+
+      const recentTransactions = await db.select({
+        id: paymentTransactions.id,
+        type: paymentTransactions.type,
+        amountCents: paymentTransactions.amountCents,
+        currency: paymentTransactions.currency,
+        status: paymentTransactions.status,
+        provider: paymentTransactions.provider,
+        description: paymentTransactions.description,
+        createdAt: paymentTransactions.createdAt,
+      }).from(paymentTransactions)
+        .orderBy(desc(paymentTransactions.createdAt))
+        .limit(10);
+
+      res.json({
+        mrr: Number(mrrStats?.mrrCents) || 0,
+        totalRevenue: Number(totals?.totalRevenueCents) || 0,
+        subscriptionRevenue: Number(totals?.subscriptionRevenueCents) || 0,
+        adSpend: Number(totals?.adSpendCents) || 0,
+        totalTransactions: Number(totals?.totalTransactions) || 0,
+        weeklyRevenue: Number(weeklyStats?.revenueCents) || 0,
+        weeklyTransactions: Number(weeklyStats?.newTransactions) || 0,
+        usersByTier: tierBreakdown,
+        totalUsers,
+        paidUsers,
+        conversionRate: totalUsers > 0 ? ((paidUsers / totalUsers) * 100).toFixed(1) : "0",
+        recentTransactions,
+      });
+    } catch (error) {
+      console.error("[Billing] Admin revenue error:", error);
+      res.status(500).json({ error: "Failed to fetch revenue data" });
     }
   });
 

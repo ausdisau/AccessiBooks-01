@@ -955,6 +955,8 @@ export function AdvertiserDashboard() {
 
   const { data: campaigns = [], isLoading } = useQuery<Campaign[]>({
     queryKey: ["/api/self-serve-ads/campaigns"],
+    refetchInterval: 30000,
+    staleTime: 25000,
   });
 
   const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);

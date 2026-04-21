@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Eye, Plus, Zap, DollarSign, TrendingUp, Globe, LogOut, Wallet,
   ToggleLeft, ToggleRight, MousePointer, Edit2, Trash2, Copy, ChevronDown, ChevronRight,
-  RefreshCw, Send,
+  RefreshCw, Send, ChevronsUpDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AD_CATEGORIES, type AdSlot, type PublisherEarning } from "@shared/schema";
@@ -52,6 +52,9 @@ const AD_SIZES = [
   { label: "Custom", w: 0, h: 0 },
 ];
 
+type SlotSortKey = "name" | "totalImpressions" | "totalEarningsCents";
+type SortDir = "asc" | "desc";
+
 export default function PublisherDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -62,6 +65,11 @@ export default function PublisherDashboard() {
   const [days, setDays] = useState(30);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [slotSort, setSlotSort] = useState<{ key: SlotSortKey; dir: SortDir }>({ key: "totalEarningsCents", dir: "desc" });
+
+  const handleSlotSort = useCallback((key: SlotSortKey) => {
+    setSlotSort(prev => ({ key, dir: prev.key === key && prev.dir === "desc" ? "asc" : "desc" }));
+  }, []);
 
   function buildAnalyticsUrl(base: string) {
     if (customFrom && customTo) return `${base}?from=${customFrom}&to=${customTo}`;
@@ -373,17 +381,56 @@ export default function PublisherDashboard() {
                   ) : !analytics?.slots?.length ? (
                     <div className="h-32 flex items-center justify-center text-white/20 text-xs">No data yet</div>
                   ) : (
-                    <div className="space-y-2 mt-1 max-h-32 overflow-y-auto">
-                      <div className="grid grid-cols-3 text-[10px] text-white/30 mb-1 uppercase">
-                        <span>Slot</span><span className="text-right">Impr.</span><span className="text-right">Earned</span>
-                      </div>
-                      {analytics.slots.map((s) => (
-                        <div key={s.id} className="grid grid-cols-3 text-xs">
-                          <span className="text-white/60 truncate max-w-[100px]">{s.name}</span>
-                          <span className="text-right text-white/40">{formatNum(s.totalImpressions)}</span>
-                          <span className="text-right text-violet-400">{formatMoney(s.totalEarningsCents)}</span>
-                        </div>
-                      ))}
+                    <div className="mt-1 max-h-40 overflow-y-auto">
+                      <table className="w-full text-xs" role="table" aria-label="Slot performance">
+                        <caption className="sr-only">Ad slot performance showing impressions and earnings per slot, sortable by column header</caption>
+                        <thead>
+                          <tr>
+                            {([
+                              { key: "name" as SlotSortKey, label: "Slot", align: "left" },
+                              { key: "totalImpressions" as SlotSortKey, label: "Impr.", align: "right" },
+                              { key: "totalEarningsCents" as SlotSortKey, label: "Earned", align: "right" },
+                            ] as const).map(col => (
+                              <th
+                                key={col.key}
+                                scope="col"
+                                className={`text-[10px] text-white/30 uppercase pb-1 ${col.align === "right" ? "text-right" : "text-left"} cursor-pointer hover:text-white/60 select-none`}
+                                onClick={() => handleSlotSort(col.key)}
+                                aria-sort={slotSort.key === col.key ? (slotSort.dir === "asc" ? "ascending" : "descending") : "none"}
+                              >
+                                <span className="inline-flex items-center gap-0.5">
+                                  {col.label}
+                                  {slotSort.key === col.key
+                                    ? <span className="text-violet-400" aria-hidden="true">{slotSort.dir === "asc" ? "↑" : "↓"}</span>
+                                    : <ChevronsUpDown className="h-2.5 w-2.5 opacity-30" aria-hidden="true" />
+                                  }
+                                </span>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...analytics.slots]
+                            .sort((a, b) => {
+                              const aVal = a[slotSort.key];
+                              const bVal = b[slotSort.key];
+                              if (typeof aVal === "string" && typeof bVal === "string") {
+                                return slotSort.dir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                              }
+                              return slotSort.dir === "asc"
+                                ? (aVal as number) - (bVal as number)
+                                : (bVal as number) - (aVal as number);
+                            })
+                            .map((s) => (
+                              <tr key={s.id} className="border-t border-white/5">
+                                <td className="py-1 text-white/60 truncate max-w-[100px]">{s.name}</td>
+                                <td className="py-1 text-right text-white/40 tabular-nums">{formatNum(s.totalImpressions)}</td>
+                                <td className="py-1 text-right text-violet-400 tabular-nums">{formatMoney(s.totalEarningsCents)}</td>
+                              </tr>
+                            ))
+                          }
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </CardContent>

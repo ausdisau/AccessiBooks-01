@@ -1,4 +1,4 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry, plans, type Plan, type InsertPlan, subscriptions, type Subscription, type InsertSubscription, entitlements, type Entitlement, type InsertEntitlement, listeningSessions, type ListeningSession, type InsertListeningSession, adRewards, type AdReward, type InsertAdReward, accessibilityPreferences, type AccessibilityPreferences, type InsertAccessibilityPreferences } from "@shared/schema";
 import { analyticsService } from "./analyticsService";
 import { computeReadingLevel, genrePatternsForLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
@@ -71,6 +71,9 @@ function mapRowToBook(row: any): Book {
     pageCount: row.page_count ?? row.pageCount ?? null,
     searchVector: row.search_vector || row.searchVector || null,
     readingLevel: row.reading_level ?? row.readingLevel ?? computeReadingLevel(row.description, row.genre),
+    freeTierAvailable: row.free_tier_available ?? row.freeTierAvailable ?? null,
+    adSupported: row.ad_supported ?? row.adSupported ?? null,
+    transcriptAvailable: row.transcript_available ?? row.transcriptAvailable ?? null,
   };
 }
 
@@ -156,6 +159,32 @@ export interface IStorage {
   removeWordBankEntry(userId: string, entryId: string): Promise<boolean>;
   setWordBankDbAvailable(available: boolean): void;
   getWordBankCount(userId: string): Promise<number>;
+
+  // Plans
+  getPlans(): Promise<Plan[]>;
+  getPlan(id: string): Promise<Plan | undefined>;
+  getPlanByTier(tier: string): Promise<Plan | undefined>;
+  upsertPlan(plan: InsertPlan): Promise<Plan>;
+
+  // Subscriptions
+  getSubscription(userId: string): Promise<Subscription | undefined>;
+  upsertSubscription(subscription: InsertSubscription): Promise<Subscription>;
+
+  // Entitlements
+  createEntitlement(entitlement: InsertEntitlement): Promise<Entitlement>;
+  getUserEntitlements(userId: string): Promise<Entitlement[]>;
+
+  // Listening Sessions
+  createListeningSession(session: InsertListeningSession): Promise<ListeningSession>;
+  endListeningSession(sessionId: string, minutesListened: number, interruptedBy?: string): Promise<ListeningSession | undefined>;
+
+  // Ad Rewards
+  createAdReward(reward: InsertAdReward): Promise<AdReward>;
+  getAdRewards(userId: string): Promise<AdReward[]>;
+
+  // Accessibility Preferences
+  getAccessibilityPreferences(userId: string): Promise<AccessibilityPreferences | undefined>;
+  upsertAccessibilityPreferences(userId: string, prefs: Omit<InsertAccessibilityPreferences, "userId">): Promise<AccessibilityPreferences>;
 
   sessionStore: session.Store;
 }
@@ -3077,6 +3106,106 @@ export class ExternalAPIStorage implements IStorage {
     const existing = this._wordBankMemory.get(userId) ?? [];
     this._wordBankMemory.set(userId, existing.filter(e => e.id !== entryId));
     return true;
+  }
+
+  // === Plans ===
+
+  async getPlans(): Promise<Plan[]> {
+    return db.select().from(plans).orderBy(asc(plans.priceMonthlycents));
+  }
+
+  async getPlan(id: string): Promise<Plan | undefined> {
+    const [plan] = await db.select().from(plans).where(eq(plans.id, id));
+    return plan;
+  }
+
+  async getPlanByTier(tier: string): Promise<Plan | undefined> {
+    const [plan] = await db.select().from(plans).where(eq(plans.tier, tier));
+    return plan;
+  }
+
+  async upsertPlan(plan: InsertPlan): Promise<Plan> {
+    const [result] = await db
+      .insert(plans)
+      .values(plan)
+      .onConflictDoUpdate({ target: plans.tier, set: { name: plan.name, priceMonthlycents: plan.priceMonthlycents, priceYearlyCents: plan.priceYearlyCents, trialDays: plan.trialDays, features: plan.features, isActive: plan.isActive } })
+      .returning();
+    return result;
+  }
+
+  // === Subscriptions ===
+
+  async getSubscription(userId: string): Promise<Subscription | undefined> {
+    const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).orderBy(desc(subscriptions.createdAt)).limit(1);
+    return sub;
+  }
+
+  async upsertSubscription(subscription: InsertSubscription): Promise<Subscription> {
+    const existing = await this.getSubscription(subscription.userId);
+    if (existing) {
+      const [updated] = await db
+        .update(subscriptions)
+        .set({ ...subscription, updatedAt: new Date() })
+        .where(eq(subscriptions.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(subscriptions).values(subscription).returning();
+    return created;
+  }
+
+  // === Entitlements ===
+
+  async createEntitlement(entitlement: InsertEntitlement): Promise<Entitlement> {
+    const [result] = await db.insert(entitlements).values(entitlement).returning();
+    return result;
+  }
+
+  async getUserEntitlements(userId: string): Promise<Entitlement[]> {
+    return db.select().from(entitlements).where(eq(entitlements.userId, userId)).orderBy(desc(entitlements.createdAt));
+  }
+
+  // === Listening Sessions ===
+
+  async createListeningSession(session: InsertListeningSession): Promise<ListeningSession> {
+    const [result] = await db.insert(listeningSessions).values(session).returning();
+    return result;
+  }
+
+  async endListeningSession(sessionId: string, minutesListened: number, interruptedBy?: string): Promise<ListeningSession | undefined> {
+    const [result] = await db
+      .update(listeningSessions)
+      .set({ endedAt: new Date(), minutesListened, interruptedBy: interruptedBy ?? null })
+      .where(eq(listeningSessions.id, sessionId))
+      .returning();
+    return result;
+  }
+
+  // === Ad Rewards ===
+
+  async createAdReward(reward: InsertAdReward): Promise<AdReward> {
+    const [result] = await db.insert(adRewards).values(reward).returning();
+    return result;
+  }
+
+  async getAdRewards(userId: string): Promise<AdReward[]> {
+    return db.select().from(adRewards).where(eq(adRewards.userId, userId)).orderBy(desc(adRewards.grantedAt));
+  }
+
+  // === Accessibility Preferences ===
+
+  async getAccessibilityPreferences(userId: string): Promise<AccessibilityPreferences | undefined> {
+    const [prefs] = await db.select().from(accessibilityPreferences).where(eq(accessibilityPreferences.userId, userId));
+    return prefs;
+  }
+
+  async upsertAccessibilityPreferences(userId: string, prefs: Omit<InsertAccessibilityPreferences, "userId">): Promise<AccessibilityPreferences> {
+    const [result] = await db
+      .insert(accessibilityPreferences)
+      .values({ userId, ...prefs })
+      .onConflictDoUpdate({ target: accessibilityPreferences.userId, set: { ...prefs, updatedAt: new Date() } })
+      .returning();
+    return result;
   }
 }
 
