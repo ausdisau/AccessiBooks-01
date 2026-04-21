@@ -114,6 +114,7 @@ export interface AccessibilitySettings {
   colorVisionMode?: ColorVisionMode;
   captionsOn?: boolean;
   captionPosition?: "above" | "below";
+  rewardedAdPreference?: "always" | "never" | "ask";
   focusMode?: boolean;
   voiceControlEnabled?: boolean;
   bionicReading?: boolean;

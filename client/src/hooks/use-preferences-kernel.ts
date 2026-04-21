@@ -61,6 +61,9 @@ function profileFromLocalStorage(): A11yProfile {
     captionsOn: settings.captionsOn ?? DEFAULT_PROFILE.captionsOn,
     captionPosition: settings.captionPosition ?? DEFAULT_PROFILE.captionPosition,
     karaokeFollowAlong: settings.karaokeFollowAlong ?? DEFAULT_PROFILE.karaokeFollowAlong,
+    // Persist rewardedAdPreference locally so users who set "never" are not
+    // briefly served an ad on first frame before server prefs hydrate.
+    rewardedAdPreference: settings.rewardedAdPreference ?? DEFAULT_PROFILE.rewardedAdPreference,
   };
 }
 
@@ -77,6 +80,7 @@ function syncToLocalStorage(profile: A11yProfile) {
     captionsOn: profile.captionsOn,
     captionPosition: profile.captionPosition,
     karaokeFollowAlong: profile.karaokeFollowAlong,
+    rewardedAdPreference: profile.rewardedAdPreference,
   });
 }
 
