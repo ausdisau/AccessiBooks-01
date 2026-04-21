@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 import { useQuery } from "@tanstack/react-query";
+import { usePlaybackAdHooks } from "@/hooks/use-playback-ad-hooks";
 
 interface AudioAdState {
   isAdPlaying: boolean;
@@ -59,6 +60,8 @@ interface AudioContextType {
   seekToChapter: (chapterIndex: number) => void;
   onAdComplete: (skipped: boolean) => void;
   onAdUpgrade: () => void;
+  /** True while an ad request is in-flight (pre-roll or mid-roll). Use to guard skip/chapter controls. */
+  adLoading: boolean;
 }
 
 const AudioContext = createContext<AudioContextType | null>(null);
@@ -95,6 +98,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     adType: null,
   });
   const [isMuted, setIsMuted] = useState(false);
+  // Ref used to schedule a deferred mid-roll after a sentence boundary guard fires
+  const deferredAdRef = useRef<number | null>(null);
+  // Flat transcript segments for the current book — loaded so the sentence guard can check them
+  const [transcriptSegments, setTranscriptSegments] = useState<{ start: number; end: number }[] | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [subscriptionTier, setSubscriptionTier] = useState<"free" | "plus" | "premium">("free");
@@ -382,6 +389,33 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     return { quality: "low", bitrate: 128, label: "SD · 128 kbps", tier: "sd" };
   }, [subscriptionTier]);
 
+  // Fetch flat transcript segments when book changes — used by the sentence boundary guard in the ad hook
+  useEffect(() => {
+    if (!currentBook) {
+      setTranscriptSegments(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/books/${currentBook.id}/transcript`)
+      .then(res => res.ok ? res.json() : null)
+      .then((records: Array<{ segments: Array<{ start: number; end: number }> }> | null) => {
+        if (cancelled || !records) return;
+        const flat = records.flatMap(r => r.segments.map(s => ({ start: s.start, end: s.end })));
+        setTranscriptSegments(flat.length > 0 ? flat : null);
+      })
+      .catch(() => { if (!cancelled) setTranscriptSegments(null); });
+    return () => { cancelled = true; };
+  }, [currentBook?.id]);
+
+  // Instantiate the ad-aware playback hook — owns all ad decision logic for this session
+  const adHooks = usePlaybackAdHooks({
+    tier: subscriptionTier,
+    currentTime,
+    currentChapterIndex,
+    chapters,
+    transcriptSegments,
+  });
+
   // Fetch chapters when book changes
   useEffect(() => {
     if (currentBook) {
@@ -408,32 +442,68 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Track current chapter based on playback time (only for audio chapters with time data)
   useEffect(() => {
     if (chapters.length === 0 || duration <= 0) return;
-    
+
     // Only track chapters that have time-based data (audiobooks)
     const hasTimeBasedChapters = chapters.some(ch => ch.startTime !== null);
     if (!hasTimeBasedChapters) return;
-    
+
     const newIndex = chapters.findIndex((ch, i) => {
       const start = ch.startTime ?? 0;
       const end = ch.endTime ?? (chapters[i + 1]?.startTime ?? duration);
       return currentTime >= start && currentTime < end;
     });
-    
+
+    // Resolve a pending deferred mid-roll when playback crosses the deferred timestamp
+    if (deferredAdRef.current !== null && currentTime >= deferredAdRef.current) {
+      const savedDeferred = deferredAdRef.current;
+      deferredAdRef.current = null;
+      // Re-evaluate boundary: use the same prev/new as was originally deferred.
+      // We use lastChapterIndex.current as prevIndex since the chapter didn't change.
+      adHooks.onChapterBoundary(lastChapterIndex.current - 1, lastChapterIndex.current).then((result) => {
+        if (result === "show-ad") {
+          const audio = audioRef.current;
+          if (audio && !audio.paused) { audio.pause(); setIsPlaying(false); }
+          audioAdService.playAdChime();
+          const ad = adHooks.adDecision.ad;
+          if (ad) setAdState({ isAdPlaying: true, currentAd: ad, adType: "mid-roll" });
+        }
+        // "continue" or another "defer-to" are both benign — ignore
+        void savedDeferred;
+      });
+    }
+
     if (newIndex !== -1 && newIndex !== currentChapterIndex) {
       if (lastChapterIndex.current !== -1 && newIndex === lastChapterIndex.current + 1) {
         if (onChapterEndCallback.current) {
           onChapterEndCallback.current();
         }
-        // Delay mid-roll firing by 500ms so listeners don't get an ad
+
+        const prevIdx = lastChapterIndex.current;
+        const nextIdx = newIndex;
+
+        // Delay mid-roll check by 500 ms so listeners don't get an ad
         // exactly at the chapter boundary (improves perceived fairness).
+        // HOOK: chapter-boundary — mid-roll eligibility checked here, sentence guard applied
         setTimeout(() => {
-          triggerMidRollAd();
+          adHooks.onChapterBoundary(prevIdx, nextIdx).then((result) => {
+            if (result === "show-ad") {
+              const audio = audioRef.current;
+              if (audio && !audio.paused) { audio.pause(); setIsPlaying(false); }
+              audioAdService.playAdChime();
+              const ad = adHooks.adDecision.ad;
+              if (ad) setAdState({ isAdPlaying: true, currentAd: ad, adType: "mid-roll" });
+            } else if (typeof result === "string" && result.startsWith("defer-to:")) {
+              const deferTime = parseFloat(result.split(":")[1]);
+              if (!isNaN(deferTime)) deferredAdRef.current = deferTime;
+            }
+            // "continue" → do nothing
+          });
         }, 500);
       }
       setCurrentChapterIndex(newIndex);
       lastChapterIndex.current = newIndex;
     }
-  }, [currentTime, chapters, duration, currentChapterIndex]);
+  }, [currentTime, chapters, duration, currentChapterIndex, adHooks]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -593,6 +663,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audioAdService.recordImpression(ad.id, adType, !skipped, skipped, ad.isProgrammatic ? ad.provider : "house");
     }
 
+    // HOOK: ad-resolved — impression recorded, deferred playback resumed
+    adHooks.onAdResolved(skipped ? "skipped" : "completed");
+
     if (adType === "pre-roll" && pendingBookRef.current) {
       startPlaybackForBook(pendingBookRef.current);
       pendingBookRef.current = null;
@@ -602,7 +675,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         audio.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     }
-  }, [adState, startPlaybackForBook]);
+  }, [adState, startPlaybackForBook, adHooks]);
 
   const onAdUpgrade = useCallback(() => {
     const ad = adState.currentAd;
@@ -617,32 +690,35 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     window.location.href = "/api/subscription/create-checkout";
   }, [adState]);
 
-  const triggerMidRollAd = useCallback(async () => {
-    if (isPremiumRef.current) return;
-    const shouldShow = await audioAdService.shouldShowMidRollAsync(isPremiumRef.current);
-    if (!shouldShow) return;
-
-    const audio = audioRef.current;
-    if (audio && !audio.paused) {
-      audio.pause();
-      setIsPlaying(false);
-    }
-
-    audioAdService.playAdChime();
-    const ad = await audioAdService.requestAd("mid-roll");
-    setAdState({ isAdPlaying: true, currentAd: ad, adType: "mid-roll" });
-  }, []);
-
-
   const playBook = async (book: Book) => {
     audioAdService.incrementPlayCount();
 
-    const shouldShowPreRoll = await audioAdService.shouldShowPreRollAsync(isPremiumRef.current);
-    if (shouldShowPreRoll) {
+    // HOOK: pre-roll eligibility — ad-aware playback hook consulted here
+    const decision = await adHooks.onPlayBookCalled();
+
+    if (decision === "show-ad") {
+      // HOOK: pre-roll served — ad overlay shown, book playback deferred
       pendingBookRef.current = book;
       audioAdService.playAdChime();
-      const ad = await audioAdService.requestAd("pre-roll");
-      setAdState({ isAdPlaying: true, currentAd: ad, adType: "pre-roll" });
+      const ad = adHooks.adDecision.ad;
+      if (ad) {
+        setAdState({ isAdPlaying: true, currentAd: ad, adType: "pre-roll" });
+
+        // Safety valve: if adState.isAdPlaying is true but the ad is still null
+        // 3 seconds later (e.g. component unmounted during fetch), auto-resume.
+        setTimeout(() => {
+          setAdState((prev) => {
+            if (prev.isAdPlaying && prev.currentAd === null) {
+              console.warn("[AudioContext] Ad hung with null currentAd after 3 s — resuming playback");
+              return { isAdPlaying: false, currentAd: null, adType: null };
+            }
+            return prev;
+          });
+        }, 3000);
+      } else {
+        // Hook said show-ad but ad is gone from state (race) — just play
+        startPlaybackForBook(book);
+      }
       return;
     }
 
@@ -772,6 +848,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         seekToChapter,
         onAdComplete,
         onAdUpgrade,
+        adLoading: adHooks.adDecision.pending,
       }}
     >
       <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
