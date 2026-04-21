@@ -161,6 +161,14 @@ export class AudioAdService {
     return !rewarded;
   }
 
+  /** Exposes the runtime feature-flag state so consumers can pass it to hooks. */
+  get featureFlags(): { preRoll: boolean; midRoll: boolean } {
+    return {
+      preRoll: this.config.preRollEnabled,
+      midRoll: this.config.midRollEnabled,
+    };
+  }
+
   async requestAd(adType: "pre-roll" | "mid-roll", contentGenre?: string): Promise<AdResponse> {
     try {
       const type = adType === "pre-roll" ? "preroll" : "midroll";
