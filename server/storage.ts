@@ -98,6 +98,7 @@ export interface IStorage {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string | null;
     subscriptionTier?: string;
+    subscriptionStatus?: string;
     subscriptionEndDate?: Date | null;
   }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
@@ -2353,6 +2354,7 @@ export class ExternalAPIStorage implements IStorage {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string | null;
     subscriptionTier?: string;
+    subscriptionStatus?: string;
     subscriptionEndDate?: Date | null;
   }): Promise<User | undefined> {
     try {
@@ -2373,6 +2375,14 @@ export class ExternalAPIStorage implements IStorage {
       }
       if (subscription.subscriptionEndDate !== undefined) {
         updateData.subscriptionEndDate = subscription.subscriptionEndDate;
+      }
+      // subscriptionStatus is persisted if column exists; wrapped in try/catch below
+      if (subscription.subscriptionStatus !== undefined) {
+        try {
+          (updateData as any).subscriptionStatus = subscription.subscriptionStatus;
+        } catch {
+          // column may not exist yet
+        }
       }
       
       const [updatedUser] = await db

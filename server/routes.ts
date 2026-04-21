@@ -46,6 +46,7 @@ import {
   generateCoversForBooks
 } from "./coverGenerator";
 import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature, tierFromPriceId, extractSubscriptionPriceId } from "./stripe";
+import { StripeSubscriptionService } from "./subscriptionService";
 import { TIER_PRICING, TITLE_PRICING, TIER_DISCOUNTS, TIER_FEATURES, type SubscriptionTier, purchases } from "@shared/schema";
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, titleAccessMiddleware, generateSignedStreamUrl } from "./drm";
 import {
@@ -108,6 +109,9 @@ import {
   getUserChallenges,
 } from "./gamification";
 import express from "express";
+
+// Instantiate subscription service once (shared across all routes)
+const subscriptionService = stripe ? new StripeSubscriptionService(stripe) : null;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Enable CORS for same-origin requests (more secure than wildcard)
@@ -1912,23 +1916,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stripe subscription routes
   
   // GET /api/subscription/status - Get current subscription status
+  // Returns billing entitlement state plus tier features for authenticated users.
+  // Unauthenticated requests receive a default free-tier response (no 401).
   app.get("/api/subscription/status", async (req: any, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
+        return res.json({
+          tier: "free",
+          status: "active",
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+          trialEnd: null,
+          subscriptionTier: "free",
+          isPremium: false,
+          isPlus: false,
+          isPaid: false,
+          features: TIER_FEATURES.free,
+          pricing: TIER_PRICING,
+          discountRate: 0,
+        });
       }
-      
+
       const userId = req.user.claims?.sub || req.user.id;
+
+      if (subscriptionService) {
+        const statusResult = await subscriptionService.getSubscriptionStatus(userId);
+        const tier = statusResult.tier as SubscriptionTier;
+        const features = TIER_FEATURES[tier] || TIER_FEATURES.free;
+        return res.json({
+          ...statusResult,
+          subscriptionTier: tier,
+          subscriptionEndDate: statusResult.currentPeriodEnd,
+          stripeSubscriptionId: (await storage.getUser(userId))?.stripeSubscriptionId || null,
+          isPremium: tier === "premium",
+          isPlus: tier === "plus",
+          isPaid: tier === "plus" || tier === "premium",
+          features,
+          pricing: TIER_PRICING,
+          discountRate: TIER_DISCOUNTS[tier] || 0,
+        });
+      }
+
+      // Fallback when Stripe is not configured
       const user = await storage.getUser(userId);
-      
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      
       const tier = (user.subscriptionTier || "free") as SubscriptionTier;
       const features = TIER_FEATURES[tier] || TIER_FEATURES.free;
-      
-      res.json({
+      return res.json({
+        tier,
+        status: (user as any).subscriptionStatus || "active",
+        currentPeriodEnd: user.subscriptionEndDate?.toISOString() || null,
+        cancelAtPeriodEnd: false,
+        trialEnd: null,
         subscriptionTier: tier,
         subscriptionEndDate: user.subscriptionEndDate,
         stripeSubscriptionId: user.stripeSubscriptionId,
@@ -1941,7 +1982,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Error fetching subscription status:", error);
-      res.status(500).json({ message: "Failed to fetch subscription status" });
+      return res.status(402).json({ error: "BILLING_ERROR", message: "Failed to fetch subscription status" });
     }
   });
 
@@ -1979,60 +2020,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!validTiers.includes(tier)) {
         return res.status(400).json({ message: "Invalid tier. Choose 'plus' or 'premium'" });
       }
-      
-      const config = SUBSCRIPTION_CONFIGS[tier];
-      const isAnnual = plan === "annual";
-      const amount = isAnnual
-        ? (tier === "plus" ? PLUS_PRICE_YEARLY : PREMIUM_PRICE_YEARLY)
-        : (tier === "plus" ? PLUS_PRICE_MONTHLY : PREMIUM_PRICE_MONTHLY);
-      const interval: "month" | "year" = isAnnual ? "year" : "month";
 
-      const descriptions: Record<string, string> = {
-        plus: "Ad-free listening, unlimited skips, 192kbps audio, 3 devices",
-        premium: "Ad-free listening, 320kbps audio, offline downloads, 5 devices, unlimited TTS",
-      };
-      
-      let customerId = user.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email || undefined,
-          metadata: { userId: user.id },
-        });
-        customerId = customer.id;
-        await storage.updateUserSubscription(userId, { stripeCustomerId: customerId });
-      }
-      
-      const session = await stripe.checkout.sessions.create({
-        customer: customerId,
-        mode: "subscription",
-        payment_method_types: ["card"],
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: config.productName,
-                description: descriptions[tier] || "",
-              },
-              unit_amount: amount,
-              recurring: { interval },
-            },
-            quantity: 1,
-          },
-        ],
-        success_url: `${req.headers.origin || "http://localhost:5000"}?subscription=success&tier=${tier}`,
-        cancel_url: `${req.headers.origin || "http://localhost:5000"}?subscription=cancelled`,
-        metadata: {
+      const originUrl = req.headers.origin || "http://localhost:5000";
+
+      if (subscriptionService) {
+        const { url, customerId } = await subscriptionService.createCheckoutSession({
           userId: user.id,
+          userEmail: user.email,
+          stripeCustomerId: user.stripeCustomerId,
           tier,
           plan,
-        },
-      });
-      
-      res.json({ url: session.url });
-    } catch (error) {
+          originUrl,
+        });
+        if (!user.stripeCustomerId) {
+          await storage.updateUserSubscription(userId, { stripeCustomerId: customerId });
+        }
+        return res.json({ url });
+      }
+
+      // Fallback (no service — should not happen in practice since stripe is checked above)
+      return res.status(503).json({ message: "Subscription service unavailable" });
+    } catch (error: any) {
       console.error("Error creating checkout session:", error);
-      res.status(500).json({ message: "Failed to create checkout session" });
+      return res.status(402).json({ error: "BILLING_ERROR", message: error?.message || "Failed to create checkout session" });
     }
   });
 
@@ -2160,23 +2170,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Cancel at period end (don't cancel immediately)
-      const subscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
-        cancel_at_period_end: true,
-      });
-      
-      // Update the database with cancellation info
-      const cancelAt = subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null;
-      await storage.updateUserSubscription(userId, {
-        subscriptionEndDate: cancelAt,
-      });
-      
-      res.json({
-        message: "Subscription will be cancelled at period end",
-        cancelAt: subscription.cancel_at,
-      });
-    } catch (error) {
+      if (subscriptionService) {
+        const { cancelAt } = await subscriptionService.cancelSubscription({
+          stripeSubscriptionId: user.stripeSubscriptionId,
+        });
+        await storage.updateUserSubscription(userId, {
+          subscriptionStatus: "canceled",
+          subscriptionEndDate: cancelAt ? new Date(cancelAt * 1000) : null,
+        });
+        return res.json({
+          message: "Subscription will be cancelled at period end",
+          cancelAt,
+        });
+      }
+
+      return res.status(503).json({ message: "Subscription service unavailable" });
+    } catch (error: any) {
       console.error("Error cancelling subscription:", error);
-      res.status(500).json({ message: "Failed to cancel subscription" });
+      return res.status(402).json({ error: "BILLING_ERROR", message: error?.message || "Failed to cancel subscription" });
     }
   });
 
@@ -2283,263 +2294,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       try {
-        switch (event.type) {
-          case "checkout.session.completed": {
-            const session = event.data.object as any;
-            const userId = session.metadata?.userId;
+        // Dispatch AdBid wallet top-up and EasyEnglish add-on events before passing
+        // subscription events to the service layer (these are out-of-scope for subscriptionService).
+        let handledBySpecialCase = false;
+        const evtObj = event.data.object as any;
 
-            // Handle AdBid wallet top-up
-            if (session.mode === "payment" && session.metadata?.type === "ad_wallet_topup" && userId) {
-              const amountCents = parseInt(session.metadata?.amountCents || "0");
-              if (amountCents > 0) {
-                try {
-                  // Idempotency guard: check if this Stripe session ID was already processed
-                  const [alreadyProcessed] = await db
-                    .select({ id: paymentTransactions.id })
-                    .from(paymentTransactions)
-                    .where(eq(paymentTransactions.providerTransactionId, session.id))
-                    .limit(1);
-                  if (alreadyProcessed) {
-                    console.log(`[AdWallet] Skipping duplicate webhook for session ${session.id}`);
-                    break;
-                  }
-                  // Record transaction first (idempotency anchor)
+        if (event.type === "checkout.session.completed") {
+          const userId = evtObj.metadata?.userId;
+          if (evtObj.mode === "payment" && evtObj.metadata?.type === "ad_wallet_topup" && userId) {
+            const amountCents = parseInt(evtObj.metadata?.amountCents || "0");
+            if (amountCents > 0) {
+              try {
+                const [alreadyProcessed] = await db
+                  .select({ id: paymentTransactions.id })
+                  .from(paymentTransactions)
+                  .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                  .limit(1);
+                if (!alreadyProcessed) {
                   await db.insert(paymentTransactions).values({
                     userId,
                     provider: "stripe",
-                    providerTransactionId: session.id,
+                    providerTransactionId: evtObj.id,
                     type: "ad_wallet_topup",
                     status: "completed",
                     amountCents,
                     currency: "USD",
                     description: `Ad wallet top-up via Stripe`,
                   });
-                  // Now credit the wallet
-                  await db
-                    .insert(advertiserWallets)
+                  await db.insert(advertiserWallets)
                     .values({ advertiserId: userId, balanceCents: 0, totalTopupCents: 0 })
                     .onConflictDoNothing();
-                  await db
-                    .update(advertiserWallets)
+                  await db.update(advertiserWallets)
                     .set({
                       balanceCents: sql`${advertiserWallets.balanceCents} + ${amountCents}`,
                       totalTopupCents: sql`${advertiserWallets.totalTopupCents} + ${amountCents}`,
                       updatedAt: new Date(),
                     })
                     .where(eq(advertiserWallets.advertiserId, userId));
-                  console.log(`[AdWallet] Credited $${(amountCents / 100).toFixed(2)} to advertiser ${userId} (session ${session.id})`);
-                  // Auto-resume: re-activate campaigns that were auto-paused due to empty wallet
-                  const resumed = await db
-                    .update(adCampaigns)
+                  console.log(`[AdWallet] Credited $${(amountCents / 100).toFixed(2)} to advertiser ${userId}`);
+                  const resumed = await db.update(adCampaigns)
                     .set({ status: "active", updatedAt: new Date() })
                     .where(and(eq(adCampaigns.advertiserId, userId), eq(adCampaigns.status, "paused")))
                     .returning({ id: adCampaigns.id });
                   if (resumed.length > 0) {
                     console.log(`[AdWallet] Auto-resumed ${resumed.length} campaign(s) for advertiser ${userId}`);
                   }
-                } catch (e) {
-                  console.error("[AdWallet] Failed to credit wallet:", e);
-                }
-              }
-              break;
-            }
-
-            // Handle Easy English add-on checkout completion
-            if (session.mode === "subscription" && session.metadata?.type === "easy_english_addon" && userId) {
-              try {
-                const sub = await stripe.subscriptions.retrieve(session.subscription as string);
-                const itemId = (sub as any).items?.data?.[0]?.id || null;
-                await db.update(users)
-                  .set({ stripeEasyEnglishSubscriptionItemId: itemId })
-                  .where(eq(users.id, userId));
-                console.log(`[EasyEnglish] Activated add-on for user ${userId}, item ${itemId}`);
-              } catch (e) {
-                console.warn("[EasyEnglish] Could not retrieve subscription after checkout:", e);
-              }
-              break;
-            }
-            
-            if (session.mode === "subscription" && userId) {
-              // Resolve actual tier from the subscription's price ID. On unknown
-              // price IDs we fall back to "free" (non-upgrade) for ad-safety: a
-              // missing/misconfigured STRIPE_*_PRICE_ID env var must never silently
-              // grant higher entitlements than the customer paid for.
-              let resolvedTier: "free" | "plus" | "premium" = "free";
-              let resolvedPriceId: string | null = null;
-              try {
-                if (stripe && session.subscription) {
-                  const sub = await stripe.subscriptions.retrieve(session.subscription as string);
-                  resolvedPriceId = extractSubscriptionPriceId(sub);
-                  const tier = tierFromPriceId(resolvedPriceId);
-                  if (tier) {
-                    resolvedTier = tier;
-                  } else {
-                    console.error(`[Stripe] Unknown priceId=${resolvedPriceId} on checkout.session.completed for user=${userId} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
-                  }
+                } else {
+                  console.log(`[AdWallet] Skipping duplicate webhook for session ${evtObj.id}`);
                 }
               } catch (e) {
-                console.warn("[Stripe] Could not resolve subscription tier from priceId:", e);
+                console.error("[AdWallet] Failed to credit wallet:", e);
               }
-              await storage.updateUserSubscription(userId, {
-                subscriptionTier: resolvedTier,
-                stripeSubscriptionId: session.subscription,
-                stripeCustomerId: session.customer,
-              });
+            }
+            handledBySpecialCase = true;
+          } else if (evtObj.mode === "subscription" && evtObj.metadata?.type === "easy_english_addon" && userId) {
+            try {
+              const sub = await stripe!.subscriptions.retrieve(evtObj.subscription as string);
+              const itemId = (sub as any).items?.data?.[0]?.id || null;
+              await db.update(users)
+                .set({ stripeEasyEnglishSubscriptionItemId: itemId })
+                .where(eq(users.id, userId));
+              console.log(`[EasyEnglish] Activated add-on for user ${userId}, item ${itemId}`);
+            } catch (e) {
+              console.warn("[EasyEnglish] Could not retrieve subscription after checkout:", e);
+            }
+            handledBySpecialCase = true;
+          } else if (evtObj.metadata?.type === "donation") {
+            if (userId) {
               await recordTransaction({
                 userId,
                 provider: "stripe",
-                providerTransactionId: session.id,
-                type: "subscription",
+                providerTransactionId: evtObj.id,
+                type: "donation",
                 status: "completed",
-                amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
-                description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : resolvedTier === "premium" ? "Premium" : "subscription (unmapped price)"}`,
-                receiptUrl: session.receipt_url || null,
+                amountCents: evtObj.amount_total || 0,
+                description: "Donation to AccessiBooks",
               });
-              console.log(`User ${userId} subscription tier set to ${resolvedTier} via checkout (priceId=${resolvedPriceId})`);
-            } else if (session.metadata?.type === "donation") {
-              if (userId) {
-                await recordTransaction({
-                  userId,
-                  provider: "stripe",
-                  providerTransactionId: session.id,
-                  type: "donation",
-                  status: "completed",
-                  amountCents: session.amount_total || 0,
-                  description: "Donation to AccessiBooks",
-                });
-              }
-              console.log(`Donation received: $${(session.amount_total / 100).toFixed(2)} from ${userId || "anonymous"}`);
             }
-            break;
+            console.log(`Donation received: $${((evtObj.amount_total || 0) / 100).toFixed(2)} from ${userId || "anonymous"}`);
+            handledBySpecialCase = true;
           }
-          
-          case "customer.subscription.updated": {
-            const subscription = event.data.object as any;
-            const customerId = subscription.customer;
+        }
 
-            // Handle Easy English add-on subscription updates
-            if (subscription.metadata?.type === "easy_english_addon") {
-              const eeUser = await storage.getUserByStripeCustomerId(customerId);
-              if (eeUser) {
-                const isActive = subscription.status === "active" || subscription.status === "trialing";
-                const itemId = subscription.items?.data?.[0]?.id || null;
-                await db.update(users)
-                  .set({ stripeEasyEnglishSubscriptionItemId: isActive ? itemId : null })
-                  .where(eq(users.id, eeUser.id));
-                console.log(`[EasyEnglish] Subscription updated for user ${eeUser.id}: ${subscription.status}`);
-              }
-              break;
+        if (!handledBySpecialCase && (
+          event.type === "customer.subscription.updated" ||
+          event.type === "customer.subscription.deleted"
+        ) && evtObj.metadata?.type === "easy_english_addon") {
+          const eeUser = evtObj.customer
+            ? await storage.getUserByStripeCustomerId(evtObj.customer)
+            : null;
+          if (eeUser) {
+            if (event.type === "customer.subscription.updated") {
+              const isActive = evtObj.status === "active" || evtObj.status === "trialing";
+              const itemId = evtObj.items?.data?.[0]?.id || null;
+              await db.update(users)
+                .set({ stripeEasyEnglishSubscriptionItemId: isActive ? itemId : null })
+                .where(eq(users.id, eeUser.id));
+              console.log(`[EasyEnglish] Subscription updated for user ${eeUser.id}: ${evtObj.status}`);
+            } else {
+              await db.update(users)
+                .set({ stripeEasyEnglishSubscriptionItemId: null })
+                .where(eq(users.id, eeUser.id));
+              console.log(`[EasyEnglish] Subscription deleted for user ${eeUser.id}`);
             }
-            
-            const user = await storage.getUserByStripeCustomerId(customerId);
-            if (user) {
-              const status = subscription.status;
-              const isActive = status === "active" || status === "trialing";
+          }
+          handledBySpecialCase = true;
+        }
 
-              // Resolve actual tier from the subscription's price ID. On unknown
-              // price IDs we fall back to "free" (non-upgrade) — see fallback
-              // rationale above on checkout.session.completed.
-              let resolvedTier: "free" | "plus" | "premium" = "free";
-              if (isActive) {
-                const priceId = extractSubscriptionPriceId(subscription);
-                const tier = tierFromPriceId(priceId);
-                if (tier) {
-                  resolvedTier = tier;
-                } else {
-                  console.error(`[Stripe] Unknown priceId=${priceId} on customer.subscription.updated for user=${user.id} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
-                }
-              }
-
-              await storage.updateUserSubscription(user.id, {
-                subscriptionTier: resolvedTier,
-                subscriptionEndDate: subscription.current_period_end
-                  ? new Date(subscription.current_period_end * 1000)
-                  : null,
-              });
-              console.log(`Subscription updated for user ${user.id}: ${status} → tier=${resolvedTier}`);
-            }
-            break;
-          }
-          
-          case "customer.subscription.deleted": {
-            const subscription = event.data.object as any;
-            const customerId = subscription.customer;
-
-            // Handle Easy English add-on subscription deletion
-            if (subscription.metadata?.type === "easy_english_addon") {
-              const eeUser = await storage.getUserByStripeCustomerId(customerId);
-              if (eeUser) {
-                await db.update(users)
-                  .set({ stripeEasyEnglishSubscriptionItemId: null })
-                  .where(eq(users.id, eeUser.id));
-                console.log(`[EasyEnglish] Subscription deleted for user ${eeUser.id}`);
-              }
-              break;
-            }
-            
-            const user = await storage.getUserByStripeCustomerId(customerId);
-            if (user) {
-              await storage.updateUserSubscription(user.id, {
-                subscriptionTier: "free",
-                stripeSubscriptionId: null,
-                subscriptionEndDate: null,
-              });
-              await recordTransaction({
-                userId: user.id,
-                provider: "stripe",
-                providerTransactionId: subscription.id,
-                type: "subscription_cancelled",
-                status: "completed",
-                amountCents: 0,
-                description: "Premium subscription cancelled",
-              });
-              console.log(`Subscription cancelled for user ${user.id}`);
-            }
-            break;
-          }
-          
-          case "invoice.payment_succeeded": {
-            const invoice = event.data.object as any;
-            const invoiceCustomerId = invoice.customer;
-            const invoiceUser = await storage.getUserByStripeCustomerId(invoiceCustomerId);
-            if (invoiceUser) {
-              await recordTransaction({
-                userId: invoiceUser.id,
-                provider: "stripe",
-                providerTransactionId: invoice.id,
-                type: "subscription_renewal",
-                status: "completed",
-                amountCents: invoice.amount_paid || 0,
-                description: "Subscription renewal payment",
-                receiptUrl: invoice.hosted_invoice_url || null,
-              });
-            }
-            console.log(`Payment succeeded for invoice ${invoice.id}`);
-            break;
-          }
-          
-          case "invoice.payment_failed": {
-            const invoice = event.data.object as any;
-            const customerId = invoice.customer;
-            
-            const user = await storage.getUserByStripeCustomerId(customerId);
-            if (user) {
-              await recordTransaction({
-                userId: user.id,
-                provider: "stripe",
-                providerTransactionId: invoice.id,
-                type: "subscription_renewal",
-                status: "failed",
-                amountCents: invoice.amount_due || 0,
-                description: "Payment failed for subscription renewal",
-              });
-              console.warn(`Payment failed for user ${user.id}, invoice ${invoice.id}`);
-            }
-            break;
-          }
-          
-          default:
-            console.log(`Unhandled webhook event: ${event.type}`);
+        // Delegate all subscription lifecycle events to the service layer
+        if (!handledBySpecialCase && subscriptionService) {
+          await subscriptionService.syncSubscriptionFromEvent(event);
+        } else if (!handledBySpecialCase) {
+          console.log(`[Billing] Unhandled webhook event: ${event.type} (no subscription service)`);
         }
         
         res.json({ received: true });
@@ -2617,277 +2483,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // POST /api/webhook/stripe - Stripe webhook handler
-  app.post("/api/webhook/stripe", async (req, res) => {
-    if (!stripe) {
-      return res.status(503).json({ message: "Payment system not configured" });
+  // POST /api/webhook/stripe — LEGACY ALIAS
+  // This duplicate endpoint has been consolidated into /api/webhooks/stripe (plural).
+  // It is kept here as a redirect so any Stripe Dashboard webhook URLs pointing to the
+  // old path still work without re-registration. The raw body must be forwarded intact
+  // for signature verification to succeed.
+  app.post(
+    "/api/webhook/stripe",
+    express.raw({ type: "application/json" }),
+    (req, res, next) => {
+      console.warn("[Billing] Received event on legacy /api/webhook/stripe — please update your Stripe Dashboard webhook URL to /api/webhooks/stripe");
+      (req as any).url = "/api/webhooks/stripe";
+      next("router");
     }
-    
-    const sig = req.headers["stripe-signature"] as string;
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    
-    let event;
-    
-    try {
-      // In production, always require signature verification
-      if (endpointSecret && sig) {
-        // req.body is raw Buffer when using express.raw() middleware
-        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-      } else if (process.env.NODE_ENV === "development") {
-        // Only allow unverified webhooks in development (for testing)
-        console.warn("WARNING: Processing unverified Stripe webhook (dev mode only)");
-        event = JSON.parse(req.body.toString());
-      } else {
-        console.error("Webhook secret not configured - rejecting request");
-        return res.status(400).json({ message: "Webhook secret not configured" });
-      }
-    } catch (err: any) {
-      console.error("Webhook signature verification failed:", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-    
-    // Handle the event
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as any;
-        const userId = session.metadata?.userId;
-        const subscriptionId = session.subscription;
-        const customerId = session.customer;
-
-        // Handle Easy English add-on checkout completion
-        if (session.mode === "subscription" && session.metadata?.type === "easy_english_addon" && userId) {
-          try {
-            const sub = await stripe.subscriptions.retrieve(subscriptionId as string);
-            const itemId = (sub as any).items?.data?.[0]?.id || null;
-            await db.update(users)
-              .set({ stripeEasyEnglishSubscriptionItemId: itemId })
-              .where(eq(users.id, userId));
-            console.log(`[EasyEnglish] Activated add-on for user ${userId}, item ${itemId}`);
-          } catch (e) {
-            console.warn("[EasyEnglish] Could not retrieve subscription after checkout:", e);
-          }
-          break;
-        }
-        
-        if (userId && subscriptionId) {
-          let subscriptionEndDate: Date | null = null;
-          try {
-            const subResponse = await stripe.subscriptions.retrieve(subscriptionId as string);
-            const sub = subResponse as any;
-            if (sub.current_period_end) {
-              subscriptionEndDate = new Date(sub.current_period_end * 1000);
-            }
-            await stripe.subscriptions.update(subscriptionId as string, {
-              metadata: { userId },
-            });
-          } catch (e) {
-            console.warn("Could not fetch subscription details:", e);
-          }
-          
-          // Resolve actual tier from the subscription's price ID. On unknown
-          // price IDs we fall back to "free" (non-upgrade) — see rationale on
-          // the modern checkout.session.completed handler above.
-          let resolvedTier: "free" | "plus" | "premium" = "free";
-          let resolvedPriceId: string | null = null;
-          try {
-            if (stripe) {
-              const subForTier = await stripe.subscriptions.retrieve(subscriptionId as string);
-              resolvedPriceId = extractSubscriptionPriceId(subForTier);
-              const tier = tierFromPriceId(resolvedPriceId);
-              if (tier) {
-                resolvedTier = tier;
-              } else {
-                console.error(`[Stripe] Unknown priceId=${resolvedPriceId} on checkout.session.completed (legacy) for user=${userId} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
-              }
-            }
-          } catch (e) {
-            console.warn("[Stripe] Could not resolve subscription tier from priceId:", e);
-          }
-
-          await storage.updateUserSubscription(userId, {
-            stripeCustomerId: customerId as string,
-            stripeSubscriptionId: subscriptionId as string,
-            subscriptionTier: resolvedTier,
-            subscriptionEndDate,
-          });
-          await recordTransaction({
-            userId,
-            provider: "stripe",
-            providerTransactionId: session.id,
-            type: "subscription",
-            status: "completed",
-            amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
-            description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : resolvedTier === "premium" ? "Premium" : "subscription (unmapped price)"}`,
-          });
-          console.log(`User ${userId} subscription tier set to ${resolvedTier} (legacy) with customer ${customerId} (priceId=${resolvedPriceId})`);
-        }
-        break;
-      }
-      
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object as any;
-
-        // Handle Easy English add-on subscription deletion
-        if (subscription.metadata?.type === "easy_english_addon") {
-          const eeUser = subscription.customer
-            ? await storage.getUserByStripeCustomerId(subscription.customer)
-            : null;
-          if (eeUser) {
-            await db.update(users)
-              .set({ stripeEasyEnglishSubscriptionItemId: null })
-              .where(eq(users.id, eeUser.id));
-            console.log(`[EasyEnglish] Subscription deleted for user ${eeUser.id}`);
-          }
-          break;
-        }
-
-        let userId = subscription.metadata?.userId;
-        
-        if (!userId && subscription.customer) {
-          const user = await storage.getUserByStripeCustomerId(subscription.customer);
-          if (user) {
-            userId = user.id;
-          }
-        }
-        
-        if (userId) {
-          await storage.updateUserSubscription(userId, {
-            subscriptionTier: "free",
-            stripeSubscriptionId: null,
-            subscriptionEndDate: null,
-          });
-          await recordTransaction({
-            userId,
-            provider: "stripe",
-            providerTransactionId: subscription.id,
-            type: "subscription_cancelled",
-            status: "completed",
-            amountCents: 0,
-            description: "Premium subscription cancelled",
-          });
-          console.log(`User ${userId} subscription deleted - downgraded to free`);
-        } else {
-          console.log(`Subscription ${subscription.id} deleted but no userId found`);
-        }
-        break;
-      }
-      
-      case "customer.subscription.updated": {
-        const subUpdated = event.data.object as any;
-
-        // Handle Easy English add-on subscription updates
-        if (subUpdated.metadata?.type === "easy_english_addon") {
-          const eeUser = subUpdated.customer
-            ? await storage.getUserByStripeCustomerId(subUpdated.customer)
-            : null;
-          if (eeUser) {
-            const isActive = subUpdated.status === "active" || subUpdated.status === "trialing";
-            const itemId = subUpdated.items?.data?.[0]?.id || null;
-            await db.update(users)
-              .set({ stripeEasyEnglishSubscriptionItemId: isActive ? itemId : null })
-              .where(eq(users.id, eeUser.id));
-            console.log(`[EasyEnglish] Subscription updated for user ${eeUser.id}: ${subUpdated.status}`);
-          }
-          break;
-        }
-
-        let userId = subUpdated.metadata?.userId;
-        
-        // Fallback: lookup user by Stripe customer ID if userId not in metadata
-        if (!userId && subUpdated.customer) {
-          const user = await storage.getUserByStripeCustomerId(subUpdated.customer);
-          if (user) {
-            userId = user.id;
-          }
-        }
-        
-        if (userId) {
-          if (subUpdated.status === "canceled" || subUpdated.status === "unpaid") {
-            await storage.updateUserSubscription(userId, {
-              subscriptionTier: "free",
-              stripeSubscriptionId: null,
-              subscriptionEndDate: null,
-            });
-            console.log(`User ${userId} downgraded to free (status: ${subUpdated.status})`);
-          } else if (subUpdated.status === "active" || subUpdated.status === "trialing") {
-            // Sync tier on every active/trialing update — handles tier upgrades/downgrades
-            // (e.g., user switches from Plus to Premium via Stripe Customer Portal).
-            // Unknown price IDs resolve to "free" (non-upgrade) for ad-safety.
-            const priceId = extractSubscriptionPriceId(subUpdated);
-            const tier = tierFromPriceId(priceId);
-            const resolvedTier: "free" | "plus" | "premium" = tier || "free";
-            if (!tier) {
-              console.error(`[Stripe] Unknown priceId=${priceId} on customer.subscription.updated (legacy) for user=${userId} — refusing to grant tier; configure STRIPE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}_PRICE_ID`);
-            }
-            const endDate = subUpdated.current_period_end
-              ? new Date(subUpdated.current_period_end * 1000)
-              : null;
-            await storage.updateUserSubscription(userId, {
-              subscriptionTier: resolvedTier,
-              subscriptionEndDate: endDate,
-            });
-            if (subUpdated.cancel_at_period_end) {
-              console.log(`User ${userId} subscription will cancel at period end (tier=${resolvedTier})`);
-            } else {
-              console.log(`User ${userId} subscription synced: tier=${resolvedTier}`);
-            }
-          }
-        }
-        break;
-      }
-      
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as any;
-        const subscriptionId = invoice.subscription;
-        const customerId = invoice.customer;
-        
-        if (subscriptionId) {
-          try {
-            const subResponse = await stripe.subscriptions.retrieve(subscriptionId as string);
-            const subData = subResponse as any;
-            let userId = subData.metadata?.userId;
-            
-            // Fallback: lookup user by Stripe customer ID if userId not in metadata
-            if (!userId && customerId) {
-              const user = await storage.getUserByStripeCustomerId(customerId);
-              if (user) {
-                userId = user.id;
-              }
-            }
-            
-            if (userId) {
-              const endDate = subData.current_period_end 
-                ? new Date(subData.current_period_end * 1000) 
-                : null;
-              await storage.updateUserSubscription(userId, {
-                subscriptionTier: "premium",
-                subscriptionEndDate: endDate,
-              });
-              await recordTransaction({
-                userId,
-                provider: "stripe",
-                providerTransactionId: invoice.id,
-                type: "subscription_renewal",
-                status: "completed",
-                amountCents: invoice.amount_paid || 0,
-                description: "Subscription renewal payment",
-                receiptUrl: invoice.hosted_invoice_url || null,
-              });
-              console.log(`User ${userId} subscription renewed`);
-            }
-          } catch (e) {
-            console.warn("Could not process invoice payment:", e);
-          }
-        }
-        break;
-      }
-      
-      default:
-        console.log(`Unhandled event type ${event.type}`);
-    }
-    
-    res.json({ received: true });
-  });
+  );
 
   // ============================================
   // PayPal Payment Routes
