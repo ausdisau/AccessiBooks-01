@@ -134,21 +134,27 @@ export const analyticsService = {
       const averageSessionMinutes = Math.round(avgSecs / 60 * 10) / 10;
 
       const topTitleRows = await db.execute(
-        sql`SELECT u.subscription_tier, metadata->>'titleId' AS title_id, COUNT(*) AS plays
+        sql`SELECT COALESCE(u.subscription_tier, 'free') AS subscription_tier,
+                   pe.metadata->>'titleId' AS title_id,
+                   b.title AS title,
+                   COUNT(*) AS plays
             FROM product_events pe
-            JOIN users u ON metadata->>'userId' = u.id
-            WHERE pe.event_type = 'playback_session_started' AND pe.occurred_at >= ${from} AND pe.occurred_at <= ${to} AND metadata->>'titleId' IS NOT NULL
-            GROUP BY u.subscription_tier, title_id
-            ORDER BY plays DESC
-            LIMIT 15`
+            JOIN users u ON pe.metadata->>'userId' = u.id
+            LEFT JOIN books b ON b.id = pe.metadata->>'titleId'
+            WHERE pe.event_type = 'playback_session_started'
+              AND pe.occurred_at >= ${from}
+              AND pe.occurred_at <= ${to}
+              AND pe.metadata->>'titleId' IS NOT NULL
+            GROUP BY COALESCE(u.subscription_tier, 'free'), title_id, b.title
+            ORDER BY subscription_tier ASC, plays DESC, title_id ASC`
       );
 
-      const topTitlesByTier: Record<string, Array<{ titleId: string; plays: number }>> = { free: [], plus: [], premium: [] };
+      const topTitlesByTier: Record<string, Array<{ titleId: string; title: string | null; plays: number }>> = { free: [], plus: [], premium: [] };
       for (const r of (topTitleRows as any).rows ?? []) {
         const t = r.subscription_tier || "free";
         if (!topTitlesByTier[t]) topTitlesByTier[t] = [];
         if (topTitlesByTier[t].length < 5) {
-          topTitlesByTier[t].push({ titleId: r.title_id, plays: Number(r.plays) });
+          topTitlesByTier[t].push({ titleId: r.title_id, title: r.title ?? null, plays: Number(r.plays) });
         }
       }
 

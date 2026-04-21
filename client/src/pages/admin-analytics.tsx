@@ -229,6 +229,47 @@ function ListeningTab({ from, to }: { from: string; to: string }) {
           </CardContent>
         </Card>
       )}
+
+      {!isLoading && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-testid="top-titles-by-tier">
+          {(["free", "plus", "premium"] as const).map(tier => {
+            const titles = data?.topTitlesByTier?.[tier] ?? [];
+            return (
+              <Card key={tier} className="dark:bg-slate-900/50" data-testid={`top-titles-${tier}`}>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium capitalize">Top Titles — {tier}</CardTitle>
+                  <CardDescription>Most-played titles for {tier} listeners</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {titles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No plays in this period.</p>
+                  ) : (
+                    <Table>
+                      <caption className="sr-only">Top 5 titles played by {tier} listeners</caption>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Title</TableHead>
+                          <TableHead className="text-right">Plays</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {titles.map(t => (
+                          <TableRow key={`${tier}-${t.titleId}`}>
+                            <TableCell className="font-medium">
+                              {t.title ?? <span className="text-muted-foreground font-mono text-xs">{t.titleId.slice(0, 8)}…</span>}
+                            </TableCell>
+                            <TableCell className="text-right">{t.plays.toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
