@@ -48,6 +48,7 @@ import { ShareButton } from "@/components/share-button";
 import { NotificationCenter } from "@/components/notification-center";
 import { Footer } from "@/components/footer";
 import { BrandLandingPage } from "@/pages/landing";
+import HandsFreeSignIn from "@/pages/hands-free-sign-in";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
@@ -901,6 +902,15 @@ function LoginModal({
                   >
                     <Zap className="mr-2 h-4 w-4" />
                     Send me a magic link
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground hover:text-foreground"
+                    onClick={() => { onOpenChange(false); window.location.href = "/sign-in"; }}
+                    data-testid="button-hands-free-signin"
+                  >
+                    <Accessibility className="mr-2 h-4 w-4" />
+                    Use hands-free sign-in (voice & dwell)
                   </Button>
                 </div>
               )}
@@ -2064,6 +2074,9 @@ function App() {
                   </AuthGatedRoute>
                 </Suspense>
               )}
+            </Route>
+            <Route path="/sign-in">
+              <HandsFreeSignIn />
             </Route>
             <Route>
               {isAuthenticated ? (
