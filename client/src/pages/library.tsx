@@ -355,7 +355,9 @@ export function Library({ onSelectBook }: LibraryProps) {
     }
   };
 
-  // Honor "always" preference: auto-accept the mid-roll offer once when it appears.
+  // Honor "always" preference: auto-accept the mid-roll offer once when it
+  // appears. For "never" we do nothing here AND the prompt below is suppressed,
+  // so the user is never bothered.
   useEffect(() => {
     if (
       isFree &&
@@ -544,13 +546,25 @@ export function Library({ onSelectBook }: LibraryProps) {
         <PremiumHeroBanner onUpgrade={() => upgradeToTier("premium", "monthly")} />
       )}
 
-      {isFree && isEligible && offer && !offerDismissed && !showRewardedAd && showPersonalizedSections && (
-        <RewardedAdOffer
-          offer={offer}
-          onAccept={handleLibraryAcceptOffer}
-          onDismiss={() => setOfferDismissed(true)}
-        />
-      )}
+      {/*
+        Honor rewardedAdPreference:
+          - "ask"   → show the offer card (default)
+          - "always" → useEffect above auto-accepts; don't render the prompt
+          - "never"  → suppress entirely (no offer card, no auto-accept)
+      */}
+      {isFree &&
+        isEligible &&
+        offer &&
+        !offerDismissed &&
+        !showRewardedAd &&
+        showPersonalizedSections &&
+        rewardedAdPreference === "ask" && (
+          <RewardedAdOffer
+            offer={offer}
+            onAccept={handleLibraryAcceptOffer}
+            onDismiss={() => setOfferDismissed(true)}
+          />
+        )}
 
       {showPersonalizedSections && (
         <DJSection onPlayBook={onSelectBook} />
