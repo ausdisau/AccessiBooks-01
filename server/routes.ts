@@ -5,7 +5,7 @@ import { db } from "./db";
 import { z } from "zod";
 import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
-import { setupMultiAuth, isAuthenticated } from "./multiAuth";
+import { setupMultiAuth, isAuthenticated, requireTier } from "./multiAuth";
 import { registerMagicLinkRoutes } from "./auth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
@@ -45,7 +45,7 @@ import {
   generateCoverForBook,
   generateCoversForBooks
 } from "./coverGenerator";
-import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature } from "./stripe";
+import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature, tierFromPriceId, extractSubscriptionPriceId } from "./stripe";
 import { TIER_PRICING, TITLE_PRICING, TIER_DISCOUNTS, TIER_FEATURES, type SubscriptionTier, purchases } from "@shared/schema";
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
 import { apiCache, CACHE_TTL } from "./apiCache";
@@ -2265,8 +2265,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             if (session.mode === "subscription" && userId) {
+              // Resolve actual tier from the subscription's price ID instead of
+              // assuming "premium" — Plus checkouts also flow through here.
+              let resolvedTier: "plus" | "premium" = "premium";
+              try {
+                if (stripe && session.subscription) {
+                  const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+                  const priceId = extractSubscriptionPriceId(sub);
+                  const tier = tierFromPriceId(priceId);
+                  if (tier) {
+                    resolvedTier = tier;
+                  } else {
+                    console.warn(`[Stripe] Unknown priceId ${priceId} on checkout.session.completed for user ${userId} — defaulting to premium`);
+                  }
+                }
+              } catch (e) {
+                console.warn("[Stripe] Could not resolve subscription tier from priceId:", e);
+              }
               await storage.updateUserSubscription(userId, {
-                subscriptionTier: "premium",
+                subscriptionTier: resolvedTier,
                 stripeSubscriptionId: session.subscription,
                 stripeCustomerId: session.customer,
               });
@@ -2277,10 +2294,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 type: "subscription",
                 status: "completed",
                 amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
-                description: "AccessiBooks Premium subscription",
+                description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : "Premium"} subscription`,
                 receiptUrl: session.receipt_url || null,
               });
-              console.log(`User ${userId} upgraded to premium via checkout`);
+              console.log(`User ${userId} upgraded to ${resolvedTier} via checkout`);
             } else if (session.metadata?.type === "donation") {
               if (userId) {
                 await recordTransaction({
@@ -2319,15 +2336,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const user = await storage.getUserByStripeCustomerId(customerId);
             if (user) {
               const status = subscription.status;
-              const isPremium = status === "active" || status === "trialing";
-              
+              const isActive = status === "active" || status === "trialing";
+
+              // Resolve actual tier from the subscription's price ID. Falls back to
+              // "premium" when env vars are missing (preserves prior behavior).
+              let resolvedTier: "free" | "plus" | "premium" = "free";
+              if (isActive) {
+                const priceId = extractSubscriptionPriceId(subscription);
+                const tier = tierFromPriceId(priceId);
+                if (tier) {
+                  resolvedTier = tier;
+                } else {
+                  console.warn(`[Stripe] Unknown priceId ${priceId} on customer.subscription.updated for user ${user.id} — defaulting to premium`);
+                  resolvedTier = "premium";
+                }
+              }
+
               await storage.updateUserSubscription(user.id, {
-                subscriptionTier: isPremium ? "premium" : "free",
-                subscriptionEndDate: subscription.current_period_end 
-                  ? new Date(subscription.current_period_end * 1000) 
+                subscriptionTier: resolvedTier,
+                subscriptionEndDate: subscription.current_period_end
+                  ? new Date(subscription.current_period_end * 1000)
                   : null,
               });
-              console.log(`Subscription updated for user ${user.id}: ${status}`);
+              console.log(`Subscription updated for user ${user.id}: ${status} → tier=${resolvedTier}`);
             }
             break;
           }
@@ -2555,10 +2586,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("Could not fetch subscription details:", e);
           }
           
+          // Resolve actual tier from the subscription's price ID instead of
+          // assuming "premium" — Plus checkouts also flow through here.
+          let resolvedTier: "plus" | "premium" = "premium";
+          try {
+            if (stripe) {
+              const subForTier = await stripe.subscriptions.retrieve(subscriptionId as string);
+              const priceId = extractSubscriptionPriceId(subForTier);
+              const tier = tierFromPriceId(priceId);
+              if (tier) {
+                resolvedTier = tier;
+              } else {
+                console.warn(`[Stripe] Unknown priceId ${priceId} on checkout.session.completed (legacy) for user ${userId} — defaulting to premium`);
+              }
+            }
+          } catch (e) {
+            console.warn("[Stripe] Could not resolve subscription tier from priceId:", e);
+          }
+
           await storage.updateUserSubscription(userId, {
             stripeCustomerId: customerId as string,
             stripeSubscriptionId: subscriptionId as string,
-            subscriptionTier: "premium",
+            subscriptionTier: resolvedTier,
             subscriptionEndDate,
           });
           await recordTransaction({
@@ -2568,9 +2617,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "subscription",
             status: "completed",
             amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
-            description: "AccessiBooks Premium subscription",
+            description: `AccessiBooks ${resolvedTier === "plus" ? "Plus" : "Premium"} subscription`,
           });
-          console.log(`User ${userId} upgraded to premium with customer ${customerId}`);
+          console.log(`User ${userId} upgraded to ${resolvedTier} with customer ${customerId}`);
         }
         break;
       }
@@ -2660,15 +2709,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
               subscriptionEndDate: null,
             });
             console.log(`User ${userId} downgraded to free (status: ${subUpdated.status})`);
-          } else if (subUpdated.status === "active" && subUpdated.cancel_at_period_end) {
-            // Subscription is active but will cancel at period end
-            const endDate = subUpdated.current_period_end 
-              ? new Date(subUpdated.current_period_end * 1000) 
+          } else if (subUpdated.status === "active" || subUpdated.status === "trialing") {
+            // Sync tier on every active/trialing update — handles tier upgrades/downgrades
+            // (e.g., user switches from Plus to Premium via Stripe Customer Portal).
+            const priceId = extractSubscriptionPriceId(subUpdated);
+            const tier = tierFromPriceId(priceId);
+            const resolvedTier: "plus" | "premium" = tier || "premium";
+            if (!tier) {
+              console.warn(`[Stripe] Unknown priceId ${priceId} on customer.subscription.updated (legacy) for user ${userId} — defaulting to premium`);
+            }
+            const endDate = subUpdated.current_period_end
+              ? new Date(subUpdated.current_period_end * 1000)
               : null;
             await storage.updateUserSubscription(userId, {
+              subscriptionTier: resolvedTier,
               subscriptionEndDate: endDate,
             });
-            console.log(`User ${userId} subscription will cancel at period end`);
+            if (subUpdated.cancel_at_period_end) {
+              console.log(`User ${userId} subscription will cancel at period end (tier=${resolvedTier})`);
+            } else {
+              console.log(`User ${userId} subscription synced: tier=${resolvedTier}`);
+            }
           }
         }
         break;
@@ -5964,7 +6025,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const chapterCheckinCache = new Map<string, { questions: { question: string; options: string[]; correct: number }[] }>();
   const pictureCheckinCache = new Map<string, { question: string; options: string[] }>();
 
-  app.post("/api/ai/chapter-preview", async (req: any, res) => {
+  app.post("/api/ai/chapter-preview", requireTier(["plus", "premium"]), async (req: any, res) => {
     try {
       const { chapterText, title, bookId, chapterIndex } = req.body as {
         chapterText?: string;
@@ -6007,7 +6068,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai/chapter-picture-checkin", async (req: any, res) => {
+  app.post("/api/ai/chapter-picture-checkin", requireTier(["plus", "premium"]), async (req: any, res) => {
     try {
       const { chapterText, title, bookId, chapterIndex } = req.body as {
         chapterText?: string;
@@ -6060,7 +6121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai/explain-passage", async (req: any, res) => {
+  app.post("/api/ai/explain-passage", requireTier(["plus", "premium"]), async (req: any, res) => {
     try {
       const { passage, context } = req.body as { passage?: string; context?: string };
       if (!passage || typeof passage !== "string" || passage.trim().length === 0) {
@@ -6092,7 +6153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai/chapter-checkin", async (req: any, res) => {
+  app.post("/api/ai/chapter-checkin", requireTier(["plus", "premium"]), async (req: any, res) => {
     try {
       const { chapterText, title, bookId, chapterIndex } = req.body as {
         chapterText?: string;
@@ -6142,7 +6203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/ai/image-description", async (req: any, res) => {
+  app.post("/api/ai/image-description", requireTier(["plus", "premium"]), async (req: any, res) => {
     try {
       const { imageUrl, bookContext } = req.body as { imageUrl?: string; bookContext?: string };
       if (!imageUrl || typeof imageUrl !== "string") {

@@ -99,7 +99,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [subscriptionTier, setSubscriptionTier] = useState<"free" | "plus" | "premium">("free");
   const [bufferedAhead, setBufferedAhead] = useState(0);
   const pendingBookRef = useRef<Book | null>(null);
-  const isPremiumRef = useRef(false);
+  // Initialize synchronously from the user's tier so ad-skip / quality decisions
+  // made before the first /api/subscription/status fetch don't leak premium
+  // behaviour to free users (or block paying users on first paint).
+  const initialTier = (user as any)?.subscriptionTier;
+  const isPremiumRef = useRef(initialTier === "premium" || initialTier === "plus");
   const externalChapterEndRef = useRef<(() => void) | null>(null);
   const stallRecoveryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const networkRetryCountRef = useRef(0);
