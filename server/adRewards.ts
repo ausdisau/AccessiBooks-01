@@ -213,7 +213,7 @@ export async function completeReward(
   userId: string,
   impressionId: string,
   rewardType: RewardType,
-): Promise<{ granted: boolean; reward?: { label: string; expiresAt: Date }; error?: string }> {
+): Promise<{ granted: boolean; newlyGranted?: boolean; reward?: { label: string; expiresAt: Date }; error?: string }> {
   const config = REWARD_CONFIG[rewardType];
   if (!config) {
     return { granted: false, error: "invalid_reward_type" };
@@ -240,7 +240,7 @@ export async function completeReward(
     const expiresAt =
       expiringRow[0]?.expiresAt
       ?? new Date(existingGrant[0].grantedAt!.getTime() + config.durationMinutes * 60 * 1000);
-    return { granted: true, reward: { label: config.label, expiresAt } };
+    return { granted: true, newlyGranted: false, reward: { label: config.label, expiresAt } };
   }
 
   const impressionRows = await db
@@ -289,7 +289,7 @@ export async function completeReward(
         .limit(1);
       const expiresAt =
         existing[0]?.expiresAt ?? new Date(Date.now() + config.durationMinutes * 60 * 1000);
-      return { granted: true, reward: { label: config.label, expiresAt } };
+      return { granted: true, newlyGranted: false, reward: { label: config.label, expiresAt } };
     }
     throw err;
   }
@@ -328,7 +328,7 @@ export async function completeReward(
   }
 
   sessionStartedAt.delete(impressionId);
-  return { granted: true, reward: { label: config.label, expiresAt: finalExpiry } };
+  return { granted: true, newlyGranted: true, reward: { label: config.label, expiresAt: finalExpiry } };
 }
 
 export async function getActiveRewards(userId: string): Promise<ActiveReward[]> {

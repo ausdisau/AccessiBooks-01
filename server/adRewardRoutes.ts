@@ -141,12 +141,16 @@ export function registerAdRewardRoutes(app: Express) {
       if (!result.granted) {
         return res.status(400).json(result);
       }
-      analyticsService.track("rewarded_ad_completed", getUserTier(req), {
-        userId,
-        rewardType,
-        impressionId,
-        rewardLabel: result.reward?.label,
-      });
+      // Only count first-time grants in analytics so idempotent retries on
+      // an already-active reward don't inflate the completed counter.
+      if (result.newlyGranted) {
+        analyticsService.track("rewarded_ad_completed", getUserTier(req), {
+          userId,
+          rewardType,
+          impressionId,
+          rewardLabel: result.reward?.label,
+        });
+      }
       return res.json({ granted: true, reward: { label: result.reward!.label, expiresAt: result.reward!.expiresAt } });
     } catch (err) {
       console.error("[AdRewards] complete error:", err);
