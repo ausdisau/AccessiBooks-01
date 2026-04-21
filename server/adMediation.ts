@@ -306,6 +306,16 @@ const analytics: AdAnalytics = {
 export function registerAdMediationRoutes(router: Router) {
   router.get("/api/ads/request", async (req: Request, res: Response) => {
     try {
+      // Ad-safety: never serve ads to paid (Plus or Premium) subscribers.
+      // Free / unauthenticated users still receive ads.
+      const reqAny = req as any;
+      if (reqAny.isAuthenticated && reqAny.isAuthenticated() && reqAny.user) {
+        const tier = reqAny.user.subscriptionTier;
+        if (tier === "plus" || tier === "premium") {
+          return res.status(204).end();
+        }
+      }
+
       const adType = (req.query.type as string) === "midroll" ? "midroll" : "preroll";
       const contentGenre = req.query.genre as string | undefined;
 

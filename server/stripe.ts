@@ -51,6 +51,39 @@ export const DONATION_CONFIG: DonationConfig = {
   description: "Thank you for supporting accessible audiobooks!",
 };
 
+/**
+ * Resolve a Stripe price ID to a subscription tier ("plus" | "premium") based on
+ * env-configured price IDs. Returns null if the price ID does not match any
+ * configured tier (caller should log and fall back conservatively).
+ *
+ * Required env vars:
+ *   STRIPE_PLUS_MONTHLY_PRICE_ID
+ *   STRIPE_PLUS_YEARLY_PRICE_ID
+ *   STRIPE_PREMIUM_MONTHLY_PRICE_ID
+ *   STRIPE_PREMIUM_YEARLY_PRICE_ID
+ */
+export function tierFromPriceId(priceId: string | null | undefined): "plus" | "premium" | null {
+  if (!priceId) return null;
+  const plusIds = [process.env.STRIPE_PLUS_MONTHLY_PRICE_ID, process.env.STRIPE_PLUS_YEARLY_PRICE_ID].filter(Boolean);
+  const premiumIds = [process.env.STRIPE_PREMIUM_MONTHLY_PRICE_ID, process.env.STRIPE_PREMIUM_YEARLY_PRICE_ID].filter(Boolean);
+  if (plusIds.includes(priceId)) return "plus";
+  if (premiumIds.includes(priceId)) return "premium";
+  return null;
+}
+
+/**
+ * Extract the primary price ID from a Stripe Subscription object (first item).
+ * Tolerant of both expanded and unexpanded shapes.
+ */
+export function extractSubscriptionPriceId(subscription: any): string | null {
+  const item = subscription?.items?.data?.[0];
+  if (!item) return null;
+  const price = item.price;
+  if (!price) return null;
+  if (typeof price === "string") return price;
+  return price.id || null;
+}
+
 export function verifyWebhookSignature(
   payload: string | Buffer,
   signature: string,

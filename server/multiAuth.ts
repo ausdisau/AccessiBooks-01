@@ -459,3 +459,28 @@ export const isLocalAuthenticated = (req: Request, res: Response, next: NextFunc
 };
 
 export const isAuthenticated = isLocalAuthenticated;
+
+/**
+ * Middleware factory: gate a route to a set of subscription tiers. Returns 401
+ * if unauthenticated, 403 if the user's tier is not in the allowed list.
+ * Composes after isAuthenticated (or stand-alone — performs its own auth check).
+ *
+ * Example: app.post("/api/ai/foo", requireTier(["plus", "premium"]), handler)
+ */
+export const requireTier = (allowedTiers: Array<"free" | "plus" | "premium">) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    const tier = (req.user as any).subscriptionTier || "free";
+    if (!allowedTiers.includes(tier)) {
+      return res.status(403).json({
+        message: `This feature requires a ${allowedTiers.join(" or ")} subscription`,
+        upgradeRequired: true,
+        currentTier: tier,
+        allowedTiers,
+      });
+    }
+    return next();
+  };
+};

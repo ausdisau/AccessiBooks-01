@@ -153,24 +153,37 @@ export async function sessionEnforcementMiddleware(req: Request, res: Response, 
 
 export async function premiumContentMiddleware(req: Request, res: Response, next: NextFunction) {
   const bookId = req.params.bookId || req.params.id;
-  
-  const isPremiumContent = bookId.startsWith("premium-");
-  
-  if (!isPremiumContent) {
+
+  if (!bookId) {
     return next();
   }
-  
+
+  // Authoritative premium check based on the book's `isPremium` field rather than
+  // a fragile id prefix. Note: Plus tier does NOT grant access to premium content
+  // — only Premium does. This is intentional product policy.
+  let book;
+  try {
+    book = await storage.getBook(bookId);
+  } catch (err) {
+    console.error("[premiumContentMiddleware] Failed to load book:", err);
+    return res.status(500).json({ message: "Failed to verify content access" });
+  }
+
+  if (!book || !book.isPremium) {
+    return next();
+  }
+
   const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
-  
+
   if (!userId) {
-    return res.status(401).json({ 
+    return res.status(401).json({
       message: "Authentication required for premium content",
       premiumRequired: true,
     });
   }
-  
+
   const user = await storage.getUser(userId);
-  
+
   if (!user || user.subscriptionTier !== "premium") {
     return res.status(403).json({
       message: "Premium subscription required to access this content",
@@ -178,7 +191,7 @@ export async function premiumContentMiddleware(req: Request, res: Response, next
       upgradeUrl: "/api/subscription/create-checkout",
     });
   }
-  
+
   next();
 }
 
