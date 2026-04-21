@@ -413,7 +413,12 @@ function AccessibilityTab() {
 
 export default function AdminAnalyticsPage() {
   const [range, setRange] = useState<DateRange>("30d");
+  // `customRange` is the *applied* range driving the queries; it only updates
+  // when the user has selected both endpoints. `pickerSelection` tracks the
+  // in-progress selection inside the open popover so editing an existing
+  // range doesn't cause a transient fallback to 30d while only `from` is set.
   const [customRange, setCustomRange] = useState<DayPickerRange | undefined>();
+  const [pickerSelection, setPickerSelection] = useState<DayPickerRange | undefined>();
   const [pickerOpen, setPickerOpen] = useState(false);
 
   let from: string;
@@ -471,7 +476,13 @@ export default function AdminAnalyticsPage() {
             ))}
           </div>
 
-          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+          <Popover
+            open={pickerOpen}
+            onOpenChange={(open) => {
+              setPickerOpen(open);
+              if (open) setPickerSelection(customRange);
+            }}
+          >
             <PopoverTrigger asChild>
               <Button
                 variant={range === "custom" ? "default" : "outline"}
@@ -479,6 +490,11 @@ export default function AdminAnalyticsPage() {
                 className="gap-2"
                 data-testid="range-chip-custom"
                 aria-label="Pick a custom date range"
+                onClick={() => {
+                  if (range !== "custom" && customRange?.from && customRange?.to) {
+                    setRange("custom");
+                  }
+                }}
               >
                 <CalendarIcon className="h-4 w-4" />
                 <span className="hidden sm:inline">
@@ -490,10 +506,11 @@ export default function AdminAnalyticsPage() {
             <PopoverContent className="w-auto p-0" align="end">
               <Calendar
                 mode="range"
-                selected={customRange}
+                selected={pickerSelection}
                 onSelect={(value) => {
-                  setCustomRange(value);
+                  setPickerSelection(value);
                   if (value?.from && value?.to) {
+                    setCustomRange(value);
                     setRange("custom");
                     setPickerOpen(false);
                   }
@@ -513,6 +530,7 @@ export default function AdminAnalyticsPage() {
                     size="sm"
                     onClick={() => {
                       setCustomRange(undefined);
+                      setPickerSelection(undefined);
                       setRange("30d");
                       setPickerOpen(false);
                     }}
