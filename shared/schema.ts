@@ -1974,3 +1974,38 @@ export const insertEntitlementSchema = createInsertSchema(entitlements).omit({ i
 export type InsertEntitlement = z.infer<typeof insertEntitlementSchema>;
 export type Entitlement = typeof entitlements.$inferSelect;
 
+export const adRewards = pgTable("ad_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  impressionId: varchar("impression_id"),
+  rewardedAt: timestamp("rewarded_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (t) => [
+  index("idx_ad_rewards_user").on(t.userId),
+  index("idx_ad_rewards_expires").on(t.expiresAt),
+]);
+
+export const insertAdRewardSchema = createInsertSchema(adRewards).omit({ id: true, rewardedAt: true });
+export type InsertAdReward = z.infer<typeof insertAdRewardSchema>;
+export type AdReward = typeof adRewards.$inferSelect;
+
+export const adEventLogs = pgTable("ad_event_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  adId: varchar("ad_id").notNull(),
+  adType: varchar("ad_type", { length: 32 }).notNull(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  placementId: varchar("placement_id", { length: 64 }),
+  completed: boolean("completed").notNull().default(false),
+  skipped: boolean("skipped").notNull().default(false),
+  servedAt: timestamp("served_at").defaultNow(),
+}, (t) => [
+  index("idx_ad_event_logs_user").on(t.userId),
+  index("idx_ad_event_logs_served").on(t.servedAt),
+  index("idx_ad_event_logs_provider").on(t.provider),
+]);
+
+export const insertAdEventLogSchema = createInsertSchema(adEventLogs).omit({ id: true, servedAt: true });
+export type InsertAdEventLog = z.infer<typeof insertAdEventLogSchema>;
+export type AdEventLog = typeof adEventLogs.$inferSelect;
+

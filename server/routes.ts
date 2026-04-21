@@ -17,6 +17,7 @@ import { registerPlatformRoutes } from "./platformRoutes";
 import { registerPodcastRoutes } from "./podcastIngestion";
 import { registerPushNotificationRoutes } from "./pushNotifications";
 import { registerAdMediationRoutes } from "./adMediation";
+import { logAdImpression } from "./adImpressionLogger";
 import { registerSelfServeAdRoutes } from "./selfServeAds";
 import { registerBillingRoutes, recordTransaction, updateTransactionStatus } from "./billing";
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
@@ -3162,8 +3163,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const { adId, adType, completed, skipped } = req.body;
-      console.log(`Ad impression: user=${userId} ad=${adId} type=${adType} completed=${completed} skipped=${skipped}`);
+      const { adId, adType, completed, skipped, provider, campaignId, creativeId } = req.body;
+      await logAdImpression({
+        userId,
+        adId: adId ?? "unknown",
+        adType: adType ?? "preroll",
+        completed: !!completed,
+        skipped: !!skipped,
+        provider: provider ?? "unknown",
+        campaignId,
+        creativeId,
+      });
       res.json({ success: true });
     } catch (error) {
       console.error("Error recording ad impression:", error);

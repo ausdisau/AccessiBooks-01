@@ -424,7 +424,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         if (onChapterEndCallback.current) {
           onChapterEndCallback.current();
         }
-        triggerMidRollAd();
+        // Delay mid-roll firing by 500ms so listeners don't get an ad
+        // exactly at the chapter boundary (improves perceived fairness).
+        setTimeout(() => {
+          triggerMidRollAd();
+        }, 500);
       }
       setCurrentChapterIndex(newIndex);
       lastChapterIndex.current = newIndex;
@@ -615,7 +619,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const triggerMidRollAd = useCallback(async () => {
     if (isPremiumRef.current) return;
-    if (!audioAdService.shouldShowMidRoll(isPremiumRef.current)) return;
+    const shouldShow = await audioAdService.shouldShowMidRollAsync(isPremiumRef.current);
+    if (!shouldShow) return;
 
     const audio = audioRef.current;
     if (audio && !audio.paused) {
@@ -632,7 +637,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const playBook = async (book: Book) => {
     audioAdService.incrementPlayCount();
 
-    if (audioAdService.shouldShowPreRoll(isPremiumRef.current)) {
+    const shouldShowPreRoll = await audioAdService.shouldShowPreRollAsync(isPremiumRef.current);
+    if (shouldShowPreRoll) {
       pendingBookRef.current = book;
       audioAdService.playAdChime();
       const ad = await audioAdService.requestAd("pre-roll");

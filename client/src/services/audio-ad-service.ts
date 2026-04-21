@@ -138,6 +138,29 @@ export class AudioAdService {
     return timeSinceLastAd >= this.config.midRollCooldownMs;
   }
 
+  async checkRewardedBypass(): Promise<boolean> {
+    try {
+      const res = await fetch("/api/ads/rewarded/status", { credentials: "include" });
+      if (!res.ok) return false;
+      const data: { active: boolean } = await res.json();
+      return data.active;
+    } catch {
+      return false;
+    }
+  }
+
+  async shouldShowPreRollAsync(isPremium: boolean): Promise<boolean> {
+    if (!this.shouldShowPreRoll(isPremium)) return false;
+    const rewarded = await this.checkRewardedBypass();
+    return !rewarded;
+  }
+
+  async shouldShowMidRollAsync(isPremium: boolean): Promise<boolean> {
+    if (!this.shouldShowMidRoll(isPremium)) return false;
+    const rewarded = await this.checkRewardedBypass();
+    return !rewarded;
+  }
+
   async requestAd(adType: "pre-roll" | "mid-roll", contentGenre?: string): Promise<AdResponse> {
     try {
       const type = adType === "pre-roll" ? "preroll" : "midroll";

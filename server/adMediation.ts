@@ -2,24 +2,32 @@
  * adMediation.ts — Programmatic Audio Ad Mediation Layer
  *
  * Responsibility: Waterfall ad selection for audio playback ads (pre-roll/mid-roll):
- *   1. Check shouldServeAds() — paid tiers receive { adRequired: false } with 204.
- *   2. Try VAST-compatible programmatic providers in priority order
- *      (AdsWizz, Triton Digital, AdPersonam — activated via env vars)
- *   3. Fall back to self-serve audio ads from selfServeAds.ts
- *   4. Fall back to house ads (internal promotional messages)
+ *   1. Entitlement check (shouldServeAds) — paid/institutional tiers and ad-free
+ *      books are short-circuited with 204 before any provider work.
+ *   2. AdDecisionService.decide() — server-side eligibility gate (a11y, flags).
+ *   3. AdService waterfall: ProgrammaticAdProvider → SelfServeAdProvider → HouseAdProvider.
  *
  * Routes registered:
- *   - GET /api/ads/request   — request an audio ad (preroll or midroll)
- *   - POST /api/ads/tracking — fire VAST tracking pixels server-side
- *   - GET /api/ads/providers — list configured providers and their status
- *   - GET /api/ads/analytics — in-memory ad request analytics
+ *   - GET /api/ads/request         — request an audio ad (preroll or midroll)
+ *   - GET /api/ads/placement/:id   — get placement registry entry
+ *   - POST /api/ads/rewarded/complete — record rewarded ad completion
+ *   - GET /api/ads/rewarded/status — get active rewarded period status
+ *   - POST /api/ads/tracking       — fire VAST tracking pixels server-side
+ *   - GET /api/ads/providers       — list configured providers and their status
+ *   - GET /api/ads/analytics       — in-memory ad request analytics
  *
  * NOT responsible for display (banner) ads — see adPlatformRoutes.ts.
  * NOT responsible for ad campaign CRUD — see selfServeAds.ts.
  */
-import { Router, Request, Response } from "express";
-import { resolveVAST, selectBestCreative, selectBestCompanion, type VASTAd, type VASTCreative, type VASTCompanion, type VASTTrackingEvents } from "./vastParser";
-import { selectSelfServeAd, recordImpression, recordImpressionEvent } from "./selfServeAds";
+import { Router, type Request, type Response } from "express";
+import { AdService } from "./adService";
+import { AdDecisionService } from "./adDecision";
+import { ProgrammaticAdProvider } from "./adProviders/ProgrammaticAdProvider";
+import { SelfServeAdProvider } from "./adProviders/SelfServeAdProvider";
+import { HouseAdProvider } from "./adProviders/HouseAdProvider";
+import { registerPlacementRoutes } from "./adPlacementRegistry";
+import { registerRewardedRoutes } from "./adRewards";
+import { getAllFlags } from "./adFeatureFlags";
 import { resolveEntitlementOverride, getUserEffectiveTier, shouldServeAds } from "./entitlements";
 import { storage } from "./storage";
 
@@ -48,7 +56,7 @@ export interface ProgrammaticAd {
     height: number;
     trackingPixels: string[];
   };
-  tracking: VASTTrackingEvents;
+  tracking: import("./vastParser").VASTTrackingEvents;
   isProgrammatic: true;
 }
 
@@ -63,232 +71,11 @@ export interface HouseAd {
 
 export type AdResponse = ProgrammaticAd | HouseAd;
 
-const HOUSE_ADS: HouseAd[] = [
-  {
-    id: "house-premium-1",
-    provider: "house",
-    title: "Go Premium",
-    description: "Upgrade to Premium for ad-free listening, unlimited skips, and high-quality audio.",
-    duration: 12,
-    isProgrammatic: false,
-  },
-  {
-    id: "house-premium-2",
-    provider: "house",
-    title: "Listen Without Limits",
-    description: "Premium members enjoy uninterrupted audiobook experiences. Try it free for 7 days!",
-    duration: 12,
-    isProgrammatic: false,
-  },
-  {
-    id: "house-premium-3",
-    provider: "house",
-    title: "Offline Listening",
-    description: "Download audiobooks for offline listening. Plus 5-device support and 320 kbps audio with Premium.",
-    duration: 15,
-    isProgrammatic: false,
-  },
-  {
-    id: "house-feature-1",
-    provider: "house",
-    title: "Discover New Books",
-    description: "Explore thousands of free audiobooks from LibriVox and Project Gutenberg, right here on AccessiBooks.",
-    duration: 12,
-    isProgrammatic: false,
-  },
-  {
-    id: "house-feature-2",
-    provider: "house",
-    title: "Reading Challenges",
-    description: "Join reading challenges, earn achievements, and track your listening streaks. Stay motivated with gamification!",
-    duration: 12,
-    isProgrammatic: false,
-  },
-];
-
-function buildTagUrl(baseUrl: string, params: Record<string, string>): string {
-  const url = new URL(baseUrl);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
-  return url.toString();
-}
-
-function getProviders(): AdProvider[] {
-  const providers: AdProvider[] = [];
-
-  const adswizzTag = process.env.ADSWIZZ_TAG_URL;
-  if (adswizzTag) {
-    providers.push({
-      name: "adswizz",
-      enabled: true,
-      priority: 1,
-      tagUrl: adswizzTag,
-      timeout: parseInt(process.env.ADSWIZZ_TIMEOUT || "3000"),
-    });
-  }
-
-  const tritonTag = process.env.TRITON_TAG_URL;
-  if (tritonTag) {
-    providers.push({
-      name: "triton",
-      enabled: true,
-      priority: 2,
-      tagUrl: tritonTag,
-      timeout: parseInt(process.env.TRITON_TIMEOUT || "3000"),
-    });
-  }
-
-  const adpersonamTag = process.env.ADPERSONAM_TAG_URL;
-  if (adpersonamTag) {
-    providers.push({
-      name: "adpersonam",
-      enabled: true,
-      priority: 3,
-      tagUrl: adpersonamTag,
-      timeout: parseInt(process.env.ADPERSONAM_TIMEOUT || "3000"),
-    });
-  }
-
-  return providers.sort((a, b) => a.priority - b.priority);
-}
-
-async function fetchVASTFromProvider(
-  provider: AdProvider,
-  adType: "preroll" | "midroll",
-  contentGenre?: string,
-): Promise<ProgrammaticAd | null> {
-  try {
-    const params: Record<string, string> = {
-      ad_type: adType,
-      format: "audio",
-      t: Date.now().toString(),
-    };
-    if (contentGenre) params.genre = contentGenre;
-
-    const tagUrl = buildTagUrl(provider.tagUrl, params);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), provider.timeout);
-
-    const response = await fetch(tagUrl, {
-      signal: controller.signal,
-      headers: {
-        "Accept": "application/xml, text/xml",
-        "User-Agent": "AccessiBooks/1.0",
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.log(`[AdMediation] ${provider.name}: HTTP ${response.status}`);
-      return null;
-    }
-
-    const xml = await response.text();
-    const vastResponse = await resolveVAST(xml, provider.timeout);
-
-    if (vastResponse.error || vastResponse.ads.length === 0) {
-      console.log(`[AdMediation] ${provider.name}: No fill - ${vastResponse.error || "empty response"}`);
-      return null;
-    }
-
-    const ad = vastResponse.ads[0]!;
-    const creative = selectBestCreative(ad.creatives);
-    if (!creative) {
-      console.log(`[AdMediation] ${provider.name}: No suitable audio creative`);
-      return null;
-    }
-
-    const companion = selectBestCompanion(ad.companions);
-
-    const programmaticAd: ProgrammaticAd = {
-      id: ad.id,
-      provider: provider.name,
-      title: ad.title,
-      description: ad.description,
-      advertiser: ad.advertiser,
-      audioUrl: creative.mediaUrl,
-      mimeType: creative.mimeType,
-      duration: ad.duration || creative.duration,
-      skipOffset: ad.skipOffset,
-      companion: companion && companion.imageUrl ? {
-        imageUrl: companion.imageUrl,
-        clickThrough: companion.clickThrough,
-        width: companion.width,
-        height: companion.height,
-        trackingPixels: companion.trackingPixels,
-      } : undefined,
-      tracking: ad.tracking,
-      isProgrammatic: true,
-    };
-
-    console.log(`[AdMediation] ${provider.name}: Filled ad "${ad.title}" (${ad.duration}s)`);
-    return programmaticAd;
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      console.log(`[AdMediation] ${provider.name}: Timeout after ${provider.timeout}ms`);
-    } else {
-      console.log(`[AdMediation] ${provider.name}: Error - ${err instanceof Error ? err.message : String(err)}`);
-    }
-    return null;
-  }
-}
-
-async function requestAd(adType: "preroll" | "midroll", contentGenre?: string, userId?: string): Promise<AdResponse & { _selfServeImpressionId?: string }> {
-  const providers = getProviders();
-
-  for (const provider of providers) {
-    if (!provider.enabled) continue;
-    const ad = await fetchVASTFromProvider(provider, adType, contentGenre);
-    if (ad) return ad;
-  }
-
-  try {
-    const selfServeAd = await selectSelfServeAd(adType, contentGenre);
-    if (selfServeAd) {
-      const impressionId = await recordImpression(
-        selfServeAd.campaignId,
-        selfServeAd.creativeId,
-        userId,
-        adType,
-      );
-
-      console.log(`[AdMediation] Self-serve ad filled: "${selfServeAd.title}" (CPM: $${(selfServeAd.cpmBidCents / 100).toFixed(2)})`);
-
-      return {
-        id: `selfserve-${selfServeAd.creativeId}`,
-        provider: "self-serve",
-        title: selfServeAd.title,
-        advertiser: selfServeAd.advertiser,
-        audioUrl: selfServeAd.audioUrl,
-        mimeType: selfServeAd.mimeType,
-        duration: selfServeAd.duration,
-        companion: selfServeAd.companionImageUrl ? {
-          imageUrl: selfServeAd.companionImageUrl,
-          clickThrough: selfServeAd.clickThroughUrl,
-          width: 300,
-          height: 250,
-          trackingPixels: [],
-        } : undefined,
-        tracking: {
-          impression: [], start: [], firstQuartile: [], midpoint: [],
-          thirdQuartile: [], complete: [], skip: [], mute: [], unmute: [],
-          pause: [], resume: [], error: [], clickTracking: [],
-        },
-        isProgrammatic: true,
-        _selfServeImpressionId: impressionId,
-      };
-    }
-  } catch (err) {
-    console.error("[AdMediation] Self-serve ad error:", err);
-  }
-
-  console.log("[AdMediation] All providers exhausted, serving house ad");
-  const houseAd = HOUSE_ADS[Math.floor(Math.random() * HOUSE_ADS.length)]!;
-  return houseAd;
-}
+const adService = new AdService([
+  new ProgrammaticAdProvider(),
+  new SelfServeAdProvider(),
+  new HouseAdProvider(),
+]);
 
 interface AdAnalytics {
   totalRequests: number;
@@ -306,25 +93,31 @@ const analytics: AdAnalytics = {
   lastRequestTime: 0,
 };
 
-async function getUserSuppressAnimatedAds(req: any): Promise<boolean> {
+async function getA11yProfile(req: Request): Promise<Record<string, boolean | undefined>> {
   try {
-    if (!req.isAuthenticated?.() || !req.user?.id) return false;
-    const { db } = await import("./db");
-    const { accessibilityPreferences } = await import("@shared/schema");
-    const { eq } = await import("drizzle-orm");
-    const [record] = await db
-      .select()
-      .from(accessibilityPreferences)
-      .where(eq(accessibilityPreferences.userId, req.user.id));
-    if (!record || !record.profile) return false;
-    const profile = record.profile as Record<string, unknown>;
-    return profile.suppressAnimatedAds === true;
+    const user = (req as any).user;
+    if (!user?.id) return {};
+
+    const response = await fetch(
+      `http://localhost:${process.env.PORT || 5000}/api/a11y/preferences`,
+      {
+        headers: {
+          Cookie: req.headers.cookie || "",
+        },
+      },
+    );
+    if (!response.ok) return {};
+    const data = await response.json() as { profile?: Record<string, any> };
+    return data.profile ?? {};
   } catch {
-    return false;
+    return {};
   }
 }
 
 export function registerAdMediationRoutes(router: Router) {
+  registerPlacementRoutes(router);
+  registerRewardedRoutes(router);
+
   router.get("/api/ads/request", async (req: Request, res: Response) => {
     try {
       // Ad-safety: require authentication, and never serve ads to paid (Plus or
@@ -341,29 +134,44 @@ export function registerAdMediationRoutes(router: Router) {
       const adType = (req.query.type as string) === "midroll" ? "midroll" : "preroll";
       const contentGenre = req.query.genre as string | undefined;
       const bookId = req.query.bookId as string | undefined;
+      const placementId = (req.query.placement as string) ||
+        (adType === "midroll" ? "audio-midroll" : "audio-preroll");
+      const user = (req as any).user ?? null;
 
-      // ── Entitlement check: paid tiers are ad-free ──────────────────────────
-      const userId: string | undefined =
-        (req as any).user?.claims?.sub || (req as any).user?.id;
-
+      // ── Entitlement check: paid / institutional tiers + ad-free books ─────
+      const userId: string | undefined = user?.claims?.sub || user?.id;
       const overrideTier = userId ? await resolveEntitlementOverride(userId, bookId) : null;
       const dbUser = userId ? await storage.getUser(userId) : null;
       const effectiveTier = getUserEffectiveTier(dbUser, overrideTier);
-
-      // Look up book for adSupported flag if bookId provided
       const book = bookId ? await storage.getBook(bookId) : undefined;
 
-      if (!shouldServeAds((req as any).user, effectiveTier, book)) {
-        // Premium / plus / institutional — skip ad pod entirely
-        return res.status(204).json({ adRequired: false });
+      if (!shouldServeAds(user, effectiveTier, book)) {
+        return res.status(204).end();
       }
       // ─────────────────────────────────────────────────────────────────────
 
       analytics.totalRequests++;
       analytics.lastRequestTime = Date.now();
 
-      const suppressAnimated = await getUserSuppressAnimatedAds(req);
-      const ad = await requestAd(adType, contentGenre, userId);
+      const a11yProfile = await getA11yProfile(req);
+      const decision = AdDecisionService.decide(user, placementId, a11yProfile);
+
+      if (!decision.serve) {
+        console.log(`[AdMediation] Suppressed: reason=${decision.reason} placement=${placementId}`);
+        return res.status(204).end();
+      }
+
+      const context = {
+        adType: adType as "preroll" | "midroll",
+        contentGenre,
+        userId: user?.id,
+        placementId,
+      };
+
+      const ad = await adService.requestAd(context);
+      const suppressAnimated =
+        decision.suppressAnimation === true ||
+        a11yProfile.suppressAnimatedAds === true;
 
       // If user prefers static-only ads and the ad has a companion with animated format, filter it out
       // For house ads and audio-only ads this has no effect. For programmatic with companion, clear animated companions.
@@ -383,11 +191,24 @@ export function registerAdMediationRoutes(router: Router) {
         analytics.houseFills++;
       }
 
-      res.json(ad);
+      const responseBody = {
+        ...ad,
+        suppressAnimation: decision.suppressAnimation,
+        suppressAudio: decision.suppressAudio,
+      };
+
+      res.json(responseBody);
     } catch (err) {
       analytics.errors++;
       console.error("[AdMediation] Request error:", err);
-      const fallback = HOUSE_ADS[Math.floor(Math.random() * HOUSE_ADS.length)]!;
+      const fallback: HouseAd = {
+        id: "house-premium-1",
+        provider: "house",
+        title: "Go Premium",
+        description: "Upgrade to Premium for ad-free listening, unlimited skips, and high-quality audio.",
+        duration: 12,
+        isProgrammatic: false,
+      };
       analytics.houseFills++;
       res.json(fallback);
     }
@@ -418,28 +239,29 @@ export function registerAdMediationRoutes(router: Router) {
   });
 
   router.get("/api/ads/providers", (_req: Request, res: Response) => {
-    const providers = getProviders();
-    const status = providers.map(p => ({
-      name: p.name,
-      enabled: p.enabled,
-      priority: p.priority,
-      timeout: p.timeout,
-      configured: true,
-    }));
+    const programmaticEnvs = [
+      process.env.ADSWIZZ_TAG_URL,
+      process.env.TRITON_TAG_URL,
+      process.env.ADPERSONAM_TAG_URL,
+    ].filter(Boolean);
 
-    const hasAny = providers.length > 0;
-    status.push({
-      name: "house",
-      enabled: true,
-      priority: 999,
-      timeout: 0,
-      configured: true,
-    });
+    const status = [
+      ...programmaticEnvs.map((url, i) => ({
+        name: ["adswizz", "triton", "adpersonam"][i],
+        enabled: true,
+        priority: i + 1,
+        timeout: 3000,
+        configured: true,
+      })),
+      { name: "self-serve", enabled: true, priority: 10, timeout: 5000, configured: true },
+      { name: "house", enabled: true, priority: 999, timeout: 0, configured: true },
+    ];
 
     res.json({
       providers: status,
-      activeCount: providers.filter(p => p.enabled).length,
-      hasProgrammatic: hasAny,
+      activeCount: status.filter(p => p.enabled).length,
+      hasProgrammatic: programmaticEnvs.length > 0,
+      flags: getAllFlags(),
     });
   });
 

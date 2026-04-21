@@ -1,4 +1,4 @@
-import { X, Sparkles } from "lucide-react";
+import { X, Sparkles, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSubscription } from "@/hooks/use-subscription";
 import { ResponsiveAd } from "./google-ad";
@@ -7,13 +7,52 @@ interface AdBannerProps {
   variant?: "library" | "player" | "inline";
   onClose?: () => void;
   useGoogleAds?: boolean;
+  suppressAnimation?: boolean;
 }
 
-export function AdBanner({ variant = "library", onClose, useGoogleAds = true }: AdBannerProps) {
+export function AdBanner({ variant = "library", onClose, useGoogleAds = true, suppressAnimation = false }: AdBannerProps) {
   const { isPremium, upgradeToPremium, isUpgrading } = useSubscription();
 
   if (isPremium) {
     return null;
+  }
+
+  if (suppressAnimation) {
+    return (
+      <figure
+        className="relative bg-muted rounded-lg p-5 mb-4 border border-border"
+        role="complementary"
+        aria-label="Advertisement"
+        data-testid="ad-banner-static"
+      >
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
+            aria-label="Close advertisement"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        <div className="flex items-center gap-3">
+          <Crown className="h-6 w-6 text-primary flex-shrink-0" aria-hidden="true" />
+          <div>
+            <p className="font-semibold text-foreground text-sm">Go Premium — No Ads</p>
+            <p className="text-xs text-muted-foreground">
+              Enjoy uninterrupted listening, offline downloads, and exclusive content.
+            </p>
+          </div>
+          <Button
+            onClick={() => upgradeToPremium("monthly")}
+            disabled={isUpgrading}
+            size="sm"
+            className="ml-auto shrink-0"
+          >
+            {isUpgrading ? "Loading..." : "Upgrade"}
+          </Button>
+        </div>
+      </figure>
+    );
   }
 
   const hasGoogleAdsConfig = !!(
