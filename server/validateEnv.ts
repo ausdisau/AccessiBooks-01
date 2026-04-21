@@ -17,8 +17,6 @@ const REQUIRED_IN_PRODUCTION = [
 
 const OPTIONAL_BUT_WARN = [
   { key: "RESEND_API_KEY", note: "email delivery disabled without this" },
-  { key: "GOOGLE_CLIENT_ID", note: "Google OAuth disabled" },
-  { key: "GOOGLE_CLIENT_SECRET", note: "Google OAuth disabled" },
   { key: "ELEVENLABS_API_KEY", note: "TTS narration disabled" },
   { key: "PUBLIC_OBJECT_SEARCH_PATHS", note: "object storage reads disabled" },
   { key: "PRIVATE_OBJECT_DIR", note: "object storage writes disabled" },
