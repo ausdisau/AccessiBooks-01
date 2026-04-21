@@ -71,9 +71,6 @@ function mapRowToBook(row: any): Book {
     pageCount: row.page_count ?? row.pageCount ?? null,
     searchVector: row.search_vector || row.searchVector || null,
     readingLevel: row.reading_level ?? row.readingLevel ?? computeReadingLevel(row.description, row.genre),
-    freeTierAvailable: row.free_tier_available ?? row.freeTierAvailable ?? null,
-    adSupported: row.ad_supported ?? row.adSupported ?? null,
-    transcriptAvailable: row.transcript_available ?? row.transcriptAvailable ?? null,
   };
 }
 
