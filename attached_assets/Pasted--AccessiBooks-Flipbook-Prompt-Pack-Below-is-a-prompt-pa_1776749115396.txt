@@ -1,0 +1,481 @@
+## AccessiBooks Flipbook Prompt Pack
+
+Below is a **prompt pack** you can paste into Replit Agent piece by piece, or hand over as one structured build sequence. It abstracts the flipbook reader into clear workstreams so the agent can build it without getting lost in the reeds 🌿📚
+
+---
+
+# 1. Master Prompt
+
+```text
+Build an accessibility-first eBook flipbook reader for AccessiBooks using React + TypeScript.
+
+The component should feel like a modern interactive reading experience designed for people with disabilities, especially readers with dyslexia, low vision, physical disability, cognitive fatigue, sensory sensitivity, and screen-reader users.
+
+Core goals:
+- Create a page-based flipbook reading interface
+- Make all reading controls keyboard accessible and screen-reader friendly
+- Include dyslexia-friendly typography and reading customisation
+- Add built-in browser text-to-speech
+- Support written annotations and voice annotations
+- Persist reading preferences and notes
+- Design the interface to be calm, uncluttered, and highly legible
+- Make the reader modular so it can later connect to EPUB, audiobook transcript, and backend APIs
+
+The UI should include:
+- Main flipbook page display
+- Previous/next page controls
+- Search inside the book
+- Accessibility settings panel
+- Annotation sidebar
+- Keyboard shortcuts
+- ARIA live status messages
+- Reduced motion support
+
+Accessibility requirements:
+- WCAG-minded structure and semantics
+- Visible focus states
+- Full keyboard navigation
+- Proper aria-label, aria-live, aria-expanded, aria-pressed, and landmark usage
+- High contrast option
+- Dyslexia-friendly font options
+- Adjustable font size, line height, letter spacing, and word spacing
+- Reduced motion mode
+- Calm visual hierarchy with large touch targets
+
+Technical requirements:
+- Use React with TypeScript
+- Use modular components
+- Use local state first, but structure for future backend sync
+- Use browser SpeechSynthesis API for TTS
+- Create a placeholder architecture for MediaRecorder voice notes
+- Use localStorage for persistence
+- Keep the code clean, strongly typed, and production-minded
+
+Build the solution in small reusable components:
+- FlipbookReader
+- ReaderToolbar
+- ReaderSettingsPanel
+- PageNavigator
+- ReadingPage
+- AnnotationPanel
+- KeyboardShortcutHelp
+- LiveStatusRegion
+
+Use a polished, modern UI with rounded corners, spacious padding, and a distraction-light reading environment.
+```
+
+---
+
+# 2. Prompt: Core Reader Shell
+
+```text
+Create the core shell for an AccessiBooks flipbook reader in React + TypeScript.
+
+Requirements:
+- Render a main reader layout with a reading pane and a right sidebar
+- Add previous and next page navigation
+- Show current page number and total page count
+- Add a search bar for finding text in the book
+- Add a settings button that opens and closes a settings panel
+- Include a list of page thumbnails or page jump buttons
+- Use demo page data for now
+- Use semantic HTML and accessible labels throughout
+
+The code should be modular and easy to extend later with real book data from an API.
+```
+
+---
+
+# 3. Prompt: Flipbook Animation Layer
+
+```text
+Add an interactive page-flip animation layer to the AccessiBooks reader.
+
+Requirements:
+- Use smooth page transitions between pages
+- Respect prefers-reduced-motion
+- If reduced motion is enabled, switch to minimal fade transitions
+- Do not let animation interfere with readability or focus order
+- Maintain accessibility and keyboard usability during all transitions
+- Keep the animation elegant and calm rather than flashy
+
+The reader should still work perfectly without animation.
+```
+
+---
+
+# 4. Prompt: Dyslexia-Friendly Typography
+
+```text
+Add dyslexia-friendly reading customisation to the AccessiBooks flipbook reader.
+
+Requirements:
+- Add selectable font options including OpenDyslexic, Atkinson Hyperlegible, system sans, and serif
+- Add controls for font size, line height, letter spacing, and word spacing
+- Add a dedicated dyslexia support preset that automatically adjusts typography for easier reading
+- Ensure all typography settings update the reading page instantly
+- Persist these settings to localStorage
+- Keep the controls simple and understandable
+
+The reading experience should reduce visual crowding and improve legibility.
+```
+
+---
+
+# 5. Prompt: Accessibility Presets
+
+```text
+Add accessibility presets to the AccessiBooks flipbook reader.
+
+Create presets for:
+- Dyslexia Support
+- Low Vision
+- Cognitive Ease
+- High Contrast
+- Keyboard Only
+- Screen Reader Optimized
+
+Each preset should adjust combinations of:
+- font family
+- font size
+- line height
+- letter spacing
+- word spacing
+- theme
+- motion settings
+- control density
+
+Users should still be able to fine-tune settings after applying a preset.
+Persist preset selection and customised adjustments.
+```
+
+---
+
+# 6. Prompt: Themes and Visual Modes
+
+```text
+Add reading themes to the AccessiBooks reader.
+
+Required themes:
+- Light
+- Sepia
+- Dark
+- High Contrast
+
+Requirements:
+- Ensure sufficient contrast in every theme
+- Apply theme styles to the reader page, toolbar, and sidebar
+- Make focus indicators visible in every theme
+- Keep the UI visually calm and uncluttered
+- Ensure theme selection is persisted in localStorage
+```
+
+---
+
+# 7. Prompt: Browser Text-to-Speech
+
+```text
+Add built-in browser text-to-speech to the AccessiBooks flipbook reader using the SpeechSynthesis API.
+
+Requirements:
+- Add a Read Aloud button
+- Add a Stop button
+- Read either the current selection or the full current page
+- Add controls for speech rate, pitch, and volume
+- Announce TTS state changes in an aria-live region
+- Handle errors gracefully
+- Stop speech when the component unmounts
+- Keep the architecture clean so it can later be replaced or enhanced with a premium TTS service
+
+The feature must be keyboard accessible and easy to use.
+```
+
+---
+
+# 8. Prompt: Search Inside the Book
+
+```text
+Add book search to the AccessiBooks flipbook reader.
+
+Requirements:
+- Allow the user to search for text across all pages
+- Show which pages contain matches
+- Highlight search matches on the current page
+- Make search results keyboard accessible
+- Allow users to jump directly to matching pages
+- Announce result counts and page jumps through aria-live messaging
+- Keep highlighting readable and accessible in all themes
+```
+
+---
+
+# 9. Prompt: Written Annotations
+
+```text
+Add written annotations to the AccessiBooks reader.
+
+Requirements:
+- Let the user select text from the page and capture it as an anchor quote
+- Let the user write a text note linked to the current page and selected text
+- Display notes in a sidebar
+- Show timestamp, page reference, and anchor text
+- Let users delete notes
+- Persist notes in localStorage
+- Structure the code so annotations can later sync to a backend
+
+Keep the annotation workflow simple, readable, and fully keyboard accessible.
+```
+
+---
+
+# 10. Prompt: Voice Annotations
+
+```text
+Add voice annotation support to the AccessiBooks reader.
+
+Requirements:
+- Add a Record Voice Note button
+- Use a placeholder implementation first if needed, but structure the code for the MediaRecorder API
+- When ready, support start and stop recording
+- Save voice note metadata including page number, timestamp, duration, and anchor quote if text was selected
+- Display voice notes in the annotations panel
+- Include playback controls and accessible labels
+- Prepare the architecture for future upload to cloud storage and optional auto-transcription
+
+Do not overcomplicate the first version. Focus on a clean, accessible structure.
+```
+
+---
+
+# 11. Prompt: Reading Position and Persistence
+
+```text
+Add persistence to the AccessiBooks reader.
+
+Persist the following to localStorage:
+- current page
+- selected theme
+- font settings
+- accessibility preset
+- text-to-speech preferences
+- written notes
+- voice note metadata
+- focus mode state
+
+On reload, restore the previous reading session.
+Structure the storage logic so it can later be swapped for authenticated backend persistence.
+```
+
+---
+
+# 12. Prompt: Keyboard Navigation
+
+```text
+Improve keyboard navigation for the AccessiBooks reader.
+
+Requirements:
+- Left Arrow = previous page
+- Right Arrow = next page
+- R = read current page or selected text aloud
+- S = stop text-to-speech
+- Tab order must be logical
+- All interactive controls must be reachable without a mouse
+- Add a visible keyboard shortcuts help panel
+- Ensure focus does not get lost during page changes or panel toggles
+```
+
+---
+
+# 13. Prompt: Screen Reader Experience
+
+```text
+Refine the AccessiBooks reader for screen reader users.
+
+Requirements:
+- Use semantic landmarks for header, navigation, main reading area, aside, and status region
+- Add accurate aria-labels to controls
+- Use aria-expanded for collapsible settings panel
+- Use aria-pressed for toggle buttons
+- Add an aria-live polite region for page changes, TTS state changes, saved notes, deleted notes, and search result jumps
+- Ensure the current page button is marked appropriately
+- Avoid redundant or noisy announcements
+```
+
+---
+
+# 14. Prompt: Calm Focus Mode
+
+```text
+Add a focus mode to the AccessiBooks reader.
+
+Requirements:
+- Reduce surrounding visual noise
+- Narrow the reading column
+- Add subtle emphasis to the text area
+- Keep controls available but visually quieter
+- Preserve accessibility and contrast
+- Make focus mode togglable and persistent
+- Design it to support readers with cognitive fatigue, ADHD, and sensory overload
+```
+
+---
+
+# 15. Prompt: Component Refactor
+
+```text
+Refactor the AccessiBooks flipbook reader into clean reusable components.
+
+Break the system into:
+- FlipbookReader
+- ReaderToolbar
+- ReaderSettingsPanel
+- PageNavigator
+- ReadingPage
+- AnnotationPanel
+- SearchResults
+- KeyboardShortcutHelp
+- LiveStatusRegion
+
+Requirements:
+- Use TypeScript interfaces for props and state
+- Keep data flow clean and predictable
+- Avoid duplicated logic
+- Make each component independently testable
+- Prepare the codebase for future integration with API data and authenticated persistence
+```
+
+---
+
+# 16. Prompt: Real Book Data Integration
+
+```text
+Upgrade the AccessiBooks reader so it can load real book content instead of demo data.
+
+Requirements:
+- Accept book data from props or a mock API
+- Structure page content as typed objects
+- Support title, chapter title, page content, optional image metadata, and optional transcript segments
+- Add loading, empty, and error states
+- Keep all accessibility features working with dynamic content
+- Preserve compatibility with future EPUB parsing
+```
+
+---
+
+# 17. Prompt: EPUB-Ready Architecture
+
+```text
+Make the AccessiBooks reader architecture EPUB-ready.
+
+Requirements:
+- Separate rendering logic from content ingestion logic
+- Create interfaces for parsed pages, chapters, landmarks, annotations, and transcript segments
+- Make it easy to replace static page data with EPUB-derived content later
+- Do not build a full EPUB parser yet
+- Focus on the architecture needed to support one later
+```
+
+---
+
+# 18. Prompt: Sync-Ready Annotation Model
+
+```text
+Refactor annotations in the AccessiBooks reader to be backend-ready.
+
+Requirements:
+- Define TypeScript models for text annotations and voice annotations
+- Include id, userId placeholder, bookId placeholder, pageIndex, createdAt, updatedAt, anchorQuote, annotation type, and content metadata
+- Keep localStorage for now
+- Structure save/load code so it can later call an API without changing the UI logic
+```
+
+---
+
+# 19. Prompt: Read-Along Highlighting Architecture
+
+```text
+Prepare the AccessiBooks reader for future read-along highlighting.
+
+Requirements:
+- Create a component structure that can later accept timing data for phrases or words
+- For now, keep browser SpeechSynthesis as the active reading mode
+- Add placeholder support for transcript segment highlighting
+- Do not fake precise word timing yet
+- Focus on architecture that can later support audiobook sync, transcript sync, or premium TTS timing data
+```
+
+---
+
+# 20. Prompt: QA and Accessibility Hardening
+
+```text
+Review and harden the AccessiBooks reader for accessibility and quality.
+
+Tasks:
+- Audit all controls for keyboard access
+- Audit visible focus indicators
+- Check contrast in every theme
+- Check aria labels and aria-live messages
+- Ensure reduced motion support is respected
+- Check that screen-reader flow is logical
+- Confirm localStorage restoration works safely
+- Confirm all buttons have clear labels
+- Confirm notes and voice note actions provide status feedback
+- Clean up any confusing or redundant UI
+
+Make improvements directly in code and keep the reader polished and production-minded.
+```
+
+---
+
+# 21. Super-Prompt for Replit Agent
+
+```text
+Build an accessibility-first eBook flipbook reader for AccessiBooks in React + TypeScript.
+
+The reader should include:
+- interactive page-based reading
+- smooth page-flip transitions with reduced-motion fallback
+- keyboard accessible previous/next navigation
+- searchable book content
+- dyslexia-friendly typography controls
+- theme switching for light, sepia, dark, and high contrast
+- accessibility presets for dyslexia support, low vision, cognitive ease, keyboard only, and screen reader optimized
+- browser-based text-to-speech using SpeechSynthesis
+- written annotations linked to selected text and page number
+- voice annotation architecture prepared for MediaRecorder
+- local persistence for reading position, preferences, and notes
+- visible focus states
+- semantic HTML
+- ARIA labels and aria-live messaging
+- calm, spacious, modern UI
+
+Use modular components and clean TypeScript types.
+Use demo page data first, but structure the system for future API and EPUB integration.
+Keep the code production-minded, accessible, and easy to extend.
+```
+
+---
+
+## Best way to use this pack
+
+Run them in this order:
+
+1. **Master Prompt**
+2. **Core Reader Shell**
+3. **Typography + Themes**
+4. **TTS**
+5. **Annotations**
+6. **Persistence**
+7. **Refactor**
+8. **QA Hardening**
+
+That gives Replit Agent a nice breadcrumb trail instead of a giant spaghetti comet ☄️
+
+I can also turn this into a **developer handoff pack** with:
+
+* user stories
+* acceptance criteria
+* component architecture
+* TypeScript interfaces
+* test checklist
