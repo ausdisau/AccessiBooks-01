@@ -7,11 +7,42 @@ import {
   startRewardedSession,
   markRewardedSessionCompleted,
 } from "./adRewards";
-import { REWARD_TYPES, type RewardType } from "@shared/rewardConfig";
+import { REWARD_TYPES, REWARD_COOLDOWN_HOURS, type RewardType } from "@shared/rewardConfig";
+import { analyticsService } from "./analyticsService";
 
 function getUserId(req: any): string | null {
   if (!req.isAuthenticated || !req.isAuthenticated()) return null;
   return req.user?.id ?? null;
+}
+
+function getUserTier(req: any): string {
+  return req.user?.subscriptionTier || "free";
+}
+
+// Dedup so the polled /offer endpoint emits at most one "offered" event
+// per (user, rewardType) per reward cooldown window. Aligning the dedup
+// window with REWARD_COOLDOWN_HOURS keeps the offered/completed counts
+// comparable in the dashboard fillRate (= completed / offered): a single
+// user can only complete one reward per cooldown, and now they can only
+// be counted as offered once per cooldown too. Note: this is per-process
+// and breaks across instances in a multi-replica deployment; a shared
+// store (e.g. Redis SET NX EX) would be needed for true global dedup.
+const offeredDedup = new Map<string, number>();
+const OFFERED_DEDUP_WINDOW_MS = REWARD_COOLDOWN_HOURS * 60 * 60 * 1000;
+
+function shouldEmitOffered(userId: string, rewardType: string): boolean {
+  const key = `${userId}:${rewardType}`;
+  const now = Date.now();
+  const last = offeredDedup.get(key);
+  if (last && now - last < OFFERED_DEDUP_WINDOW_MS) return false;
+  offeredDedup.set(key, now);
+  // Opportunistic cleanup: prune stale entries when the map grows.
+  if (offeredDedup.size > 5000) {
+    for (const [k, ts] of offeredDedup) {
+      if (now - ts >= OFFERED_DEDUP_WINDOW_MS) offeredDedup.delete(k);
+    }
+  }
+  return true;
 }
 
 const startRewardSchema = z.object({
@@ -43,6 +74,16 @@ export function registerAdRewardRoutes(app: Express) {
 
     try {
       const result = await offerReward(userId, rewardType, { bookId });
+      if ((result as any)?.eligible === true) {
+        const rt = (result as any).rewardType ?? rewardType ?? "ad_light_listening";
+        if (shouldEmitOffered(userId, rt)) {
+          analyticsService.track("rewarded_ad_offered", getUserTier(req), {
+            userId,
+            rewardType: rt,
+            bookId,
+          });
+        }
+      }
       return res.json(result);
     } catch (err) {
       console.error("[AdRewards] offer error:", err);
@@ -101,6 +142,12 @@ export function registerAdRewardRoutes(app: Express) {
       if (!result.granted) {
         return res.status(400).json(result);
       }
+      analyticsService.track("rewarded_ad_completed", getUserTier(req), {
+        userId,
+        rewardType,
+        impressionId,
+        rewardLabel: result.reward?.label,
+      });
       return res.json({ granted: true, reward: { label: result.reward!.label, expiresAt: result.reward!.expiresAt } });
     } catch (err) {
       console.error("[AdRewards] complete error:", err);
