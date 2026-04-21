@@ -555,45 +555,6 @@ function LoginModal({
     },
   });
   
-  const auth0LoginMutation = useMutation({
-    mutationFn: async (data: { email: string; password: string }) => {
-      const response = await apiRequest("POST", "/api/auth/auth0/login", data);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      window.location.reload();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Auth0 Login failed",
-        description: error.message || "Invalid email or password",
-        variant: "destructive",
-      });
-    },
-  });
-  
-  const auth0RegisterMutation = useMutation({
-    mutationFn: async (data: { email: string; password: string; firstName: string; lastName: string }) => {
-      const response = await apiRequest("POST", "/api/auth/auth0/register", data);
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Account created",
-        description: "Please sign in with Auth0",
-      });
-      setIsRegistering(false);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Auth0 Registration failed",
-        description: error.message || "Could not create account",
-        variant: "destructive",
-      });
-    },
-  });
-  
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isRegistering) {
@@ -602,25 +563,10 @@ function LoginModal({
       loginMutation.mutate({ email: formData.email, password: formData.password });
     }
   };
-  
-  const handleAuth0Submit = () => {
-    if (!formData.email || !formData.password) {
-      toast({
-        title: "Missing credentials",
-        description: "Please enter email and password to use Auth0",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (isRegistering) {
-      auth0RegisterMutation.mutate(formData);
-    } else {
-      auth0LoginMutation.mutate({ email: formData.email, password: formData.password });
-    }
-  };
 
   const [showEmailForm, setShowEmailForm] = useState(false);
-  const hasSocialProviders = providers?.google || providers?.facebook || providers?.microsoft;
+  const hasSocialProviders =
+    providers?.google || providers?.facebook || providers?.microsoft || providers?.auth0;
 
   return (
     <Dialog open={open} onOpenChange={(val) => { if (!val) { setShowEmailForm(false); setMagicLinkMode(false); setMagicLinkSent(false); setMagicLinkEmail(""); setMagicDevLink(null); } onOpenChange(val); }}>
@@ -700,6 +646,19 @@ function LoginModal({
                     <path fill="#FFB900" d="M13 13h10v10H13z"/>
                   </svg>
                   Continue with Microsoft
+                </Button>
+              )}
+
+              {providers?.auth0 && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full h-12 text-base font-medium border-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  onClick={() => (window.location.href = "/api/auth/auth0")}
+                  data-testid="button-auth0-auth"
+                >
+                  <Lock className="mr-3 h-5 w-5 text-[#EB5424]" />
+                  Continue with Auth0
                 </Button>
               )}
             </div>

@@ -178,11 +178,13 @@ if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
   );
 }
 
-// Auth0 Strategy
+// Auth0 Strategy (Universal Login / Authorization Code flow)
+// Callback path matches the URL whitelisted in the Auth0 application settings:
+//   <APP_URL>/api/auth/callback/auth0
 if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0_CLIENT_SECRET) {
   const auth0CallbackURL = APP_URL
-    ? `${APP_URL}/api/auth/auth0/callback`
-    : "/api/auth/auth0/callback";
+    ? `${APP_URL}/api/auth/callback/auth0`
+    : "/api/auth/callback/auth0";
   passport.use(
     new Auth0Strategy(
       {
@@ -190,9 +192,27 @@ if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0
         clientID: process.env.AUTH0_CLIENT_ID,
         clientSecret: process.env.AUTH0_CLIENT_SECRET,
         callbackURL: auth0CallbackURL,
+        // Pass the API audience so Auth0 returns an access token usable against
+        // our own API (in addition to the ID token). This is what makes downstream
+        // M2M-style API calls possible from the user's session.
+        audience: process.env.AUTH0_AUDIENCE,
+        scope: "openid profile email offline_access",
         proxy: true,
-      },
-      async (accessToken: string, refreshToken: string, extraParams: any, profile: any, done: any) => {
+        state: true,
+        // We need access to `req` so we can persist Auth0 tokens on the session
+        // itself. Putting them on the `user` object would lose them on the next
+        // request because passport.deserializeUser() reloads the user from
+        // storage and discards any non-persisted fields.
+        passReqToCallback: true,
+      } as any,
+      async (
+        req: Request,
+        accessToken: string,
+        refreshToken: string,
+        extraParams: any,
+        profile: any,
+        done: any
+      ) => {
         try {
           const email = profile.emails?.[0]?.value || profile._json?.email;
           const user = await storage.upsertUser({
@@ -204,6 +224,19 @@ if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0
             authProvider: "auth0",
             providerId: profile.id,
           });
+          // Persist Auth0 tokens directly on the server-side session so they
+          // survive across requests (passport's deserializeUser only restores
+          // `user` from storage by id; ad-hoc fields on `user` are dropped).
+          // The tokens never leave the server.
+          if (req.session) {
+            (req.session as any).auth0Tokens = {
+              accessToken,
+              refreshToken: refreshToken ?? null,
+              expiresAt: extraParams?.expires_in
+                ? Math.floor(Date.now() / 1000) + Number(extraParams.expires_in)
+                : null,
+            };
+          }
           return done(null, user);
         } catch (error) {
           return done(error as Error);
@@ -211,6 +244,21 @@ if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0
       }
     )
   );
+}
+
+/**
+ * Read Auth0 tokens that were stored on the session during the OIDC callback.
+ * Returns null if the session has no Auth0 login, or the token is expired.
+ * Use this in route handlers that need to call downstream APIs on behalf of
+ * an Auth0-authenticated user.
+ */
+export function getSessionAuth0Tokens(
+  req: Request
+): { accessToken: string; refreshToken: string | null; expiresAt: number | null } | null {
+  const tokens = (req.session as any)?.auth0Tokens;
+  if (!tokens?.accessToken) return null;
+  if (tokens.expiresAt && tokens.expiresAt * 1000 < Date.now()) return null;
+  return tokens;
 }
 
 let sessionMiddlewareInstance: any = null;
@@ -276,30 +324,53 @@ export function setupMultiAuth(app: Express) {
     }
   });
   
-  // Main logout endpoint
+  // Shared logout helper.
+  // For Auth0-authenticated users, after destroying the local session we point
+  // the client at Auth0's /v2/logout so the SSO session is also cleared
+  // (otherwise the next /api/auth/auth0 visit silently re-auths the same user).
+  // - GET /api/logout returns a 302 redirect (browser navigation)
+  // - POST /api/auth/logout returns JSON with the redirect URL so SPA dashboards
+  //   can navigate manually after their fetch resolves
+  function buildAuth0LogoutUrl(req: Request): string | null {
+    const user = req.user as any;
+    const isAuth0User = user?.authProvider === "auth0";
+    const auth0Domain = process.env.AUTH0_DOMAIN;
+    const auth0ClientId = process.env.AUTH0_CLIENT_ID;
+    if (!isAuth0User || !auth0Domain || !auth0ClientId) return null;
+    const returnTo = APP_URL || `${req.protocol}://${req.get("host")}`;
+    const url = new URL(`https://${auth0Domain}/v2/logout`);
+    url.searchParams.set("client_id", auth0ClientId);
+    url.searchParams.set("returnTo", returnTo);
+    return url.toString();
+  }
+
   app.get("/api/logout", (req, res) => {
+    const auth0LogoutUrl = buildAuth0LogoutUrl(req);
     req.logout((err) => {
       if (err) {
         console.error("Logout error:", err);
         return res.status(500).json({ message: "Logout failed" });
       }
-      req.session.destroy((err) => {
-        if (err) {
-          console.error("Session destroy error:", err);
-        }
-        res.redirect("/");
+      req.session.destroy((sessErr) => {
+        if (sessErr) console.error("Session destroy error:", sessErr);
+        res.redirect(auth0LogoutUrl ?? "/");
       });
     });
   });
 
-  // POST logout alias for ad-platform dashboards
+  // POST logout alias for ad-platform dashboards (SPA fetch).
+  // Returns the Auth0 logout URL when applicable so the client can redirect.
   app.post("/api/auth/logout", (req, res) => {
+    const auth0LogoutUrl = buildAuth0LogoutUrl(req);
     req.logout((err) => {
       if (err) {
         return res.status(500).json({ message: "Logout failed" });
       }
       req.session.destroy(() => {
-        res.json({ message: "Logged out" });
+        res.json({
+          message: "Logged out",
+          ...(auth0LogoutUrl ? { logoutUrl: auth0LogoutUrl } : {}),
+        });
       });
     });
   });
@@ -423,11 +494,18 @@ export function setupMultiAuth(app: Express) {
     );
   }
 
-  // Auth0 OAuth
+  // Auth0 OAuth (Universal Login)
+  // Login: GET /api/auth/auth0 -> redirects to Auth0 hosted login page
+  // Callback: GET /api/auth/callback/auth0 (must be in Auth0 app's Allowed Callback URLs)
   if (auth0Enabled) {
-    app.get("/api/auth/auth0", passport.authenticate("auth0"));
     app.get(
-      "/api/auth/auth0/callback",
+      "/api/auth/auth0",
+      passport.authenticate("auth0", {
+        scope: "openid profile email offline_access",
+      })
+    );
+    app.get(
+      "/api/auth/callback/auth0",
       passport.authenticate("auth0", { failureRedirect: "/?auth=failed" }),
       (req, res) => res.redirect("/")
     );
@@ -473,6 +551,35 @@ export const isLocalAuthenticated = (req: Request, res: Response, next: NextFunc
 };
 
 export const isAuthenticated = isLocalAuthenticated;
+
+/**
+ * Combined auth: accepts either a logged-in session cookie OR a valid Auth0
+ * machine-to-machine bearer token. Use on routes that need to be callable by
+ * both human users (via the web UI) and external services (via M2M tokens).
+ *
+ * Lazy-imports the Auth0 JWT verifier so non-Auth0 deployments aren't forced
+ * to load it.
+ */
+export const isAuthenticatedOrM2M = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  const authHeader = req.headers.authorization || "";
+  if (!/^Bearer\s+/i.test(authHeader)) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  try {
+    const { requireAuth0Token } = await import("./auth0Jwt");
+    return requireAuth0Token()(req, res, next);
+  } catch (err) {
+    console.error("Auth0 bearer verification error:", err);
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+};
 
 /**
  * Middleware factory: gate a route to a set of subscription tiers. Returns 401
