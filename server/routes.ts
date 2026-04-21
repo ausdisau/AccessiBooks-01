@@ -141,6 +141,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup multi-provider authentication: local, Google, Facebook, Microsoft (Passport.js)
   setupMultiAuth(app);
 
+  // ---- Dev-only test seam: allow the currently authenticated user to set
+  // their own subscription tier so end-to-end tests can exercise the
+  // Free / Plus / Premium UI forks without going through Stripe. Requires
+  // a strict `NODE_ENV === "development"` match (not just "not production")
+  // so missing/empty NODE_ENV in production cannot accidentally expose this.
+  // Belt-and-suspenders: the route is also off whenever the explicit
+  // `DISABLE_DEV_TEST_ROUTES` flag is set.
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.DISABLE_DEV_TEST_ROUTES !== "true"
+  ) {
+    console.warn("[dev] /api/dev/set-tier is enabled (development mode only)");
+    app.post("/api/dev/set-tier", async (req, res) => {
+      try {
+        if (!req.isAuthenticated || !req.isAuthenticated()) {
+          return res.status(401).json({ message: "Not authenticated" });
+        }
+        const userId = req.user?.id || req.user?.claims?.sub;
+        if (!userId) return res.status(401).json({ message: "No user id" });
+        const tier = String(req.body?.tier || "").toLowerCase();
+        if (!["free", "plus", "premium"].includes(tier)) {
+          return res.status(400).json({ message: "Invalid tier" });
+        }
+        const updated = await storage.updateUserSubscription(userId, {
+          subscriptionTier: tier,
+        });
+        return res.json({ ok: true, tier, user: updated ?? null });
+      } catch (err: any) {
+        console.error("[dev/set-tier] failed:", err?.message || err);
+        return res.status(500).json({ message: "Failed to set tier" });
+      }
+    });
+  }
+
   // Register magic link request/verify routes (auth.ts)
   registerMagicLinkRoutes(app);
   
