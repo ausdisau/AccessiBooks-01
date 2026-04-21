@@ -80,7 +80,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "TEST_BASE_URL=http://localhost:5000 SERVER_WAIT_MS=30000 npx playwright test tests/account-settings.e2e.spec.ts --reporter=list"
+args = "bash -c 'for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:5000/api/auth/providers && break || sleep 1; done; TEST_BASE_URL=http://localhost:5000 npx playwright test tests/account-settings.e2e.spec.ts --reporter=list'"
 
 [agent]
 integrations = ["javascript_mem_db:1.0.0", "javascript_auth_all_persistance:1.0.0", "spotify:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_stripe:1.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_object_storage:2.0.0", "agentmail:1.0.0"]
