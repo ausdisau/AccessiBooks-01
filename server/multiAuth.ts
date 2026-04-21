@@ -10,10 +10,10 @@
  */
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-import { Strategy as FacebookStrategy } from "passport-facebook";
-import { Strategy as MicrosoftStrategy } from "passport-microsoft";
 import { Strategy as Auth0Strategy } from "passport-auth0";
+import * as oidcClient from "openid-client";
+import { Strategy as OidcStrategy, type VerifyFunction } from "openid-client/passport";
+import memoize from "memoizee";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -67,115 +67,98 @@ passport.use(
   )
 );
 
-// Google Strategy
 const APP_URL = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : null;
 
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  const googleCallbackURL = APP_URL
-    ? `${APP_URL}/api/auth/google/callback`
-    : "/api/auth/google/callback";
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: googleCallbackURL,
-        proxy: true,
-        scope: ["profile", "email"],
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          const email = profile.emails?.[0]?.value;
-          const user = await storage.upsertUser({
-            id: `google-${profile.id}`,
-            email: email || null,
-            firstName: profile.name?.givenName || null,
-            lastName: profile.name?.familyName || null,
-            profileImageUrl: profile.photos?.[0]?.value || null,
-            authProvider: "google",
-            providerId: profile.id,
-          });
-          return done(null, user);
-        } catch (error) {
-          return done(error as Error);
-        }
-      }
-    )
-  );
+// ── Replit-managed Google OAuth (OpenID Connect) ─────────────────────────────
+// We no longer maintain our own Google OAuth client. Instead we use Replit's
+// managed OIDC provider (the "Log In with Replit" flow), which lets the user
+// sign in with Google (and other providers) without us holding any
+// GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET. The user is upserted into our
+// existing storage so the rest of the app sees the same session shape.
+//
+// Strategy is registered per-hostname because the OIDC callback URL must be
+// absolute and match the host the browser landed on.
+const REPLIT_OIDC_ENABLED = !!(process.env.REPL_ID && process.env.REPLIT_DOMAINS);
+
+// Build an allowlist of hostnames the Replit OIDC strategy is permitted to
+// register a callback URL for. Without this, an attacker could spoof the Host
+// header and force registration of an arbitrary callback URL (and grow the
+// strategy cache without bound).
+const ALLOWED_OIDC_HOSTS: ReadonlySet<string> = (() => {
+  const hosts = new Set<string>();
+  for (const h of (process.env.REPLIT_DOMAINS || "").split(",")) {
+    const v = h.trim().toLowerCase();
+    if (v) hosts.add(v);
+  }
+  if (APP_URL) {
+    try {
+      hosts.add(new URL(APP_URL).hostname.toLowerCase());
+    } catch {
+      /* APP_URL malformed — ignore */
+    }
+  }
+  return hosts;
+})();
+
+function isAllowedOidcHost(hostname: string): boolean {
+  return ALLOWED_OIDC_HOSTS.has(hostname.toLowerCase());
 }
 
-// Facebook Strategy
-// IMPORTANT: The full callback URL below must be added to your Facebook Developer Console
-// under your app's "Valid OAuth Redirect URIs" setting:
-//   <APP_URL>/api/auth/facebook/callback
-// e.g. https://your-app.replit.app/api/auth/facebook/callback
-if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
-  const facebookCallbackURL = APP_URL
-    ? `${APP_URL}/api/auth/facebook/callback`
-    : "/api/auth/facebook/callback";
-  passport.use(
-    new FacebookStrategy(
-      {
-        clientID: process.env.FACEBOOK_APP_ID,
-        clientSecret: process.env.FACEBOOK_APP_SECRET,
-        callbackURL: facebookCallbackURL,
-        proxy: true,
-        profileFields: ["id", "emails", "name", "picture"],
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          const email = profile.emails?.[0]?.value;
-          const user = await storage.upsertUser({
-            id: `facebook-${profile.id}`,
-            email: email || null,
-            firstName: profile.name?.givenName || null,
-            lastName: profile.name?.familyName || null,
-            profileImageUrl: profile.photos?.[0]?.value || null,
-            authProvider: "facebook",
-            providerId: profile.id,
-          });
-          return done(null, user);
-        } catch (error) {
-          return done(error as Error);
-        }
-      }
-    )
-  );
-}
+const getOidcConfig = memoize(
+  async () => {
+    return await oidcClient.discovery(
+      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
+      process.env.REPL_ID!
+    );
+  },
+  { maxAge: 3600 * 1000 }
+);
 
-// Microsoft Strategy
-if (process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) {
-  const microsoftCallbackURL = APP_URL
-    ? `${APP_URL}/api/auth/microsoft/callback`
-    : "/api/auth/microsoft/callback";
-  passport.use(
-    new MicrosoftStrategy(
-      {
-        clientID: process.env.MICROSOFT_CLIENT_ID,
-        clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
-        callbackURL: microsoftCallbackURL,
-        proxy: true,
-        scope: ["user.read"],
-      },
-      async (accessToken: string, refreshToken: string, profile: any, done: any) => {
-        try {
-          const email = profile.emails?.[0]?.value || profile._json?.userPrincipalName;
-          const user = await storage.upsertUser({
-            id: `microsoft-${profile.id}`,
-            email: email || null,
-            firstName: profile.name?.givenName || null,
-            lastName: profile.name?.familyName || null,
-            profileImageUrl: null,
-            authProvider: "microsoft",
-            providerId: profile.id,
-          });
-          return done(null, user);
-        } catch (error) {
-          return done(error as Error);
-        }
-      }
-    )
+const registeredOidcStrategies = new Set<string>();
+
+async function ensureGoogleOidcStrategy(hostname: string) {
+  const strategyName = `google:${hostname}`;
+  if (registeredOidcStrategies.has(strategyName)) return strategyName;
+
+  const config = await getOidcConfig();
+
+  const verify: VerifyFunction = async (
+    tokens: oidcClient.TokenEndpointResponse & oidcClient.TokenEndpointResponseHelpers,
+    verified: passport.AuthenticateCallback
+  ) => {
+    try {
+      const claims = tokens.claims() as any;
+      const sub = String(claims.sub);
+      const user = await storage.upsertUser({
+        // Keep the legacy `google-` prefix so existing accounts that signed in
+        // via the old self-managed Google OAuth strategy continue to resolve
+        // to the same row. New users get the prefix on first login.
+        id: sub.startsWith("google-") ? sub : `google-${sub}`,
+        email: claims.email ?? null,
+        firstName: claims.first_name ?? claims.given_name ?? null,
+        lastName: claims.last_name ?? claims.family_name ?? null,
+        profileImageUrl: claims.profile_image_url ?? claims.picture ?? null,
+        authProvider: "google",
+        providerId: sub,
+      });
+      verified(null, user);
+    } catch (err) {
+      verified(err as Error);
+    }
+  };
+
+  const strategy = new OidcStrategy(
+    {
+      name: strategyName,
+      config,
+      scope: "openid email profile",
+      callbackURL: `https://${hostname}/api/auth/google/callback`,
+    },
+    verify,
   );
+  passport.use(strategy);
+  registeredOidcStrategies.add(strategyName);
+  return strategyName;
 }
 
 // Auth0 Strategy (Universal Login / Authorization Code flow)
@@ -459,38 +442,83 @@ export function setupMultiAuth(app: Express) {
     })(req, res, next);
   });
 
-  const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-  const facebookEnabled = !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET);
-  const microsoftEnabled = !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
   const auth0Enabled = !!(process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID && process.env.AUTH0_CLIENT_SECRET);
+  // Google sign-in is now backed by Replit's managed OIDC provider — no
+  // self-managed Google credentials required.
+  const googleEnabled = REPLIT_OIDC_ENABLED;
+  // Facebook and Microsoft sign-in are routed through Auth0 as social
+  // connections (see docs/auth.md). They light up whenever Auth0 is
+  // configured.
+  const facebookEnabled = auth0Enabled;
+  const microsoftEnabled = auth0Enabled;
 
-  // Google OAuth
+  // Replit-managed Google OAuth entry point. Strategy is registered lazily on
+  // first request so the absolute callback URL matches the host the browser
+  // arrived on (works for both *.replit.dev and the production APP_URL host).
   if (googleEnabled) {
-    app.get("/api/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
-    app.get(
-      "/api/auth/google/callback",
-      passport.authenticate("google", { failureRedirect: "/?auth=failed" }),
-      (req, res) => res.redirect("/")
-    );
+    app.get("/api/auth/google", async (req, res, next) => {
+      if (!isAllowedOidcHost(req.hostname)) {
+        console.warn(`[Auth] OIDC start refused for unrecognised host: ${req.hostname}`);
+        return res.redirect("/?auth=failed");
+      }
+      try {
+        const strategyName = await ensureGoogleOidcStrategy(req.hostname);
+        passport.authenticate(strategyName, {
+          scope: ["openid", "email", "profile"],
+        })(req, res, next);
+      } catch (err) {
+        console.error("[Auth] Failed to start Replit OIDC flow:", err);
+        res.redirect("/?auth=failed");
+      }
+    });
+
+    app.get("/api/auth/google/callback", async (req, res, next) => {
+      // If the provider returned an error (user denied, etc.) skip strategy
+      // exchange and redirect back into the app.
+      if (typeof req.query.error === "string") {
+        return res.redirect("/?auth=failed");
+      }
+      if (!isAllowedOidcHost(req.hostname)) {
+        console.warn(`[Auth] OIDC callback refused for unrecognised host: ${req.hostname}`);
+        return res.redirect("/?auth=failed");
+      }
+      try {
+        const strategyName = await ensureGoogleOidcStrategy(req.hostname);
+        passport.authenticate(strategyName, {
+          successReturnToOrRedirect: "/",
+          failureRedirect: "/?auth=failed",
+        })(req, res, next);
+      } catch (err) {
+        console.error("[Auth] Replit OIDC callback failed:", err);
+        res.redirect("/?auth=failed");
+      }
+    });
   }
 
-  // Facebook OAuth
+  // Facebook via Auth0 social connection.
+  // Auth0's connection name for the Facebook social IdP is "facebook" by
+  // default; it can be overridden with AUTH0_FACEBOOK_CONNECTION.
   if (facebookEnabled) {
-    app.get("/api/auth/facebook", passport.authenticate("facebook", { scope: ["email"] }));
-    app.get(
-      "/api/auth/facebook/callback",
-      passport.authenticate("facebook", { failureRedirect: "/?auth=failed" }),
-      (req, res) => res.redirect("/")
+    const facebookConnection = process.env.AUTH0_FACEBOOK_CONNECTION || "facebook";
+    app.get("/api/auth/facebook", (req, res, next) =>
+      (passport.authenticate("auth0", {
+        scope: "openid profile email",
+        connection: facebookConnection,
+      } as any))(req, res, next)
     );
   }
 
-  // Microsoft OAuth
+  // Microsoft via Auth0 social connection.
+  // Auth0's connection name for the Microsoft Account social IdP is
+  // "windowslive" by default; override with AUTH0_MICROSOFT_CONNECTION if your
+  // tenant uses a different name (e.g. "azuread").
   if (microsoftEnabled) {
-    app.get("/api/auth/microsoft", passport.authenticate("microsoft"));
-    app.get(
-      "/api/auth/microsoft/callback",
-      passport.authenticate("microsoft", { failureRedirect: "/?auth=failed" }),
-      (req, res) => res.redirect("/")
+    const microsoftConnection = process.env.AUTH0_MICROSOFT_CONNECTION || "windowslive";
+    app.get("/api/auth/microsoft", (req, res, next) =>
+      (passport.authenticate("auth0", {
+        scope: "openid profile email",
+        connection: microsoftConnection,
+      } as any))(req, res, next)
     );
   }
 
@@ -511,7 +539,11 @@ export function setupMultiAuth(app: Express) {
     );
   }
 
-  // Get available auth providers
+  // Get available auth providers.
+  // - google     → backed by Replit-managed OIDC (no GOOGLE_CLIENT_ID needed)
+  // - facebook   → routed through Auth0 social connection
+  // - microsoft  → routed through Auth0 social connection
+  // - auth0      → direct "Continue with Auth0" (Universal Login, DB connection)
   app.get("/api/auth/providers", (req, res) => {
     res.json({
       local: true,
