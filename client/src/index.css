@@ -562,3 +562,20 @@ footer,
   from { box-shadow: 0 0 0 4px hsl(var(--primary) / 0.25); }
   to   { box-shadow: 0 0 0 8px hsl(var(--primary) / 0.45); }
 }
+
+/* Reduce Distraction Mode — hides decorative images, reduces visual noise */
+.reduce-distraction [aria-hidden="true"] img,
+.reduce-distraction .decorative-image,
+.reduce-distraction .book-cover-decoration,
+.reduce-distraction .hero-banner-image {
+  visibility: hidden !important;
+}
+.reduce-distraction .animated-element,
+.reduce-distraction [data-animated="true"] {
+  animation: none !important;
+  transition: none !important;
+}
+.reduce-distraction .sidebar-section-icon-decorative,
+.reduce-distraction .badge-icon-decorative {
+  display: none !important;
+}

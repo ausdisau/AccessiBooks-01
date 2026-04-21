@@ -306,6 +306,24 @@ const analytics: AdAnalytics = {
   lastRequestTime: 0,
 };
 
+async function getUserSuppressAnimatedAds(req: any): Promise<boolean> {
+  try {
+    if (!req.isAuthenticated?.() || !req.user?.id) return false;
+    const { db } = await import("./db");
+    const { accessibilityPreferences } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const [record] = await db
+      .select()
+      .from(accessibilityPreferences)
+      .where(eq(accessibilityPreferences.userId, req.user.id));
+    if (!record || !record.profile) return false;
+    const profile = record.profile as Record<string, unknown>;
+    return profile.suppressAnimatedAds === true;
+  } catch {
+    return false;
+  }
+}
+
 export function registerAdMediationRoutes(router: Router) {
   router.get("/api/ads/request", async (req: Request, res: Response) => {
     try {
@@ -344,7 +362,20 @@ export function registerAdMediationRoutes(router: Router) {
       analytics.totalRequests++;
       analytics.lastRequestTime = Date.now();
 
+      const suppressAnimated = await getUserSuppressAnimatedAds(req);
       const ad = await requestAd(adType, contentGenre, userId);
+
+      // If user prefers static-only ads and the ad has a companion with animated format, filter it out
+      // For house ads and audio-only ads this has no effect. For programmatic with companion, clear animated companions.
+      if (suppressAnimated && ad.isProgrammatic) {
+        const programmaticAd = ad as ProgrammaticAd;
+        if (programmaticAd.companion && programmaticAd.companion.imageUrl) {
+          const url = programmaticAd.companion.imageUrl.toLowerCase();
+          if (url.endsWith(".gif") || url.includes("animated") || url.includes("video")) {
+            programmaticAd.companion = undefined;
+          }
+        }
+      }
 
       if (ad.isProgrammatic) {
         analytics.providerFills[ad.provider] = (analytics.providerFills[ad.provider] || 0) + 1;

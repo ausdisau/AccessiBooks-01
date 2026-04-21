@@ -1509,6 +1509,67 @@ export const insertAccessibilityPreferencesSchema = createInsertSchema(accessibi
 export type InsertAccessibilityPreferences = z.infer<typeof insertAccessibilityPreferencesSchema>;
 export type AccessibilityPreferences = typeof accessibilityPreferences.$inferSelect;
 
+/** Extended accessibility + listening preference profile stored in the `profile` jsonb column. */
+export interface A11yProfile {
+  fontSize: number;
+  fontFamily: string;
+  highContrast: boolean;
+  reducedMotion: boolean;
+  screenReaderHints: boolean;
+  captionsOn: boolean;
+  captionPosition?: "above" | "below";
+  playbackSpeed: number;
+  colorScheme: string;
+  lineSpacing: number;
+  letterSpacing: number;
+  dyslexiaFont: boolean;
+  focusHighlight: boolean;
+  darkMode?: boolean;
+  karaokeFollowAlong?: boolean;
+  /** @default false — open transcript panel by default when playing */
+  transcriptOpenByDefault: boolean;
+  /** @default false — hides decorative images and reduces visual noise */
+  reduceDistractionMode: boolean;
+  /** @default false — free-tier only: prefer static ads over animated/video */
+  suppressAnimatedAds: boolean;
+  /** @default "ask" — free-tier only: rewarded listening ad preference */
+  rewardedAdPreference: "always" | "never" | "ask";
+  /** @default 15 — preferred skip-forward duration in seconds */
+  preferredSkipForward: 10 | 15 | 30;
+  /** @default 15 — preferred skip-back duration in seconds */
+  preferredSkipBack: 5 | 10 | 15;
+  /** @default true — automatically advance to next chapter */
+  autoAdvanceChapters: boolean;
+  /** @default null — default sleep timer in minutes, null = disabled */
+  sleepTimerDefault: number | null;
+}
+
+export const DEFAULT_A11Y_PROFILE: A11yProfile = {
+  fontSize: 16,
+  fontFamily: "system",
+  highContrast: false,
+  reducedMotion: false,
+  screenReaderHints: true,
+  captionsOn: false,
+  captionPosition: "below",
+  playbackSpeed: 1.0,
+  colorScheme: "default",
+  lineSpacing: 1.5,
+  letterSpacing: 0,
+  dyslexiaFont: false,
+  focusHighlight: true,
+  darkMode: false,
+  karaokeFollowAlong: false,
+  transcriptOpenByDefault: false,
+  reduceDistractionMode: false,
+  suppressAnimatedAds: false,
+  rewardedAdPreference: "ask",
+  preferredSkipForward: 15,
+  preferredSkipBack: 15,
+  autoAdvanceChapters: true,
+  sleepTimerDefault: null,
+};
+
 export const bookTranscripts = pgTable("book_transcripts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
