@@ -103,46 +103,69 @@ export function registerPlatformRoutes(app: Express) {
     try {
       const userId = req.user.id;
 
-      const [prefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
-      const genres = prefs?.favoriteGenres || [];
-
-      const history = await db.select({ bookAuthor: listeningHistory.bookAuthor })
-        .from(listeningHistory)
-        .where(eq(listeningHistory.userId, userId))
-        .limit(50);
-
-      const listenedAuthors = Array.from(new Set(history.map(h => h.bookAuthor).filter(Boolean))) as string[];
-
-      let recommended: any[] = [];
-
-      if (genres.length > 0) {
-        const genreBooks = await db.select().from(books)
-          .where(inArray(books.genre, genres))
-          .limit(20);
-        recommended.push(...genreBooks);
+      // Try the agentic recommendation path first (feature-flagged).
+      try {
+        const { tryAgentFlatRecommendations } = await import("./recommendation");
+        const agentBooks = await tryAgentFlatRecommendations(userId, 20);
+        if (agentBooks && agentBooks.length > 0) {
+          return res.json(agentBooks);
+        }
+      } catch (e) {
+        console.warn("[platformRoutes] agent rec failed, falling back to heuristic:", (e as Error).message);
       }
 
-      if (listenedAuthors.length > 0 && recommended.length < 20) {
-        const authorBooks = await db.select().from(books)
-          .where(inArray(books.author, listenedAuthors))
-          .limit(20 - recommended.length);
-        const existingIds = new Set(recommended.map(b => b.id));
-        for (const b of authorBooks) {
-          if (!existingIds.has(b.id)) recommended.push(b);
+      try {
+        const [prefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+        const genres = prefs?.favoriteGenres || [];
+
+        const history = await db.select({ bookAuthor: listeningHistory.bookAuthor })
+          .from(listeningHistory)
+          .where(eq(listeningHistory.userId, userId))
+          .limit(50);
+
+        const listenedAuthors = Array.from(new Set(history.map(h => h.bookAuthor).filter(Boolean))) as string[];
+
+        let recommended: any[] = [];
+
+        if (genres.length > 0) {
+          const genreBooks = await db.select().from(books)
+            .where(inArray(books.genre, genres))
+            .limit(20);
+          recommended.push(...genreBooks);
+        }
+
+        if (listenedAuthors.length > 0 && recommended.length < 20) {
+          const authorBooks = await db.select().from(books)
+            .where(inArray(books.author, listenedAuthors))
+            .limit(20 - recommended.length);
+          const existingIds = new Set(recommended.map(b => b.id));
+          for (const b of authorBooks) {
+            if (!existingIds.has(b.id)) recommended.push(b);
+          }
+        }
+
+        if (recommended.length < 20) {
+          const filler = await db.select().from(books)
+            .orderBy(desc(books.publishedYear))
+            .limit(20 - recommended.length);
+          const existingIds = new Set(recommended.map(b => b.id));
+          for (const b of filler) {
+            if (!existingIds.has(b.id)) recommended.push(b);
+          }
+        }
+
+        return res.json(recommended.slice(0, 20));
+      } catch (dbErr) {
+        console.warn("[platformRoutes] DB heuristic failed, using storage fallback:", (dbErr as Error).message);
+        try {
+          const { storage } = await import("./storage");
+          const page = await storage.getBooksPaginated({ limit: 20 });
+          return res.json((page.data || []).slice(0, 20));
+        } catch (fallbackErr) {
+          console.error("[platformRoutes] storage fallback also failed:", (fallbackErr as Error).message);
+          return res.json([]);
         }
       }
-
-      if (recommended.length < 20) {
-        const filler = await db.select().from(books)
-          .orderBy(desc(books.publishedYear))
-          .limit(20 - recommended.length);
-        const existingIds = new Set(recommended.map(b => b.id));
-        for (const b of filler) {
-          if (!existingIds.has(b.id)) recommended.push(b);
-        }
-      }
-
-      res.json(recommended.slice(0, 20));
     } catch (error) {
       console.error("Error fetching recommendations:", error);
       res.status(500).json({ message: "Failed to fetch recommendations" });

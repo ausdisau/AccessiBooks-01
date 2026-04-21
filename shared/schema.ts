@@ -414,13 +414,47 @@ export interface PlaylistWithCount extends Playlist {
 }
 
 // DJ recommendation types
+export interface DJRecommendationItem {
+  bookId: string;
+  rationale?: string;
+  score?: number;
+}
+
 export interface DJRecommendation {
   id: string;
-  type: "continue" | "similar" | "genre" | "mood" | "time-based";
+  type: "continue" | "similar" | "genre" | "mood" | "time-based" | "agent";
   title: string;
   description: string;
   books: Book[];
+  intro?: string;
+  items?: DJRecommendationItem[];
+  source?: "agent" | "heuristic" | "popularity";
 }
+
+// LangChain agent structured response
+export const agentRecommendationItemSchema = z.object({
+  bookId: z.string(),
+  rationale: z.string(),
+  score: z.number().optional(),
+});
+
+export const agentRecommendationSetSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  intro: z.string(),
+  type: z.enum(["continue", "similar", "genre", "mood", "time-based", "agent"]).default("agent"),
+  items: z.array(agentRecommendationItemSchema).min(1),
+});
+
+export const agentRecommendationResponseSchema = z.object({
+  sets: z.array(agentRecommendationSetSchema).min(1),
+  source: z.enum(["agent", "heuristic", "popularity"]).default("agent"),
+  generatedAt: z.string().optional(),
+});
+
+export type AgentRecommendationItem = z.infer<typeof agentRecommendationItemSchema>;
+export type AgentRecommendationSet = z.infer<typeof agentRecommendationSetSchema>;
+export type AgentRecommendationResponse = z.infer<typeof agentRecommendationResponseSchema>;
 
 // === GAMIFICATION SYSTEM ===
 

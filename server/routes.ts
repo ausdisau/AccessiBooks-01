@@ -24,6 +24,14 @@ import { registerBillingRoutes, recordTransaction, updateTransactionStatus } fro
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
 import { registerMoatScaffoldRoutes, ensureMoatMigrations } from "./moatScaffold";
+import {
+  tryAgentDjRecommendations,
+  tryAgentFlatRecommendations,
+  isAgentEnabled as isRecAgentEnabled,
+  getTrainStatus as getRecTrainStatus,
+  runTraining as runRecTraining,
+  startScheduler as startRecScheduler,
+} from "./recommendation";
 import { registerCoachRoutes } from "./coachRoutes";
 import { registerAdPlatformRoutes } from "./adPlatformRoutes";
 import { registerAnalyticsRoutes } from "./analyticsRoutes";
@@ -3720,11 +3728,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/dj/recommendations", async (req: any, res) => {
     try {
       const userId = req.user?.id;
+      const agentResult = await tryAgentDjRecommendations(userId);
+      if (agentResult && agentResult.length > 0) {
+        return res.json(agentResult);
+      }
       const recommendations = await storage.getDJRecommendations(userId);
       res.json(recommendations);
     } catch (error) {
       console.error("Error fetching DJ recommendations:", error);
       res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  // ============================================
+  // RECOMMENDATION ENGINE STATUS / RETRAIN
+  // ============================================
+
+  app.get("/api/recommendations/status", async (_req, res) => {
+    try {
+      const status = getRecTrainStatus();
+      res.json({
+        agentEnabled: isRecAgentEnabled(),
+        ...status,
+      });
+    } catch (error) {
+      console.error("[Recs] status error:", error);
+      res.status(500).json({ message: "Failed to fetch status" });
+    }
+  });
+
+  app.post("/api/recommendations/retrain", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const adminIds = (process.env.REC_ADMIN_USER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
+      const allowSelfTraining = process.env.REC_ALLOW_SELF_TRAINING === "true";
+      if (adminIds.length === 0) {
+        if (!allowSelfTraining) {
+          return res.status(403).json({
+            message: "Retrain disabled: configure REC_ADMIN_USER_IDS or set REC_ALLOW_SELF_TRAINING=true",
+          });
+        }
+      } else if (!adminIds.includes(userId)) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const status = await runRecTraining();
+      res.json(status);
+    } catch (error) {
+      console.error("[Recs] retrain error:", error);
+      res.status(500).json({ message: "Failed to retrain" });
     }
   });
 
@@ -5245,53 +5296,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/recommendations - Get personalized recommendations for user
-  app.get("/api/recommendations", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
-      const [prefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
-      
-      if (!prefs || !prefs.favoriteGenres || prefs.favoriteGenres.length === 0) {
-        return res.json([]);
-      }
-
-      const results = await storage.getBooksPaginated({
-        limit: 200,
-      });
-      
-      const allBooks = results.data || [];
-      const favoriteGenres = prefs.favoriteGenres;
-      
-      // Try to find books matching user's favorite genres
-      for (const genre of favoriteGenres) {
-        const matches = allBooks.filter(
-          (book) => book.genre && book.genre.toLowerCase().includes(genre.toLowerCase())
-        );
-        if (matches.length >= 3) {
-          return res.json(matches.slice(0, 8));
-        }
-      }
-
-      // If no single genre has 3+ matches, return all genre matches
-      const allMatches = allBooks.filter((book) =>
-        favoriteGenres.some(
-          (g) => book.genre && book.genre.toLowerCase().includes(g.toLowerCase())
-        )
-      );
-      
-      if (allMatches.length > 0) {
-        return res.json(allMatches.slice(0, 8));
-      }
-
-      // Fallback: return popular books
-      res.json(allBooks.slice(0, 8));
-    } catch (error) {
-      console.error("Error fetching recommendations:", error);
-      res.status(500).json({ message: "Failed to fetch recommendations" });
-    }
-  });
+  // NOTE: GET /api/recommendations is owned by server/platformRoutes.ts (agent-aware).
+  // Legacy duplicate removed to keep a single source of truth.
 
   // GET /api/social/feed - Get activity feed from followed users
   app.get("/api/social/feed", isAuthenticated, async (req: any, res) => {
@@ -6598,6 +6604,13 @@ ${navEntries}
       res.status(500).json({ message: "Failed to remove word from bank" });
     }
   });
+
+  // Start the recommendation engine training scheduler.
+  try {
+    startRecScheduler();
+  } catch (e) {
+    console.warn("[Recs] failed to start scheduler:", (e as Error).message);
+  }
 
   const httpServer = createServer(app);
   setupListeningPartyWS(httpServer);
