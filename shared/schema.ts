@@ -2132,25 +2132,3 @@ export const insertListeningSessionSchema = createInsertSchema(listeningSessions
 export type InsertListeningSession = z.infer<typeof insertListeningSessionSchema>;
 export type ListeningSession = typeof listeningSessions.$inferSelect;
 
-// Ad rewards — when a user earns a reward by completing an ad
-export const adRewards = pgTable("ad_rewards", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  adCampaignId: varchar("ad_campaign_id"),
-  rewardType: varchar("reward_type").notNull(), // chapter_unlock | skip_restore | bonus_time
-  rewardValue: integer("reward_value").notNull().default(1), // quantity unlocked/restored
-  bookId: varchar("book_id"), // associated book if applicable
-  chapterId: varchar("chapter_id"), // associated chapter if applicable
-  earnedAt: timestamp("earned_at").defaultNow(),
-  expiresAt: timestamp("expires_at"),
-  redeemed: boolean("redeemed").notNull().default(false),
-}, (table) => [
-  index("idx_ad_rewards_user").on(table.userId),
-  index("idx_ad_rewards_earned").on(table.earnedAt),
-]);
-
-export const insertAdRewardSchema = createInsertSchema(adRewards).omit({ id: true, earnedAt: true });
-export type InsertAdReward = z.infer<typeof insertAdRewardSchema>;
-export type AdReward = typeof adRewards.$inferSelect;
-
-

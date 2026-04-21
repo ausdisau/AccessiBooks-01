@@ -3189,7 +3189,7 @@ export class ExternalAPIStorage implements IStorage {
   }
 
   async getAdRewards(userId: string): Promise<AdReward[]> {
-    return db.select().from(adRewards).where(eq(adRewards.userId, userId)).orderBy(desc(adRewards.earnedAt));
+    return db.select().from(adRewards).where(eq(adRewards.userId, userId)).orderBy(desc(adRewards.grantedAt));
   }
 
   // === Accessibility Preferences ===
