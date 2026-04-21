@@ -11,7 +11,6 @@ export interface TranscriptSegment {
 export interface AdDecisionState {
   pending: boolean;
   type: "pre-roll" | "mid-roll" | null;
-  ad: AdResponse | null;
 }
 
 interface UsePlaybackAdHooksOptions {
@@ -41,7 +40,7 @@ async function fetchAdWithTimeout(
 
     clearTimeout(timeoutId);
 
-    if (res.status === 204) return null; // server says no fill
+    if (res.status === 204) return null;
     if (!res.ok) return null;
     return (await res.json()) as AdResponse;
   } catch (err) {
@@ -55,13 +54,20 @@ async function fetchAdWithTimeout(
   }
 }
 
-/** Poll the server once for an active ad-light-listening reward. */
+/** Poll the server once for an active ad-light-listening reward grant. */
 async function fetchRewardStatus(): Promise<boolean> {
   try {
-    const res = await fetch("/api/ads/rewarded/status", { credentials: "include" });
+    const res = await fetch("/api/ads/reward/status", { credentials: "include" });
     if (!res.ok) return false;
-    const data: { active: boolean } = await res.json();
-    return data.active;
+    const data = await res.json();
+    // Support both { active: boolean } and { rewards: Array<{ rewardType, active }> }
+    if (typeof data.active === "boolean") return data.active;
+    if (Array.isArray(data.rewards)) {
+      return (data.rewards as Array<{ rewardType: string; active: boolean }>).some(
+        (r) => r.rewardType === "ad_light_listening" && r.active,
+      );
+    }
+    return false;
   } catch {
     return false;
   }
@@ -70,23 +76,15 @@ async function fetchRewardStatus(): Promise<boolean> {
 export function usePlaybackAdHooks({
   tier,
   currentTime,
-  currentChapterIndex,
-  chapters,
   transcriptSegments,
   adFlagsEnabled = { preRoll: true, midRoll: true },
 }: UsePlaybackAdHooksOptions) {
   const [adDecision, setAdDecision] = useState<AdDecisionState>({
     pending: false,
     type: null,
-    ad: null,
   });
+
   const [rewardActive, setRewardActive] = useState(false);
-
-  // Keep adDecision in a ref so async callbacks always see the latest value
-  // without stale closure issues.
-  const adDecisionRef = useRef(adDecision);
-  adDecisionRef.current = adDecision;
-
   const rewardActiveRef = useRef(false);
 
   // Poll reward status once on mount (fire-and-forget)
@@ -102,48 +100,58 @@ export function usePlaybackAdHooks({
 
   // HOOK: pre-roll eligibility — ad-aware playback hook consulted here
   const isPreRollEligible = useCallback((): boolean => {
-    if (tier !== "free") return false; // synchronous tier check — no ref lag
+    if (tier !== "free") return false;
     if (!adFlagsEnabled.preRoll) return false;
     if (rewardActiveRef.current) return false;
-    return audioAdService.shouldShowPreRoll(false); // cooldown check
+    return audioAdService.shouldShowPreRoll(false);
   }, [tier, adFlagsEnabled.preRoll]);
 
-  const isMidRollEligible = useCallback((): boolean => {
-    if (tier !== "free") return false;
-    if (!adFlagsEnabled.midRoll) return false;
-    if (rewardActiveRef.current) return false;
-    return audioAdService.shouldShowMidRoll(false); // cooldown check
-  }, [tier, adFlagsEnabled.midRoll]);
+  const isMidRollEligible = useCallback(
+    (_chapterIndex?: number): boolean => {
+      if (tier !== "free") return false;
+      if (!adFlagsEnabled.midRoll) return false;
+      if (rewardActiveRef.current) return false;
+      return audioAdService.shouldShowMidRoll(false);
+    },
+    [tier, adFlagsEnabled.midRoll],
+  );
 
-  // HOOK: pre-roll served — ad overlay shown, book playback deferred
-  const onPlayBookCalled = useCallback(async (): Promise<"play" | "show-ad"> => {
+  /**
+   * HOOK: pre-roll served — ad overlay shown, book playback deferred.
+   * Returns the ad payload directly to avoid async state-read races.
+   */
+  const onPlayBookCalled = useCallback(async (): Promise<
+    "play" | { type: "show-ad"; ad: AdResponse }
+  > => {
     if (!isPreRollEligible()) return "play";
 
-    setAdDecision({ pending: true, type: "pre-roll", ad: null });
+    setAdDecision({ pending: true, type: "pre-roll" });
 
     const ad = await fetchAdWithTimeout("audio-preroll");
 
     if (!ad) {
-      setAdDecision({ pending: false, type: null, ad: null });
+      setAdDecision({ pending: false, type: null });
       return "play";
     }
 
-    setAdDecision({ pending: false, type: "pre-roll", ad });
-    return "show-ad";
+    setAdDecision({ pending: false, type: "pre-roll" });
+    // Return ad inline — caller should not read from adDecision state (render delay)
+    return { type: "show-ad", ad };
   }, [isPreRollEligible]);
 
-  // HOOK: chapter-boundary — mid-roll eligibility checked here, sentence guard applied
+  /**
+   * HOOK: chapter-boundary — mid-roll eligibility checked here, sentence guard applied.
+   * Returns the ad payload directly to avoid async state-read races.
+   */
   const onChapterBoundary = useCallback(
     async (
       prevIndex: number,
       newIndex: number,
-    ): Promise<"continue" | "show-ad" | `defer-to:${number}`> => {
-      // Only react to forward sequential chapter advances (not seeks)
+    ): Promise<"continue" | `defer-to:${number}` | { type: "show-ad"; ad: AdResponse }> => {
       if (newIndex !== prevIndex + 1) return "continue";
-      if (!isMidRollEligible()) return "continue";
+      if (!isMidRollEligible(newIndex)) return "continue";
 
-      // Sentence boundary guard: if the current playhead is inside a transcript
-      // segment and >0.5 s remain in that segment, defer until it ends.
+      // Sentence boundary guard
       if (transcriptSegments && transcriptSegments.length > 0) {
         const seg = transcriptSegments.find(
           (s) => currentTime >= s.start && currentTime < s.end,
@@ -153,17 +161,17 @@ export function usePlaybackAdHooks({
         }
       }
 
-      setAdDecision({ pending: true, type: "mid-roll", ad: null });
+      setAdDecision({ pending: true, type: "mid-roll" });
 
       const ad = await fetchAdWithTimeout("audio-midroll");
 
       if (!ad) {
-        setAdDecision({ pending: false, type: null, ad: null });
+        setAdDecision({ pending: false, type: null });
         return "continue";
       }
 
-      setAdDecision({ pending: false, type: "mid-roll", ad });
-      return "show-ad";
+      setAdDecision({ pending: false, type: "mid-roll" });
+      return { type: "show-ad", ad };
     },
     [isMidRollEligible, transcriptSegments, currentTime],
   );
@@ -171,10 +179,8 @@ export function usePlaybackAdHooks({
   // HOOK: ad-resolved — impression recorded, deferred playback resumed
   const onAdResolved = useCallback(
     (outcome: "completed" | "skipped" | "failed") => {
-      setAdDecision({ pending: false, type: null, ad: null });
+      setAdDecision({ pending: false, type: null });
 
-      // Re-poll reward window after a completed view so the next book/chapter
-      // boundary check has up-to-date bypass information.
       if (outcome === "completed") {
         fetchRewardStatus().then((active) => {
           rewardActiveRef.current = active;

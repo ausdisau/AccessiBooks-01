@@ -104,7 +104,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [transcriptSegments, setTranscriptSegments] = useState<{ start: number; end: number }[] | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [subscriptionTier, setSubscriptionTier] = useState<"free" | "plus" | "premium">("free");
+  // Initialize synchronously from the auth user object so the first
+  // ad-eligibility check (which fires before the /api/subscription/status
+  // fetch resolves) already has the correct tier — prevents free-tier ads
+  // being served to premium users on the very first playBook call.
+  const [subscriptionTier, setSubscriptionTier] = useState<"free" | "plus" | "premium" | "institutional">(() => {
+    const t = (user as any)?.subscriptionTier;
+    if (t === "premium" || t === "plus" || t === "institutional") return t;
+    return "free";
+  });
   const [bufferedAhead, setBufferedAhead] = useState(0);
   const pendingBookRef = useRef<Book | null>(null);
   // Initialize synchronously from the user's tier so ad-skip / quality decisions
@@ -460,12 +468,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       // Re-evaluate boundary: use the same prev/new as was originally deferred.
       // We use lastChapterIndex.current as prevIndex since the chapter didn't change.
       adHooks.onChapterBoundary(lastChapterIndex.current - 1, lastChapterIndex.current).then((result) => {
-        if (result === "show-ad") {
+        if (typeof result === "object" && result.type === "show-ad") {
           const audio = audioRef.current;
           if (audio && !audio.paused) { audio.pause(); setIsPlaying(false); }
           audioAdService.playAdChime();
-          const ad = adHooks.adDecision.ad;
-          if (ad) setAdState({ isAdPlaying: true, currentAd: ad, adType: "mid-roll" });
+          setAdState({ isAdPlaying: true, currentAd: result.ad, adType: "mid-roll" });
         }
         // "continue" or another "defer-to" are both benign — ignore
         void savedDeferred;
@@ -486,12 +493,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         // HOOK: chapter-boundary — mid-roll eligibility checked here, sentence guard applied
         setTimeout(() => {
           adHooks.onChapterBoundary(prevIdx, nextIdx).then((result) => {
-            if (result === "show-ad") {
+            if (typeof result === "object" && result.type === "show-ad") {
               const audio = audioRef.current;
               if (audio && !audio.paused) { audio.pause(); setIsPlaying(false); }
               audioAdService.playAdChime();
-              const ad = adHooks.adDecision.ad;
-              if (ad) setAdState({ isAdPlaying: true, currentAd: ad, adType: "mid-roll" });
+              setAdState({ isAdPlaying: true, currentAd: result.ad, adType: "mid-roll" });
             } else if (typeof result === "string" && result.startsWith("defer-to:")) {
               const deferTime = parseFloat(result.split(":")[1]);
               if (!isNaN(deferTime)) deferredAdRef.current = deferTime;
@@ -655,6 +661,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const onAdComplete = useCallback((skipped: boolean) => {
+    // Signal safety-valve timeout to cancel itself
+    document.dispatchEvent(new CustomEvent("accessibooks:ad-resolved"));
+
     const ad = adState.currentAd;
     const adType = adState.adType;
     setAdState({ isAdPlaying: false, currentAd: null, adType: null });
@@ -690,35 +699,40 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     window.location.href = "/api/subscription/create-checkout";
   }, [adState]);
 
+  // Always-current ref so the safety-valve setTimeout can call the latest onAdComplete
+  // without being affected by stale closures in playBook.
+  const onAdCompleteRef = useRef<(skipped: boolean) => void>(() => {});
+  onAdCompleteRef.current = onAdComplete;
+
   const playBook = async (book: Book) => {
     audioAdService.incrementPlayCount();
 
     // HOOK: pre-roll eligibility — ad-aware playback hook consulted here
     const decision = await adHooks.onPlayBookCalled();
 
-    if (decision === "show-ad") {
+    if (typeof decision === "object" && decision.type === "show-ad") {
       // HOOK: pre-roll served — ad overlay shown, book playback deferred
+      // The ad payload is returned inline to avoid React state-update race.
       pendingBookRef.current = book;
       audioAdService.playAdChime();
-      const ad = adHooks.adDecision.ad;
-      if (ad) {
-        setAdState({ isAdPlaying: true, currentAd: ad, adType: "pre-roll" });
+      setAdState({ isAdPlaying: true, currentAd: decision.ad, adType: "pre-roll" });
 
-        // Safety valve: if adState.isAdPlaying is true but the ad is still null
-        // 3 seconds later (e.g. component unmounted during fetch), auto-resume.
-        setTimeout(() => {
-          setAdState((prev) => {
-            if (prev.isAdPlaying && prev.currentAd === null) {
-              console.warn("[AudioContext] Ad hung with null currentAd after 3 s — resuming playback");
-              return { isAdPlaying: false, currentAd: null, adType: null };
-            }
-            return prev;
-          });
-        }, 3000);
-      } else {
-        // Hook said show-ad but ad is gone from state (race) — just play
-        startPlaybackForBook(book);
-      }
+      // Safety valve: if the ad overlay never dismisses after 3 s, resume via the
+      // full onAdComplete(false) path so pendingBook is cleared and playback resumes.
+      const safetyTimerId = setTimeout(() => {
+        setAdState((prev) => {
+          if (prev.isAdPlaying) {
+            console.warn("[AudioContext] Ad overlay stuck after 3 s — force-resuming playback");
+            onAdCompleteRef.current(false);
+          }
+          return prev;
+        });
+      }, 3000);
+
+      // Clear the safety valve if the ad resolves normally before 3 s
+      const clearSafetyValve = () => clearTimeout(safetyTimerId);
+      document.addEventListener("accessibooks:ad-resolved", clearSafetyValve, { once: true });
+
       return;
     }
 
