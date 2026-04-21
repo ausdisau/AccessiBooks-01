@@ -98,8 +98,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     adType: null,
   });
   const [isMuted, setIsMuted] = useState(false);
-  // Ref used to schedule a deferred mid-roll after a sentence boundary guard fires
-  const deferredAdRef = useRef<number | null>(null);
+  // Stores the playback time threshold and the original chapter boundary indices
+  // for a deferred mid-roll so re-evaluation uses real values (not synthetic -1/+0 offsets).
+  const deferredAdRef = useRef<{ time: number; prevIdx: number; nextIdx: number } | null>(null);
   // Flat transcript segments for the current book — loaded so the sentence guard can check them
   const [transcriptSegments, setTranscriptSegments] = useState<{ start: number; end: number }[] | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -109,7 +110,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // fetch resolves) already has the correct tier — prevents free-tier ads
   // being served to premium users on the very first playBook call.
   const [subscriptionTier, setSubscriptionTier] = useState<"free" | "plus" | "premium" | "institutional">(() => {
-    const t = (user as any)?.subscriptionTier;
+    const t = user?.subscriptionTier; // User.subscriptionTier is string | null per schema
     if (t === "premium" || t === "plus" || t === "institutional") return t;
     return "free";
   });
@@ -415,7 +416,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [currentBook?.id]);
 
-  // Instantiate the ad-aware playback hook — owns all ad decision logic for this session
+  // Instantiate the ad-aware playback hook — owns all ad decision logic for this session.
+  // Note: onPlayBookCalled / onChapterBoundary return the ad payload inline as
+  // { type: "show-ad"; ad } rather than the string union in the original spec.
+  // This eliminates the React async-state-read race that caused currentAd to be null.
   const adHooks = usePlaybackAdHooks({
     tier: subscriptionTier,
     currentTime,
@@ -462,12 +466,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     });
 
     // Resolve a pending deferred mid-roll when playback crosses the deferred timestamp
-    if (deferredAdRef.current !== null && currentTime >= deferredAdRef.current) {
-      const savedDeferred = deferredAdRef.current;
+    if (deferredAdRef.current !== null && currentTime >= deferredAdRef.current.time) {
+      // Capture and clear before async work so a concurrent timeupdate doesn't re-fire
+      const { prevIdx, nextIdx } = deferredAdRef.current;
       deferredAdRef.current = null;
-      // Re-evaluate boundary: use the same prev/new as was originally deferred.
-      // We use lastChapterIndex.current as prevIndex since the chapter didn't change.
-      adHooks.onChapterBoundary(lastChapterIndex.current - 1, lastChapterIndex.current).then((result) => {
+      // Re-evaluate using the original boundary indices that triggered the defer
+      adHooks.onChapterBoundary(prevIdx, nextIdx).then((result) => {
         if (typeof result === "object" && result.type === "show-ad") {
           const audio = audioRef.current;
           if (audio && !audio.paused) { audio.pause(); setIsPlaying(false); }
@@ -475,7 +479,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           setAdState({ isAdPlaying: true, currentAd: result.ad, adType: "mid-roll" });
         }
         // "continue" or another "defer-to" are both benign — ignore
-        void savedDeferred;
       });
     }
 
@@ -500,7 +503,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
               setAdState({ isAdPlaying: true, currentAd: result.ad, adType: "mid-roll" });
             } else if (typeof result === "string" && result.startsWith("defer-to:")) {
               const deferTime = parseFloat(result.split(":")[1]);
-              if (!isNaN(deferTime)) deferredAdRef.current = deferTime;
+              if (!isNaN(deferTime)) {
+                // Store original boundary indices so the re-evaluation can use them correctly
+                deferredAdRef.current = { time: deferTime, prevIdx, nextIdx };
+              }
             }
             // "continue" → do nothing
           });
@@ -717,12 +723,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audioAdService.playAdChime();
       setAdState({ isAdPlaying: true, currentAd: decision.ad, adType: "pre-roll" });
 
-      // Safety valve: if the ad overlay never dismisses after 3 s, resume via the
-      // full onAdComplete(false) path so pendingBook is cleared and playback resumes.
+      // Safety valve: if adState.isAdPlaying is set but currentAd remains null after 3 s
+      // (e.g. a race between hook fetch and the overlay render left us in a hung state),
+      // call onAdComplete(false) to resume. Normal ads will always have currentAd set
+      // synchronously from decision.ad above, so this timer is a no-op in the happy path.
       const safetyTimerId = setTimeout(() => {
         setAdState((prev) => {
-          if (prev.isAdPlaying) {
-            console.warn("[AudioContext] Ad overlay stuck after 3 s — force-resuming playback");
+          if (prev.isAdPlaying && prev.currentAd === null) {
+            console.warn("[AudioContext] Ad state hung (isAdPlaying=true, currentAd=null) after 3 s — resuming");
             onAdCompleteRef.current(false);
           }
           return prev;
