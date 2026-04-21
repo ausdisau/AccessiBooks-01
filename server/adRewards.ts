@@ -16,6 +16,7 @@ import {
   REWARDED_AD_PLACEMENT_ID,
   type RewardType,
 } from "@shared/rewardConfig";
+import { analyticsService } from "./analyticsService";
 
 const HOUSE_ADVERTISER_ID = "system-rewarded-ads";
 const HOUSE_CAMPAIGN_ID = "house-rewarded-campaign";
@@ -454,6 +455,12 @@ export function registerRewardedRoutes(router: Router): void {
     try {
       const { impressionId } = req.body ?? {};
       const result = await recordRewardedCompletion(user.id, impressionId);
+      analyticsService.track("rewarded_ad_completed", user.subscriptionTier || "free", {
+        userId: user.id,
+        impressionId,
+        legacy: true,
+        durationMinutes: LEGACY_REWARD_DURATION_MINUTES,
+      });
       res.json({
         success: true,
         expiresAt: result.expiresAt.toISOString(),

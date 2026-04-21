@@ -74,12 +74,11 @@ export function registerAdRewardRoutes(app: Express) {
 
     try {
       const result = await offerReward(userId, rewardType, { bookId });
-      if ((result as any)?.eligible === true) {
-        const rt = (result as any).rewardType ?? rewardType ?? "ad_light_listening";
-        if (shouldEmitOffered(userId, rt)) {
+      if (result.eligible) {
+        if (shouldEmitOffered(userId, result.rewardType)) {
           analyticsService.track("rewarded_ad_offered", getUserTier(req), {
             userId,
-            rewardType: rt,
+            rewardType: result.rewardType,
             bookId,
           });
         }
