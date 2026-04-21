@@ -9,6 +9,7 @@ import { AccessiBooksLogo } from "@/components/accessibooks-logo";
 import { useAuth } from "@/hooks/useAuth";
 import { Library } from "@/pages/library";
 import { Player } from "@/pages/player";
+import { PricingPage } from "@/pages/pricing";
 import { Book } from "@shared/schema";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
@@ -20,7 +21,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, Pause, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus, Zap, HeartHandshake } from "lucide-react";
+import { Book as BookIcon, Play, Pause, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Settings2, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, MessageCircle, Focus, Zap, HeartHandshake } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,6 +31,7 @@ import { AudioProvider, useAudioContext } from "@/contexts/AudioContext";
 import { AudioAdOverlay } from "@/components/audio-ad-overlay";
 import { MiniPlayer } from "@/components/mini-player";
 import { PremiumBadge } from "@/components/premium-badge";
+import { PlanBadge } from "@/components/plan-badge";
 import { SubscriptionCard } from "@/components/subscription-card";
 import { AccessibilityWidget } from "@/components/accessibility-widget";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -87,6 +89,8 @@ const SlotDetailPage = lazy(() => import('@/pages/ad-platform/slot-detail'));
 const DemoSlotPage = lazy(() => import('@/pages/ad-platform/demo-slot'));
 const WordBankPage = lazy(() => import('@/pages/word-bank').then(m => ({ default: m.WordBankPage })));
 const AchievementsPage = lazy(() => import('@/components/completion-certificate').then(m => ({ default: m.AchievementsPage })));
+const AccountSettingsPage = lazy(() => import('@/pages/account-settings').then(m => ({ default: m.AccountSettingsPage })));
+const AdminAnalyticsPage = lazy(() => import('@/pages/admin-analytics'));
 
 function LoadingSpinner() {
   return (
@@ -131,6 +135,8 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
   {
     label: "Account",
     items: [
+      { path: "/settings", label: "Settings", icon: <Settings2 className="h-5 w-5" /> },
+      { path: "/pricing", label: "Plans", icon: <Crown className="h-5 w-5" /> },
       { path: "/stats", label: "Stats", icon: <Trophy className="h-5 w-5" /> },
       { path: "/usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
       { path: "/billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
@@ -144,6 +150,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
     items: [
       { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
       { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
+      { path: "/analytics", label: "Analytics", icon: <BarChart3 className="h-5 w-5" /> },
     ],
   },
 ];
@@ -281,6 +288,14 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
                 <SubscriptionCard />
               </DialogContent>
             </Dialog>
+            <Link
+              href="/pricing"
+              className="hidden sm:flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="View all plans and pricing"
+            >
+              <Crown className="h-4 w-4" />
+              Plans
+            </Link>
             
             <Button
               variant="ghost"
@@ -348,6 +363,8 @@ function AppSidebar({ mode, onCloseDrawer }: {
   onCloseDrawer: () => void;
 }) {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const tier = ((user as any)?.subscriptionTier ?? "free") as "free" | "plus" | "premium";
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/" || location === "";
@@ -374,7 +391,8 @@ function AppSidebar({ mode, onCloseDrawer }: {
               data-testid={`menu-${item.path.replace("/", "") || "library"}`}
             >
               {item.icon}
-              {item.label}
+              <span className="flex-1 truncate">{item.label}</span>
+              {item.path === "/settings" && <PlanBadge tier={tier} className="text-[10px] px-1.5 py-0" />}
             </Link>
           ))}
         </div>
@@ -1525,6 +1543,19 @@ function MainApp() {
     return "full";
   });
   const { settings: a11ySettings, toggleHighContrast, toggleDarkMode } = useAccessibility();
+
+  // Apply reduceDistractionMode class from server preferences
+  const { data: a11yPrefs } = useQuery<{ profile: Record<string, unknown> }>({
+    queryKey: ["/api/a11y/preferences"],
+  });
+  useEffect(() => {
+    const reduce = !!(a11yPrefs?.profile?.reduceDistractionMode);
+    document.documentElement.classList.toggle("reduce-distraction", reduce);
+  }, [a11yPrefs?.profile?.reduceDistractionMode]);
+
+  const skipForwardSec = Number(a11yPrefs?.profile?.preferredSkipForward ?? 30);
+  const skipBackSec = Number(a11yPrefs?.profile?.preferredSkipBack ?? 30);
+
   const { currentBook, isPlaying, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
@@ -1671,8 +1702,8 @@ function MainApp() {
   useKeyboardShortcuts({
     onHighContrast: toggleHighContrast,
     onPlayPause: togglePlayPause,
-    onSkipBackward: () => skip(-30),
-    onSkipForward: () => skip(30),
+    onSkipBackward: () => skip(-skipBackSec),
+    onSkipForward: () => skip(skipForwardSec),
     onSpeedUp: () => changeSpeed(0.25),
     onSpeedDown: () => changeSpeed(-0.25),
     onMute: toggleMute,
@@ -1706,13 +1737,13 @@ function MainApp() {
     },
     {
       patterns: ["skip forward", "forward", "skip ahead", "fast forward"],
-      handler: () => skip(30),
-      description: "Skip forward 30 s",
+      handler: () => skip(skipForwardSec),
+      description: `Skip forward ${skipForwardSec}s`,
     },
     {
       patterns: ["skip back", "skip backward", "go back", "rewind"],
-      handler: () => skip(-30),
-      description: "Skip back 30 s",
+      handler: () => skip(-skipBackSec),
+      description: `Skip back ${skipBackSec}s`,
     },
     {
       patterns: ["next chapter", "next"],
@@ -1984,6 +2015,11 @@ function MainApp() {
                     </div>
                   </Suspense>
                 </Route>
+                <Route path="/pricing">
+                  <div id="pricing-panel" role="region" aria-label="Pricing" data-testid="panel-pricing">
+                    <PricingPage />
+                  </div>
+                </Route>
                 <Route path="/billing">
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="billing-panel" role="region" aria-label="Billing" data-testid="panel-billing">
@@ -2048,6 +2084,13 @@ function MainApp() {
                     </div>
                   </Suspense>
                 </Route>
+                <Route path="/analytics">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="analytics-panel" role="region" aria-label="Analytics Dashboard" data-testid="panel-analytics">
+                      <AdminAnalyticsPage />
+                    </div>
+                  </Suspense>
+                </Route>
                 <Route path="/trust">
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="trust-panel" role="region" aria-label="Trust & Safety" data-testid="panel-trust">
@@ -2087,6 +2130,13 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="achievements-panel" role="region" aria-label="Achievements" data-testid="panel-achievements">
                       <AchievementsPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/settings">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="settings-panel" role="region" aria-label="Account Settings" data-testid="panel-settings">
+                      <AccountSettingsPage />
                     </div>
                   </Suspense>
                 </Route>

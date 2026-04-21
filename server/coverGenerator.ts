@@ -1,37 +1,70 @@
-import fs from 'fs';
-import path from 'path';
 import { generateImageBuffer } from './replit_integrations/image/client';
+import { objectStorageClient, ObjectStorageService } from './replit_integrations/object_storage/objectStorage';
 
-const GENERATED_COVERS_DIR = path.join(process.cwd(), 'client', 'public', 'generated-covers');
+const PLACEHOLDER_COVER_URL = '/placeholder-cover.jpg';
+const COVER_PREFIX = 'public/generated-covers';
 
-export function ensureCoversDir() {
-  if (!fs.existsSync(GENERATED_COVERS_DIR)) {
-    fs.mkdirSync(GENERATED_COVERS_DIR, { recursive: true });
+const objectStorageService = new ObjectStorageService();
+
+function getObjectStorageCoverPath(bookId: string): string {
+  const safeId = bookId.replace(/[^a-zA-Z0-9-_]/g, '_');
+  return `/objects/${COVER_PREFIX}/${safeId}.jpg`;
+}
+
+function parsePublicBucketPath(fullPath: string): { bucketName: string; objectName: string } | null {
+  const p = fullPath.startsWith('/') ? fullPath : `/${fullPath}`;
+  const parts = p.split('/').filter(Boolean);
+  if (parts.length < 1) return null;
+  return { bucketName: parts[0], objectName: parts.slice(1).join('/') };
+}
+
+export async function hasGeneratedCover(bookId: string): Promise<boolean> {
+  try {
+    const safeId = bookId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const file = await objectStorageService.searchPublicObject(`${COVER_PREFIX}/${safeId}.jpg`);
+    return file !== null;
+  } catch {
+    return false;
   }
 }
 
-export function getGeneratedCoverPath(bookId: string): string {
-  const safeId = bookId.replace(/[^a-zA-Z0-9-_]/g, '_');
-  return `/generated-covers/${safeId}.png`;
-}
-
-export function hasGeneratedCover(bookId: string): boolean {
-  const safeId = bookId.replace(/[^a-zA-Z0-9-_]/g, '_');
-  const filePath = path.join(GENERATED_COVERS_DIR, `${safeId}.png`);
-  return fs.existsSync(filePath);
-}
-
-export function getGeneratedCoverUrl(bookId: string): string | null {
-  if (hasGeneratedCover(bookId)) {
-    return getGeneratedCoverPath(bookId);
+export async function getGeneratedCoverUrl(bookId: string): Promise<string | null> {
+  if (await hasGeneratedCover(bookId)) {
+    return getObjectStorageCoverPath(bookId);
   }
   return null;
+}
+
+/**
+ * List bookIds that already have a generated cover in object storage
+ * (under the public/generated-covers/ prefix).
+ */
+export async function listGeneratedCovers(): Promise<string[]> {
+  try {
+    const publicSearchPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS || '';
+    const firstPath = publicSearchPaths.split(',')[0]?.trim();
+    if (!firstPath) return [];
+    const parsed = parsePublicBucketPath(`${firstPath}/${COVER_PREFIX}/`);
+    if (!parsed) return [];
+    const bucket = objectStorageClient.bucket(parsed.bucketName);
+    const [files] = await bucket.getFiles({ prefix: parsed.objectName });
+    return files
+      .map(f => f.name)
+      .filter(n => n.endsWith('.jpg'))
+      .map(n => {
+        const base = n.split('/').pop() || '';
+        return base.replace(/\.jpg$/, '');
+      });
+  } catch (err) {
+    console.warn('[CoverGenerator] listGeneratedCovers failed:', err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 export function buildCoverPrompt(title: string, author: string, genre?: string, contentType?: string): string {
   const type = contentType || 'audiobook';
   const genreText = genre ? `, ${genre} genre` : '';
-  
+
   const styleMap: Record<string, string> = {
     'fiction': 'dramatic lighting, rich colors, evocative imagery',
     'non-fiction': 'clean design, professional typography, minimalist',
@@ -46,70 +79,10 @@ export function buildCoverPrompt(title: string, author: string, genre?: string, 
     'thriller': 'tense atmosphere, high contrast, suspenseful',
     'classic': 'timeless, elegant, literary aesthetic',
   };
-  
+
   const style = genre ? (styleMap[genre.toLowerCase()] || 'professional book cover design') : 'professional book cover design';
-  
+
   return `Professional ${type} cover design for "${title}" by ${author}${genreText}. ${style}. High quality book cover art, no text, abstract artistic interpretation of the book's theme, suitable for digital display, clean composition, publishing quality.`;
-}
-
-export interface PendingCover {
-  bookId: string;
-  title: string;
-  author: string;
-  genre?: string;
-  contentType?: string;
-  prompt: string;
-  outputPath: string;
-}
-
-const pendingCovers: Map<string, PendingCover> = new Map();
-
-export function queueCoverGeneration(
-  bookId: string,
-  title: string,
-  author: string,
-  genre?: string,
-  contentType?: string
-): PendingCover | null {
-  if (hasGeneratedCover(bookId)) {
-    return null;
-  }
-  
-  const safeId = bookId.replace(/[^a-zA-Z0-9-_]/g, '_');
-  const outputPath = `client/public/generated-covers/${safeId}.png`;
-  const prompt = buildCoverPrompt(title, author, genre, contentType);
-  
-  const pending: PendingCover = {
-    bookId,
-    title,
-    author,
-    genre,
-    contentType,
-    prompt,
-    outputPath
-  };
-  
-  pendingCovers.set(bookId, pending);
-  return pending;
-}
-
-export function getPendingCovers(): PendingCover[] {
-  return Array.from(pendingCovers.values());
-}
-
-export function markCoverGenerated(bookId: string): void {
-  pendingCovers.delete(bookId);
-}
-
-export function listGeneratedCovers(): string[] {
-  ensureCoversDir();
-  try {
-    return fs.readdirSync(GENERATED_COVERS_DIR)
-      .filter(f => f.endsWith('.png'))
-      .map(f => f.replace('.png', ''));
-  } catch {
-    return [];
-  }
 }
 
 export interface CoverGenerationResult {
@@ -127,31 +100,60 @@ export async function generateCoverForBook(
   genre?: string,
   contentType?: string
 ): Promise<CoverGenerationResult> {
-  if (hasGeneratedCover(bookId)) {
-    return { bookId, title, status: 'skipped', coverUrl: getGeneratedCoverUrl(bookId) || undefined };
+  if (await hasGeneratedCover(bookId)) {
+    return { bookId, title, status: 'skipped', coverUrl: getObjectStorageCoverPath(bookId) };
   }
 
   try {
-    ensureCoversDir();
     const prompt = buildCoverPrompt(title, author, genre, contentType);
     const imageBuffer = await generateImageBuffer(prompt, "1024x1024");
 
+    const publicSearchPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS || '';
+    const firstPath = publicSearchPaths.split(',')[0]?.trim();
+    if (!firstPath) {
+      console.warn(`[CoverGenerator] PUBLIC_OBJECT_SEARCH_PATHS not configured — cannot upload cover for "${title}"`);
+      return {
+        bookId,
+        title,
+        status: 'error',
+        coverUrl: PLACEHOLDER_COVER_URL,
+        error: 'Object storage not configured',
+      };
+    }
+
     const safeId = bookId.replace(/[^a-zA-Z0-9-_]/g, '_');
-    const filePath = path.join(GENERATED_COVERS_DIR, `${safeId}.png`);
-    fs.writeFileSync(filePath, imageBuffer);
+    const fullStoragePath = `${firstPath}/${COVER_PREFIX}/${safeId}.jpg`;
+    const parsed = parsePublicBucketPath(fullStoragePath);
+    if (!parsed) {
+      throw new Error(`Could not parse storage path: ${fullStoragePath}`);
+    }
 
-    markCoverGenerated(bookId);
+    const bucket = objectStorageClient.bucket(parsed.bucketName);
+    const file = bucket.file(parsed.objectName);
+    await file.save(imageBuffer, { contentType: 'image/jpeg', resumable: false });
 
+    const coverUrl = getObjectStorageCoverPath(bookId);
+
+    // Persist the URL on the book record so the frontend can render it
+    // directly without probing for the file.
+    try {
+      const { storage } = await import('./storage');
+      await storage.updateBook(bookId, { coverImage: coverUrl });
+    } catch (err) {
+      console.warn(`[CoverGenerator] Generated cover but failed to persist URL on book ${bookId}:`, err instanceof Error ? err.message : err);
+    }
+
+    return { bookId, title, status: 'generated', coverUrl };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[CoverGenerator] Cover generation failed for "${title}" (${bookId}):`, message);
     return {
       bookId,
       title,
-      status: 'generated',
-      coverUrl: getGeneratedCoverPath(bookId),
+      status: 'error',
+      coverUrl: PLACEHOLDER_COVER_URL,
+      error: message,
     };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Cover generation failed for "${title}" (${bookId}):`, message);
-    return { bookId, title, status: 'error', error: message };
   }
 }
 
@@ -159,7 +161,13 @@ export async function generateCoversForBooks(
   books: Array<{ id: string; title: string; author: string; genre?: string | null; contentType?: string | null; coverImage?: string | null }>,
   onProgress?: (result: CoverGenerationResult, completed: number, total: number) => void
 ): Promise<CoverGenerationResult[]> {
-  const needsCovers = books.filter(b => !b.coverImage && !hasGeneratedCover(b.id));
+  const needsCovers: typeof books = [];
+  for (const b of books) {
+    if (!b.coverImage && !(await hasGeneratedCover(b.id))) {
+      needsCovers.push(b);
+    }
+  }
+
   const results: CoverGenerationResult[] = [];
 
   for (let i = 0; i < needsCovers.length; i++) {

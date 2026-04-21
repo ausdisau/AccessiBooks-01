@@ -1,23 +1,9 @@
 import type { Express } from "express";
 import { db } from "./db";
-import { accessibilityPreferences } from "@shared/schema";
+import { accessibilityPreferences, users, DEFAULT_A11Y_PROFILE, type A11yProfile } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
-
-const DEFAULT_PROFILE = {
-  fontSize: 16,
-  fontFamily: "system",
-  highContrast: false,
-  reducedMotion: false,
-  screenReaderHints: true,
-  captionsOn: false,
-  playbackSpeed: 1.0,
-  colorScheme: "default",
-  lineSpacing: 1.5,
-  letterSpacing: 0,
-  dyslexiaFont: false,
-  focusHighlight: true,
-};
+import { stripe } from "./stripe";
 
 const PRESETS = [
   {
@@ -63,6 +49,10 @@ const PRESETS = [
   },
 ];
 
+function mergeWithDefaults(stored: Record<string, unknown>): A11yProfile {
+  return { ...DEFAULT_A11Y_PROFILE, ...stored } as A11yProfile;
+}
+
 export function registerAccessibilityKernelRoutes(app: Express) {
   app.get("/api/a11y/preferences", async (req: any, res) => {
     try {
@@ -74,16 +64,15 @@ export function registerAccessibilityKernelRoutes(app: Express) {
           .where(eq(accessibilityPreferences.userId, userId));
 
         if (record) {
+          const merged = mergeWithDefaults(record.profile as Record<string, unknown>);
           return res.json({
-            profile: record.profile,
+            profile: merged,
             activePreset: record.activePreset || null,
           });
         }
       }
 
-      // No stored record — return DEFAULT_PROFILE for backward compat with existing consumers,
-      // but set hasStoredRecord: false so the widget can distinguish "never saved" from "saved"
-      return res.json({ profile: DEFAULT_PROFILE, hasStoredRecord: false });
+      return res.json({ profile: DEFAULT_A11Y_PROFILE, hasStoredRecord: false });
     } catch (error) {
       console.error("[A11y Kernel] Error fetching preferences:", error);
       res.status(500).json({ message: "Failed to fetch accessibility preferences" });
@@ -97,23 +86,31 @@ export function registerAccessibilityKernelRoutes(app: Express) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const { profile, activePreset } = req.body;
+      const { profile: incomingProfile, activePreset } = req.body;
 
-      if (!profile || typeof profile !== "object") {
+      if (!incomingProfile || typeof incomingProfile !== "object") {
         return res.status(400).json({ message: "profile is required and must be an object" });
       }
+
+      const [existing] = await db
+        .select()
+        .from(accessibilityPreferences)
+        .where(eq(accessibilityPreferences.userId, userId));
+
+      const existingProfile = existing ? (existing.profile as Record<string, unknown>) : {};
+      const mergedProfile = { ...existingProfile, ...incomingProfile };
 
       const [result] = await db
         .insert(accessibilityPreferences)
         .values({
           userId,
-          profile,
+          profile: mergedProfile,
           activePreset: activePreset || null,
         })
         .onConflictDoUpdate({
           target: accessibilityPreferences.userId,
           set: {
-            profile,
+            profile: mergedProfile,
             activePreset: activePreset || null,
             syncedAt: new Date(),
           },
@@ -133,6 +130,67 @@ export function registerAccessibilityKernelRoutes(app: Express) {
     } catch (error) {
       console.error("[A11y Kernel] Error fetching presets:", error);
       res.status(500).json({ message: "Failed to fetch accessibility presets" });
+    }
+  });
+
+  app.get("/api/settings/summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const [userRow] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!userRow) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const [prefsRow] = await db
+        .select()
+        .from(accessibilityPreferences)
+        .where(eq(accessibilityPreferences.userId, userId));
+
+      const preferences = prefsRow
+        ? mergeWithDefaults(prefsRow.profile as Record<string, unknown>)
+        : DEFAULT_A11Y_PROFILE;
+
+      let nextBillingDate: string | null = null;
+      let estimatedNextAmount: number | null = null;
+
+      if (stripe && userRow.stripeCustomerId && userRow.stripeSubscriptionId) {
+        try {
+          const upcomingInvoice = await (stripe.invoices as any).retrieveUpcoming({
+            customer: userRow.stripeCustomerId,
+          });
+          if (upcomingInvoice) {
+            nextBillingDate = upcomingInvoice.next_payment_attempt
+              ? new Date(upcomingInvoice.next_payment_attempt * 1000).toISOString()
+              : null;
+            estimatedNextAmount = upcomingInvoice.amount_due;
+          }
+        } catch {
+          // Stripe might not be configured or subscription may not exist
+        }
+      }
+
+      res.json({
+        user: {
+          id: userRow.id,
+          email: userRow.email,
+          firstName: userRow.firstName,
+          subscriptionTier: userRow.subscriptionTier || "free",
+          subscriptionEndDate: userRow.subscriptionEndDate ? userRow.subscriptionEndDate.toISOString() : null,
+        },
+        preferences,
+        billing: {
+          canManagePortal: !!userRow.stripeCustomerId,
+          nextBillingDate,
+          estimatedNextAmount,
+        },
+      });
+    } catch (error) {
+      console.error("[A11y Kernel] Error fetching settings summary:", error);
+      res.status(500).json({ message: "Failed to fetch settings summary" });
     }
   });
 }

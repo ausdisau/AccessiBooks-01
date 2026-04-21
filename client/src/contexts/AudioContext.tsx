@@ -4,6 +4,7 @@ import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
+import { useQuery } from "@tanstack/react-query";
 
 interface AudioAdState {
   isAdPlaying: boolean;
@@ -102,8 +103,29 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Initialize synchronously from the user's tier so ad-skip / quality decisions
   // made before the first /api/subscription/status fetch don't leak premium
   // behaviour to free users (or block paying users on first paint).
-  const initialTier = user?.subscriptionTier;
-  const isPremiumRef = useRef(initialTier === "premium" || initialTier === "plus");
+  const initialTier = (user as any)?.subscriptionTier;
+  const isPremiumRef = useRef(
+    initialTier === "premium" || initialTier === "plus" || initialTier === "institutional"
+  );
+  const sleepTimerDefaultRef = useRef<number | null>(null);
+
+  // Subscribe to user accessibility prefs to apply listening defaults
+  const { data: a11yPrefsData } = useQuery<{ profile: Record<string, unknown> }>({
+    queryKey: ["/api/a11y/preferences"],
+  });
+  useEffect(() => {
+    const sleepDefault = a11yPrefsData?.profile?.sleepTimerDefault;
+    sleepTimerDefaultRef.current =
+      typeof sleepDefault === "number" && sleepDefault > 0 ? sleepDefault : null;
+  }, [a11yPrefsData?.profile?.sleepTimerDefault]);
+  useEffect(() => {
+    const speed = a11yPrefsData?.profile?.playbackSpeed;
+    if (typeof speed === "number" && speed > 0 && speed !== playbackRate) {
+      setPlaybackRate(speed);
+    }
+    // Only apply on initial profile load (when currentBook is null) to avoid stomping user changes during playback
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a11yPrefsData?.profile?.playbackSpeed]);
   const externalChapterEndRef = useRef<(() => void) | null>(null);
   const stallRecoveryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const networkRetryCountRef = useRef(0);
@@ -402,7 +424,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         if (onChapterEndCallback.current) {
           onChapterEndCallback.current();
         }
-        triggerMidRollAd();
+        // Delay mid-roll firing by 500ms so listeners don't get an ad
+        // exactly at the chapter boundary (improves perceived fairness).
+        setTimeout(() => {
+          triggerMidRollAd();
+        }, 500);
       }
       setCurrentChapterIndex(newIndex);
       lastChapterIndex.current = newIndex;
@@ -519,6 +545,32 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ bookId: book.id, eventType: "play" }),
     }).catch(() => {});
 
+    // Auto-apply default sleep timer when starting a new book (if configured and not already running)
+    if (sleepTimerDefaultRef.current !== null && sleepTimerRef.current === null) {
+      const minutes = sleepTimerDefaultRef.current;
+      const totalSeconds = minutes * 60;
+      setSleepTimerState(minutes);
+      setSleepTimerRemaining(totalSeconds);
+      sleepTimerRef.current = setInterval(() => {
+        setSleepTimerRemaining((prev) => {
+          if (prev === null || prev <= 1) {
+            if (sleepTimerRef.current) {
+              clearInterval(sleepTimerRef.current);
+              sleepTimerRef.current = null;
+            }
+            const audio = audioRef.current;
+            if (audio && !audio.paused) {
+              audio.pause();
+              setIsPlaying(false);
+            }
+            setSleepTimerState(null);
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
     setTimeout(async () => {
       const audio = audioRef.current;
       if (audio) {
@@ -567,7 +619,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const triggerMidRollAd = useCallback(async () => {
     if (isPremiumRef.current) return;
-    if (!audioAdService.shouldShowMidRoll(isPremiumRef.current)) return;
+    const shouldShow = await audioAdService.shouldShowMidRollAsync(isPremiumRef.current);
+    if (!shouldShow) return;
 
     const audio = audioRef.current;
     if (audio && !audio.paused) {
@@ -584,7 +637,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const playBook = async (book: Book) => {
     audioAdService.incrementPlayCount();
 
-    if (audioAdService.shouldShowPreRoll(isPremiumRef.current)) {
+    const shouldShowPreRoll = await audioAdService.shouldShowPreRollAsync(isPremiumRef.current);
+    if (shouldShowPreRoll) {
       pendingBookRef.current = book;
       audioAdService.playAdChime();
       const ad = await audioAdService.requestAd("pre-roll");

@@ -110,6 +110,14 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   const { profile, updateProfile } = usePreferencesKernel();
   const captionsOn = profile.captionsOn;
   const captionPosition = profile.captionPosition ?? "below";
+  const skipForwardSec: number = ((profile as unknown as Record<string, unknown>).preferredSkipForward as number) ?? 30;
+  const skipBackSec: number = ((profile as unknown as Record<string, unknown>).preferredSkipBack as number) ?? 30;
+  const transcriptDefault = !!((profile as unknown as Record<string, unknown>).transcriptOpenByDefault);
+
+  useEffect(() => {
+    if (transcriptDefault) setShowTranscript(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcriptDefault]);
 
   const [a11ySettings, setA11ySettings] = useState(() => localStorageService.getSettings());
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -343,11 +351,11 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
         return;
       }
     }
-    skip(30);
+    skip(skipForwardSec);
   };
 
   const handleSkipBackward = () => {
-    skip(-30);
+    skip(-skipBackSec);
   };
 
   const handleChapterSelect = (chapter: { id: string; title: string; audioUrl?: string }, index?: number) => {
@@ -450,11 +458,11 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             variant="secondary"
             onClick={handleSkipBackward}
             className="h-14 w-14 sm:h-20 sm:w-20 rounded-full text-xl"
-            aria-label="Rewind 30 seconds"
+            aria-label={`Rewind ${skipBackSec} seconds`}
           >
             <div className="flex flex-col items-center">
               <RotateCcw className="h-6 w-6 sm:h-8 sm:w-8" />
-              <span className="text-xs mt-1">30</span>
+              <span className="text-xs mt-1">{skipBackSec}</span>
             </div>
           </Button>
           
@@ -479,12 +487,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             variant="secondary"
             onClick={handleSkipForward}
             className="h-14 w-14 sm:h-20 sm:w-20 rounded-full text-xl"
-            aria-label="Forward 30 seconds"
+            aria-label={`Forward ${skipForwardSec} seconds`}
             disabled={isUsingSkip}
           >
             <div className="flex flex-col items-center">
               <RotateCw className="h-6 w-6 sm:h-8 sm:w-8" />
-              <span className="text-xs mt-1">30</span>
+              <span className="text-xs mt-1">{skipForwardSec}</span>
             </div>
           </Button>
         </div>
@@ -648,11 +656,11 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               variant="ghost"
               onClick={handleSkipBackward}
               className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
-              aria-label="Rewind 30 seconds"
+              aria-label={`Rewind ${skipBackSec} seconds`}
               data-testid="button-skip-backward"
             >
               <RotateCcw className="h-6 w-6" aria-hidden="true" />
-              <span className="absolute -bottom-1 text-[10px] font-medium">30</span>
+              <span className="absolute -bottom-1 text-[10px] font-medium">{skipBackSec}</span>
             </Button>
             
             <Button
@@ -677,12 +685,12 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               variant="ghost"
               onClick={handleSkipForward}
               className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
-              aria-label="Forward 30 seconds"
+              aria-label={`Forward ${skipForwardSec} seconds`}
               data-testid="button-skip-forward"
               disabled={isUsingSkip}
             >
               <RotateCw className="h-6 w-6" aria-hidden="true" />
-              <span className="absolute -bottom-1 text-[10px] font-medium">30</span>
+              <span className="absolute -bottom-1 text-[10px] font-medium">{skipForwardSec}</span>
               {!isPremium && skipStatus && !skipStatus.unlimited && skipStatus.remaining < 3 && (
                 <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center">
                   {skipStatus.remaining}

@@ -25,6 +25,9 @@ export const books = pgTable("books", {
   language: text("language").default("English"),
   contentType: text("content_type").notNull().default("audiobook"), // audiobook, ebook, or magazine
   isPremium: boolean("is_premium").notNull().default(false), // Whether content requires premium subscription
+  freeTierAvailable: boolean("free_tier_available").notNull().default(true), // Whether free-tier users can access this title
+  adSupported: boolean("ad_supported").notNull().default(true), // Whether ads may be served for this title
+  transcriptAvailable: boolean("transcript_available").notNull().default(false), // Whether an interactive transcript is available (display hint only — NOT an access gate)
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
   readingLevel: integer("reading_level"), // 1=Very Easy, 2=Easy, 3=Moderate, 4=Advanced (FK grade estimate)
@@ -93,8 +96,8 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Subscription tier enum values
-export const SUBSCRIPTION_TIERS = ["free", "plus", "premium"] as const;
+// Subscription tier enum values (institutional added for Task #44 entitlement enforcement)
+export const SUBSCRIPTION_TIERS = ["free", "plus", "premium", "institutional"] as const;
 export type SubscriptionTier = typeof SUBSCRIPTION_TIERS[number];
 
 // Tier pricing constants (in cents)
@@ -119,9 +122,10 @@ export const TIER_DISCOUNTS = {
 
 // Tier feature limits
 export const TIER_FEATURES = {
-  free:    { skipLimit: 6, audioQuality: 128, maxDevices: 2, adsEnabled: true,  offlineEnabled: false, ttsDaily: 0,  bookmarkLimit: 10 },
-  plus:    { skipLimit: Infinity, audioQuality: 192, maxDevices: 3, adsEnabled: false, offlineEnabled: false, ttsDaily: 10, bookmarkLimit: Infinity },
-  premium: { skipLimit: Infinity, audioQuality: 320, maxDevices: 5, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
+  free:          { skipLimit: 6, audioQuality: 128, maxDevices: 2, adsEnabled: true,  offlineEnabled: false, ttsDaily: 0,          bookmarkLimit: 10 },
+  plus:          { skipLimit: Infinity, audioQuality: 192, maxDevices: 3, adsEnabled: false, offlineEnabled: false, ttsDaily: 10,   bookmarkLimit: Infinity },
+  premium:       { skipLimit: Infinity, audioQuality: 320, maxDevices: 5, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
+  institutional: { skipLimit: Infinity, audioQuality: 320, maxDevices: 10, adsEnabled: false, offlineEnabled: true, ttsDaily: Infinity, bookmarkLimit: Infinity },
 } as const;
 
 // User table for multi-provider authentication (matches existing database)
@@ -1505,6 +1509,67 @@ export const insertAccessibilityPreferencesSchema = createInsertSchema(accessibi
 export type InsertAccessibilityPreferences = z.infer<typeof insertAccessibilityPreferencesSchema>;
 export type AccessibilityPreferences = typeof accessibilityPreferences.$inferSelect;
 
+/** Extended accessibility + listening preference profile stored in the `profile` jsonb column. */
+export interface A11yProfile {
+  fontSize: number;
+  fontFamily: string;
+  highContrast: boolean;
+  reducedMotion: boolean;
+  screenReaderHints: boolean;
+  captionsOn: boolean;
+  captionPosition?: "above" | "below";
+  playbackSpeed: number;
+  colorScheme: string;
+  lineSpacing: number;
+  letterSpacing: number;
+  dyslexiaFont: boolean;
+  focusHighlight: boolean;
+  darkMode?: boolean;
+  karaokeFollowAlong?: boolean;
+  /** @default false — open transcript panel by default when playing */
+  transcriptOpenByDefault: boolean;
+  /** @default false — hides decorative images and reduces visual noise */
+  reduceDistractionMode: boolean;
+  /** @default false — free-tier only: prefer static ads over animated/video */
+  suppressAnimatedAds: boolean;
+  /** @default "ask" — free-tier only: rewarded listening ad preference */
+  rewardedAdPreference: "always" | "never" | "ask";
+  /** @default 15 — preferred skip-forward duration in seconds */
+  preferredSkipForward: 10 | 15 | 30;
+  /** @default 15 — preferred skip-back duration in seconds */
+  preferredSkipBack: 5 | 10 | 15;
+  /** @default true — automatically advance to next chapter */
+  autoAdvanceChapters: boolean;
+  /** @default null — default sleep timer in minutes, null = disabled */
+  sleepTimerDefault: number | null;
+}
+
+export const DEFAULT_A11Y_PROFILE: A11yProfile = {
+  fontSize: 16,
+  fontFamily: "system",
+  highContrast: false,
+  reducedMotion: false,
+  screenReaderHints: true,
+  captionsOn: false,
+  captionPosition: "below",
+  playbackSpeed: 1.0,
+  colorScheme: "default",
+  lineSpacing: 1.5,
+  letterSpacing: 0,
+  dyslexiaFont: false,
+  focusHighlight: true,
+  darkMode: false,
+  karaokeFollowAlong: false,
+  transcriptOpenByDefault: false,
+  reduceDistractionMode: false,
+  suppressAnimatedAds: false,
+  rewardedAdPreference: "ask",
+  preferredSkipForward: 15,
+  preferredSkipBack: 15,
+  autoAdvanceChapters: true,
+  sleepTimerDefault: null,
+};
+
 export const bookTranscripts = pgTable("book_transcripts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
@@ -1884,4 +1949,96 @@ export const wordBankEntries = pgTable("word_bank_entries", {
 export const insertWordBankEntrySchema = createInsertSchema(wordBankEntries).omit({ id: true, savedAt: true });
 export type InsertWordBankEntry = z.infer<typeof insertWordBankEntrySchema>;
 export type DbWordBankEntry = typeof wordBankEntries.$inferSelect;
+
+// === ENTITLEMENTS (Task #44: Server-side entitlement enforcement) ===
+// Per-user access overrides that take precedence over subscriptionTier.
+// Use cases: promotional upgrades, institutional licenses, manual grants.
+export const entitlements = pgTable("entitlements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // The effective tier granted by this override (e.g. "premium", "institutional")
+  tier: varchar("tier").notNull(),
+  // Optional: restrict override to a specific title (null = applies to all titles)
+  bookId: varchar("book_id"),
+  // Optional expiry — null means the override never expires
+  expiresAt: timestamp("expires_at"),
+  reason: text("reason"), // Human-readable reason (e.g. "promotional_trial", "institutional_seat")
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_entitlements_user").on(table.userId),
+  index("idx_entitlements_user_book").on(table.userId, table.bookId),
+  index("idx_entitlements_expires").on(table.expiresAt),
+]);
+
+export const insertEntitlementSchema = createInsertSchema(entitlements).omit({ id: true, createdAt: true });
+export type InsertEntitlement = z.infer<typeof insertEntitlementSchema>;
+export type Entitlement = typeof entitlements.$inferSelect;
+
+export const adRewards = pgTable("ad_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  impressionId: varchar("impression_id"),
+  rewardedAt: timestamp("rewarded_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+}, (t) => [
+  index("idx_ad_rewards_user").on(t.userId),
+  index("idx_ad_rewards_expires").on(t.expiresAt),
+]);
+
+export const insertAdRewardSchema = createInsertSchema(adRewards).omit({ id: true, rewardedAt: true });
+export type InsertAdReward = z.infer<typeof insertAdRewardSchema>;
+export type AdReward = typeof adRewards.$inferSelect;
+
+export const adEventLogs = pgTable("ad_event_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  adId: varchar("ad_id").notNull(),
+  adType: varchar("ad_type", { length: 32 }).notNull(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  placementId: varchar("placement_id", { length: 64 }),
+  completed: boolean("completed").notNull().default(false),
+  skipped: boolean("skipped").notNull().default(false),
+  servedAt: timestamp("served_at").defaultNow(),
+}, (t) => [
+  index("idx_ad_event_logs_user").on(t.userId),
+  index("idx_ad_event_logs_served").on(t.servedAt),
+  index("idx_ad_event_logs_provider").on(t.provider),
+]);
+
+export const insertAdEventLogSchema = createInsertSchema(adEventLogs).omit({ id: true, servedAt: true });
+export type InsertAdEventLog = z.infer<typeof insertAdEventLogSchema>;
+export type AdEventLog = typeof adEventLogs.$inferSelect;
+
+// ============================================================
+// PRODUCT EVENTS — anonymised funnel / monetization signals
+// No userId — events are aggregate signals, not per-user tracking
+// ============================================================
+
+export const PRODUCT_EVENT_TYPES = [
+  "user_signed_up",
+  "subscription_upgraded",
+  "subscription_canceled",
+  "subscription_churned",
+  "ad_impression_served",
+  "rewarded_ad_completed",
+  "rewarded_ad_offered",
+  "playback_session_started",
+  "playback_session_ended",
+] as const;
+export type ProductEventType = typeof PRODUCT_EVENT_TYPES[number];
+
+export const productEvents = pgTable("product_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: varchar("event_type", { length: 100 }).notNull(),
+  userTier: varchar("user_tier", { length: 20 }).notNull().default("free"),
+  metadata: jsonb("metadata"),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_product_events_type_time").on(table.eventType, table.occurredAt),
+  index("idx_product_events_occurred").on(table.occurredAt),
+]);
+
+export const insertProductEventSchema = createInsertSchema(productEvents).omit({ id: true });
+export type InsertProductEvent = z.infer<typeof insertProductEventSchema>;
+export type ProductEvent = typeof productEvents.$inferSelect;
 

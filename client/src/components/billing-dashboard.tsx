@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, Download, ExternalLink, Crown, DollarSign, Receipt, Clock, ArrowUpRight, ChevronLeft, ChevronRight, FileText, Gift } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { GiftCards } from "./gift-cards";
+import { PremiumBadge } from "./premium-badge";
 
 function formatCents(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
@@ -87,6 +88,7 @@ export function BillingDashboard() {
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
             <Receipt className="h-6 w-6" />
             Billing & Payments
+            <PremiumBadge size="md" />
           </h2>
           <p className="text-muted-foreground mt-1">
             View your payment history, invoices, and manage billing settings

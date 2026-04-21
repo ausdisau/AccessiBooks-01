@@ -1,4 +1,5 @@
 import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry } from "@shared/schema";
+import { analyticsService } from "./analyticsService";
 import { computeReadingLevel, genrePatternsForLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
 import session from "express-session";
@@ -64,6 +65,9 @@ function mapRowToBook(row: any): Book {
     language: row.language || "English",
     contentType: row.content_type || row.contentType || "audiobook",
     isPremium: row.is_premium ?? row.isPremium ?? false,
+    freeTierAvailable: row.free_tier_available ?? row.freeTierAvailable ?? true,
+    adSupported: row.ad_supported ?? row.adSupported ?? true,
+    transcriptAvailable: row.transcript_available ?? row.transcriptAvailable ?? false,
     pageCount: row.page_count ?? row.pageCount ?? null,
     searchVector: row.search_vector || row.searchVector || null,
     readingLevel: row.reading_level ?? row.readingLevel ?? computeReadingLevel(row.description, row.genre),
@@ -95,6 +99,7 @@ export interface IStorage {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string | null;
     subscriptionTier?: string;
+    subscriptionStatus?: string;
     subscriptionEndDate?: Date | null;
   }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
@@ -1712,6 +1717,7 @@ export class ExternalAPIStorage implements IStorage {
       
       console.log('User created successfully:', user.id);
       this.localUsers.set(user.id, user);
+      analyticsService.track("user_signed_up", "free");
       return user;
     } catch (error: any) {
       // Detect NeonDB / PostgreSQL storage-full errors (code 53100 or known message)
@@ -2350,6 +2356,7 @@ export class ExternalAPIStorage implements IStorage {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string | null;
     subscriptionTier?: string;
+    subscriptionStatus?: string;
     subscriptionEndDate?: Date | null;
   }): Promise<User | undefined> {
     try {
@@ -2370,6 +2377,14 @@ export class ExternalAPIStorage implements IStorage {
       }
       if (subscription.subscriptionEndDate !== undefined) {
         updateData.subscriptionEndDate = subscription.subscriptionEndDate;
+      }
+      // subscriptionStatus is persisted if column exists; wrapped in try/catch below
+      if (subscription.subscriptionStatus !== undefined) {
+        try {
+          (updateData as any).subscriptionStatus = subscription.subscriptionStatus;
+        } catch {
+          // column may not exist yet
+        }
       }
       
       const [updatedUser] = await db
