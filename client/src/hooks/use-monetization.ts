@@ -83,7 +83,7 @@ export function useSkipStatus() {
   });
 }
 
-export function useSkip() {
+export function useSkip(onLimitReached?: () => void) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -100,11 +100,16 @@ export function useSkip() {
       queryClient.invalidateQueries({ queryKey: ["/api/monetization/skip-status"] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Skip limit reached",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (onLimitReached) {
+        onLimitReached();
+      } else {
+        document.dispatchEvent(new CustomEvent("accessibooks:limit-reached", { detail: { limitType: "skip" } }));
+        toast({
+          title: "Skip limit reached",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 }
@@ -127,7 +132,7 @@ export function useDevices() {
   });
 }
 
-export function useRegisterDevice() {
+export function useRegisterDevice(onLimitReached?: () => void) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -147,11 +152,16 @@ export function useRegisterDevice() {
       queryClient.invalidateQueries({ queryKey: ["/api/monetization/devices"] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Device limit reached",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (onLimitReached) {
+        onLimitReached();
+      } else {
+        document.dispatchEvent(new CustomEvent("accessibooks:limit-reached", { detail: { limitType: "device" } }));
+        toast({
+          title: "Device limit reached",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 }
@@ -189,6 +199,9 @@ export function usePlaybackSession() {
 
       if (!response.ok) {
         const error = await response.json();
+        if (error.message && (error.message.toLowerCase().includes("device") || error.message.toLowerCase().includes("limit"))) {
+          document.dispatchEvent(new CustomEvent("accessibooks:limit-reached", { detail: { limitType: "device" } }));
+        }
         toast({
           title: "Playback blocked",
           description: error.message || "Could not start playback",

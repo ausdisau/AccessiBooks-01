@@ -73,6 +73,7 @@ const MyLoans = lazy(() => import('@/components/my-loans'));
 const BattlePassComponent = lazy(() => import('@/components/battle-pass').then(m => ({ default: m.BattlePassComponent })));
 const EnterprisePage = lazy(() => import('@/pages/enterprise'));
 const AdminModerationPage = lazy(() => import('@/pages/admin-moderation'));
+const AdminRevenuePage = lazy(() => import('@/pages/admin-revenue'));
 const SocialHub = lazy(() => import('@/components/social-hub').then(m => ({ default: m.SocialHub })));
 const FamilyPlan = lazy(() => import('@/components/family-plan').then(m => ({ default: m.FamilyPlan })));
 const AdminHealthDashboard = lazy(() => import('@/components/admin-health').then(m => ({ default: m.AdminHealthDashboard })));
@@ -1576,8 +1577,10 @@ function MainApp() {
     checkAccess, 
     showUpgradeModal, 
     blockedContent, 
+    upgradeLimitType,
     dismissUpgradeModal, 
     handleUpgrade, 
+    triggerUpgradeModal,
     isUpgrading,
     showPreview,
     previewBook,
@@ -1597,6 +1600,18 @@ function MainApp() {
     document.addEventListener("accessibooks:book-completed", handler);
     return () => document.removeEventListener("accessibooks:book-completed", handler);
   }, []);
+
+  // Listen for freemium limit events (skip/device/loan) and show contextual upgrade modal
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { limitType } = (e as CustomEvent).detail as { limitType: "skip" | "device" | "loan" };
+      if (!isPremium) {
+        triggerUpgradeModal(limitType, null);
+      }
+    };
+    document.addEventListener("accessibooks:limit-reached", handler);
+    return () => document.removeEventListener("accessibooks:limit-reached", handler);
+  }, [isPremium, triggerUpgradeModal]);
 
   // Fire completion + optional upsell when audiobook track ends
   useEffect(() => {
@@ -2077,6 +2092,13 @@ function MainApp() {
                     </div>
                   </Suspense>
                 </Route>
+                <Route path="/admin/revenue">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="admin-revenue-panel" role="region" aria-label="Admin Revenue" data-testid="panel-admin-revenue">
+                      <AdminRevenuePage />
+                    </div>
+                  </Suspense>
+                </Route>
                 <Route path="/health">
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="health-panel" role="region" aria-label="Admin Health" data-testid="panel-health" className="space-y-8">
@@ -2172,6 +2194,7 @@ function MainApp() {
         book={blockedContent}
         onUpgrade={handleUpgrade}
         isUpgrading={isUpgrading}
+        limitType={upgradeLimitType}
       />
 
       <EngagementUpsell

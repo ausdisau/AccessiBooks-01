@@ -3,9 +3,11 @@ import { Book, TIER_PRICING, TITLE_PRICING } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Star, Headphones, Check, ShoppingCart, Info, Building2 } from "lucide-react";
+import { Crown, Star, Headphones, Check, ShoppingCart, Info, Building2, SkipForward, Smartphone, BookOpen } from "lucide-react";
 import { usePurchaseCheckout } from "@/hooks/use-purchases";
 import { useToast } from "@/hooks/use-toast";
+
+export type UpgradeLimitType = "skip" | "device" | "loan" | null;
 
 interface PremiumUpgradeModalProps {
   open: boolean;
@@ -13,6 +15,36 @@ interface PremiumUpgradeModalProps {
   book: Book | null;
   onUpgrade: (plan: "monthly" | "annual" | { tier: "plus" | "premium"; plan: "monthly" | "annual" }) => void;
   isUpgrading: boolean;
+  limitType?: UpgradeLimitType;
+}
+
+function getLimitCopy(limitType: UpgradeLimitType): { heading: string; description: string; icon: typeof SkipForward } {
+  if (limitType === "skip") {
+    return {
+      heading: "Skip Limit Reached",
+      description: "You've used all your skips for this hour. Upgrade to Plus or Premium for unlimited skips.",
+      icon: SkipForward,
+    };
+  }
+  if (limitType === "device") {
+    return {
+      heading: "Device Limit Reached",
+      description: "You've reached the maximum number of devices for your plan. Upgrade to add more devices.",
+      icon: Smartphone,
+    };
+  }
+  if (limitType === "loan") {
+    return {
+      heading: "Loan Limit Reached",
+      description: "You've borrowed the maximum number of books for your plan. Upgrade to borrow more.",
+      icon: BookOpen,
+    };
+  }
+  return {
+    heading: "Upgrade Your Experience",
+    description: "",
+    icon: Headphones,
+  };
 }
 
 function ComingSoonBanner() {
@@ -34,6 +66,7 @@ export function PremiumUpgradeModal({
   book,
   onUpgrade: _onUpgrade,
   isUpgrading: _isUpgrading,
+  limitType = null,
 }: PremiumUpgradeModalProps) {
   const [selectedTier, setSelectedTier] = useState<"plus" | "premium">("plus");
   const { purchaseTitle, isPurchasing } = usePurchaseCheckout();
@@ -51,24 +84,27 @@ export function PremiumUpgradeModal({
   const contentType = book?.contentType || "default";
   const titlePrice = TITLE_PRICING[contentType as keyof typeof TITLE_PRICING] || TITLE_PRICING.default;
 
+  const limitCopy = getLimitCopy(limitType);
+  const LimitIcon = limitCopy.icon;
+
+  const dialogDescription = limitCopy.description || (
+    book
+      ? `Enjoying "${book.title}"? Go ad-free with a subscription, or buy just this title.`
+      : "Choose a plan for ad-free listening, or buy individual titles."
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg" aria-labelledby={headingId}>
         <DialogHeader>
           <div className="flex items-center gap-2 mb-2">
             <div className="bg-yellow-500 rounded-full p-2">
-              <Headphones className="h-5 w-5 text-white" aria-hidden="true" />
+              <LimitIcon className="h-5 w-5 text-white" aria-hidden="true" />
             </div>
-            <DialogTitle id={headingId}>Upgrade Your Experience</DialogTitle>
+            <DialogTitle id={headingId}>{limitCopy.heading}</DialogTitle>
           </div>
           <DialogDescription>
-            {book ? (
-              <>
-                Enjoying <strong>"{book.title}"</strong>? Go ad-free with a subscription, or buy just this title.
-              </>
-            ) : (
-              "Choose a plan for ad-free listening, or buy individual titles."
-            )}
+            {dialogDescription}
           </DialogDescription>
         </DialogHeader>
 
@@ -172,10 +208,13 @@ export function PremiumUpgradeModal({
             className={`w-full focus-visible:ring-2 focus-visible:ring-offset-2 ${selectedTier === "premium" ? "bg-amber-500 hover:bg-amber-600 text-white focus-visible:ring-amber-400" : "bg-blue-500 hover:bg-blue-600 text-white focus-visible:ring-blue-400"}`}
           >
             {selectedTier === "premium" ? <Crown className="h-4 w-4 mr-2" aria-hidden="true" /> : <Star className="h-4 w-4 mr-2" aria-hidden="true" />}
-            {`Subscribe to ${selectedTier === "premium" ? "Premium" : "Plus"} — ${selectedTier === "premium" ? TIER_PRICING.premium.monthlyDisplay : TIER_PRICING.plus.monthlyDisplay}/mo`}
+            {isUpgrading
+              ? "Processing..."
+              : `Subscribe to ${selectedTier === "premium" ? "Premium" : "Plus"} — ${selectedTier === "premium" ? TIER_PRICING.premium.monthlyDisplay : TIER_PRICING.plus.monthlyDisplay}/mo`
+            }
           </Button>
           <ComingSoonBanner />
-          {book && (
+          {book && !limitType && (
             <Button
               variant="outline"
               onClick={() => {
