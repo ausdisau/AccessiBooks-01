@@ -1086,6 +1086,23 @@ export const insertExpiringRewardSchema = createInsertSchema(expiringRewards).om
 export type InsertExpiringReward = z.infer<typeof insertExpiringRewardSchema>;
 export type ExpiringReward = typeof expiringRewards.$inferSelect;
 
+export const adRewards = pgTable("ad_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  adImpressionId: varchar("ad_impression_id").notNull().references(() => adImpressions.id, { onDelete: "cascade" }),
+  rewardType: varchar("reward_type").notNull(),
+  grantedAt: timestamp("granted_at").defaultNow(),
+}, (table) => [
+  index("idx_ad_rewards_user").on(table.userId),
+  index("idx_ad_rewards_impression").on(table.adImpressionId),
+  index("idx_ad_rewards_user_type").on(table.userId, table.rewardType),
+  uniqueIndex("uniq_ad_rewards_user_impression").on(table.userId, table.adImpressionId),
+]);
+
+export const insertAdRewardSchema = createInsertSchema(adRewards).omit({ id: true, grantedAt: true });
+export type InsertAdReward = z.infer<typeof insertAdRewardSchema>;
+export type AdReward = typeof adRewards.$inferSelect;
+
 export const authorEarnings = pgTable("author_earnings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -1973,21 +1990,6 @@ export const entitlements = pgTable("entitlements", {
 export const insertEntitlementSchema = createInsertSchema(entitlements).omit({ id: true, createdAt: true });
 export type InsertEntitlement = z.infer<typeof insertEntitlementSchema>;
 export type Entitlement = typeof entitlements.$inferSelect;
-
-export const adRewards = pgTable("ad_rewards", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  impressionId: varchar("impression_id"),
-  rewardedAt: timestamp("rewarded_at").defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-}, (t) => [
-  index("idx_ad_rewards_user").on(t.userId),
-  index("idx_ad_rewards_expires").on(t.expiresAt),
-]);
-
-export const insertAdRewardSchema = createInsertSchema(adRewards).omit({ id: true, rewardedAt: true });
-export type InsertAdReward = z.infer<typeof insertAdRewardSchema>;
-export type AdReward = typeof adRewards.$inferSelect;
 
 export const adEventLogs = pgTable("ad_event_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

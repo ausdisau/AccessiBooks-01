@@ -24,6 +24,11 @@ import { SubmitContent } from "@/components/submit-content";
 import { CommercialAudiobooks } from "@/components/commercial-audiobooks";
 import { PodcastDiscovery } from "@/components/podcast-discovery";
 import { MagazineSection } from "@/components/magazine-section";
+import { useRewardedAd } from "@/hooks/use-rewarded-ad";
+import { RewardedAdOffer } from "@/components/RewardedAdOffer";
+import { RewardedAdInterstitial } from "@/components/audio-ad-interstitial";
+import { ActiveRewardBadge } from "@/components/ActiveRewardBadge";
+import { useToast } from "@/hooks/use-toast";
 
 interface OrgMemberData {
   userId: string;
@@ -322,7 +327,43 @@ export function Library({ onSelectBook }: LibraryProps) {
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [readingLevelFilter, setReadingLevelFilter] = useState<string>("all");
   const { user } = useAuth();
-  const { isPremium, isPaid, upgradeToTier } = useSubscription();
+  const { isPremium, isPaid, upgradeToTier, tier } = useSubscription();
+  const isFree = tier === "free";
+  const { offer, isEligible, activeRewards, completeReward, startSession } = useRewardedAd();
+  const { toast } = useToast();
+  const [showRewardedAd, setShowRewardedAd] = useState(false);
+  const [rewardedImpressionId, setRewardedImpressionId] = useState<string | null>(null);
+  const [offerDismissed, setOfferDismissed] = useState(false);
+
+  const handleLibraryAcceptOffer = async () => {
+    if (!offer) return;
+    try {
+      const result = await startSession({ rewardType: offer.rewardType });
+      if (!result.ok || !result.impressionId) {
+        toast({ title: "Couldn't start ad", description: "Please try again.", variant: "destructive" });
+        return;
+      }
+      setRewardedImpressionId(result.impressionId);
+      setShowRewardedAd(true);
+    } catch {
+      toast({ title: "Couldn't start ad", description: "Please try again.", variant: "destructive" });
+    }
+  };
+
+  const handleLibraryRewardedAdComplete = async (impressionId: string) => {
+    setShowRewardedAd(false);
+    setRewardedImpressionId(null);
+    if (!offer) return;
+    try {
+      const result = await completeReward({ impressionId, rewardType: offer.rewardType });
+      if (result.granted) {
+        toast({ title: "Perk unlocked!", description: result.reward?.label ?? offer.label });
+        setOfferDismissed(true);
+      }
+    } catch {
+      toast({ title: "Something went wrong", description: "Could not grant your perk.", variant: "destructive" });
+    }
+  };
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -448,7 +489,24 @@ export function Library({ onSelectBook }: LibraryProps) {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Library</h1>
+      {showRewardedAd && offer && rewardedImpressionId && (
+        <RewardedAdInterstitial
+          rewardLabel={offer.label}
+          rewardType={offer.rewardType}
+          impressionId={rewardedImpressionId}
+          onComplete={handleLibraryRewardedAdComplete}
+          onCancel={() => {
+            setShowRewardedAd(false);
+            setRewardedImpressionId(null);
+          }}
+        />
+      )}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl font-bold">Library</h1>
+        {isFree && activeRewards.length > 0 && (
+          <ActiveRewardBadge rewards={activeRewards} />
+        )}
+      </div>
       {showPersonalizedSections && (
         <ListeningStatsCard />
       )}
@@ -463,6 +521,14 @@ export function Library({ onSelectBook }: LibraryProps) {
 
       {!isPaid && !isLoading && !searchQuery && (
         <PremiumHeroBanner onUpgrade={() => upgradeToTier("premium", "monthly")} />
+      )}
+
+      {isFree && isEligible && offer && !offerDismissed && !showRewardedAd && showPersonalizedSections && (
+        <RewardedAdOffer
+          offer={offer}
+          onAccept={handleLibraryAcceptOffer}
+          onDismiss={() => setOfferDismissed(true)}
+        />
       )}
 
       {showPersonalizedSections && (

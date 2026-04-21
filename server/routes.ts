@@ -19,6 +19,7 @@ import { registerPushNotificationRoutes } from "./pushNotifications";
 import { registerAdMediationRoutes } from "./adMediation";
 import { logAdImpression } from "./adImpressionLogger";
 import { registerSelfServeAdRoutes } from "./selfServeAds";
+import { registerAdRewardRoutes } from "./adRewardRoutes";
 import { registerBillingRoutes, recordTransaction, updateTransactionStatus } from "./billing";
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
@@ -198,6 +199,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Ad bidding platform (advertisers, publishers, real-time auctions, admin review)
   registerAdPlatformRoutes(app);
+
+  // Rewarded ad system (offer, complete, status for free users)
+  registerAdRewardRoutes(app);
 
   // Centralized billing platform (transactions, invoices, billing portal)
   registerBillingRoutes(app);
@@ -432,7 +436,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Passport.js stores user object in session
       if (req.user.id) {
         const { passwordHash, ...userWithoutPassword } = req.user;
-        return res.json(userWithoutPassword);
+        try {
+          const { getActiveRewards } = await import("./adRewards");
+          const activeRewards = await getActiveRewards(req.user.id);
+          return res.json({ ...userWithoutPassword, activeRewards });
+        } catch {
+          return res.json(userWithoutPassword);
+        }
       }
       
       return res.status(401).json({ message: "Unauthorized - invalid session" });
@@ -3183,11 +3193,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       const isPremium = user?.subscriptionTier === "premium";
 
-      const showAd = shouldShowAd(userId, isPremium, parseInt(booksPlayed as string, 10));
+      let showAd = shouldShowAd(userId, isPremium, parseInt(booksPlayed as string, 10));
+      let suppressedByReward = false;
+      if (showAd) {
+        const { hasActiveAdFreeReward } = await import("./adRewards");
+        if (await hasActiveAdFreeReward(userId)) {
+          showAd = false;
+          suppressedByReward = true;
+        }
+      }
 
       res.json({
         showAd,
         isPremium,
+        suppressedByReward,
         upgradeMessage: showAd ? "Upgrade to Premium for ad-free listening" : null,
       });
     } catch (error) {
