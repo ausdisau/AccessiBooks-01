@@ -81,7 +81,15 @@ export function ForYouSection({ books, onSelectBook }: ForYouSectionProps) {
 
   if (recommendations.length === 0) return null;
 
+  // Resolve each rec to a Book. Prefer the agent's own book payload when
+  // present (it includes any title regardless of the parent's paginated
+  // `books` slice); otherwise fall back to the local catalog map.
   const bookById = new Map(books.map((b) => [b.id, b]));
+  const agentBookById = new Map<string, Book>(
+    (agentFirstSet?.books ?? []).map((b) => [b.id, b]),
+  );
+  const resolveBook = (id: string): Book | undefined =>
+    agentBookById.get(id) ?? bookById.get(id);
 
   return (
     <section className="mb-8" aria-label="Recommended For You" data-testid="for-you-section">
@@ -96,7 +104,7 @@ export function ForYouSection({ books, onSelectBook }: ForYouSectionProps) {
       <ScrollArea className="w-full whitespace-nowrap">
         <div className="flex gap-4 pb-4">
           {recommendations.map((rec) => {
-            const book = bookById.get(rec.bookId);
+            const book = resolveBook(rec.bookId);
             if (!book) return null;
             return (
               <div key={book.id} className="flex-shrink-0 w-56">
