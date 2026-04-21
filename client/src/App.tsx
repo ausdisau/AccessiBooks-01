@@ -90,6 +90,7 @@ const DemoSlotPage = lazy(() => import('@/pages/ad-platform/demo-slot'));
 const WordBankPage = lazy(() => import('@/pages/word-bank').then(m => ({ default: m.WordBankPage })));
 const AchievementsPage = lazy(() => import('@/components/completion-certificate').then(m => ({ default: m.AchievementsPage })));
 const AccountSettingsPage = lazy(() => import('@/pages/account-settings').then(m => ({ default: m.AccountSettingsPage })));
+const AdminAnalyticsPage = lazy(() => import('@/pages/admin-analytics'));
 
 function LoadingSpinner() {
   return (
@@ -149,6 +150,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
     items: [
       { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
       { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
+      { path: "/analytics", label: "Analytics", icon: <BarChart3 className="h-5 w-5" /> },
     ],
   },
 ];
@@ -2079,6 +2081,13 @@ function MainApp() {
                     <div id="health-panel" role="region" aria-label="Admin Health" data-testid="panel-health" className="space-y-8">
                       <AdminHealthDashboard />
                       <ChurnDashboard />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/analytics">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="analytics-panel" role="region" aria-label="Analytics Dashboard" data-testid="panel-analytics">
+                      <AdminAnalyticsPage />
                     </div>
                   </Suspense>
                 </Route>

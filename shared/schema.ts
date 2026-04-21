@@ -2009,3 +2009,36 @@ export const insertAdEventLogSchema = createInsertSchema(adEventLogs).omit({ id:
 export type InsertAdEventLog = z.infer<typeof insertAdEventLogSchema>;
 export type AdEventLog = typeof adEventLogs.$inferSelect;
 
+// ============================================================
+// PRODUCT EVENTS — anonymised funnel / monetization signals
+// No userId — events are aggregate signals, not per-user tracking
+// ============================================================
+
+export const PRODUCT_EVENT_TYPES = [
+  "user_signed_up",
+  "subscription_upgraded",
+  "subscription_canceled",
+  "subscription_churned",
+  "ad_impression_served",
+  "rewarded_ad_completed",
+  "rewarded_ad_offered",
+  "playback_session_started",
+  "playback_session_ended",
+] as const;
+export type ProductEventType = typeof PRODUCT_EVENT_TYPES[number];
+
+export const productEvents = pgTable("product_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: varchar("event_type", { length: 100 }).notNull(),
+  userTier: varchar("user_tier", { length: 20 }).notNull().default("free"),
+  metadata: jsonb("metadata"),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_product_events_type_time").on(table.eventType, table.occurredAt),
+  index("idx_product_events_occurred").on(table.occurredAt),
+]);
+
+export const insertProductEventSchema = createInsertSchema(productEvents).omit({ id: true });
+export type InsertProductEvent = z.infer<typeof insertProductEventSchema>;
+export type ProductEvent = typeof productEvents.$inferSelect;
+

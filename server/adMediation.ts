@@ -30,6 +30,7 @@ import { registerRewardedRoutes } from "./adRewards";
 import { getAllFlags } from "./adFeatureFlags";
 import { resolveEntitlementOverride, getUserEffectiveTier, shouldServeAds } from "./entitlements";
 import { storage } from "./storage";
+import { analyticsService } from "./analyticsService";
 
 export interface AdProvider {
   name: string;
@@ -190,6 +191,8 @@ export function registerAdMediationRoutes(router: Router) {
       } else {
         analytics.houseFills++;
       }
+
+      analyticsService.track("ad_impression_served", "free", { placement: adType, adFormat: "audio" });
 
       const responseBody = {
         ...ad,

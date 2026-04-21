@@ -1,4 +1,5 @@
 import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry } from "@shared/schema";
+import { analyticsService } from "./analyticsService";
 import { computeReadingLevel, genrePatternsForLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
 import session from "express-session";
@@ -1716,6 +1717,7 @@ export class ExternalAPIStorage implements IStorage {
       
       console.log('User created successfully:', user.id);
       this.localUsers.set(user.id, user);
+      analyticsService.track("user_signed_up", "free");
       return user;
     } catch (error: any) {
       // Detect NeonDB / PostgreSQL storage-full errors (code 53100 or known message)

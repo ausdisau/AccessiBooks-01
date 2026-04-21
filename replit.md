@@ -157,3 +157,12 @@ AccessiBooks is an **accessibility-first audiobook platform**. Accessibility is 
 - Environment variables and secrets are managed by Replit — never hardcode them or write them to files.
 - The catalog seeder auto-starts 30 seconds after boot — this is expected behavior, not a bug.
 - `shared/schema.ts` is imported by both client and server — changes there affect both sides simultaneously.
+
+---
+
+## Analytics & Monetization Reporting (Task #49)
+- **`product_events` table** (`shared/schema.ts`): anonymized event log with `eventType`, `userTier`, `metadata` (jsonb), `occurredAt`. **No userId** — privacy-preserving aggregate signals only. Indexed on `(event_type, occurred_at)`.
+- **`server/analyticsService.ts`**: `track()` (fire-and-forget insert, never awaited) plus 5 aggregate query functions: `getSubscriptionSummary`, `getAdSummary`, `getListeningSummary`, `getConversionFunnel`, `getAccessibilityUsage`.
+- **`server/analyticsRoutes.ts`**: 6 admin-only GET endpoints under `/api/admin/analytics/*` with `requireAdmin` middleware (checks `user.role === "admin"`).
+- **Event instrumentation points** (7 active): `subscription_upgraded` (Stripe `checkout.session.completed`), `subscription_canceled` (POST /api/subscription/cancel), `subscription_churned` (Stripe `customer.subscription.deleted`), `ad_impression_served` (adMediation request), `user_signed_up` (storage.createUser), `playback_session_started` and `playback_session_ended` (monetization session routes).
+- **Admin Analytics page** at `/analytics` (`client/src/pages/admin-analytics.tsx`): 5-tab dashboard (Subscriptions, Ads, Listening, Funnel, Accessibility), date-range chips (7d/30d/90d), Refresh button, accessible CSS-only charts/funnel, TanStack Query with 5-min staleTime. Uses hooks from `client/src/hooks/use-admin-analytics.ts`. Wired into the Admin nav group with `BarChart3` icon.

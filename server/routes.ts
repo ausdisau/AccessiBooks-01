@@ -25,6 +25,8 @@ import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
 import { registerMoatScaffoldRoutes, ensureMoatMigrations } from "./moatScaffold";
 import { registerCoachRoutes } from "./coachRoutes";
 import { registerAdPlatformRoutes } from "./adPlatformRoutes";
+import { registerAnalyticsRoutes } from "./analyticsRoutes";
+import { analyticsService } from "./analyticsService";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import {
   convertToEasyEnglish,
@@ -217,6 +219,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI conversational chat routes (conversations, messages, streaming AI responses)
   registerChatRoutes(app);
+
+  // Analytics and monetization reporting dashboard routes
+  registerAnalyticsRoutes(app);
 
   // === EASY ENGLISH ADD-ON ROUTES ===
 
@@ -2179,6 +2184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subscriptionStatus: "canceled",
           subscriptionEndDate: cancelAt ? new Date(cancelAt * 1000) : null,
         });
+        analyticsService.track("subscription_canceled", user.subscriptionTier || "free");
         return res.json({
           message: "Subscription will be cancelled at period end",
           cancelAt,
@@ -2400,6 +2406,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           handledBySpecialCase = true;
+        }
+
+        // Track churn analytics before delegating to service layer
+        if (!handledBySpecialCase && event.type === "customer.subscription.deleted") {
+          try {
+            const subObj = event.data.object as any;
+            const churnedUser = subObj.customer
+              ? await storage.getUserByStripeCustomerId(subObj.customer)
+              : null;
+            if (churnedUser) {
+              analyticsService.track("subscription_churned", churnedUser.subscriptionTier || "free");
+            }
+          } catch (e) {
+            console.warn("[Analytics] Failed to track subscription_churned:", e);
+          }
         }
 
         // Delegate all subscription lifecycle events to the service layer
@@ -3017,6 +3038,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const sessionResult = createPlaybackSession(userId, deviceId, bookId, isPremium, tier);
 
+      if (sessionResult.success) {
+        analyticsService.track("playback_session_started", tier, { titleId: bookId });
+      }
+
       res.json({
         ...sessionResult,
         bitrate: getQualityBitrate(sessionResult.quality),
@@ -3058,10 +3083,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/monetization/session/end - End playback session
   app.post("/api/monetization/session/end", isAuthenticated, async (req: any, res) => {
     try {
-      const { sessionId } = req.body;
+      const { sessionId, durationSeconds } = req.body;
       if (!sessionId) {
         return res.status(400).json({ message: "Session ID required" });
       }
+
+      const userId = req.user?.id;
+      const user = userId ? await storage.getUser(userId) : null;
+      const tier = user?.subscriptionTier || "free";
+
+      analyticsService.track("playback_session_ended", tier, { durationSeconds: durationSeconds ?? 0 });
 
       endPlaybackSession(sessionId);
 
