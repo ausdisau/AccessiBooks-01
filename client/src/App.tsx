@@ -47,6 +47,7 @@ import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
 import { NotificationCenter } from "@/components/notification-center";
 import { Footer } from "@/components/footer";
+import { BrandLandingPage } from "@/pages/landing";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
@@ -1050,435 +1051,37 @@ function PublicCommunitySection({ onJoin }: { onJoin: () => void }) {
   );
 }
 
-// Landing page for logged-out users
+// Landing page for logged-out users — branded shell that hosts the LoginModal
 function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
-  const { toggleHighContrast } = useAccessibility();
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [coachOpen, setCoachOpen] = useState(false);
-  
-  const { data: platformStats } = useQuery<{ totalBooks: number; totalUsers: number; totalListeningMinutes: number }>({
-    queryKey: ["/api/platform/stats"],
-  });
-
-  const { data: featuredBook } = useQuery<Book>({
-    queryKey: ["/api/books/featured"],
-  });
-
-  const { data: trendingBooks = [] } = useQuery<Book[]>({
-    queryKey: ["/api/books/trending"],
-  });
-
-  const { data: publicReviews = [] } = useQuery<any[]>({
-    queryKey: ["/api/reviews/public"],
-  });
 
   const openLogin = () => {
     setIsRegistering(false);
     setLoginOpen(true);
   };
-  
   const openRegister = () => {
     setIsRegistering(true);
     setLoginOpen(true);
   };
-  
-  useKeyboardShortcuts({
-    onHighContrast: toggleHighContrast,
-  });
-  
-  const features = [
-    {
-      icon: Headphones,
-      title: "Multi-Source Library",
-      description: "Access audiobooks from iTunes, LibriVox, Open Library, and Google Books - all in one place"
-    },
-    {
-      icon: Accessibility,
-      title: "Built for Everyone",
-      description: "High contrast mode, dyslexia-friendly fonts, and full keyboard navigation support"
-    },
-    {
-      icon: Bookmark,
-      title: "Smart Bookmarks",
-      description: "Save your place with custom bookmarks and automatic progress tracking"
-    },
-    {
-      icon: Volume2,
-      title: "Advanced Playback",
-      description: "Variable speed controls, sleep timer, and seamless chapter navigation"
-    },
-    {
-      icon: BookOpen,
-      title: "90+ Free Books",
-      description: "Thousands of public domain classics from LibriVox, completely free"
-    },
-    {
-      icon: Star,
-      title: "Premium Experience",
-      description: "Ad-free listening, unlimited bookmarks, and priority support for just $9.99/month"
-    }
-  ];
-
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/30">
-      <a href="#main-content" className="skip-to-content">
-        Skip to main content
-      </a>
-      {/* Navigation */}
-      <nav className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-40">
-        <div className="w-full px-4 md:px-8 py-4 flex justify-between items-center">
-          <AccessiBooksLogo onClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
-          
-          {/* Search Field with Autocomplete */}
-          <div className="hidden md:flex flex-1 max-w-md mx-8">
-            <SearchAutocomplete onSelectBook={() => onBrowseAsGuest ? onBrowseAsGuest() : openRegister()} />
-          </div>
-          
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-4">
-            <AccessibilityControls />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCoachOpen(true)}
-              aria-label="Open Accessibility Coach"
-              data-testid="button-accessibility-coach"
-              className="flex items-center gap-1 p-2 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300"
-            >
-              <HeartHandshake className="h-4 w-4" />
-              <span className="text-xs font-medium">Coach</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setChatOpen(true)}
-              aria-label="Open AI chat assistant"
-              data-testid="button-ai-chat"
-              className="flex items-center gap-1 p-2"
-            >
-              <MessageCircle className="h-4 w-4" />
-              <span className="text-xs font-medium">Chat</span>
-            </Button>
-            <Button variant="ghost" onClick={openLogin} data-testid="nav-sign-in">
-              Sign In
-            </Button>
-            <Button onClick={openRegister} data-testid="nav-get-started">
-              Get Started
-            </Button>
-          </div>
-          
-          {/* Mobile Menu Button */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="md:hidden flex items-center gap-1 px-2"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileMenuOpen}
-            data-testid="mobile-menu-toggle"
-          >
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            <span className="text-xs font-medium">{mobileMenuOpen ? "Close" : "Menu"}</span>
-          </Button>
-        </div>
-        
-        {/* Collapsible Menu - Works on all screen sizes */}
-        <div 
-          className={`overflow-hidden transition-all duration-300 ease-in-out ${
-            mobileMenuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
-          <div className="w-full px-4 md:px-8 py-4 space-y-4 border-t">
-            <div className="flex justify-center">
-              <AccessibilityControls />
-            </div>
-            <div className="space-y-2">
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start" 
-                onClick={() => { openLogin(); setMobileMenuOpen(false); }}
-                data-testid="mobile-nav-sign-in"
-              >
-                <User className="mr-2 h-4 w-4" /> Sign In
-              </Button>
-              <Button 
-                className="w-full justify-start" 
-                onClick={() => { openRegister(); setMobileMenuOpen(false); }}
-                data-testid="mobile-nav-get-started"
-              >
-                <Headphones className="mr-2 h-4 w-4" /> Get Started Free
-              </Button>
-            </div>
-            <Separator />
-            <div className="space-y-1">
-              <button 
-                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
-                onClick={() => { openRegister(); setMobileMenuOpen(false); }}
-              >
-                <BookOpen className="h-4 w-4" /> Browse Library
-              </button>
-              <button 
-                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
-                onClick={() => { openRegister(); setMobileMenuOpen(false); }}
-              >
-                <Crown className="h-4 w-4" /> Premium Plans
-              </button>
-              <a 
-                href="https://ausdis.au" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
-              >
-                <Phone className="h-4 w-4" /> Contact Us
-              </a>
-            </div>
-          </div>
-        </div>
-      </nav>
-      
-      {/* Hero Section */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16 md:py-24" aria-labelledby="hero-heading">
-        <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h1 id="hero-heading" className="text-4xl md:text-6xl font-bold tracking-tight">
-            Audiobooks for <span className="text-primary">Everyone</span>
-          </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
-            The most accessible audiobook player, designed with care for readers of all abilities
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-            <Button size="lg" className="text-lg px-8" onClick={openRegister} data-testid="hero-get-started">
-              <Headphones className="mr-2 h-5 w-5" />
-              Start Listening Free
-            </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8" onClick={openLogin} data-testid="hero-sign-in">
-              Sign In
-            </Button>
-          </div>
-          {onBrowseAsGuest && (
-            <button 
-              onClick={onBrowseAsGuest}
-              className="text-sm text-primary hover:underline cursor-pointer"
-              data-testid="browse-as-guest"
-            >
-              or browse the library without an account
-            </button>
-          )}
-          <p className="text-sm text-muted-foreground">
-            No credit card required. Access {platformStats?.totalBooks || "90"}+ free audiobooks instantly.
-          </p>
-        </div>
-      </section>
-
-      {/* Social Proof Stats */}
-      {platformStats && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div className="p-4">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <BookOpen className="h-5 w-5 text-primary" />
-                  <span className="text-2xl md:text-3xl font-bold">{platformStats.totalBooks.toLocaleString()}+</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Books Available</p>
-              </div>
-              <div className="p-4">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <Users className="h-5 w-5 text-primary" />
-                  <span className="text-2xl md:text-3xl font-bold">{platformStats.totalUsers.toLocaleString()}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Active Readers</p>
-              </div>
-              <div className="p-4">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <Clock className="h-5 w-5 text-primary" />
-                  <span className="text-2xl md:text-3xl font-bold">{Math.round(platformStats.totalListeningMinutes / 60).toLocaleString()}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Hours Listened</p>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Book of the Day */}
-      {featuredBook && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <Star className="h-6 w-6 text-yellow-500" />
-              Book of the Day
-            </h2>
-            <Card className="overflow-hidden hover:border-primary/50 transition-colors cursor-pointer" onClick={onBrowseAsGuest}>
-              <CardContent className="p-6 flex gap-6">
-                {featuredBook.coverImage ? (
-                  <img src={featuredBook.coverImage} alt="" className="w-24 h-36 object-cover rounded-lg flex-shrink-0" loading="lazy" decoding="async" />
-                ) : (
-                  <div className="w-24 h-36 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
-                    <BookOpen className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-xl font-semibold line-clamp-1">{featuredBook.title}</h3>
-                  <p className="text-muted-foreground mb-2">by {featuredBook.author}</p>
-                  {featuredBook.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-3">{featuredBook.description}</p>
-                  )}
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                      <Headphones className="h-3 w-3" />
-                      {featuredBook.contentType || "Audiobook"}
-                    </span>
-                    {featuredBook.genre && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                        {featuredBook.genre}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-      )}
-
-      {/* Trending Books */}
-      {trendingBooks.length > 0 && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <TrendingUp className="h-6 w-6 text-primary" />
-              Trending Now
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {trendingBooks.slice(0, 5).map((book) => (
-                <div key={book.id} className="group cursor-pointer" onClick={onBrowseAsGuest}>
-                  <div className="aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-muted">
-                    {book.coverImage ? (
-                      <img src={book.coverImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" decoding="async" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <BookOpen className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="font-medium text-sm line-clamp-1">{book.title}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-1">{book.author}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-      
-      {/* Book Carousel */}
-      <LandingCarousel />
-      
-      {/* Curated Collections */}
-      <CuratedCollectionsPreview />
-
-      {/* User Testimonials / Recent Reviews */}
-      {publicReviews.length > 0 && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-12">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6 text-center">What Our Readers Say</h2>
-            <div className="grid md:grid-cols-2 gap-4">
-              {publicReviews.slice(0, 4).map((review: any, idx: number) => (
-                <Card key={idx} className="border">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="flex text-yellow-500">
-                        {[...Array(review.rating || 5)].map((_, i) => (
-                          <Star key={i} className="h-4 w-4 fill-current" />
-                        ))}
-                      </div>
-                    </div>
-                    {review.title && <p className="font-medium text-sm mb-1">{review.title}</p>}
-                    <p className="text-sm text-muted-foreground line-clamp-3">{review.content}</p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      - {review.userName || "A Reader"}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-      
-      {/* Features Grid */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16" aria-labelledby="features-heading">
-        <div className="text-center mb-12">
-          <h2 id="features-heading" className="text-3xl font-bold mb-4">Why AccessiBooks?</h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            We believe everyone deserves access to great literature. Our platform is built from the ground up with accessibility in mind.
-          </p>
-        </div>
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {features.map((feature, index) => (
-            <Card key={index} className="border-2 hover:border-primary/50 transition-colors">
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                    <feature.icon className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground">{feature.description}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-      
-      {/* Community Section - Public Challenges & Leaderboard */}
-      <PublicCommunitySection onJoin={openRegister} />
-      
-      {/* CTA Section */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16" aria-labelledby="cta-heading">
-        <Card className="max-w-4xl mx-auto bg-primary text-primary-foreground">
-          <CardContent className="py-12 text-center">
-            <h2 id="cta-heading" className="text-3xl font-bold mb-4">Ready to Start Listening?</h2>
-            <p className="text-lg opacity-90 mb-6 max-w-xl mx-auto">
-              Join our community of audiobook lovers and discover your next favorite story.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button 
-                size="lg" 
-                variant="secondary" 
-                className="text-lg px-8"
-                onClick={openRegister}
-                data-testid="cta-get-started"
-              >
-                <Gift className="mr-2 h-5 w-5" />
-                Create Free Account
-              </Button>
-            </div>
-            <p className="text-sm opacity-75 mt-4">Get 250 XP welcome bonus + 7-day premium trial</p>
-          </CardContent>
-        </Card>
-      </section>
-      
-      <Footer />
-      
-      {/* Login Modal */}
-      <LoginModal 
-        open={loginOpen} 
+    <>
+      <BrandLandingPage
+        onOpenLogin={openLogin}
+        onOpenRegister={openRegister}
+        onBrowseAsGuest={onBrowseAsGuest}
+      />
+      <LoginModal
+        open={loginOpen}
         onOpenChange={setLoginOpen}
         isRegistering={isRegistering}
         setIsRegistering={setIsRegistering}
       />
-      <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
-      <AccessibilityCoachPanel isOpen={coachOpen} onClose={() => setCoachOpen(false)} />
-    </div>
+    </>
   );
 }
+
 
 function useBreakpoint(breakpoint: number) {
   const [matches, setMatches] = useState(() => window.innerWidth >= breakpoint);
