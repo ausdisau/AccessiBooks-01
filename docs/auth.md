@@ -105,10 +105,29 @@ application (one entry per environment, e.g. `https://<APP_URL>/api/auth/callbac
 
 ---
 
+## Provider availability — important caveat
+
+`/api/auth/providers` reports a provider as available based on **server
+configuration**, not on the live state of the upstream identity provider:
+
+| Provider   | Reported `true` when                                              |
+|------------|-------------------------------------------------------------------|
+| `local`    | always `true`                                                     |
+| `google`   | `REPL_ID` and `REPLIT_DOMAINS` are set (Replit OIDC enabled)      |
+| `auth0`    | `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` are set  |
+| `facebook` | Auth0 env vars present **and** `AUTH0_FACEBOOK_ENABLED` ≠ `false` |
+| `microsoft`| Auth0 env vars present **and** `AUTH0_MICROSOFT_ENABLED` ≠ `false`|
+
+The endpoint cannot detect whether the matching social connection is actually
+enabled inside the Auth0 tenant. If you disable the Facebook or Microsoft
+connection in the Auth0 dashboard, set `AUTH0_FACEBOOK_ENABLED=false` or
+`AUTH0_MICROSOFT_ENABLED=false` so the corresponding button is hidden in the
+login modal — otherwise users will hit an Auth0 error page.
+
 ## Smoke testing
 
 After changing any of the above, restart the `Start application` workflow and
 hit `GET /api/auth/providers` — `google`, `facebook`, and `microsoft` should
-all be `true` whenever the corresponding upstream is configured. The
-`tests/google-oauth.test.ts` script exercises the Google entry-point + callback
-shape end-to-end at the HTTP level.
+all be `true` whenever the corresponding upstream is configured (subject to
+the caveat above). The `tests/google-oauth.test.ts` script exercises the
+Google, Facebook, and Microsoft entry-points end-to-end at the HTTP level.

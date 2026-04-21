@@ -2,7 +2,7 @@
  * Social Sign-in Smoke Tests
  *
  * Validates the three social sign-in entry points after the Task #61 migration:
- *  - Google now uses Replit-managed OIDC (no GOOGLE_CLIENT_ID required); the
+ *  - Google now uses Replit-managed OIDC (REPL_ID + REPLIT_DOMAINS); the
  *    /api/auth/google route should 302 toward replit.com/oidc with the right
  *    response_type and the absolute callback URL we register per-host.
  *  - Facebook and Microsoft are routed through Auth0 Universal Login as
@@ -126,7 +126,7 @@ async function runTests() {
   // ── 3. /api/auth/google/callback is wired up (not 404) ─────────────────────
   await test("/api/auth/google/callback route is registered (non-404)", async () => {
     if (!providers.google) {
-      console.log("    [SKIP] GOOGLE_CLIENT_ID not set — skipping callback route test");
+      console.log("    [SKIP] Replit OIDC not configured — skipping callback route test");
       skip();
     }
 
@@ -134,7 +134,7 @@ async function runTests() {
     if (res.status === 404) {
       throw new Error(
         "/api/auth/google/callback returned 404 — route is not registered. " +
-        "Check that setupMultiAuth() registers the route when GOOGLE_CLIENT_ID is set."
+        "Check that setupMultiAuth() registers the route when REPL_ID + REPLIT_DOMAINS are set."
       );
     }
   });
@@ -142,7 +142,7 @@ async function runTests() {
   // ── 4. OAuth error param redirects within the app ──────────────────────────
   await test("Callback with error=access_denied redirects within the app (not 5xx)", async () => {
     if (!providers.google) {
-      console.log("    [SKIP] GOOGLE_CLIENT_ID not set — skipping error-redirect test");
+      console.log("    [SKIP] Replit OIDC not configured — skipping error-redirect test");
       skip();
     }
 
