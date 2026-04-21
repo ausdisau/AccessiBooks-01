@@ -1,21 +1,17 @@
 /**
- * Google OAuth Flow Tests
+ * Social Sign-in Smoke Tests
  *
- * Tests the Google OAuth sign-in flow end-to-end at the HTTP level:
- *  - /api/auth/providers endpoint correctly advertises Google availability
- *  - /api/auth/google initiates a 302 redirect toward Google's authorization endpoint
- *  - /api/auth/google/callback route is registered and responds (not 404)
- *  - /api/auth/me returns 401 for unauthenticated requests (session guard works)
- *  - OAuth failure redirect goes back to the app (not an external page)
- *
- * Findings from live e2e run (April 10 2026):
- *  - providers.google = true (GOOGLE_CLIENT_ID is set)
- *  - "Continue with Google" button renders correctly in login modal
- *  - /api/auth/google correctly initiates the OAuth redirect chain
- *  - /api/auth/google/callback route is wired up (non-404)
- *  - ISSUE: Google returns Error 401 "deleted_client" — the OAuth client
- *    referenced by GOOGLE_CLIENT_ID has been deleted in Google Cloud Console.
- *    The app-side code is correct; the credentials need to be regenerated.
+ * Validates the three social sign-in entry points after the Task #61 migration:
+ *  - Google now uses Replit-managed OIDC (no GOOGLE_CLIENT_ID required); the
+ *    /api/auth/google route should 302 toward replit.com/oidc with the right
+ *    response_type and the absolute callback URL we register per-host.
+ *  - Facebook and Microsoft are routed through Auth0 Universal Login as
+ *    social connections — /api/auth/facebook and /api/auth/microsoft should
+ *    302 to <AUTH0_DOMAIN>/authorize with `connection=facebook` and
+ *    `connection=windowslive` respectively (overridable via env vars).
+ *  - /api/auth/providers reports the correct booleans for the current env.
+ *  - /api/auth/me returns 401 when unauthenticated.
+ *  - OAuth failure (?error=access_denied) redirects back into the app.
  *
  * Run: TEST_BASE_URL=http://localhost:5000 npx tsx tests/google-oauth.test.ts
  */
@@ -73,7 +69,7 @@ async function runTests() {
   }
   console.log("Server is up. Running tests...\n");
 
-  let providers: Record<string, boolean> = { local: true, google: false };
+  let providers: Record<string, boolean> = { local: true, google: false, facebook: false, microsoft: false };
   try {
     providers = await (await get("/api/auth/providers")).json() as Record<string, boolean>;
   } catch {
@@ -85,37 +81,44 @@ async function runTests() {
     const res = await get("/api/auth/providers");
     if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
     const data = await res.json() as Record<string, boolean>;
-    if (!("google" in data)) throw new Error('providers JSON must include "google" field');
-    if (!("local" in data)) throw new Error('providers JSON must include "local" field');
-    if (typeof data.google !== "boolean") throw new Error('"google" must be a boolean');
+    for (const key of ["local", "google", "facebook", "microsoft"]) {
+      if (!(key in data)) throw new Error(`providers JSON must include "${key}" field`);
+      if (typeof data[key] !== "boolean") throw new Error(`"${key}" must be a boolean`);
+    }
   });
 
-  // ── 2. /api/auth/google initiates redirect ──────────────────────────────────
-  await test("/api/auth/google returns 302 redirect when Google is configured", async () => {
+  // ── 2. /api/auth/google initiates redirect to Replit OIDC ──────────────────
+  await test("/api/auth/google returns 302 redirect to Replit OIDC when Google is enabled", async () => {
     if (!providers.google) {
-      console.log("    [SKIP] GOOGLE_CLIENT_ID not set — skipping redirect test");
+      console.log("    [SKIP] Replit OIDC not configured (REPL_ID / REPLIT_DOMAINS) — skipping");
       skip();
     }
 
     const res = await get("/api/auth/google", { followRedirects: false });
     const isRedirect = res.status >= 300 && res.status < 400;
     if (!isRedirect) {
-      throw new Error(
-        `Expected redirect (3xx), got ${res.status}. ` +
-        `Route /api/auth/google may not be registered (check GOOGLE_CLIENT_ID env var).`
-      );
+      throw new Error(`Expected redirect (3xx), got ${res.status} from /api/auth/google.`);
     }
 
     const location = res.headers.get("location") || "";
-    const looksLikeGoogleOrInternal =
-      location.includes("google") ||
-      location.includes("accounts") ||
+    // After the migration we expect either a Replit OIDC authorize URL, or an
+    // internal /?auth=failed redirect when the request host isn't on the
+    // hostname allowlist (still a 3xx, never a Google.com URL).
+    const looksLikeReplitOidcOrInternal =
+      location.includes("replit.com/oidc") ||
       location.startsWith("/") ||
       location.startsWith(BASE_URL);
 
-    if (!looksLikeGoogleOrInternal) {
+    if (!looksLikeReplitOidcOrInternal) {
       throw new Error(
-        `Redirect location "${location}" does not look like a Google OAuth URL or internal redirect`
+        `Redirect location "${location}" is not a Replit OIDC URL or internal app URL. ` +
+        `The new Google flow must NOT redirect to accounts.google.com directly.`
+      );
+    }
+    if (location.includes("accounts.google.com")) {
+      throw new Error(
+        `/api/auth/google redirected to accounts.google.com — old self-managed ` +
+        `Google OAuth strategy is still active. It must go through replit.com/oidc.`
       );
     }
   });
@@ -165,7 +168,49 @@ async function runTests() {
     }
   });
 
-  // ── 5. /api/auth/me returns 401 when unauthenticated ───────────────────────
+  // ── 5a. Facebook via Auth0 ────────────────────────────────────────────────
+  await test("/api/auth/facebook redirects to Auth0 with connection=facebook", async () => {
+    if (!providers.facebook) {
+      console.log("    [SKIP] Auth0 / Facebook connection not configured — skipping");
+      skip();
+    }
+    const res = await get("/api/auth/facebook", { followRedirects: false });
+    if (!(res.status >= 300 && res.status < 400)) {
+      throw new Error(`Expected redirect (3xx), got ${res.status} from /api/auth/facebook.`);
+    }
+    const location = res.headers.get("location") || "";
+    const expected = process.env.AUTH0_FACEBOOK_CONNECTION || "facebook";
+    if (!/\/authorize/.test(location)) {
+      throw new Error(`Expected redirect to Auth0 /authorize, got "${location}"`);
+    }
+    if (!location.includes(`connection=${encodeURIComponent(expected)}`) &&
+        !location.includes(`connection=${expected}`)) {
+      throw new Error(`Auth0 redirect missing connection=${expected}: "${location}"`);
+    }
+  });
+
+  // ── 5b. Microsoft via Auth0 ───────────────────────────────────────────────
+  await test("/api/auth/microsoft redirects to Auth0 with connection=windowslive", async () => {
+    if (!providers.microsoft) {
+      console.log("    [SKIP] Auth0 / Microsoft connection not configured — skipping");
+      skip();
+    }
+    const res = await get("/api/auth/microsoft", { followRedirects: false });
+    if (!(res.status >= 300 && res.status < 400)) {
+      throw new Error(`Expected redirect (3xx), got ${res.status} from /api/auth/microsoft.`);
+    }
+    const location = res.headers.get("location") || "";
+    const expected = process.env.AUTH0_MICROSOFT_CONNECTION || "windowslive";
+    if (!/\/authorize/.test(location)) {
+      throw new Error(`Expected redirect to Auth0 /authorize, got "${location}"`);
+    }
+    if (!location.includes(`connection=${encodeURIComponent(expected)}`) &&
+        !location.includes(`connection=${expected}`)) {
+      throw new Error(`Auth0 redirect missing connection=${expected}: "${location}"`);
+    }
+  });
+
+  // ── 6. /api/auth/me returns 401 when unauthenticated ───────────────────────
   await test("/api/auth/me returns 401 for unauthenticated requests", async () => {
     const res = await get("/api/auth/me");
     if (res.status !== 401) {
