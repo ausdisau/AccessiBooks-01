@@ -16,6 +16,12 @@ interface KeyboardShortcutHandlers {
   onPrevChapter?: () => void;
   onOpenShortcuts?: () => void;
   onToggleFocusMode?: () => void;
+  /**
+   * When true, skip-forward, skip-backward, next-chapter, and prev-chapter
+   * are no-ops. Volume, mute, and accessibility controls are unaffected.
+   * Set this whenever an ad is playing or loading to prevent seek-past-ad abuse.
+   */
+  isAdLocked?: boolean;
 }
 
 export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
@@ -31,6 +37,8 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         return;
       }
 
+      const adLocked = handlers.isAdLocked ?? false;
+
       switch (event.key) {
         case " ":
           event.preventDefault();
@@ -38,11 +46,11 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
           break;
         case "ArrowLeft":
           event.preventDefault();
-          handlers.onSkipBackward?.();
+          if (!adLocked) handlers.onSkipBackward?.();
           break;
         case "ArrowRight":
           event.preventDefault();
-          handlers.onSkipForward?.();
+          if (!adLocked) handlers.onSkipForward?.();
           break;
         case "[":
           event.preventDefault();
@@ -85,12 +93,12 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers) {
         case "n":
         case "N":
           event.preventDefault();
-          handlers.onNextChapter?.();
+          if (!adLocked) handlers.onNextChapter?.();
           break;
         case "p":
         case "P":
           event.preventDefault();
-          handlers.onPrevChapter?.();
+          if (!adLocked) handlers.onPrevChapter?.();
           break;
         case "?":
           event.preventDefault();

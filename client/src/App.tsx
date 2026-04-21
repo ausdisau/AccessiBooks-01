@@ -1556,7 +1556,7 @@ function MainApp() {
   const skipForwardSec = Number(a11yPrefs?.profile?.preferredSkipForward ?? 30);
   const skipBackSec = Number(a11yPrefs?.profile?.preferredSkipBack ?? 30);
 
-  const { currentBook, isPlaying, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback } = useAudioContext();
+  const { currentBook, isPlaying, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback, adState, adLoading } = useAudioContext();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
   const { toast } = useToast();
@@ -1715,6 +1715,7 @@ function MainApp() {
     onOpenAccessibility: () => document.dispatchEvent(new CustomEvent("accessibooks:open-accessibility")),
     onToggleTranscript: () => document.dispatchEvent(new CustomEvent("accessibooks:toggle-transcript")),
     onToggleFocusMode: toggleFocusMode,
+    isAdLocked: adState.isAdPlaying || adLoading,
   });
 
   const stopListeningRef = useRef<() => void>(() => {});

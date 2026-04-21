@@ -85,6 +85,8 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     playBook,
     streamQuality,
     bufferedAhead,
+    adState,
+    adLoading,
   } = useAudioContext();
 
   const { 
@@ -459,6 +461,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             onClick={handleSkipBackward}
             className="h-14 w-14 sm:h-20 sm:w-20 rounded-full text-xl"
             aria-label={`Rewind ${skipBackSec} seconds`}
+            aria-disabled={adState.isAdPlaying || adLoading}
           >
             <div className="flex flex-col items-center">
               <RotateCcw className="h-6 w-6 sm:h-8 sm:w-8" />
@@ -488,6 +491,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             onClick={handleSkipForward}
             className="h-14 w-14 sm:h-20 sm:w-20 rounded-full text-xl"
             aria-label={`Forward ${skipForwardSec} seconds`}
+            aria-disabled={adState.isAdPlaying || adLoading}
             disabled={isUsingSkip}
           >
             <div className="flex flex-col items-center">
@@ -657,6 +661,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               onClick={handleSkipBackward}
               className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
               aria-label={`Rewind ${skipBackSec} seconds`}
+              aria-disabled={adState.isAdPlaying || adLoading}
               data-testid="button-skip-backward"
             >
               <RotateCcw className="h-6 w-6" aria-hidden="true" />
@@ -686,6 +691,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               onClick={handleSkipForward}
               className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
               aria-label={`Forward ${skipForwardSec} seconds`}
+              aria-disabled={adState.isAdPlaying || adLoading}
               data-testid="button-skip-forward"
               disabled={isUsingSkip}
             >
