@@ -413,7 +413,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
   if (carMode) {
     return (
       <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center p-4 sm:p-8">
-        <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
+        <audio ref={audioRef} preload={streamQuality.tier !== "sd" ? "auto" : "metadata"} crossOrigin="anonymous" />
         
         <Button
           variant="ghost"
@@ -517,7 +517,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
   return (
     <div className="max-w-4xl mx-auto" role="region" aria-label={`Audio player: ${book.title} by ${book.author}`}>
-      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
+      <audio ref={audioRef} preload={streamQuality.tier !== "sd" ? "auto" : "metadata"} crossOrigin="anonymous" />
 
       {/* Two-column layout on md+, single column stacked on mobile */}
       <div className="flex flex-col md:flex-row gap-4 sm:gap-6">

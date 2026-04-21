@@ -1455,10 +1455,11 @@ function MainApp() {
           if (!isMd) {
             setSidebarMode(prev => prev === "hidden" ? "full" : "hidden");
           } else {
+            // Tablet/desktop: full strict 3-state cycle full → rail → hidden → full
             setSidebarMode(prev => {
               if (prev === "full") return "rail";
               if (prev === "rail") return "hidden";
-              return isLg ? "full" : "rail";
+              return "full";
             });
           }
         }}
