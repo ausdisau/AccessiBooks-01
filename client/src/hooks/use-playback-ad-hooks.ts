@@ -1,6 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
-import type { Chapter } from "@shared/schema";
 
 export interface TranscriptSegment {
   start: number;
@@ -13,11 +12,17 @@ export interface AdDecisionState {
   type: "pre-roll" | "mid-roll" | null;
 }
 
+/**
+ * Canonical hook interface.
+ * NOTE: `onPlayBookCalled` and `onChapterBoundary` return the ad payload **inline**
+ * as `{ type: "show-ad"; ad }` (not a string-only union).  This eliminates the React
+ * async-state-read race where `currentAd` could still be null between the await and
+ * the next render.  Callers must read `result.ad` directly from the returned value
+ * rather than reading it from AudioContext's `adState.currentAd` after the await.
+ */
 interface UsePlaybackAdHooksOptions {
   tier: "free" | "plus" | "premium" | "institutional";
   currentTime: number;
-  currentChapterIndex: number;
-  chapters: Chapter[];
   transcriptSegments: TranscriptSegment[] | null;
   adFlagsEnabled?: { preRoll: boolean; midRoll: boolean };
 }
