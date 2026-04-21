@@ -1726,8 +1726,24 @@ export class ExternalAPIStorage implements IStorage {
         (typeof error?.message === "string" && error.message.includes("could not extend file")) ||
         (typeof error?.cause?.message === "string" && error.cause.message.includes("could not extend file"));
 
-      if (isStorageFull) {
-        console.warn('[Auth] DB storage limit reached — storing new user in memory (session-only)');
+      // Also fall back to in-memory when the Neon HTTP endpoint refuses the
+      // request because the project's compute-time / plan quota is exhausted
+      // (HTTP 402). Without this fallback the dev environment is unusable
+      // for any auth flow whenever the upstream DB is quota-capped. Strictly
+      // gated to non-production so we never silently lose writes in prod.
+      const causeStr = typeof error?.cause?.message === "string" ? error.cause.message : "";
+      const errStr = typeof error?.message === "string" ? error.message : "";
+      const isQuotaExceeded =
+        process.env.NODE_ENV !== "production" &&
+        (/HTTP status 402/i.test(causeStr) ||
+          /HTTP status 402/i.test(errStr) ||
+          /exceeded the compute time quota/i.test(causeStr) ||
+          /exceeded the compute time quota/i.test(errStr));
+
+      if (isStorageFull || isQuotaExceeded) {
+        console.warn(
+          `[Auth] DB ${isQuotaExceeded ? "compute quota exceeded" : "storage limit reached"} — storing new user in memory (session-only)`,
+        );
         const now = new Date();
         const memUser = {
           id: randomUUID(),
@@ -2394,8 +2410,42 @@ export class ExternalAPIStorage implements IStorage {
         .returning();
       
       console.log(`Successfully updated subscription for user ${updatedUser?.id}`);
+      if (updatedUser) {
+        this.localUsers.set(updatedUser.id, updatedUser);
+      }
       return updatedUser;
-    } catch (error) {
+    } catch (error: any) {
+      // Mirror the createUser fallback: when the DB is unreachable due to a
+      // quota / storage outage, update the in-memory user record so auth flows
+      // (and tests) keep working.
+      // Strictly gated to non-production: in production we surface the
+      // failure to the caller rather than acknowledge a write that won't
+      // survive a restart.
+      const causeStr = typeof error?.cause?.message === "string" ? error.cause.message : "";
+      const errStr = typeof error?.message === "string" ? error.message : "";
+      const isOutage =
+        process.env.NODE_ENV !== "production" &&
+        (error?.cause?.code === "53100" ||
+          /HTTP status 402/i.test(causeStr) ||
+          /HTTP status 402/i.test(errStr) ||
+          /exceeded the compute time quota/i.test(causeStr) ||
+          /exceeded the compute time quota/i.test(errStr) ||
+          /could not extend file/i.test(causeStr) ||
+          /could not extend file/i.test(errStr));
+      const memUser = this.localUsers.get(userId);
+      if (isOutage && memUser) {
+        const merged = {
+          ...memUser,
+          ...(subscription.stripeCustomerId !== undefined && { stripeCustomerId: subscription.stripeCustomerId }),
+          ...(subscription.stripeSubscriptionId !== undefined && { stripeSubscriptionId: subscription.stripeSubscriptionId }),
+          ...(subscription.subscriptionTier !== undefined && { subscriptionTier: subscription.subscriptionTier }),
+          ...(subscription.subscriptionEndDate !== undefined && { subscriptionEndDate: subscription.subscriptionEndDate }),
+          updatedAt: new Date(),
+        } as User;
+        this.localUsers.set(userId, merged);
+        console.warn(`[Auth] DB unreachable — updated in-memory subscription for user ${userId}`);
+        return merged;
+      }
       console.error(`Error updating subscription for user ${userId}:`, error);
       return undefined;
     }

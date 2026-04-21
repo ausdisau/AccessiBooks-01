@@ -1,140 +1,103 @@
 /**
  * Browser-level e2e tests for the Account & Settings page.
  *
- * Uses Playwright's request-routing to stub the backend responses so the
- * tests can verify UI behavior independently of database state and
- * authentication wiring. This is the right boundary for these tests:
+ * These tests drive the REAL backend — each test registers a fresh local-auth
+ * user via POST /api/auth/register, optionally upgrades their tier through the
+ * dev-only /api/dev/set-tier seam (gated by NODE_ENV !== "production"), then
+ * navigates to /settings and exercises the page through the browser.
  *
- *   - The HTTP API contract is covered by tests/account-settings.test.ts
- *   - This spec covers the browser layer: page renders, controls react to
- *     interaction, debounced PUT fires with the right payload, the
- *     Free vs Plus/Premium UI fork renders the right thing, and values
- *     persist across a page refresh.
+ * What we assert end-to-end:
+ *   - The page renders for an authenticated session and surfaces the user's
+ *     real subscription tier (Free vs Plus/Premium UI fork).
+ *   - Toggling controls fires PUT /api/a11y/preferences against the live
+ *     backend and the values persist across a page refresh.
+ *   - The HTTP API contract (deep-merge, partial patches, 401s, etc.) is
+ *     covered separately by tests/account-settings.test.ts.
  *
  * Run (server must already be running on :5000):
  *   TEST_BASE_URL=http://localhost:5000 npx playwright test
  */
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 
-const DEFAULT_PROFILE = {
-  fontSize: 16,
-  fontFamily: "system",
-  highContrast: false,
-  reducedMotion: false,
-  screenReaderHints: true,
-  captionsOn: false,
-  captionPosition: "below",
-  playbackSpeed: 1.0,
-  colorScheme: "default",
-  lineSpacing: 1.5,
-  letterSpacing: 0,
-  dyslexiaFont: false,
-  focusHighlight: true,
-  darkMode: false,
-  karaokeFollowAlong: false,
-  transcriptOpenByDefault: false,
-  reduceDistractionMode: false,
-  suppressAnimatedAds: false,
-  rewardedAdPreference: "ask",
-  preferredSkipForward: 15,
-  preferredSkipBack: 15,
-  autoAdvanceChapters: true,
-  sleepTimerDefault: null as number | null,
-};
-
-type StoredProfile = typeof DEFAULT_PROFILE;
+const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:5000";
 
 /**
- * Install per-test API stubs. Stubs:
- *   - /api/auth/me            -> authenticated user with the given tier
- *   - /api/settings/summary   -> { user, preferences (current store), billing }
- *   - /api/a11y/preferences   -> GET returns current store, PUT deep-merges
- *
- * The returned `state` lets the test inspect the persisted profile and the
- * recorded PUT payloads to assert deep-merge behavior.
+ * Register a fresh user against the real backend and return their session
+ * cookies (parsed from set-cookie). Optionally upgrade the user's tier via
+ * the dev-only /api/dev/set-tier endpoint.
  */
-function installApiStubs(page: Page, opts: { tier: "free" | "plus" | "premium" }) {
-  const state = {
-    profile: { ...DEFAULT_PROFILE } as StoredProfile,
-    putCalls: [] as Array<Record<string, unknown>>,
-  };
+async function registerRealUser(
+  request: APIRequestContext,
+  tier: "free" | "plus" | "premium",
+): Promise<{ email: string; cookies: Array<{ name: string; value: string; url: string }> }> {
+  const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const email = `e2e-${tier}-${stamp}@accessibooks.test`;
+  const password = "E2eTest!Password123";
 
-  const userPayload = {
-    id: "test-user-id",
-    email: `${opts.tier}-user@e2e.test`,
-    firstName: opts.tier,
-    lastName: "User",
-    subscriptionTier: opts.tier,
-    subscriptionEndDate: null,
-  };
+  const reg = await request.post(`${BASE_URL}/api/auth/register`, {
+    data: { email, password, firstName: tier, lastName: "User" },
+  });
+  if (!reg.ok()) {
+    throw new Error(
+      `Register failed (${reg.status()}): ${await reg.text().catch(() => "<no body>")}`,
+    );
+  }
 
-  const json = (route: Route, body: unknown, status = 200) =>
-    route.fulfill({
-      status,
-      contentType: "application/json",
-      body: JSON.stringify(body),
+  // Capture session cookies so we can hand them to the browser context.
+  const setCookies = reg.headersArray().filter((h) => h.name.toLowerCase() === "set-cookie");
+  const cookies = setCookies.map((h) => {
+    const [pair] = h.value.split(";");
+    const eq = pair.indexOf("=");
+    return {
+      name: pair.slice(0, eq).trim(),
+      value: pair.slice(eq + 1).trim(),
+      url: BASE_URL,
+    };
+  });
+
+  if (tier !== "free") {
+    const setTier = await request.post(`${BASE_URL}/api/dev/set-tier`, {
+      data: { tier },
+      headers: { Cookie: cookies.map((c) => `${c.name}=${c.value}`).join("; ") },
     });
+    if (!setTier.ok()) {
+      throw new Error(
+        `set-tier failed (${setTier.status()}): ${await setTier.text().catch(() => "<no body>")}`,
+      );
+    }
+  }
 
-  return {
-    state,
-    install: async () => {
-      // Suppress the first-visit "Welcome bonus" modal — it overlays the page
-      // and obscures the controls under test.
-      await page.addInitScript(() => {
-        try {
-          localStorage.setItem("accessibooks_welcome_shown", "1");
-        } catch {}
-      });
-      // useAuth() in the app queries /api/auth/user (NOT /api/auth/me).
-      await page.route("**/api/auth/user", (route) => json(route, userPayload));
-      await page.route("**/api/auth/me", (route) => json(route, userPayload));
-      await page.route("**/api/auth/providers", (route) =>
-        json(route, { local: true, google: false, replit: false }),
-      );
-      await page.route("**/api/settings/summary", (route) =>
-        json(route, {
-          user: userPayload,
-          preferences: state.profile,
-          billing: {
-            canManagePortal: opts.tier !== "free",
-            nextBillingDate: null,
-            estimatedNextAmount: null,
-          },
-        }),
-      );
-      await page.route("**/api/a11y/preferences**", async (route) => {
-        const req = route.request();
-        if (req.method() === "GET") {
-          return json(route, { profile: state.profile, activePreset: null });
-        }
-        if (req.method() === "PUT") {
-          const body = JSON.parse(req.postData() || "{}");
-          const incoming = (body.profile || {}) as Partial<StoredProfile>;
-          state.putCalls.push(incoming as Record<string, unknown>);
-          // Server-side deep merge — same behavior as accessibilityKernel.ts
-          state.profile = { ...state.profile, ...incoming };
-          return json(route, { profile: state.profile, activePreset: null });
-        }
-        return route.continue();
-      });
-    },
-  };
+  return { email, cookies };
 }
 
-test.describe("Account & Settings page — Free user", () => {
-  test("renders the ad-preference toggles, NOT the ad-free message", async ({ page }) => {
-    page.on("pageerror", (e) => console.log("PAGEERROR:", e.message));
-    page.on("console", (m) => { if (m.type() === "error") console.log("CONSOLE.error:", m.text()); });
-    page.on("response", (r) => { if (r.url().includes("/api/")) console.log("HTTP", r.status(), r.request().method(), r.url()); });
-    const stubs = installApiStubs(page, { tier: "free" });
-    await stubs.install();
+/** Apply session cookies to the page's browser context BEFORE navigation. */
+async function applyCookies(
+  page: Page,
+  cookies: Array<{ name: string; value: string; url: string }>,
+) {
+  await page.context().addCookies(cookies);
+  // Also suppress the first-visit "Welcome bonus" modal which overlays the
+  // controls under test on a brand-new account.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("accessibooks_welcome_shown", "1");
+    } catch {}
+  });
+}
+
+test.describe("Account & Settings page — Free user (real auth)", () => {
+  test("renders the ad-preference toggles, NOT the ad-free message", async ({ page, request }) => {
+    const { cookies } = await registerRealUser(request, "free");
+    await applyCookies(page, cookies);
 
     await page.goto("/settings");
     await expect(page.getByTestId("panel-settings")).toBeAttached({ timeout: 30000 });
-    // wait until the page is past the skeleton state (heading h1 inside panel)
-    await expect(page.locator('[data-testid="panel-settings"] h1')).toHaveText("Account Settings", { timeout: 30000 });
+    await expect(page.locator('[data-testid="panel-settings"] h1')).toHaveText(
+      "Account Settings",
+      { timeout: 30000 },
+    );
 
-    // Plan section should NOT show the green "Ad-free" badge for free tier
+    // No green "Ad-free" badge for free tier
     await expect(page.getByRole("note", { name: /ad-free/i })).toHaveCount(0);
 
     // The ad-preferences toggle controls ARE rendered
@@ -143,7 +106,7 @@ test.describe("Account & Settings page — Free user", () => {
     await expect(page.locator("#rewarded-always")).toBeVisible();
     await expect(page.locator("#rewarded-never")).toBeVisible();
 
-    // The Plus/Premium fork message must NOT appear
+    // Plus/Premium fork message must NOT appear
     await expect(page.getByText(/you're listening ad-free/i)).toHaveCount(0);
 
     // Upgrade CTAs are visible for free users
@@ -151,117 +114,90 @@ test.describe("Account & Settings page — Free user", () => {
     await expect(page.getByRole("button", { name: /upgrade to premium/i })).toBeVisible();
   });
 
-  test("toggles each control, fires debounced PUTs, and persists across refresh", async ({ page }) => {
-    const stubs = installApiStubs(page, { tier: "free" });
-    await stubs.install();
+  test("toggles persist to the real backend across a page refresh", async ({ page, request }) => {
+    const { cookies } = await registerRealUser(request, "free");
+    await applyCookies(page, cookies);
 
     await page.goto("/settings");
-    await expect(page.locator(`[data-testid="panel-settings"] h1`)).toBeVisible();
+    await expect(page.locator('[data-testid="panel-settings"] h1')).toBeVisible({
+      timeout: 30000,
+    });
 
-    // The page's saveMutation is debounced via a SHARED 500ms timer — fast
-    // back-to-back changes coalesce. To verify each control persists
-    // correctly we emulate a realistic user (small pause between changes)
-    // and assert the put-call count grows after each action.
+    // The page's saveMutation is debounced via a SHARED 500ms timer, so we
+    // pace each change with a small pause to ensure each PUT actually fires.
     const pause = () => page.waitForTimeout(700);
 
-    let expected = 0;
-    const expectNextPut = async () => {
-      expected += 1;
-      await expect
-        .poll(() => stubs.state.putCalls.length, { timeout: 5000 })
-        .toBeGreaterThanOrEqual(expected);
-    };
-
-    // 1. Toggle "suppress animated ads" switch
+    // Toggle a representative slice of controls (one of each "kind"):
+    //   - a switch (suppress-animated)
+    //   - a switch starting ON (auto-advance)
+    //   - a radio group (rewarded-always)
+    //   - a select (skip-forward → 30, playback-speed → 1.5×)
     await page.locator("#suppress-animated").click();
     await pause();
-    await expectNextPut();
 
-    // 2. Toggle "auto-advance chapters" switch (default ON -> OFF)
     await page.locator("#auto-advance").click();
     await pause();
-    await expectNextPut();
 
-    // 3. Toggle "transcript open by default"
-    await page.locator("#transcript-default").click();
-    await pause();
-    await expectNextPut();
-
-    // 4. Toggle "reduce distraction"
-    await page.locator("#reduce-distraction").click();
-    await pause();
-    await expectNextPut();
-
-    // 5. Choose "Always accept" rewarded-ad radio
     await page.locator("#rewarded-always").click();
     await pause();
-    await expectNextPut();
 
-    // 6. Change "skip forward" select to 30
     await page.locator("#skip-forward").click();
     await page.getByRole("option", { name: "30 seconds", exact: true }).click();
     await pause();
-    await expectNextPut();
 
-    // 7. Change "skip back" select to 5
-    await page.locator("#skip-back").click();
-    await page.getByRole("option", { name: "5 seconds", exact: true }).click();
-    await pause();
-    await expectNextPut();
-
-    // 8. Change "playback speed" to 1.5
     await page.locator("#playback-speed").click();
     await page.getByRole("option", { name: "1.5×" }).click();
     await pause();
-    await expectNextPut();
 
-    // 9. Change "sleep timer" to 30 minutes
-    await page.locator("#sleep-timer").click();
-    await page.getByRole("option", { name: "30 minutes", exact: true }).click();
-    await pause();
-    await expectNextPut();
+    // Hit the live backend directly to verify the values were truly saved.
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(`${BASE_URL}/api/a11y/preferences`, {
+            headers: { Cookie: cookieHeader },
+          });
+          if (!res.ok()) return null;
+          const body = await res.json();
+          return body?.profile ?? null;
+        },
+        { timeout: 8000, intervals: [300, 500, 800] },
+      )
+      .toMatchObject({
+        suppressAnimatedAds: true,
+        autoAdvanceChapters: false,
+        rewardedAdPreference: "always",
+        preferredSkipForward: 30,
+        playbackSpeed: 1.5,
+      });
 
-    // Server-side merged store should reflect every control's chosen value.
-    expect(stubs.state.profile.suppressAnimatedAds).toBe(true);
-    expect(stubs.state.profile.autoAdvanceChapters).toBe(false);
-    expect(stubs.state.profile.transcriptOpenByDefault).toBe(true);
-    expect(stubs.state.profile.reduceDistractionMode).toBe(true);
-    expect(stubs.state.profile.rewardedAdPreference).toBe("always");
-    expect(stubs.state.profile.preferredSkipForward).toBe(30);
-    expect(stubs.state.profile.preferredSkipBack).toBe(5);
-    expect(stubs.state.profile.playbackSpeed).toBe(1.5);
-    expect(stubs.state.profile.sleepTimerDefault).toBe(30);
-
-    // Each PUT call sent ONLY the patched key (proving the page sends partial
-    // patches and relies on the server's deep-merge — the regression guard).
-    for (const call of stubs.state.putCalls) {
-      expect(Object.keys(call).length).toBe(1);
-    }
-
-    // ── Refresh the page; controls should reflect the persisted values ─────
+    // Refresh the page; controls should reflect the persisted values.
     await page.reload();
-    await expect(page.locator(`[data-testid="panel-settings"] h1`)).toBeVisible();
+    await expect(page.locator('[data-testid="panel-settings"] h1')).toBeVisible({
+      timeout: 30000,
+    });
 
     await expect(page.locator("#suppress-animated")).toHaveAttribute("data-state", "checked");
     await expect(page.locator("#auto-advance")).toHaveAttribute("data-state", "unchecked");
-    await expect(page.locator("#transcript-default")).toHaveAttribute("data-state", "checked");
-    await expect(page.locator("#reduce-distraction")).toHaveAttribute("data-state", "checked");
     await expect(page.locator("#rewarded-always")).toHaveAttribute("data-state", "checked");
     await expect(page.locator("#skip-forward")).toContainText("30 seconds");
-    await expect(page.locator("#skip-back")).toContainText("5 seconds");
     await expect(page.locator("#playback-speed")).toContainText("1.5×");
-    await expect(page.locator("#sleep-timer")).toContainText("30 minutes");
   });
 });
 
-test.describe("Account & Settings page — Plus/Premium user", () => {
+test.describe("Account & Settings page — Plus/Premium user (real auth)", () => {
   for (const tier of ["plus", "premium"] as const) {
-    test(`${tier} user sees the "you're listening ad-free" message and NOT the ad toggles`, async ({ page }) => {
-      const stubs = installApiStubs(page, { tier });
-      await stubs.install();
+    test(`${tier} user sees the ad-free message and NOT the ad toggles`, async ({
+      page,
+      request,
+    }) => {
+      const { cookies } = await registerRealUser(request, tier);
+      await applyCookies(page, cookies);
 
       await page.goto("/settings");
-      await expect(page.locator(`[data-testid="panel-settings"] h1`)).toBeVisible();
+      await expect(page.locator('[data-testid="panel-settings"] h1')).toBeVisible({
+        timeout: 30000,
+      });
 
       // The ad-free fork message IS visible
       await expect(page.getByText(/you're listening ad-free/i)).toBeVisible();

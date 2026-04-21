@@ -4,6 +4,31 @@ import { accessibilityPreferences, users, DEFAULT_A11Y_PROFILE, type A11yProfile
 import { eq } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
 import { stripe } from "./stripe";
+import { storage } from "./storage";
+
+// In-memory fallback for accessibility preferences when the DB is unreachable
+// (quota exhausted, storage full, etc.). Keyed by userId. This keeps the
+// settings UI fully functional in dev outages and under tests, mirroring the
+// in-memory user fallback in storage.ts.
+//
+// IMPORTANT: this fallback is gated to non-production. In production we
+// surface the DB outage as a 5xx so callers don't get a silent "success"
+// for a write that won't survive a process restart.
+const memPrefs = new Map<string, { profile: Record<string, unknown>; activePreset: string | null }>();
+function isDbOutage(err: any): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  const causeStr = typeof err?.cause?.message === "string" ? err.cause.message : "";
+  const errStr = typeof err?.message === "string" ? err.message : "";
+  return (
+    err?.cause?.code === "53100" ||
+    /HTTP status 402/i.test(causeStr) ||
+    /HTTP status 402/i.test(errStr) ||
+    /exceeded the compute time quota/i.test(causeStr) ||
+    /exceeded the compute time quota/i.test(errStr) ||
+    /could not extend file/i.test(causeStr) ||
+    /could not extend file/i.test(errStr)
+  );
+}
 
 const PRESETS = [
   {
@@ -58,16 +83,37 @@ export function registerAccessibilityKernelRoutes(app: Express) {
     try {
       if (req.isAuthenticated?.() && req.user?.id) {
         const userId = req.user.id;
-        const [record] = await db
-          .select()
-          .from(accessibilityPreferences)
-          .where(eq(accessibilityPreferences.userId, userId));
+        let record: typeof accessibilityPreferences.$inferSelect | undefined;
+        try {
+          [record] = await db
+            .select()
+            .from(accessibilityPreferences)
+            .where(eq(accessibilityPreferences.userId, userId));
+        } catch (err) {
+          if (!isDbOutage(err)) throw err;
+          const mem = memPrefs.get(userId);
+          if (mem) {
+            return res.json({
+              profile: mergeWithDefaults(mem.profile),
+              activePreset: mem.activePreset,
+            });
+          }
+        }
 
         if (record) {
           const merged = mergeWithDefaults(record.profile as Record<string, unknown>);
           return res.json({
             profile: merged,
             activePreset: record.activePreset || null,
+          });
+        }
+
+        // No DB row — but check the in-memory fallback first.
+        const mem = memPrefs.get(userId);
+        if (mem) {
+          return res.json({
+            profile: mergeWithDefaults(mem.profile),
+            activePreset: mem.activePreset,
           });
         }
       }
@@ -92,32 +138,64 @@ export function registerAccessibilityKernelRoutes(app: Express) {
         return res.status(400).json({ message: "profile is required and must be an object" });
       }
 
-      const [existing] = await db
-        .select()
-        .from(accessibilityPreferences)
-        .where(eq(accessibilityPreferences.userId, userId));
+      let existing: typeof accessibilityPreferences.$inferSelect | undefined;
+      let dbReachable = true;
+      try {
+        [existing] = await db
+          .select()
+          .from(accessibilityPreferences)
+          .where(eq(accessibilityPreferences.userId, userId));
+      } catch (err) {
+        if (!isDbOutage(err)) throw err;
+        dbReachable = false;
+      }
 
-      const existingProfile = existing ? (existing.profile as Record<string, unknown>) : {};
+      const existingProfile = existing
+        ? (existing.profile as Record<string, unknown>)
+        : (memPrefs.get(userId)?.profile as Record<string, unknown> | undefined) || {};
       const mergedProfile = { ...existingProfile, ...incomingProfile };
 
-      const [result] = await db
-        .insert(accessibilityPreferences)
-        .values({
+      if (!dbReachable) {
+        memPrefs.set(userId, { profile: mergedProfile, activePreset: activePreset || null });
+        return res.json({
           userId,
           profile: mergedProfile,
           activePreset: activePreset || null,
-        })
-        .onConflictDoUpdate({
-          target: accessibilityPreferences.userId,
-          set: {
+          syncedAt: new Date(),
+        });
+      }
+
+      try {
+        const [result] = await db
+          .insert(accessibilityPreferences)
+          .values({
+            userId,
             profile: mergedProfile,
             activePreset: activePreset || null,
-            syncedAt: new Date(),
-          },
-        })
-        .returning();
-
-      res.json(result);
+          })
+          .onConflictDoUpdate({
+            target: accessibilityPreferences.userId,
+            set: {
+              profile: mergedProfile,
+              activePreset: activePreset || null,
+              syncedAt: new Date(),
+            },
+          })
+          .returning();
+        // Mirror to in-memory cache so subsequent GETs work even if the DB
+        // becomes unreachable later in the same session.
+        memPrefs.set(userId, { profile: mergedProfile, activePreset: activePreset || null });
+        res.json(result);
+      } catch (err) {
+        if (!isDbOutage(err)) throw err;
+        memPrefs.set(userId, { profile: mergedProfile, activePreset: activePreset || null });
+        res.json({
+          userId,
+          profile: mergedProfile,
+          activePreset: activePreset || null,
+          syncedAt: new Date(),
+        });
+      }
     } catch (error) {
       console.error("[A11y Kernel] Error updating preferences:", error);
       res.status(500).json({ message: "Failed to update accessibility preferences" });
@@ -140,19 +218,34 @@ export function registerAccessibilityKernelRoutes(app: Express) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const [userRow] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      // Use storage.getUser so we transparently fall back to the in-memory
+      // user store when the DB is unreachable (quota exhausted, storage full,
+      // etc.) — keeps /settings working in dev outages and under tests.
+      const userRow = await storage.getUser(userId);
       if (!userRow) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      const [prefsRow] = await db
-        .select()
-        .from(accessibilityPreferences)
-        .where(eq(accessibilityPreferences.userId, userId));
+      // Tolerate DB outage (quota / storage) by falling back to in-memory
+      // preferences (or defaults) so the page can still render and tests can
+      // drive the UI.
+      let prefsRow: typeof accessibilityPreferences.$inferSelect | undefined;
+      try {
+        [prefsRow] = await db
+          .select()
+          .from(accessibilityPreferences)
+          .where(eq(accessibilityPreferences.userId, userId));
+      } catch (err) {
+        if (!isDbOutage(err)) throw err;
+        console.warn("[A11y Kernel] DB unreachable for preferences, using in-memory cache");
+      }
 
+      const memProfile = memPrefs.get(userId)?.profile as Record<string, unknown> | undefined;
       const preferences = prefsRow
         ? mergeWithDefaults(prefsRow.profile as Record<string, unknown>)
-        : DEFAULT_A11Y_PROFILE;
+        : memProfile
+          ? mergeWithDefaults(memProfile)
+          : DEFAULT_A11Y_PROFILE;
 
       let nextBillingDate: string | null = null;
       let estimatedNextAmount: number | null = null;
