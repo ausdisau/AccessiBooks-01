@@ -80,6 +80,28 @@ const APP_URL = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : n
 // absolute and match the host the browser landed on.
 const REPLIT_OIDC_ENABLED = !!(process.env.REPL_ID && process.env.REPLIT_DOMAINS);
 
+// Subset of the Replit OIDC ID-token claims we read on the verify callback.
+// `idp` (identity provider) is set by Replit's OIDC issuer to the upstream
+// social provider used for the sign-in (e.g. "google-oauth2"); we use it to
+// enforce that the "Continue with Google" button only accepts Google identities.
+interface ReplitOidcClaims {
+  sub?: string;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  given_name?: string | null;
+  family_name?: string | null;
+  profile_image_url?: string | null;
+  picture?: string | null;
+  idp?: string | null;
+  identity_provider?: string | null;
+}
+
+// Identity-provider claim values that Replit OIDC reports for a Google upstream.
+// We accept any of these so the route stays "Google-only" even if the issuer
+// label changes between bare "google" and "google-oauth2".
+const GOOGLE_IDP_VALUES = new Set(["google", "google-oauth2"]);
+
 // Build an allowlist of hostnames the Replit OIDC strategy is permitted to
 // register a callback URL for. Without this, an attacker could spoof the Host
 // header and force registration of an arbitrary callback URL (and grow the
@@ -127,7 +149,21 @@ async function ensureGoogleOidcStrategy(hostname: string) {
     verified: passport.AuthenticateCallback
   ) => {
     try {
-      const claims = tokens.claims() as any;
+      const claims = tokens.claims() as ReplitOidcClaims | undefined;
+      if (!claims?.sub) {
+        return verified(new Error("Replit OIDC response missing sub claim"));
+      }
+      // The "Continue with Google" button must only accept Google identities.
+      // Replit OIDC also brokers other providers; if the upstream `idp` claim is
+      // present and is anything other than Google, refuse the login so a user
+      // who picks (e.g.) GitHub at the Replit consent screen does not silently
+      // get provisioned as a Google account here.
+      const idp = claims.idp ?? claims.identity_provider ?? null;
+      if (idp && !GOOGLE_IDP_VALUES.has(String(idp).toLowerCase())) {
+        return verified(
+          new Error(`Replit OIDC returned non-Google identity provider: ${idp}`),
+        );
+      }
       const sub = String(claims.sub);
       const user = await storage.upsertUser({
         // Keep the legacy `google-` prefix so existing accounts that signed in
@@ -447,10 +483,26 @@ export function setupMultiAuth(app: Express) {
   // self-managed Google credentials required.
   const googleEnabled = REPLIT_OIDC_ENABLED;
   // Facebook and Microsoft sign-in are routed through Auth0 as social
-  // connections (see docs/auth.md). They light up whenever Auth0 is
-  // configured.
-  const facebookEnabled = auth0Enabled;
-  const microsoftEnabled = auth0Enabled;
+  // connections (see docs/auth.md). They require Auth0 to be configured AND
+  // the corresponding social connection to be enabled in the tenant. Because
+  // we cannot tell from here whether the tenant has the connection enabled,
+  // operators can opt out by setting AUTH0_FACEBOOK_ENABLED=false or
+  // AUTH0_MICROSOFT_ENABLED=false (default: enabled when Auth0 is configured).
+  const isOptOut = (v: string | undefined) =>
+    v !== undefined && ["0", "false", "no", "off"].includes(v.toLowerCase());
+  const facebookEnabled =
+    auth0Enabled && !isOptOut(process.env.AUTH0_FACEBOOK_ENABLED);
+  const microsoftEnabled =
+    auth0Enabled && !isOptOut(process.env.AUTH0_MICROSOFT_ENABLED);
+
+  // passport-auth0's typings don't expose `connection` (it's a runtime
+  // pass-through to the Auth0 /authorize call), so we widen the option type
+  // here in one place rather than sprinkling `as any` at each call site.
+  type Auth0SocialOpts = passport.AuthenticateOptions & { connection: string };
+  const auth0SocialOpts = (connection: string): Auth0SocialOpts => ({
+    scope: "openid profile email",
+    connection,
+  });
 
   // Replit-managed Google OAuth entry point. Strategy is registered lazily on
   // first request so the absolute callback URL matches the host the browser
@@ -501,10 +553,7 @@ export function setupMultiAuth(app: Express) {
   if (facebookEnabled) {
     const facebookConnection = process.env.AUTH0_FACEBOOK_CONNECTION || "facebook";
     app.get("/api/auth/facebook", (req, res, next) =>
-      (passport.authenticate("auth0", {
-        scope: "openid profile email",
-        connection: facebookConnection,
-      } as any))(req, res, next)
+      passport.authenticate("auth0", auth0SocialOpts(facebookConnection))(req, res, next)
     );
   }
 
@@ -515,10 +564,7 @@ export function setupMultiAuth(app: Express) {
   if (microsoftEnabled) {
     const microsoftConnection = process.env.AUTH0_MICROSOFT_CONNECTION || "windowslive";
     app.get("/api/auth/microsoft", (req, res, next) =>
-      (passport.authenticate("auth0", {
-        scope: "openid profile email",
-        connection: microsoftConnection,
-      } as any))(req, res, next)
+      passport.authenticate("auth0", auth0SocialOpts(microsoftConnection))(req, res, next)
     );
   }
 
