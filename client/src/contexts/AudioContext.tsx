@@ -425,8 +425,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const adHooks = usePlaybackAdHooks({
     tier: subscriptionTier,
     currentTime,
-    currentChapterIndex,
-    chapters,
     transcriptSegments,
     adFlagsEnabled: audioAdService.featureFlags,
   });
@@ -732,11 +730,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audioAdService.playAdChime();
       setAdState({ isAdPlaying: true, currentAd: decision.ad, adType: "pre-roll" });
 
-      // Safety valve: if adState.isAdPlaying is set but currentAd remains null after 3 s
-      // (e.g. a race between hook fetch and the overlay render left us in a hung state),
-      // call onAdComplete(false) to resume. Normal ads will always have currentAd set
-      // synchronously from decision.ad above, so this timer is a no-op in the happy path.
-      const safetyTimerId = setTimeout(() => {
+      // Safety valve: if isAdPlaying is set but currentAd stays null after 3 s, resume.
+      // Normal ads always have currentAd set synchronously from decision.ad above, so
+      // this timer fires only if something truly goes wrong.  The event listener and the
+      // timeout both remove the other to prevent listener accumulation on either path.
+      let safetyTimerId: ReturnType<typeof setTimeout>;
+      const clearSafetyValve = () => {
+        clearTimeout(safetyTimerId);
+        document.removeEventListener("accessibooks:ad-resolved", clearSafetyValve);
+      };
+      document.addEventListener("accessibooks:ad-resolved", clearSafetyValve, { once: true });
+      safetyTimerId = setTimeout(() => {
+        document.removeEventListener("accessibooks:ad-resolved", clearSafetyValve);
         setAdState((prev) => {
           if (prev.isAdPlaying && prev.currentAd === null) {
             console.warn("[AudioContext] Ad state hung (isAdPlaying=true, currentAd=null) after 3 s — resuming");
@@ -745,10 +750,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           return prev;
         });
       }, 3000);
-
-      // Clear the safety valve if the ad resolves normally before 3 s
-      const clearSafetyValve = () => clearTimeout(safetyTimerId);
-      document.addEventListener("accessibooks:ad-resolved", clearSafetyValve, { once: true });
 
       return;
     }
