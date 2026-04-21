@@ -1,11 +1,27 @@
 import { useState } from "react";
-import { Crown, Check, Loader2, CreditCard, Zap, Star, X } from "lucide-react";
+import { Crown, Check, Loader2, CreditCard, Zap, Star, X, Building2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { useSubscription } from "@/hooks/use-subscription";
+import { useToast } from "@/hooks/use-toast";
 import { TIER_PRICING } from "@shared/schema";
+import { Link } from "wouter";
+
+function ComingSoonBanner() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-start gap-2 rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5 text-[11px] text-blue-700 dark:text-blue-300 mt-2"
+    >
+      <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden="true" />
+      <span>Upgrade flow coming next — check back soon.</span>
+    </div>
+  );
+}
 
 const TIERS = [
   {
@@ -69,14 +85,20 @@ const TIERS = [
 
 export function SubscriptionCard() {
   const [isAnnual, setIsAnnual] = useState(true);
+  const { toast } = useToast();
   const {
     tier,
-    isUpgrading,
-    upgradeToTier,
     cancelSubscription,
     isCancelling,
     subscription,
   } = useSubscription();
+  const isUpgrading = false;
+  const handleUpgradeClick = (planName: string) => {
+    toast({
+      title: "Coming soon",
+      description: `${planName} checkout will be available shortly.`,
+    });
+  };
 
   const getPrice = (tierId: "plus" | "premium") => {
     const pricing = TIER_PRICING[tierId];
@@ -183,17 +205,16 @@ export function SubscriptionCard() {
                     </Button>
                   </div>
                 ) : isUpgrade ? (
-                  <Button
-                    className={`w-full ${t.id === "premium" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}`}
-                    onClick={() => upgradeToTier(t.id, isAnnual ? "annual" : "monthly")}
-                    disabled={isUpgrading}
-                  >
-                    {isUpgrading ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Loading...</>
-                    ) : (
-                      <><CreditCard className="h-4 w-4 mr-2" /> Upgrade to {t.name}</>
-                    )}
-                  </Button>
+                  <>
+                    <Button
+                      className={`w-full focus-visible:ring-2 focus-visible:ring-offset-2 ${t.id === "premium" ? "bg-amber-500 hover:bg-amber-600 text-white focus-visible:ring-amber-400" : ""}`}
+                      onClick={() => handleUpgradeClick(t.name)}
+                      aria-label={`Upgrade to ${t.name}`}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" aria-hidden="true" /> Upgrade to {t.name}
+                    </Button>
+                    <ComingSoonBanner />
+                  </>
                 ) : null}
 
                 {t.id !== "free" && (
@@ -205,6 +226,24 @@ export function SubscriptionCard() {
             </Card>
           );
         })}
+      </div>
+
+      <Separator />
+
+      <div className="rounded-lg border border-dashed border-border p-4 flex items-start gap-3">
+        <Building2 className="h-6 w-6 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+        <div className="flex-1">
+          <p className="font-semibold text-sm text-foreground">Institutional Access</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Available via partner organisations or libraries. If your school, library, or workplace provides AccessiBooks access, you can activate it through your institution.
+          </p>
+          <Link
+            href="/institutional"
+            className="inline-block mt-2 text-sm text-primary underline hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            Contact us about institutional access
+          </Link>
+        </div>
       </div>
 
       <div className="text-center">

@@ -9,6 +9,7 @@ import { AccessiBooksLogo } from "@/components/accessibooks-logo";
 import { useAuth } from "@/hooks/useAuth";
 import { Library } from "@/pages/library";
 import { Player } from "@/pages/player";
+import { PricingPage } from "@/pages/pricing";
 import { Book } from "@shared/schema";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
@@ -134,6 +135,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
     label: "Account",
     items: [
       { path: "/settings", label: "Settings", icon: <Settings2 className="h-5 w-5" /> },
+      { path: "/pricing", label: "Plans", icon: <Crown className="h-5 w-5" /> },
       { path: "/stats", label: "Stats", icon: <Trophy className="h-5 w-5" /> },
       { path: "/usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
       { path: "/billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
@@ -284,6 +286,14 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
                 <SubscriptionCard />
               </DialogContent>
             </Dialog>
+            <Link
+              href="/pricing"
+              className="hidden sm:flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="View all plans and pricing"
+            >
+              <Crown className="h-4 w-4" />
+              Plans
+            </Link>
             
             <Button
               variant="ghost"
@@ -2002,6 +2012,11 @@ function MainApp() {
                       <AudioAdvertiserDashboard />
                     </div>
                   </Suspense>
+                </Route>
+                <Route path="/pricing">
+                  <div id="pricing-panel" role="region" aria-label="Pricing" data-testid="panel-pricing">
+                    <PricingPage />
+                  </div>
                 </Route>
                 <Route path="/billing">
                   <Suspense fallback={<LoadingSpinner />}>
