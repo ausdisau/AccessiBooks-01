@@ -420,12 +420,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Note: onPlayBookCalled / onChapterBoundary return the ad payload inline as
   // { type: "show-ad"; ad } rather than the string union in the original spec.
   // This eliminates the React async-state-read race that caused currentAd to be null.
+  // adFlagsEnabled is read from the audioAdService runtime config (Task #47 will provide
+  // a server-side source; until then, the service config acts as the kill-switch layer).
   const adHooks = usePlaybackAdHooks({
     tier: subscriptionTier,
     currentTime,
     currentChapterIndex,
     chapters,
     transcriptSegments,
+    adFlagsEnabled: audioAdService.featureFlags,
   });
 
   // Fetch chapters when book changes
@@ -477,8 +480,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           if (audio && !audio.paused) { audio.pause(); setIsPlaying(false); }
           audioAdService.playAdChime();
           setAdState({ isAdPlaying: true, currentAd: result.ad, adType: "mid-roll" });
+        } else if (typeof result === "string" && result.startsWith("defer-to:")) {
+          // Sentence still in progress (e.g. overlapping segment) — reschedule
+          const deferTime = parseFloat(result.split(":")[1]);
+          if (!isNaN(deferTime)) {
+            deferredAdRef.current = { time: deferTime, prevIdx, nextIdx };
+          }
         }
-        // "continue" or another "defer-to" are both benign — ignore
+        // "continue" → do nothing
       });
     }
 
