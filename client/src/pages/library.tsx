@@ -25,6 +25,7 @@ import { CommercialAudiobooks } from "@/components/commercial-audiobooks";
 import { PodcastDiscovery } from "@/components/podcast-discovery";
 import { MagazineSection } from "@/components/magazine-section";
 import { useRewardedAd } from "@/hooks/use-rewarded-ad";
+import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 import { RewardedAdOffer } from "@/components/RewardedAdOffer";
 import { RewardedAdInterstitial } from "@/components/audio-ad-interstitial";
 import { ActiveRewardBadge } from "@/components/ActiveRewardBadge";
@@ -330,10 +331,14 @@ export function Library({ onSelectBook }: LibraryProps) {
   const { isPremium, isPaid, upgradeToTier, tier } = useSubscription();
   const isFree = tier === "free";
   const { offer, isEligible, activeRewards, completeReward, startSession } = useRewardedAd();
+  const { profile } = usePreferencesKernel();
+  const rewardedAdPreference = profile.rewardedAdPreference ?? "ask";
   const { toast } = useToast();
   const [showRewardedAd, setShowRewardedAd] = useState(false);
   const [rewardedImpressionId, setRewardedImpressionId] = useState<string | null>(null);
   const [offerDismissed, setOfferDismissed] = useState(false);
+  // Guard so an "always" auto-accept fires only once per offer placement
+  const autoAcceptedOfferRef = useRef<string | null>(null);
 
   const handleLibraryAcceptOffer = async () => {
     if (!offer) return;
@@ -349,6 +354,22 @@ export function Library({ onSelectBook }: LibraryProps) {
       toast({ title: "Couldn't start ad", description: "Please try again.", variant: "destructive" });
     }
   };
+
+  // Honor "always" preference: auto-accept the mid-roll offer once when it appears.
+  useEffect(() => {
+    if (
+      isFree &&
+      isEligible &&
+      offer &&
+      !showRewardedAd &&
+      !offerDismissed &&
+      rewardedAdPreference === "always" &&
+      autoAcceptedOfferRef.current !== offer.adPlacementId
+    ) {
+      autoAcceptedOfferRef.current = offer.adPlacementId;
+      handleLibraryAcceptOffer();
+    }
+  }, [isFree, isEligible, offer, showRewardedAd, offerDismissed, rewardedAdPreference]);
 
   const handleLibraryRewardedAdComplete = async (impressionId: string) => {
     setShowRewardedAd(false);

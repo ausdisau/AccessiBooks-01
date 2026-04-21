@@ -20,6 +20,7 @@ interface A11yProfile {
   focusHighlight: boolean;
   darkMode: boolean;
   karaokeFollowAlong: boolean;
+  rewardedAdPreference: "always" | "never" | "ask";
 }
 
 interface A11yPreset {
@@ -44,6 +45,7 @@ const DEFAULT_PROFILE: A11yProfile = {
   focusHighlight: true,
   darkMode: false,
   karaokeFollowAlong: false,
+  rewardedAdPreference: "ask",
 };
 
 function profileFromLocalStorage(): A11yProfile {

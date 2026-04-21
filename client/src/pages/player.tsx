@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Book } from "@shared/schema";
 import { AudioPlayer } from "@/components/audio-player";
 import { BookReviews } from "@/components/book-reviews";
@@ -9,6 +9,7 @@ import { AudioAdInterstitial, RewardedAdInterstitial, useAudioAds } from "@/comp
 import { useAudioContext } from "@/contexts/AudioContext";
 import { useRewardedAd } from "@/hooks/use-rewarded-ad";
 import { useSubscription } from "@/hooks/use-subscription";
+import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 import { RewardedAdOffer } from "@/components/RewardedAdOffer";
 import { ActiveRewardBadge } from "@/components/ActiveRewardBadge";
 import { useToast } from "@/hooks/use-toast";
@@ -25,10 +26,14 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
   const { tier } = useSubscription();
   const isFree = tier === "free";
   const { offer, isEligible, activeRewards, completeReward, startSession, isCompleting } = useRewardedAd();
+  const { profile } = usePreferencesKernel();
+  const rewardedAdPreference = profile.rewardedAdPreference ?? "ask";
   const { toast } = useToast();
   const [showRewardedAd, setShowRewardedAd] = useState(false);
   const [rewardedImpressionId, setRewardedImpressionId] = useState<string | null>(null);
   const [offerDismissed, setOfferDismissed] = useState(false);
+  // Guard so an "always" auto-accept fires only once per offer
+  const autoAcceptedOfferRef = useRef<string | null>(null);
 
   useEffect(() => {
     onTrackEndCallback.current = incrementBooksPlayed;
@@ -61,6 +66,25 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
       });
     }
   };
+
+  // Honor "always" preference: auto-accept the offer once when it appears.
+  // Only fires for free-tier users, when an offer is eligible, the interstitial is
+  // not already showing, the offer hasn't been dismissed this session, and we
+  // haven't already auto-accepted this exact placement.
+  useEffect(() => {
+    if (
+      isFree &&
+      isEligible &&
+      offer &&
+      !showRewardedAd &&
+      !offerDismissed &&
+      rewardedAdPreference === "always" &&
+      autoAcceptedOfferRef.current !== offer.adPlacementId
+    ) {
+      autoAcceptedOfferRef.current = offer.adPlacementId;
+      handleAcceptOffer();
+    }
+  }, [isFree, isEligible, offer, showRewardedAd, offerDismissed, rewardedAdPreference]);
 
   const handleRewardedAdComplete = async (impressionId: string) => {
     setShowRewardedAd(false);
@@ -152,13 +176,20 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
         </div>
       </div>
 
-      {isFree && isEligible && offer && !offerDismissed && !showRewardedAd && (
-        <RewardedAdOffer
-          offer={offer}
-          onAccept={handleAcceptOffer}
-          onDismiss={() => setOfferDismissed(true)}
-        />
-      )}
+      {/* Suppress the prompt entirely when preference is "never"; auto-accept ("always")
+          starts the interstitial directly via the effect above, skipping this card. */}
+      {isFree &&
+        isEligible &&
+        offer &&
+        !offerDismissed &&
+        !showRewardedAd &&
+        rewardedAdPreference === "ask" && (
+          <RewardedAdOffer
+            offer={offer}
+            onAccept={handleAcceptOffer}
+            onDismiss={() => setOfferDismissed(true)}
+          />
+        )}
       
       <AudioPlayer book={book} />
       
