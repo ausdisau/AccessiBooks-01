@@ -263,6 +263,41 @@ export async function setupEasyEnglishTables(): Promise<void> {
   }
 }
 
+/**
+ * ensureEntitlementSchema — Task #44
+ * Adds the `free_tier_available`, `ad_supported`, and `transcript_available`
+ * columns to `books`, and creates the `entitlements` table if absent.
+ * Safe to call on every startup (all statements use IF NOT EXISTS / IF EXISTS).
+ */
+export async function ensureEntitlementSchema(): Promise<void> {
+  try {
+    // New columns on books
+    await sql`ALTER TABLE books ADD COLUMN IF NOT EXISTS free_tier_available boolean NOT NULL DEFAULT true`;
+    await sql`ALTER TABLE books ADD COLUMN IF NOT EXISTS ad_supported boolean NOT NULL DEFAULT true`;
+    await sql`ALTER TABLE books ADD COLUMN IF NOT EXISTS transcript_available boolean NOT NULL DEFAULT false`;
+
+    // Entitlements table
+    await sql`
+      CREATE TABLE IF NOT EXISTS entitlements (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        tier varchar NOT NULL,
+        book_id varchar,
+        expires_at timestamp,
+        reason text,
+        created_at timestamp DEFAULT now()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_entitlements_user ON entitlements (user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_entitlements_user_book ON entitlements (user_id, book_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_entitlements_expires ON entitlements (expires_at)`;
+
+    console.log("[Entitlements] Schema ensured (books flags + entitlements table)");
+  } catch (error: any) {
+    console.warn("[Entitlements] Schema setup warning:", error.message);
+  }
+}
+
 export async function setupWordBankTable(): Promise<boolean> {
   try {
     await sql`

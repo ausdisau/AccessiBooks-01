@@ -2,10 +2,11 @@
  * adMediation.ts — Programmatic Audio Ad Mediation Layer
  *
  * Responsibility: Waterfall ad selection for audio playback ads (pre-roll/mid-roll):
- *   1. Try VAST-compatible programmatic providers in priority order
+ *   1. Check shouldServeAds() — paid tiers receive { adRequired: false } with 204.
+ *   2. Try VAST-compatible programmatic providers in priority order
  *      (AdsWizz, Triton Digital, AdPersonam — activated via env vars)
- *   2. Fall back to self-serve audio ads from selfServeAds.ts
- *   3. Fall back to house ads (internal promotional messages)
+ *   3. Fall back to self-serve audio ads from selfServeAds.ts
+ *   4. Fall back to house ads (internal promotional messages)
  *
  * Routes registered:
  *   - GET /api/ads/request   — request an audio ad (preroll or midroll)
@@ -19,6 +20,8 @@
 import { Router, Request, Response } from "express";
 import { resolveVAST, selectBestCreative, selectBestCompanion, type VASTAd, type VASTCreative, type VASTCompanion, type VASTTrackingEvents } from "./vastParser";
 import { selectSelfServeAd, recordImpression, recordImpressionEvent } from "./selfServeAds";
+import { resolveEntitlementOverride, getUserEffectiveTier, shouldServeAds } from "./entitlements";
+import { storage } from "./storage";
 
 export interface AdProvider {
   name: string;
@@ -319,11 +322,29 @@ export function registerAdMediationRoutes(router: Router) {
 
       const adType = (req.query.type as string) === "midroll" ? "midroll" : "preroll";
       const contentGenre = req.query.genre as string | undefined;
+      const bookId = req.query.bookId as string | undefined;
+
+      // ── Entitlement check: paid tiers are ad-free ──────────────────────────
+      const userId: string | undefined =
+        (req as any).user?.claims?.sub || (req as any).user?.id;
+
+      const overrideTier = userId ? await resolveEntitlementOverride(userId, bookId) : null;
+      const dbUser = userId ? await storage.getUser(userId) : null;
+      const effectiveTier = getUserEffectiveTier(dbUser, overrideTier);
+
+      // Look up book for adSupported flag if bookId provided
+      const book = bookId ? await storage.getBook(bookId) : undefined;
+
+      if (!shouldServeAds((req as any).user, effectiveTier, book)) {
+        // Premium / plus / institutional — skip ad pod entirely
+        return res.status(204).json({ adRequired: false });
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       analytics.totalRequests++;
       analytics.lastRequestTime = Date.now();
 
-      const ad = await requestAd(adType, contentGenre);
+      const ad = await requestAd(adType, contentGenre, userId);
 
       if (ad.isProgrammatic) {
         analytics.providerFills[ad.provider] = (analytics.providerFills[ad.provider] || 0) + 1;

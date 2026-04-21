@@ -8,7 +8,7 @@ function getTierFeatures(tier: SubscriptionTier) {
 }
 
 function isPaidTier(tier: SubscriptionTier): boolean {
-  return tier === "plus" || tier === "premium";
+  return tier === "plus" || tier === "premium" || tier === "institutional";
 }
 
 const SKIP_LIMIT_FREE = TIER_FEATURES.free.skipLimit;

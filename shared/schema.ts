@@ -25,6 +25,9 @@ export const books = pgTable("books", {
   language: text("language").default("English"),
   contentType: text("content_type").notNull().default("audiobook"), // audiobook, ebook, or magazine
   isPremium: boolean("is_premium").notNull().default(false), // Whether content requires premium subscription
+  freeTierAvailable: boolean("free_tier_available").notNull().default(true), // Whether free-tier users can access this title
+  adSupported: boolean("ad_supported").notNull().default(true), // Whether ads may be served for this title
+  transcriptAvailable: boolean("transcript_available").notNull().default(false), // Whether an interactive transcript is available (display hint only — NOT an access gate)
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
   readingLevel: integer("reading_level"), // 1=Very Easy, 2=Easy, 3=Moderate, 4=Advanced (FK grade estimate)
@@ -93,8 +96,8 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Subscription tier enum values
-export const SUBSCRIPTION_TIERS = ["free", "plus", "premium"] as const;
+// Subscription tier enum values (institutional added for Task #44 entitlement enforcement)
+export const SUBSCRIPTION_TIERS = ["free", "plus", "premium", "institutional"] as const;
 export type SubscriptionTier = typeof SUBSCRIPTION_TIERS[number];
 
 // Tier pricing constants (in cents)
@@ -119,9 +122,10 @@ export const TIER_DISCOUNTS = {
 
 // Tier feature limits
 export const TIER_FEATURES = {
-  free:    { skipLimit: 6, audioQuality: 128, maxDevices: 2, adsEnabled: true,  offlineEnabled: false, ttsDaily: 0,  bookmarkLimit: 10 },
-  plus:    { skipLimit: Infinity, audioQuality: 192, maxDevices: 3, adsEnabled: false, offlineEnabled: false, ttsDaily: 10, bookmarkLimit: Infinity },
-  premium: { skipLimit: Infinity, audioQuality: 320, maxDevices: 5, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
+  free:          { skipLimit: 6, audioQuality: 128, maxDevices: 2, adsEnabled: true,  offlineEnabled: false, ttsDaily: 0,          bookmarkLimit: 10 },
+  plus:          { skipLimit: Infinity, audioQuality: 192, maxDevices: 3, adsEnabled: false, offlineEnabled: false, ttsDaily: 10,   bookmarkLimit: Infinity },
+  premium:       { skipLimit: Infinity, audioQuality: 320, maxDevices: 5, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
+  institutional: { skipLimit: Infinity, audioQuality: 320, maxDevices: 10, adsEnabled: false, offlineEnabled: true, ttsDaily: Infinity, bookmarkLimit: Infinity },
 } as const;
 
 // User table for multi-provider authentication (matches existing database)
@@ -1884,4 +1888,28 @@ export const wordBankEntries = pgTable("word_bank_entries", {
 export const insertWordBankEntrySchema = createInsertSchema(wordBankEntries).omit({ id: true, savedAt: true });
 export type InsertWordBankEntry = z.infer<typeof insertWordBankEntrySchema>;
 export type DbWordBankEntry = typeof wordBankEntries.$inferSelect;
+
+// === ENTITLEMENTS (Task #44: Server-side entitlement enforcement) ===
+// Per-user access overrides that take precedence over subscriptionTier.
+// Use cases: promotional upgrades, institutional licenses, manual grants.
+export const entitlements = pgTable("entitlements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // The effective tier granted by this override (e.g. "premium", "institutional")
+  tier: varchar("tier").notNull(),
+  // Optional: restrict override to a specific title (null = applies to all titles)
+  bookId: varchar("book_id"),
+  // Optional expiry — null means the override never expires
+  expiresAt: timestamp("expires_at"),
+  reason: text("reason"), // Human-readable reason (e.g. "promotional_trial", "institutional_seat")
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_entitlements_user").on(table.userId),
+  index("idx_entitlements_user_book").on(table.userId, table.bookId),
+  index("idx_entitlements_expires").on(table.expiresAt),
+]);
+
+export const insertEntitlementSchema = createInsertSchema(entitlements).omit({ id: true, createdAt: true });
+export type InsertEntitlement = z.infer<typeof insertEntitlementSchema>;
+export type Entitlement = typeof entitlements.$inferSelect;
 

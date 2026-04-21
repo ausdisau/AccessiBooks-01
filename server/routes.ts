@@ -47,7 +47,14 @@ import {
 } from "./coverGenerator";
 import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature, tierFromPriceId, extractSubscriptionPriceId } from "./stripe";
 import { TIER_PRICING, TITLE_PRICING, TIER_DISCOUNTS, TIER_FEATURES, type SubscriptionTier, purchases } from "@shared/schema";
-import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
+import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, titleAccessMiddleware, generateSignedStreamUrl } from "./drm";
+import {
+  resolveEntitlementOverride,
+  getUserEffectiveTier,
+  canAccessTitle,
+  shouldServeAds,
+  canDownloadOffline,
+} from "./entitlements";
 import { apiCache, CACHE_TTL } from "./apiCache";
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
 import { createCoinbaseCharge, getCoinbaseCharge, handleCoinbaseWebhook, getPaymentMethods, isCoinbaseEnabled } from "./coinbase";
@@ -168,6 +175,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Platform improvement routes (social, clubs, family, tipping, moderation, health, churn)
   registerPlatformRoutes(app);
+
+  // ── INTENTIONAL OPEN ACCESS — NOT gated by titleAccessMiddleware ──────────────
+  // The routes registered below are deliberately excluded from all entitlement guards.
+  //
+  // /api/accessibility/* (registerAccessibilityKernelRoutes):
+  //   Accessibility kernel routes serve text reflow, font scaling, colour overrides,
+  //   and other assistive settings.  Restricting these by subscription tier would
+  //   create a WCAG 2.1 / ADA compliance risk and is explicitly prohibited by policy.
+  //
+  // /api/transcripts/* (registerTranscriptRoutes):
+  //   Interactive transcripts are a *display hint* feature, not a catalogue gate.
+  //   The `transcript_available` column on books indicates whether a transcript
+  //   exists — it does NOT restrict who may read it.  All subscription tiers,
+  //   including anonymous users, may fetch transcript data.
+  //
+  // /api/captions/* and any accessibility-adjacent endpoints follow the same rule.
+  //
+  // If you are adding new routes, do NOT add titleAccessMiddleware or any
+  // entitlement check to routes under /api/accessibility or /api/transcripts.
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Accessibility preferences kernel routes
   registerAccessibilityKernelRoutes(app);
@@ -657,7 +684,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/books/:id/stream-url - Get a signed streaming URL for a book
-  // Requires authentication for security
+  // Requires authentication AND canAccessTitle() check — no URL is issued to ineligible users.
   app.get("/api/books/:id/stream-url", async (req: any, res) => {
     try {
       if (!req.isAuthenticated || !req.isAuthenticated()) {
@@ -676,6 +703,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const userId = req.user?.claims?.sub || req.user?.id;
 
+      // Entitlement check — gate before issuing the signed DRM URL
+      const overrideTier = userId ? await resolveEntitlementOverride(userId, id) : null;
+      const dbUser = userId ? await storage.getUser(userId) : null;
+      const effectiveTier = getUserEffectiveTier(dbUser, overrideTier);
+      const access = canAccessTitle(effectiveTier, book);
+
+      if (!access.allowed) {
+        return res.status(403).json({
+          error: "ACCESS_DENIED",
+          reason: access.reason,
+          upgradeRequired: access.upgradeRequired,
+        });
+      }
+
       const streamCacheKey = `stream_url:${id}:${userId}`;
       const cachedUrl = apiCache.get<string>(streamCacheKey);
       if (cachedUrl) {
@@ -692,6 +733,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating stream URL:", error);
       res.status(500).json({ message: "Failed to generate stream URL" });
+    }
+  });
+
+  // GET /api/offline/download/:id - Offline download gate (Task #44)
+  // Only premium and institutional users may download content for offline listening.
+  // Free and plus users receive a structured 403 with upgradeRequired: true.
+  app.get("/api/offline/download/:id", async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId: string | undefined = req.user?.claims?.sub || req.user?.id;
+
+      // Resolve effective tier (anonymous → free)
+      const overrideTier = userId ? await resolveEntitlementOverride(userId, id) : null;
+      const dbUser = userId ? await storage.getUser(userId) : null;
+      const effectiveTier = getUserEffectiveTier(dbUser, overrideTier);
+
+      if (!canDownloadOffline(effectiveTier)) {
+        return res.status(403).json({
+          error: "ACCESS_DENIED",
+          reason: "offline_download_requires_premium",
+          upgradeRequired: true,
+        });
+      }
+
+      const book = await storage.getBook(id);
+      if (!book) {
+        return res.status(404).json({ message: "Book not found" });
+      }
+
+      // Confirm the user can also access this title (handles premium-only catalogue)
+      const access = canAccessTitle(effectiveTier, book);
+      if (!access.allowed) {
+        return res.status(403).json({
+          error: "ACCESS_DENIED",
+          reason: access.reason,
+          upgradeRequired: access.upgradeRequired,
+        });
+      }
+
+      // The audio URL is the downloadable asset; return it for the client to fetch
+      if (!book.audioUrl) {
+        return res.status(400).json({ message: "No downloadable audio for this title" });
+      }
+
+      res.json({
+        bookId: id,
+        downloadUrl: book.audioUrl,
+        title: book.title,
+        author: book.author,
+        expiresIn: 24 * 60 * 60, // 24 hours (client should cache locally)
+      });
+    } catch (error) {
+      console.error("Error processing offline download:", error);
+      res.status(500).json({ message: "Failed to process download request" });
     }
   });
 
@@ -995,7 +1090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // HEAD /api/stream/:id - Probe audio file size and type for byte-range readiness
-  app.head("/api/stream/:id", rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, async (req, res) => {
+  app.head("/api/stream/:id", rateLimitMiddleware, drmGuardMiddleware, titleAccessMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       const book = await storage.getBook(id);
@@ -1023,8 +1118,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/stream/:id - Byte-range streaming proxy (replaces 302 redirect)
-  // Protected by rate limiting, DRM guard, and premium content check
-  app.get("/api/stream/:id", rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, async (req, res) => {
+  // Protected by rate limiting, DRM guard, and title access check (entitlement-aware)
+  app.get("/api/stream/:id", rateLimitMiddleware, drmGuardMiddleware, titleAccessMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       const book = await storage.getBook(id);
