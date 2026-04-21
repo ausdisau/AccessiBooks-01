@@ -169,7 +169,11 @@ export async function premiumContentMiddleware(req: Request, res: Response, next
     return res.status(500).json({ message: "Failed to verify content access" });
   }
 
-  if (!book || !book.isPremium) {
+  if (!book) {
+    return res.status(404).json({ message: "Book not found" });
+  }
+
+  if (!book.isPremium) {
     return next();
   }
 
