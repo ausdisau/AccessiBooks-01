@@ -1,0 +1,55 @@
+Build an accessibility-first eBook flipbook reader for AccessiBooks using React + TypeScript.
+
+The component should feel like a modern interactive reading experience designed for people with disabilities, especially readers with dyslexia, low vision, physical disability, cognitive fatigue, sensory sensitivity, and screen-reader users.
+
+Core goals:
+- Create a page-based flipbook reading interface
+- Make all reading controls keyboard accessible and screen-reader friendly
+- Include dyslexia-friendly typography and reading customisation
+- Add built-in browser text-to-speech
+- Support written annotations and voice annotations
+- Persist reading preferences and notes
+- Design the interface to be calm, uncluttered, and highly legible
+- Make the reader modular so it can later connect to EPUB, audiobook transcript, and backend APIs
+
+The UI should include:
+- Main flipbook page display
+- Previous/next page controls
+- Search inside the book
+- Accessibility settings panel
+- Annotation sidebar
+- Keyboard shortcuts
+- ARIA live status messages
+- Reduced motion support
+
+Accessibility requirements:
+- WCAG-minded structure and semantics
+- Visible focus states
+- Full keyboard navigation
+- Proper aria-label, aria-live, aria-expanded, aria-pressed, and landmark usage
+- High contrast option
+- Dyslexia-friendly font options
+- Adjustable font size, line height, letter spacing, and word spacing
+- Reduced motion mode
+- Calm visual hierarchy with large touch targets
+
+Technical requirements:
+- Use React with TypeScript
+- Use modular components
+- Use local state first, but structure for future backend sync
+- Use browser SpeechSynthesis API for TTS
+- Create a placeholder architecture for MediaRecorder voice notes
+- Use localStorage for persistence
+- Keep the code clean, strongly typed, and production-minded
+
+Build the solution in small reusable components:
+- FlipbookReader
+- ReaderToolbar
+- ReaderSettingsPanel
+- PageNavigator
+- ReadingPage
+- AnnotationPanel
+- KeyboardShortcutHelp
+- LiveStatusRegion
+
+Use a polished, modern UI with rounded corners, spacious padding, and a distraction-light reading environment.
