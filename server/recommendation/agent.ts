@@ -23,35 +23,15 @@ function getLLM(): ChatOpenAI {
   return llm;
 }
 
-const SYSTEM_PROMPT = `You are AccessiDJ, the friendly host of an inclusive audiobook & ebook radio show. Pick the best titles for the listener from the provided candidates and group them into 1–3 themed sets. Use a warm, conversational, accessibility-first voice (avoid jargon). Each set has a snappy intro (max 25 words). Each pick has a one-sentence rationale that personalises the choice.`;
+const SYSTEM_PROMPT = `You are AccessiDJ, the friendly host of an inclusive audiobook & ebook radio show. Pick the best titles for the listener from the provided candidates and group them into 1-3 themed sets. Use a warm, conversational, accessibility-first voice (avoid jargon). Each set has a snappy intro (max 25 words). Each pick has a one-sentence rationale that personalises the choice. Every bookId you return MUST be one of the supplied candidate ids.`;
 
 const HUMAN_PROMPT = `Listener context:
 {context}
 
-Candidate library (id — title — author — genre):
+Candidate library (id - title - author - genre):
 {candidates}
 
-Return JSON only matching this schema:
-{{
-  "sets": [
-    {{
-      "id": "kebab-case-id",
-      "type": "agent",
-      "title": "string",
-      "intro": "string",
-      "items": [
-        {{ "bookId": "must match a candidate id", "rationale": "string", "score": 0-1 }}
-      ]
-    }}
-  ],
-  "source": "agent"
-}}
-
-Constraints:
-- Use 1 to 3 sets.
-- Each set has 3 to 6 items.
-- Every bookId MUST exist in the candidates list above.
-- Do not invent titles; use only the supplied books.`;
+Use 1-3 sets, each with 3-6 items.`;
 
 export interface AgentContext {
   userSummary: string;
@@ -113,7 +93,7 @@ export async function runDjAgent(
 
   const candidateList = candidates
     .slice(0, 30)
-    .map((c) => `${c.book.id} — ${c.book.title} — ${c.book.author} — ${c.book.genre ?? "unknown"}`)
+    .map((c) => `${c.book.id} - ${c.book.title} - ${c.book.author} - ${c.book.genre ?? "unknown"}`)
     .join("\n");
 
   const contextStr = [
@@ -132,12 +112,13 @@ export async function runDjAgent(
       ["system", SYSTEM_PROMPT],
       ["human", HUMAN_PROMPT],
     ]);
-    const llm = getLLM() as unknown as { bind: (opts: Record<string, unknown>) => unknown };
-    const llmJson = llm.bind({ response_format: { type: "json_object" } });
-    const chain = prompt.pipe(llmJson as ChatOpenAI);
-    const resp: any = await chain.invoke({ context: contextStr, candidates: candidateList });
-    const text = typeof resp?.content === "string" ? resp.content : JSON.stringify(resp?.content ?? resp);
-    const parsed = agentRecommendationResponseSchema.parse(JSON.parse(text));
+    const structured = getLLM().withStructuredOutput(agentRecommendationResponseSchema, {
+      name: "AgentRecommendationResponse",
+    });
+    const chain = prompt.pipe(structured);
+    const raw = await chain.invoke({ context: contextStr, candidates: candidateList });
+    // Re-parse through zod to apply defaults (e.g. set.type) and get a fully-typed response.
+    const parsed: AgentRecommendationResponse = agentRecommendationResponseSchema.parse(raw);
 
     // Filter out hallucinated bookIds.
     const validIds = new Set(candidates.map((c) => c.book.id));
