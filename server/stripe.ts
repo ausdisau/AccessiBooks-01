@@ -62,6 +62,23 @@ export const DONATION_CONFIG: DonationConfig = {
  *   STRIPE_PREMIUM_MONTHLY_PRICE_ID
  *   STRIPE_PREMIUM_YEARLY_PRICE_ID
  */
+// Startup warning: surface missing Stripe price-ID configuration immediately so
+// it isn't only discovered on the first webhook delivery.
+const STRIPE_PRICE_ID_ENV_VARS = [
+  "STRIPE_PLUS_MONTHLY_PRICE_ID",
+  "STRIPE_PLUS_YEARLY_PRICE_ID",
+  "STRIPE_PREMIUM_MONTHLY_PRICE_ID",
+  "STRIPE_PREMIUM_YEARLY_PRICE_ID",
+] as const;
+const _missingPriceIdEnv = STRIPE_PRICE_ID_ENV_VARS.filter((k) => !process.env[k]);
+if (_missingPriceIdEnv.length > 0) {
+  console.warn(
+    `[Stripe] WARNING: Missing price-ID env vars: ${_missingPriceIdEnv.join(", ")}. ` +
+    `Subscriptions on these unmapped price IDs will resolve to the "free" tier ` +
+    `(no entitlement granted) until configured.`
+  );
+}
+
 export function tierFromPriceId(priceId: string | null | undefined): "plus" | "premium" | null {
   if (!priceId) return null;
   const plusIds = [process.env.STRIPE_PLUS_MONTHLY_PRICE_ID, process.env.STRIPE_PLUS_YEARLY_PRICE_ID].filter(Boolean);
