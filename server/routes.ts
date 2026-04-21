@@ -6508,6 +6508,15 @@ ${navEntries}
         });
       }
 
+      // Bust this user's recommendation cache so the next call reflects the
+      // new completion immediately instead of waiting for TTL expiry.
+      try {
+        const { invalidateUserCandidates } = await import("./recommendation/candidateService");
+        invalidateUserCandidates(userId);
+      } catch (e) {
+        console.warn("[Completions] cache invalidation skipped:", (e as Error).message);
+      }
+
       res.json({ success: true });
     } catch (error) {
       console.error("[Completions] Failed to record:", error);
