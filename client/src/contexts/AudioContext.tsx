@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 import { useQuery } from "@tanstack/react-query";
 import { usePlaybackAdHooks } from "@/hooks/use-playback-ad-hooks";
+import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 
 interface AudioAdState {
   isAdPlaying: boolean;
@@ -422,11 +423,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // This eliminates the React async-state-read race that caused currentAd to be null.
   // adFlagsEnabled is read from the audioAdService runtime config (Task #47 will provide
   // a server-side source; until then, the service config acts as the kill-switch layer).
+  // Honor user's rewarded-ad preference (always | never | ask) at the audio
+  // ad decision surface. "never" suppresses pre/mid-roll entirely.
+  const { profile: a11yProfile } = usePreferencesKernel();
   const adHooks = usePlaybackAdHooks({
     tier: subscriptionTier,
     currentTime,
     transcriptSegments,
     adFlagsEnabled: audioAdService.featureFlags,
+    rewardedAdPreference: a11yProfile.rewardedAdPreference ?? "ask",
   });
 
   // Fetch chapters when book changes

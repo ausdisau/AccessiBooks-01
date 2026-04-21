@@ -25,6 +25,15 @@ interface UsePlaybackAdHooksOptions {
   currentTime: number;
   transcriptSegments: TranscriptSegment[] | null;
   adFlagsEnabled?: { preRoll: boolean; midRoll: boolean };
+  /**
+   * User's rewarded-ad preference. The pre/mid-roll ads in the playback
+   * pipeline grant the `ad_light_listening` reward, so they ARE the rewarded
+   * surface for the audio player. Honor the preference here so users who set
+   * "never" are not interrupted at all. "always" and "ask" both serve ads
+   * (there is no separate prompt at this surface — the ad just plays).
+   * Defaults to "ask".
+   */
+  rewardedAdPreference?: "ask" | "always" | "never";
 }
 
 const AD_REQUEST_TIMEOUT_MS = 3000;
@@ -83,6 +92,7 @@ export function usePlaybackAdHooks({
   currentTime,
   transcriptSegments,
   adFlagsEnabled = { preRoll: true, midRoll: true },
+  rewardedAdPreference = "ask",
 }: UsePlaybackAdHooksOptions) {
   const [adDecision, setAdDecision] = useState<AdDecisionState>({
     pending: false,
@@ -103,22 +113,26 @@ export function usePlaybackAdHooks({
     return () => { cancelled = true; };
   }, []);
 
-  // HOOK: pre-roll eligibility — ad-aware playback hook consulted here
+  // HOOK: pre-roll eligibility — ad-aware playback hook consulted here.
+  // Short-circuit on rewardedAdPreference === "never" so the user is not
+  // interrupted by any rewarded audio ad.
   const isPreRollEligible = useCallback((): boolean => {
+    if (rewardedAdPreference === "never") return false;
     if (tier !== "free") return false;
     if (!adFlagsEnabled.preRoll) return false;
     if (rewardActiveRef.current) return false;
     return audioAdService.shouldShowPreRoll(false);
-  }, [tier, adFlagsEnabled.preRoll]);
+  }, [tier, adFlagsEnabled.preRoll, rewardedAdPreference]);
 
   const isMidRollEligible = useCallback(
     (_chapterIndex?: number): boolean => {
+      if (rewardedAdPreference === "never") return false;
       if (tier !== "free") return false;
       if (!adFlagsEnabled.midRoll) return false;
       if (rewardActiveRef.current) return false;
       return audioAdService.shouldShowMidRoll(false);
     },
-    [tier, adFlagsEnabled.midRoll],
+    [tier, adFlagsEnabled.midRoll, rewardedAdPreference],
   );
 
   /**
