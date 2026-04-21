@@ -13,7 +13,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BarChart3, RefreshCw, Users, DollarSign, Headphones, TrendingUp, Accessibility, Info } from "lucide-react";
+import { BarChart3, RefreshCw, Users, DollarSign, Headphones, TrendingUp, Accessibility, Info, Calendar as CalendarIcon } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import type { DateRange as DayPickerRange } from "react-day-picker";
 import {
   useSubscriptionAnalytics,
   useAdAnalytics,
@@ -23,9 +27,9 @@ import {
 } from "@/hooks/use-admin-analytics";
 import { queryClient } from "@/lib/queryClient";
 
-type DateRange = "7d" | "30d" | "90d";
+type DateRange = "7d" | "30d" | "90d" | "custom";
 
-function getDateRange(range: DateRange): { from: string; to: string } {
+function getDateRange(range: Exclude<DateRange, "custom">): { from: string; to: string } {
   const to = new Date();
   const from = new Date();
   if (range === "7d") from.setDate(from.getDate() - 7);
@@ -409,11 +413,32 @@ function AccessibilityTab() {
 
 export default function AdminAnalyticsPage() {
   const [range, setRange] = useState<DateRange>("30d");
-  const { from, to } = getDateRange(range);
+  const [customRange, setCustomRange] = useState<DayPickerRange | undefined>();
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  let from: string;
+  let to: string;
+  if (range === "custom" && customRange?.from && customRange?.to) {
+    const fromDate = new Date(customRange.from);
+    fromDate.setHours(0, 0, 0, 0);
+    const toDate = new Date(customRange.to);
+    toDate.setHours(23, 59, 59, 999);
+    from = fromDate.toISOString();
+    to = toDate.toISOString();
+  } else {
+    const r = getDateRange(range === "custom" ? "30d" : range);
+    from = r.from;
+    to = r.to;
+  }
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
   };
+
+  const customLabel =
+    customRange?.from && customRange?.to
+      ? `${format(customRange.from, "MMM d, yyyy")} – ${format(customRange.to, "MMM d, yyyy")}`
+      : "Custom range";
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -428,12 +453,13 @@ export default function AdminAnalyticsPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-md border border-border overflow-hidden">
-            {(["7d", "30d", "90d"] as DateRange[]).map((r) => (
+            {(["7d", "30d", "90d"] as const).map((r) => (
               <button
                 key={r}
                 onClick={() => setRange(r)}
+                data-testid={`range-chip-${r}`}
                 className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                   range === r
                     ? "bg-primary text-primary-foreground"
@@ -444,6 +470,60 @@ export default function AdminAnalyticsPage() {
               </button>
             ))}
           </div>
+
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant={range === "custom" ? "default" : "outline"}
+                size="sm"
+                className="gap-2"
+                data-testid="range-chip-custom"
+                aria-label="Pick a custom date range"
+              >
+                <CalendarIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {range === "custom" ? customLabel : "Custom range"}
+                </span>
+                <span className="sm:hidden">Custom</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="range"
+                selected={customRange}
+                onSelect={(value) => {
+                  setCustomRange(value);
+                  if (value?.from && value?.to) {
+                    setRange("custom");
+                    setPickerOpen(false);
+                  }
+                }}
+                numberOfMonths={2}
+                disabled={(date) => date > new Date()}
+                initialFocus
+                data-testid="range-calendar"
+              />
+              {customRange?.from && customRange?.to && (
+                <div className="flex items-center justify-between gap-2 border-t border-border p-2">
+                  <span className="px-2 text-xs text-muted-foreground">
+                    {customLabel}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setCustomRange(undefined);
+                      setRange("30d");
+                      setPickerOpen(false);
+                    }}
+                    data-testid="range-clear"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
 
           <Button
             variant="outline"
