@@ -1,5 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { tool } from "@langchain/core/tools";
+import { createAgent, toolStrategy } from "langchain";
+import { z } from "zod";
 import {
   agentRecommendationResponseSchema,
   type AgentRecommendationResponse,
@@ -23,20 +25,27 @@ function getLLM(): ChatOpenAI {
   return llm;
 }
 
-const SYSTEM_PROMPT = `You are AccessiDJ, the friendly host of an inclusive audiobook & ebook radio show. Pick the best titles for the listener from the provided candidates and group them into 1-3 themed sets. Use a warm, conversational, accessibility-first voice (avoid jargon). Each set has a snappy intro (max 25 words). Each pick has a one-sentence rationale that personalises the choice. Every bookId you return MUST be one of the supplied candidate ids.`;
+const SYSTEM_PROMPT = `You are AccessiDJ, the friendly host of an inclusive audiobook & ebook radio show.
 
-const HUMAN_PROMPT = `Listener context:
-{context}
+You have three tools available:
+- get-candidates: returns the candidate book pool with id, title, author, genre, score
+- get-recent-history: returns the listener's recent listening history
+- get-book-metadata: looks up extra metadata for a specific bookId
 
-Candidate library (id - title - author - genre):
-{candidates}
+Workflow:
+1. Call get-candidates first.
+2. Call get-recent-history if you want to personalise based on past listens.
+3. Optionally call get-book-metadata for any title you want richer details on.
+4. Then return your final response in the structured format. Use 1-3 themed sets, each with 3-6 items.
+   Each set has a snappy intro (max 25 words). Each pick has a one-sentence rationale that personalises the choice.
+   Every bookId you return MUST be one of the candidate ids.
 
-Use 1-3 sets, each with 3-6 items.`;
+Use a warm, conversational, accessibility-first voice (avoid jargon).`;
 
 export interface AgentContext {
   userSummary: string;
   preferredGenres?: string[];
-  recentBooks?: { title: string; author: string }[];
+  recentBooks?: { title: string; author: string; bookId?: string; lastPlayedAt?: string }[];
   hour: number;
 }
 
@@ -67,6 +76,85 @@ function fallbackResponse(candidates: Candidate[], hour: number): AgentRecommend
   };
 }
 
+function buildTools(ctx: AgentContext, candidates: Candidate[], bookMap: Map<string, Book>) {
+  const candidateSummary = candidates.slice(0, 30).map((c) => ({
+    bookId: c.book.id,
+    title: c.book.title,
+    author: c.book.author,
+    genre: c.book.genre ?? "unknown",
+    score: Number(c.score.toFixed(4)),
+    reason: c.reason,
+  }));
+
+  const getCandidatesTool = tool(
+    async ({ limit }: { limit?: number }) => {
+      const n = Math.max(1, Math.min(30, limit ?? 30));
+      return JSON.stringify(candidateSummary.slice(0, n));
+    },
+    {
+      name: "get-candidates",
+      description: "Return the candidate book pool (id, title, author, genre, score, reason).",
+      schema: z.object({ limit: z.number().int().min(1).max(30).optional() }),
+    },
+  );
+
+  const getRecentHistoryTool = tool(
+    async () => {
+      return JSON.stringify({
+        userSummary: ctx.userSummary,
+        preferredGenres: ctx.preferredGenres ?? [],
+        recentBooks: ctx.recentBooks ?? [],
+        hour: ctx.hour,
+      });
+    },
+    {
+      name: "get-recent-history",
+      description: "Return the listener's recent listening history and stated preferences.",
+      schema: z.object({}),
+    },
+  );
+
+  const getBookMetadataTool = tool(
+    async ({ bookId }: { bookId: string }) => {
+      const book = bookMap.get(bookId);
+      if (!book) return JSON.stringify({ error: "not-found", bookId });
+      return JSON.stringify({
+        bookId: book.id,
+        title: book.title,
+        author: book.author,
+        genre: book.genre ?? null,
+        publishedYear: book.publishedYear ?? null,
+        description: book.description ?? null,
+      });
+    },
+    {
+      name: "get-book-metadata",
+      description: "Look up extra metadata (description, year, genre) for a specific bookId.",
+      schema: z.object({ bookId: z.string().min(1) }),
+    },
+  );
+
+  return [getCandidatesTool, getRecentHistoryTool, getBookMetadataTool];
+}
+
+const AGENT_TIMEOUT_MS = Number(process.env.REC_AGENT_TIMEOUT_MS || 15_000);
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 export async function runDjAgent(
   ctx: AgentContext,
   candidates: Candidate[],
@@ -91,37 +179,40 @@ export async function runDjAgent(
     return fallbackResponse(candidates, ctx.hour);
   }
 
-  const candidateList = candidates
-    .slice(0, 30)
-    .map((c) => `${c.book.id} - ${c.book.title} - ${c.book.author} - ${c.book.genre ?? "unknown"}`)
-    .join("\n");
-
-  const contextStr = [
-    ctx.userSummary,
-    ctx.preferredGenres?.length ? `Preferred genres: ${ctx.preferredGenres.join(", ")}` : null,
-    ctx.recentBooks?.length
-      ? `Recently listened: ${ctx.recentBooks.map((b) => `${b.title} (${b.author})`).join("; ")}`
-      : null,
-    `Local hour: ${ctx.hour}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const bookMap = new Map<string, Book>(candidates.map((c) => [c.book.id, c.book]));
+  const tools = buildTools(ctx, candidates, bookMap);
+  const validIds = new Set(candidates.map((c) => c.book.id));
 
   try {
-    const prompt = ChatPromptTemplate.fromMessages([
-      ["system", SYSTEM_PROMPT],
-      ["human", HUMAN_PROMPT],
-    ]);
-    const structured = getLLM().withStructuredOutput(agentRecommendationResponseSchema, {
-      name: "AgentRecommendationResponse",
-    });
-    const chain = prompt.pipe(structured);
-    const raw = await chain.invoke({ context: contextStr, candidates: candidateList });
-    // Re-parse through zod to apply defaults (e.g. set.type) and get a fully-typed response.
-    const parsed: AgentRecommendationResponse = agentRecommendationResponseSchema.parse(raw);
+    // createAgent's generics get tangled when tools + responseFormat are
+    // combined; the runtime values are correctly typed and we re-validate the
+    // structured output below via Zod.
+    const agentParams = {
+      model: getLLM(),
+      tools,
+      prompt: SYSTEM_PROMPT,
+      responseFormat: toolStrategy(agentRecommendationResponseSchema),
+    };
+    const agent = createAgent(agentParams as unknown as Parameters<typeof createAgent>[0]);
+
+    const userMessage =
+      `Curate recommendations for this listener. Local hour: ${ctx.hour}. ` +
+      `Use the tools to inspect candidates and history before deciding. ` +
+      `Return 1-3 themed sets with rationales — every bookId MUST come from get-candidates.`;
+
+    const result = await withTimeout(
+      agent.invoke({ messages: [{ role: "user", content: userMessage }] }),
+      AGENT_TIMEOUT_MS,
+      "DJ agent",
+    );
+
+    // createAgent surfaces the parsed structured output as `structuredResponse`.
+    const raw = (result as { structuredResponse?: unknown }).structuredResponse;
+    if (!raw) throw new Error("agent did not return a structuredResponse");
+
+    const parsed = agentRecommendationResponseSchema.parse(raw);
 
     // Filter out hallucinated bookIds.
-    const validIds = new Set(candidates.map((c) => c.book.id));
     const cleanedSets = parsed.sets
       .map((s) => ({
         ...s,
@@ -132,7 +223,7 @@ export async function runDjAgent(
     if (cleanedSets.length === 0) return fallbackResponse(candidates, ctx.hour);
     return { ...parsed, sets: cleanedSets, source: "agent", generatedAt: new Date().toISOString() };
   } catch (err) {
-    console.warn("[recommendation/agent] LLM failed, falling back:", (err as Error).message);
+    console.warn("[recommendation/agent] Agent failed, falling back:", (err as Error).message);
     return fallbackResponse(candidates, ctx.hour);
   }
 }
