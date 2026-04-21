@@ -31,6 +31,10 @@ export const books = pgTable("books", {
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
   readingLevel: integer("reading_level"), // 1=Very Easy, 2=Easy, 3=Moderate, 4=Advanced (FK grade estimate)
+  // Freemium access flags
+  freeTierAvailable: boolean("free_tier_available"),
+  adSupported: boolean("ad_supported"),
+  transcriptAvailable: boolean("transcript_available"),
 }, (table) => [
   index("idx_books_title").on(table.title),
   index("idx_books_author").on(table.author),
@@ -96,14 +100,16 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Subscription tier enum values (institutional added for Task #44 entitlement enforcement)
-export const SUBSCRIPTION_TIERS = ["free", "plus", "premium", "institutional"] as const;
+// Subscription tier enum values (institutional for Task #44 entitlement enforcement; admin for Task #43 freemium)
+export const SUBSCRIPTION_TIERS = ["free", "plus", "premium", "institutional", "admin"] as const;
 export type SubscriptionTier = typeof SUBSCRIPTION_TIERS[number];
 
 // Tier pricing constants (in cents)
 export const TIER_PRICING = {
   plus: { monthly: 499, yearly: 4999, monthlyDisplay: "$4.99", yearlyDisplay: "$49.99", yearlyMonthly: "$4.17" },
   premium: { monthly: 999, yearly: 9999, monthlyDisplay: "$9.99", yearlyDisplay: "$99.99", yearlyMonthly: "$8.33" },
+  institutional: { monthly: 4900, yearly: 49000, monthlyDisplay: "$49.00", yearlyDisplay: "$490.00", yearlyMonthly: "$40.83" },
+  admin: { monthly: 0, yearly: 0, monthlyDisplay: "$0.00", yearlyDisplay: "$0.00", yearlyMonthly: "$0.00" },
 } as const;
 
 // Per-title micro-payment pricing (in cents)
@@ -122,10 +128,11 @@ export const TIER_DISCOUNTS = {
 
 // Tier feature limits
 export const TIER_FEATURES = {
-  free:          { skipLimit: 6, audioQuality: 128, maxDevices: 2, adsEnabled: true,  offlineEnabled: false, ttsDaily: 0,          bookmarkLimit: 10 },
-  plus:          { skipLimit: Infinity, audioQuality: 192, maxDevices: 3, adsEnabled: false, offlineEnabled: false, ttsDaily: 10,   bookmarkLimit: Infinity },
-  premium:       { skipLimit: Infinity, audioQuality: 320, maxDevices: 5, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
-  institutional: { skipLimit: Infinity, audioQuality: 320, maxDevices: 10, adsEnabled: false, offlineEnabled: true, ttsDaily: Infinity, bookmarkLimit: Infinity },
+  free:          { skipLimit: 6,        audioQuality: 128, maxDevices: 2,  adsEnabled: true,  offlineEnabled: false, ttsDaily: 0,        bookmarkLimit: 10 },
+  plus:          { skipLimit: Infinity, audioQuality: 192, maxDevices: 3,  adsEnabled: false, offlineEnabled: false, ttsDaily: 10,       bookmarkLimit: Infinity },
+  premium:       { skipLimit: Infinity, audioQuality: 320, maxDevices: 5,  adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
+  institutional: { skipLimit: Infinity, audioQuality: 320, maxDevices: 10, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
+  admin:         { skipLimit: Infinity, audioQuality: 320, maxDevices: 10, adsEnabled: false, offlineEnabled: true,  ttsDaily: Infinity, bookmarkLimit: Infinity },
 } as const;
 
 // User table for multi-provider authentication (matches existing database)
@@ -155,6 +162,8 @@ export const users = pgTable("users", {
   role: varchar("role"),
   companyName: varchar("company_name"),
   website: varchar("website"),
+  // Freemium lifecycle: active | trialing | past_due | canceled | null
+  subscriptionStatus: varchar("subscription_status"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -1518,11 +1527,24 @@ export const accessibilityPreferences = pgTable("accessibility_preferences", {
   profile: jsonb("profile").notNull().default(sql`'{}'::jsonb`),
   activePreset: text("active_preset"),
   syncedAt: timestamp("synced_at").defaultNow(),
+  // Individual preference flags (additive columns)
+  reduceDistraction: boolean("reduce_distraction").notNull().default(false),
+  highContrast: boolean("high_contrast").notNull().default(false),
+  dyslexiaFriendly: boolean("dyslexia_friendly").notNull().default(false),
+  captionsPreferred: boolean("captions_preferred").notNull().default(false),
+  transcriptOpenByDefault: boolean("transcript_open_by_default").notNull().default(false),
+  fontSizeScale: integer("font_size_scale").notNull().default(100),
+  readingSpeed: integer("reading_speed").notNull().default(100),
+  colorMode: varchar("color_mode").notNull().default("system"),
+  focusMode: boolean("focus_mode").notNull().default(false),
+  symbolSupport: boolean("symbol_support").notNull().default(false),
+  signLanguageEnabled: boolean("sign_language_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_a11y_prefs_user").on(table.userId),
 ]);
 
-export const insertAccessibilityPreferencesSchema = createInsertSchema(accessibilityPreferences).omit({ id: true, syncedAt: true });
+export const insertAccessibilityPreferencesSchema = createInsertSchema(accessibilityPreferences).omit({ id: true, syncedAt: true, updatedAt: true });
 export type InsertAccessibilityPreferences = z.infer<typeof insertAccessibilityPreferencesSchema>;
 export type AccessibilityPreferences = typeof accessibilityPreferences.$inferSelect;
 
@@ -1967,23 +1989,69 @@ export const insertWordBankEntrySchema = createInsertSchema(wordBankEntries).omi
 export type InsertWordBankEntry = z.infer<typeof insertWordBankEntrySchema>;
 export type DbWordBankEntry = typeof wordBankEntries.$inferSelect;
 
-// === ENTITLEMENTS (Task #44: Server-side entitlement enforcement) ===
-// Per-user access overrides that take precedence over subscriptionTier.
-// Use cases: promotional upgrades, institutional licenses, manual grants.
+// === FREEMIUM DATA MODEL (Task #43) + ENTITLEMENTS (Task #44) ===
+
+// Plans catalogue — one row per subscription tier
+export const plans = pgTable("plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tier: varchar("tier").notNull().unique(), // free | plus | premium | institutional
+  name: text("name").notNull(),
+  priceMonthlycents: integer("price_monthly_cents").notNull().default(0),
+  priceYearlyCents: integer("price_yearly_cents").notNull().default(0),
+  trialDays: integer("trial_days").notNull().default(0),
+  features: jsonb("features").notNull().default(sql`'{}'::jsonb`), // TIER_FEATURES blob
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPlanSchema = createInsertSchema(plans).omit({ id: true, createdAt: true });
+export type InsertPlan = z.infer<typeof insertPlanSchema>;
+export type Plan = typeof plans.$inferSelect;
+
+// Subscriptions — full lifecycle per user (decoupled from raw Stripe IDs on users)
+export const subscriptions = pgTable("subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planId: varchar("plan_id").notNull().references(() => plans.id),
+  status: varchar("status").notNull().default("active"), // active | trialing | past_due | canceled
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  trialEnd: timestamp("trial_end"),
+  canceledAt: timestamp("canceled_at"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_subscriptions_user").on(table.userId),
+  index("idx_subscriptions_status").on(table.status),
+  index("idx_subscriptions_stripe").on(table.stripeSubscriptionId),
+]);
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+export type Subscription = typeof subscriptions.$inferSelect;
+
+// Entitlements — per-user access overrides that take precedence over subscriptionTier.
+// Combines Task #44 (tier/bookId overrides) and Task #43 (feature/grantedTier overrides).
 export const entitlements = pgTable("entitlements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  // The effective tier granted by this override (e.g. "premium", "institutional")
-  tier: varchar("tier").notNull(),
-  // Optional: restrict override to a specific title (null = applies to all titles)
+  // Task #44: effective tier granted by this override (e.g. "premium", "institutional")
+  tier: varchar("tier"),
+  // Task #44: optional restriction to a specific title (null = applies to all titles)
   bookId: varchar("book_id"),
+  // Task #43: feature key for fine-grained overrides (e.g. "premium_access", "offline", "tts")
+  feature: varchar("feature"),
+  // Task #43: tier this entitlement mimics for feature-based overrides
+  grantedTier: varchar("granted_tier"),
   // Optional expiry — null means the override never expires
   expiresAt: timestamp("expires_at"),
-  reason: text("reason"), // Human-readable reason (e.g. "promotional_trial", "institutional_seat")
+  reason: text("reason"), // Human-readable reason (e.g. "promotional_trial", "institutional_seat", "promo_code")
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_entitlements_user").on(table.userId),
   index("idx_entitlements_user_book").on(table.userId, table.bookId),
+  index("idx_entitlements_feature").on(table.feature),
   index("idx_entitlements_expires").on(table.expiresAt),
 ]);
 
@@ -2043,4 +2111,46 @@ export const productEvents = pgTable("product_events", {
 export const insertProductEventSchema = createInsertSchema(productEvents).omit({ id: true });
 export type InsertProductEvent = z.infer<typeof insertProductEventSchema>;
 export type ProductEvent = typeof productEvents.$inferSelect;
+
+// Listening sessions — analytics-grade per-session records
+export const listeningSessions = pgTable("listening_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull(),
+  deviceType: varchar("device_type"), // mobile | desktop | tablet | unknown
+  startedAt: timestamp("started_at").defaultNow(),
+  endedAt: timestamp("ended_at"),
+  minutesListened: integer("minutes_listened").notNull().default(0),
+  interruptedBy: varchar("interrupted_by"), // ad | limit | user | null
+}, (table) => [
+  index("idx_listening_sessions_user").on(table.userId),
+  index("idx_listening_sessions_book").on(table.bookId),
+  index("idx_listening_sessions_started").on(table.startedAt),
+]);
+
+export const insertListeningSessionSchema = createInsertSchema(listeningSessions).omit({ id: true });
+export type InsertListeningSession = z.infer<typeof insertListeningSessionSchema>;
+export type ListeningSession = typeof listeningSessions.$inferSelect;
+
+// Ad rewards — when a user earns a reward by completing an ad
+export const adRewards = pgTable("ad_rewards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  adCampaignId: varchar("ad_campaign_id"),
+  rewardType: varchar("reward_type").notNull(), // chapter_unlock | skip_restore | bonus_time
+  rewardValue: integer("reward_value").notNull().default(1), // quantity unlocked/restored
+  bookId: varchar("book_id"), // associated book if applicable
+  chapterId: varchar("chapter_id"), // associated chapter if applicable
+  earnedAt: timestamp("earned_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  redeemed: boolean("redeemed").notNull().default(false),
+}, (table) => [
+  index("idx_ad_rewards_user").on(table.userId),
+  index("idx_ad_rewards_earned").on(table.earnedAt),
+]);
+
+export const insertAdRewardSchema = createInsertSchema(adRewards).omit({ id: true, earnedAt: true });
+export type InsertAdReward = z.infer<typeof insertAdRewardSchema>;
+export type AdReward = typeof adRewards.$inferSelect;
+
 
