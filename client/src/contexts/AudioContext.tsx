@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback, useMemo } from "react";
-import { Book, Progress, Chapter } from "@shared/schema";
+import { Book, Progress, Chapter, type A11yProfile as SharedA11yProfile } from "@shared/schema";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -89,6 +89,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
   const onTrackEndCallback = useRef<(() => void) | null>(null);
   const onChapterEndCallback = useRef<(() => void) | null>(null);
+  const autoAdvanceChaptersRef = useRef<boolean>(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [currentChapterIndex, setCurrentChapterIndex] = useState(-1);
   const lastChapterIndex = useRef(-1);
@@ -426,6 +427,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Honor user's rewarded-ad preference (always | never | ask) at the audio
   // ad decision surface. "never" suppresses pre/mid-roll entirely.
   const { profile: a11yProfile } = usePreferencesKernel();
+  // Mirror the auto-advance preference into a ref so the chapter-tracking effect
+  // can read the latest value without re-subscribing on every preference change.
+  // Treat undefined as `true` to preserve the documented default behaviour.
+  autoAdvanceChaptersRef.current =
+    (a11yProfile as Partial<SharedA11yProfile>).autoAdvanceChapters !== false;
   const adHooks = usePlaybackAdHooks({
     tier: subscriptionTier,
     currentTime,
@@ -498,6 +504,26 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if (lastChapterIndex.current !== -1 && newIndex === lastChapterIndex.current + 1) {
         if (onChapterEndCallback.current) {
           onChapterEndCallback.current();
+        }
+
+        // Honor the user's "auto-advance to next chapter" preference.
+        // When disabled, pause at the chapter boundary instead of letting
+        // playback flow into the next chapter. We park currentTime exactly
+        // at the start of the new chapter so pressing Play resumes there.
+        // We do NOT early-return: the chapter-boundary ad check below must
+        // still run so mid-roll eligibility is preserved (any deferred ad
+        // will simply fire the next time the user presses Play).
+        if (!autoAdvanceChaptersRef.current) {
+          const audio = audioRef.current;
+          const newChapterStart = chapters[newIndex]?.startTime ?? null;
+          if (audio && !audio.paused) {
+            audio.pause();
+            setIsPlaying(false);
+          }
+          if (audio && newChapterStart !== null) {
+            audio.currentTime = newChapterStart;
+            setCurrentTime(newChapterStart);
+          }
         }
 
         const prevIdx = lastChapterIndex.current;
