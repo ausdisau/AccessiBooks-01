@@ -1,12 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Book } from "@shared/schema";
 import { AudioPlayer } from "@/components/audio-player";
 import { BookReviews } from "@/components/book-reviews";
 import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, User } from "lucide-react";
-import { AudioAdInterstitial, useAudioAds } from "@/components/audio-ad-interstitial";
+import { AudioAdInterstitial, RewardedAdInterstitial, useAudioAds } from "@/components/audio-ad-interstitial";
 import { useAudioContext } from "@/contexts/AudioContext";
+import { useRewardedAd } from "@/hooks/use-rewarded-ad";
+import { useSubscription } from "@/hooks/use-subscription";
+import { RewardedAdOffer } from "@/components/RewardedAdOffer";
+import { ActiveRewardBadge } from "@/components/ActiveRewardBadge";
+import { useToast } from "@/hooks/use-toast";
 
 interface PlayerProps {
   book: Book | null;
@@ -17,6 +22,13 @@ interface PlayerProps {
 export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
   const { booksPlayed, incrementBooksPlayed, onAdComplete } = useAudioAds();
   const { onTrackEndCallback, onChapterEndCallback } = useAudioContext();
+  const { tier } = useSubscription();
+  const isFree = tier === "free";
+  const { offer, isEligible, activeRewards, completeReward, startSession, isCompleting } = useRewardedAd();
+  const { toast } = useToast();
+  const [showRewardedAd, setShowRewardedAd] = useState(false);
+  const [rewardedImpressionId, setRewardedImpressionId] = useState<string | null>(null);
+  const [offerDismissed, setOfferDismissed] = useState(false);
 
   useEffect(() => {
     onTrackEndCallback.current = incrementBooksPlayed;
@@ -26,6 +38,54 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
       onChapterEndCallback.current = null;
     };
   }, [incrementBooksPlayed, onTrackEndCallback, onChapterEndCallback]);
+
+  const handleAcceptOffer = async () => {
+    if (!offer) return;
+    try {
+      const result = await startSession({ rewardType: offer.rewardType, bookId: book?.id });
+      if (!result.ok || !result.impressionId) {
+        toast({
+          title: "Couldn't start ad",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setRewardedImpressionId(result.impressionId);
+      setShowRewardedAd(true);
+    } catch {
+      toast({
+        title: "Couldn't start ad",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRewardedAdComplete = async (impressionId: string) => {
+    setShowRewardedAd(false);
+    setRewardedImpressionId(null);
+    if (!offer) return;
+    try {
+      const result = await completeReward({
+        impressionId,
+        rewardType: offer.rewardType,
+      });
+      if (result.granted) {
+        toast({
+          title: "Perk unlocked!",
+          description: result.reward?.label ?? offer.label,
+        });
+        setOfferDismissed(true);
+      }
+    } catch {
+      toast({
+        title: "Something went wrong",
+        description: "Could not grant your perk. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (!book) {
     return (
@@ -50,6 +110,19 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
         onAdComplete={onAdComplete}
         onSkip={onAdComplete}
       />
+
+      {showRewardedAd && offer && rewardedImpressionId && (
+        <RewardedAdInterstitial
+          rewardLabel={offer.label}
+          rewardType={offer.rewardType}
+          impressionId={rewardedImpressionId}
+          onComplete={handleRewardedAdComplete}
+          onCancel={() => {
+            setShowRewardedAd(false);
+            setRewardedImpressionId(null);
+          }}
+        />
+      )}
       
       <div className="flex items-center justify-between">
         <Button 
@@ -62,6 +135,9 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
         </Button>
         
         <div className="flex items-center gap-2">
+          {isFree && activeRewards.length > 0 && (
+            <ActiveRewardBadge rewards={activeRewards} />
+          )}
           {book.author && onViewAuthor && (
             <Button 
               variant="ghost"
@@ -75,6 +151,14 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
           <ShareButton book={book} variant="button" />
         </div>
       </div>
+
+      {isFree && isEligible && offer && !offerDismissed && !showRewardedAd && (
+        <RewardedAdOffer
+          offer={offer}
+          onAccept={handleAcceptOffer}
+          onDismiss={() => setOfferDismissed(true)}
+        />
+      )}
       
       <AudioPlayer book={book} />
       
