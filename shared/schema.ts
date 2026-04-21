@@ -31,10 +31,6 @@ export const books = pgTable("books", {
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
   readingLevel: integer("reading_level"), // 1=Very Easy, 2=Easy, 3=Moderate, 4=Advanced (FK grade estimate)
-  // Freemium access flags
-  freeTierAvailable: boolean("free_tier_available"),
-  adSupported: boolean("ad_supported"),
-  transcriptAvailable: boolean("transcript_available"),
 }, (table) => [
   index("idx_books_title").on(table.title),
   index("idx_books_author").on(table.author),
