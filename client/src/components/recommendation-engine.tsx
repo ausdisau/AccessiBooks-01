@@ -8,6 +8,8 @@ import { Sparkles, BookOpen, ChevronRight, ChevronLeft } from "lucide-react";
 import { BookCover } from "@/components/book-cover";
 import type { Book } from "@shared/schema";
 
+type RecommendedBook = Book & { rationale?: string };
+
 interface OnboardingPreferences {
   genres?: string[];
   [key: string]: unknown;
@@ -38,7 +40,7 @@ export function RecommendationEngine({ onSelectBook }: { onSelectBook?: (book: B
   const userGenres = preferences?.genres || [];
 
   // Try to fetch from API first, fall back to localStorage strategy
-  const { data: apiRecommendations, isLoading: isApiLoading, isError: isApiError } = useQuery<Book[]>({
+  const { data: apiRecommendations, isLoading: isApiLoading, isError: isApiError } = useQuery<RecommendedBook[]>({
     queryKey: ["/api/recommendations"],
     queryFn: async () => {
       const res = await fetch("/api/recommendations", {
@@ -203,6 +205,11 @@ export function RecommendationEngine({ onSelectBook }: { onSelectBook?: (book: B
                 {book.title}
               </h3>
               <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{book.author}</p>
+              {(book as RecommendedBook).rationale && (
+                <p className="text-[11px] text-muted-foreground italic mt-1 line-clamp-2" title={(book as RecommendedBook).rationale}>
+                  {(book as RecommendedBook).rationale}
+                </p>
+              )}
               {book.genre && (
                 <Badge
                   variant="secondary"

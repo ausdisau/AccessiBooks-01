@@ -652,18 +652,9 @@ export function registerMoatScaffoldRoutes(app: Express) {
     }
   });
 
-  app.get("/api/recommendations", async (_req: any, res) => {
-    try {
-      res.json([
-        { bookId: "rec-1", title: "Recommended for You", reason: "Based on your listening history", score: 0.95 },
-        { bookId: "rec-2", title: "Popular in Your Genre", reason: "Trending in Fiction", score: 0.88 },
-        { bookId: "rec-3", title: "Accessibility Pick", reason: "High accessibility score", score: 0.82 },
-      ]);
-    } catch (error) {
-      console.error("[Moat] Failed to fetch recommendations:", error);
-      res.status(500).json({ message: "Failed to fetch recommendations" });
-    }
-  });
+  // Note: /api/recommendations is registered in platformRoutes.ts with the real
+  // heuristic + agent-aware path. The scaffolding stub has been removed to avoid
+  // duplicate route definitions overriding the real implementation.
 
   app.post("/api/recommendations/feedback", isAuthenticated, async (req: any, res) => {
     try {
