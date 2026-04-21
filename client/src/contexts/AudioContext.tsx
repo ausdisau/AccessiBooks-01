@@ -914,7 +914,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         adLoading: adHooks.adDecision.pending,
       }}
     >
-      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
+      <audio ref={audioRef} preload={subscriptionTier !== "free" ? "auto" : "metadata"} crossOrigin="anonymous" />
       {children}
     </AudioContext.Provider>
   );

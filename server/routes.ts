@@ -1134,17 +1134,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!book || !book.audioUrl) return res.status(404).end();
       if (!storage.validateAudioUrl(book.audioUrl)) return res.status(403).end();
 
+      // Honor Range header on HEAD for byte-range probe parity with GET
+      const upstreamHeaders: Record<string, string> = {
+        "User-Agent": "AccessiBooks/2.0 AudioProxy",
+      };
+      if (req.headers.range) upstreamHeaders["Range"] = req.headers.range as string;
+
       const headRes = await fetch(book.audioUrl, {
         method: "HEAD",
-        headers: { "User-Agent": "AccessiBooks/2.0 AudioProxy" },
+        headers: upstreamHeaders,
         signal: AbortSignal.timeout(8000),
       }).catch(() => null);
 
-      if (headRes && headRes.ok) {
+      if (headRes && (headRes.ok || headRes.status === 206)) {
         const ct = headRes.headers.get("content-type");
         const cl = headRes.headers.get("content-length");
+        const cr = headRes.headers.get("content-range");
         if (ct) res.setHeader("Content-Type", ct);
         if (cl) res.setHeader("Content-Length", cl);
+        if (cr) res.setHeader("Content-Range", cr);
       }
       res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Cache-Control", "public, max-age=3600");
