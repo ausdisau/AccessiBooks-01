@@ -49,7 +49,7 @@ export function useListeningAnalytics(from: string, to: string) {
   return useQuery<{
     totalMinutesByTier: Record<string, number>;
     totalMinutes: number;
-    topTitlesByTier: Record<string, Array<{ titleId: string; plays: number }>>;
+    topTitlesByTier: Record<string, Array<{ titleId: string; title: string | null; plays: number }>>;
     averageSessionMinutes: number;
     totalSessions: number;
   }>({
