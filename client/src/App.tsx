@@ -56,6 +56,7 @@ import { CompletionModal, type CompletionData } from "@/components/completion-ce
 import { TrialNudge } from "@/components/trial-nudge";
 import { localStorageService } from "@/lib/storage";
 import type { AccessibilitySettings } from "@/lib/storage";
+import { applySensoryClass } from "@/contexts/sensory-audio";
 import { Music2, BookOpen as BookOpenIcon, Trophy, ListMusic, Megaphone, Wallet, BarChart3, Download as DownloadIcon, Heart, Building2, Activity, LibraryBig, GraduationCap } from "lucide-react";
 
 const EbookReader = lazy(() => import('@/components/ebook-reader').then(m => ({ default: m.EbookReader })));
@@ -1141,7 +1142,9 @@ function MainApp() {
   // dismissible toast notice.
   const sensoryMode = !!a11yPrefs?.profile?.sensoryMode;
   useEffect(() => {
-    document.documentElement.classList.toggle("sensory-mode", sensoryMode);
+    // applySensoryClass lives in a separate module so it can be unit-tested
+    // against a mocked HTMLElement (see tests/sensory-mode.test.ts).
+    applySensoryClass(document.documentElement, sensoryMode);
   }, [sensoryMode]);
 
   const sensoryAutoToastShown = useRef(false);

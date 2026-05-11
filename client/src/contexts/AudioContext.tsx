@@ -7,6 +7,14 @@ import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 import { useQuery } from "@tanstack/react-query";
 import { usePlaybackAdHooks } from "@/hooks/use-playback-ad-hooks";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
+import {
+  applySensoryClass,
+  buildLimiterNodes,
+  bypassLimiter,
+  connectLimiterChain,
+  getAudioContextCtor,
+  type LimiterNodes,
+} from "@/contexts/sensory-audio";
 
 interface AudioAdState {
   isAdPlaying: boolean;
@@ -153,77 +161,40 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const sensoryMode = !!a11yPrefsData?.profile?.sensoryMode;
   const webAudioCtxRef = useRef<AudioContext | null>(null);
   const webAudioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const webAudioCompressorRef = useRef<DynamicsCompressorNode | null>(null);
-  const webAudioGainRef = useRef<GainNode | null>(null);
+  const webAudioLimiterRef = useRef<LimiterNodes | null>(null);
   const webAudioActiveRef = useRef<boolean>(false);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (typeof window === "undefined") return;
-    const Ctx: typeof AudioContext | undefined =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
+    const Ctx = getAudioContextCtor();
     if (!Ctx) return; // Web Audio unsupported — silently skip.
 
-    const enable = () => {
+    if (sensoryMode) {
+      // Enable limiter chain. Wrapped because createMediaElementSource
+      // throws on cross-origin audio without the right CORS headers; we
+      // never want that to stop playback.
       try {
         if (!webAudioCtxRef.current) webAudioCtxRef.current = new Ctx();
         const ctx = webAudioCtxRef.current;
         if (!webAudioSourceRef.current) {
-          // createMediaElementSource may only be called once per element.
           webAudioSourceRef.current = ctx.createMediaElementSource(audio);
         }
-        const src = webAudioSourceRef.current;
-        if (!webAudioCompressorRef.current) {
-          const comp = ctx.createDynamicsCompressor();
-          // Gentle limiter: catches peaks without obvious pumping.
-          comp.threshold.setValueAtTime(-18, ctx.currentTime);
-          comp.knee.setValueAtTime(12, ctx.currentTime);
-          comp.ratio.setValueAtTime(4, ctx.currentTime);
-          comp.attack.setValueAtTime(0.003, ctx.currentTime);
-          comp.release.setValueAtTime(0.25, ctx.currentTime);
-          webAudioCompressorRef.current = comp;
+        if (!webAudioLimiterRef.current) {
+          webAudioLimiterRef.current = buildLimiterNodes(ctx);
         }
-        if (!webAudioGainRef.current) {
-          const g = ctx.createGain();
-          g.gain.setValueAtTime(0.85, ctx.currentTime);
-          webAudioGainRef.current = g;
-        }
-        // Reset connections then build the limiter chain.
-        try { src.disconnect(); } catch {}
-        src.connect(webAudioCompressorRef.current!);
-        webAudioCompressorRef.current!.disconnect();
-        webAudioCompressorRef.current!.connect(webAudioGainRef.current!);
-        webAudioGainRef.current!.disconnect();
-        webAudioGainRef.current!.connect(ctx.destination);
+        connectLimiterChain(ctx, webAudioSourceRef.current, webAudioLimiterRef.current);
         webAudioActiveRef.current = true;
       } catch (err) {
-        // Don't break playback if Web Audio fails (e.g. CORS on audio src).
         console.warn("[sensoryMode] Web Audio limiter unavailable:", err);
       }
-    };
-
-    const disable = () => {
-      const src = webAudioSourceRef.current;
+    } else if (webAudioActiveRef.current) {
       const ctx = webAudioCtxRef.current;
-      if (!src || !ctx) return;
-      try {
-        src.disconnect();
-        if (webAudioCompressorRef.current) webAudioCompressorRef.current.disconnect();
-        if (webAudioGainRef.current) webAudioGainRef.current.disconnect();
-        // Bypass: route source directly to destination so the user still
-        // hears audio after toggling off.
-        src.connect(ctx.destination);
-      } catch (err) {
-        console.warn("[sensoryMode] Failed to bypass limiter:", err);
+      const src = webAudioSourceRef.current;
+      if (ctx && src) {
+        bypassLimiter(ctx, src, webAudioLimiterRef.current);
       }
       webAudioActiveRef.current = false;
-    };
-
-    if (sensoryMode) {
-      enable();
-    } else if (webAudioActiveRef.current) {
-      disable();
     }
   }, [sensoryMode]);
 
@@ -231,16 +202,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // nodes or AudioContext instances across hot-reloads / route changes.
   useEffect(() => {
     return () => {
-      try { webAudioSourceRef.current?.disconnect(); } catch {}
-      try { webAudioCompressorRef.current?.disconnect(); } catch {}
-      try { webAudioGainRef.current?.disconnect(); } catch {}
+      const src = webAudioSourceRef.current;
+      const limiter = webAudioLimiterRef.current;
       const ctx = webAudioCtxRef.current;
+      if (src) src.disconnect();
+      if (limiter) {
+        limiter.compressor.disconnect();
+        limiter.gain.disconnect();
+      }
       if (ctx && ctx.state !== "closed") {
-        ctx.close().catch(() => {});
+        ctx.close().catch(() => {
+          /* AudioContext.close rejects only if already closed */
+        });
       }
       webAudioSourceRef.current = null;
-      webAudioCompressorRef.current = null;
-      webAudioGainRef.current = null;
+      webAudioLimiterRef.current = null;
       webAudioCtxRef.current = null;
       webAudioActiveRef.current = false;
     };
