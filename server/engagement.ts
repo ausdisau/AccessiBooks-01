@@ -374,13 +374,23 @@ export function registerEngagementRoutes(app: Express) {
 
   // ───────────────── EVENTS ─────────────────
 
-  // Helper: strip the full replayUrl from event rows for non-paid callers so
-  // the paywall cannot be bypassed by reading the API response directly.
-  const sanitizeEventForTier = (event: any, paid: boolean) => {
-    if (!event) return event;
-    if (paid) return event;
-    const { replayUrl: _omitted, ...rest } = event;
-    return { ...rest, replayUrl: null };
+  // Helper: strip the full replayUrl from event rows for non-paid callers and
+  // expose a server-mediated preview URL instead. The preview endpoint
+  // (`/api/events/:id/replay/preview`) is the only path through which free
+  // users can reach the replay media, so the paywall cannot be bypassed by
+  // reading API responses directly.
+  type LiveEventRow = typeof liveEvents.$inferSelect;
+  type SanitizedEvent = LiveEventRow & { replayPreviewUrl: string | null };
+  const sanitizeEventForTier = (event: LiveEventRow, paid: boolean): SanitizedEvent => {
+    const hasReplay = event.status === "ended" && !!event.replayUrl;
+    if (paid) {
+      return { ...event, replayPreviewUrl: hasReplay ? event.replayUrl : null };
+    }
+    return {
+      ...event,
+      replayUrl: null,
+      replayPreviewUrl: hasReplay ? `/api/events/${event.id}/replay/preview` : null,
+    };
   };
 
   app.get("/api/events", async (req: Request, res: Response) => {
@@ -436,6 +446,26 @@ export function registerEngagementRoutes(app: Express) {
     } catch (err: any) {
       console.error("[Events] detail error:", err?.message);
       res.status(500).json({ message: "Failed to load event" });
+    }
+  });
+
+  // Server-mediated preview endpoint. We only redirect to the underlying
+  // replay URL once we've validated the event is in `ended` state and a
+  // replay exists. Range-based 10-min enforcement is best-effort at the
+  // media layer (HTML5 `#t=` fragment); this route exists so the URL the
+  // client sees is server-controlled rather than a leaked CDN link.
+  app.get("/api/events/:id/replay/preview", async (req: Request, res: Response) => {
+    try {
+      const [event] = await db.select().from(liveEvents).where(eq(liveEvents.id, req.params.id)).limit(1);
+      if (!event || event.status !== "ended" || !event.replayUrl) {
+        return res.status(404).json({ message: "Replay preview unavailable" });
+      }
+      const previewSec = event.freeReplayPreviewSeconds ?? 600;
+      const sep = event.replayUrl.includes("#") ? "&" : "#";
+      return res.redirect(302, `${event.replayUrl}${sep}t=0,${previewSec}`);
+    } catch (err: any) {
+      console.error("[Events] preview redirect error:", err?.message);
+      res.status(500).json({ message: "Failed to load preview" });
     }
   });
 
