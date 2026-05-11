@@ -829,7 +829,23 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
               <Button
                 variant={showTranscript ? "default" : "outline"}
                 size="sm"
-                onClick={() => setShowTranscript(!showTranscript)}
+                onClick={() => {
+                  const next = !showTranscript;
+                  setShowTranscript(next);
+                  if (next) {
+                    // Fire-and-forget; server gates on opt-in and silently no-ops otherwise.
+                    fetch("/api/activity/log", {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        eventType: "transcript_opened",
+                        bookId: book.id,
+                        bookTitle: book.title,
+                      }),
+                    }).catch(() => {});
+                  }
+                }}
                 className="gap-1"
                 aria-label="Toggle transcript"
                 data-testid="button-transcript"
