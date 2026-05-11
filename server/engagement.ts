@@ -162,7 +162,15 @@ export function registerEngagementRoutes(app: Express) {
         }
       }
 
-      const baseWhere = topicId ? eq(bulletinThreads.topicId, topicId) : sql`TRUE`;
+      // Exclude threads in premium-only-view topics from list/aggregate reads
+      // when the caller isn't on a paid tier. Without this, free users could
+      // fetch full premium thread bodies via the no-topic listing.
+      const premiumExclusion = paid
+        ? sql`TRUE`
+        : sql`${bulletinThreads.topicId} NOT IN (SELECT id FROM ${bulletinTopics} WHERE ${bulletinTopics.premiumOnlyView} = TRUE)`;
+      const baseWhere = topicId
+        ? and(eq(bulletinThreads.topicId, topicId), premiumExclusion)
+        : premiumExclusion;
       const rows = await db.select().from(bulletinThreads)
         .where(baseWhere)
         .orderBy(desc(bulletinThreads.isPinned), desc(bulletinThreads.lastActivityAt))
@@ -551,8 +559,15 @@ export function registerEngagementRoutes(app: Express) {
       const profile = userId ? await getProfile(userId) : null;
       const tier = user?.subscriptionTier ?? "free";
 
-      // Pinned + recent threads (paginated, no infinite scroll)
+      // Pinned + recent threads (paginated, no infinite scroll). Premium-only
+      // topics are excluded for free users so the hub aggregation cannot leak
+      // gated thread bodies.
+      const paid = isPaidTier(tier);
+      const hubPremiumExclusion = paid
+        ? sql`TRUE`
+        : sql`${bulletinThreads.topicId} NOT IN (SELECT id FROM ${bulletinTopics} WHERE ${bulletinTopics.premiumOnlyView} = TRUE)`;
       const recentThreads = await db.select().from(bulletinThreads)
+        .where(hubPremiumExclusion)
         .orderBy(desc(bulletinThreads.isPinned), desc(bulletinThreads.lastActivityAt))
         .limit(8);
 
