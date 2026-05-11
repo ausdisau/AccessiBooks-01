@@ -514,6 +514,140 @@ export function AccountSettingsPage() {
 
       <Separator />
 
+      {/* Section 4b — Calm Mode & Notifications (Task #64) */}
+      <section aria-labelledby="section-calm-heading" data-testid="section-calm">
+        <h2 id="section-calm-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Accessibility className="h-5 w-5 text-emerald-600" />
+          Calm Mode &amp; Notifications
+        </h2>
+        <div className="rounded-lg border p-4 space-y-6">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="calm-mode" className="font-medium">Calm Mode</Label>
+              <Switch
+                id="calm-mode"
+                data-testid="switch-calm-mode"
+                checked={!!localPrefs.calmMode}
+                onCheckedChange={(v) => updatePref("calmMode", v)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Turns off streaks, leaderboards, push notifications, and rewarded-ad nudges. The hub
+              focuses on books and bookmarks.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="streak-paused" className="font-medium">Pause my streak (7 days)</Label>
+              <Switch
+                id="streak-paused"
+                data-testid="switch-streak-paused"
+                checked={!!localPrefs.streakPaused}
+                onCheckedChange={(v) => {
+                  updatePref("streakPaused", v);
+                  if (v) updatePref("streakPausedAt", new Date().toISOString().slice(0, 10));
+                  else updatePref("streakPausedAt", null);
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Take a guilt-free week off — your streak resumes automatically afterward.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="font-medium">Quiet hours</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="quiet-start" className="text-sm">From</Label>
+              <Select
+                value={String(localPrefs.quietHours?.start ?? 21)}
+                onValueChange={(v) => updatePref("quietHours", { start: parseInt(v), end: localPrefs.quietHours?.end ?? 8 })}
+              >
+                <SelectTrigger id="quiet-start" data-testid="select-quiet-start" className="w-24"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <SelectItem key={h} value={String(h)}>{h}:00</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Label htmlFor="quiet-end" className="text-sm">until</Label>
+              <Select
+                value={String(localPrefs.quietHours?.end ?? 8)}
+                onValueChange={(v) => updatePref("quietHours", { start: localPrefs.quietHours?.start ?? 21, end: parseInt(v) })}
+              >
+                <SelectTrigger id="quiet-end" data-testid="select-quiet-end" className="w-24"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <SelectItem key={h} value={String(h)}>{h}:00</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              No push notifications during these hours.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="font-medium">Notification categories</Label>
+            <div className="space-y-2">
+              {[
+                { key: "streak_at_risk", label: "Streak reminders" },
+                { key: "rsvp_reminder", label: "Event reminders" },
+                { key: "friend_digest", label: "Friend activity digest" },
+                { key: "weekly_recap", label: "Weekly recap" },
+                { key: "win_back", label: "Win-back emails" },
+                { key: "recommendation", label: "Recommendations" },
+              ].map((cat) => {
+                const checked = (localPrefs.notificationCategories ?? {})[cat.key as any] !== false;
+                return (
+                  <div key={cat.key} className="flex items-center justify-between">
+                    <Label htmlFor={`notify-${cat.key}`} className="text-sm">{cat.label}</Label>
+                    <Switch
+                      id={`notify-${cat.key}`}
+                      data-testid={`switch-notify-${cat.key}`}
+                      checked={checked}
+                      onCheckedChange={(v) => updatePref("notificationCategories", {
+                        ...(localPrefs.notificationCategories ?? {}),
+                        [cat.key]: v,
+                      } as any)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {isFree && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="hide-nudges" className="font-medium">Hide upgrade prompts (30 days)</Label>
+                <Switch
+                  id="hide-nudges"
+                  data-testid="switch-hide-nudges"
+                  checked={!!localPrefs.hideUpgradeNudgesUntil && new Date(localPrefs.hideUpgradeNudgesUntil) > new Date()}
+                  onCheckedChange={(v) => {
+                    if (v) {
+                      const until = new Date();
+                      until.setDate(until.getDate() + 30);
+                      updatePref("hideUpgradeNudgesUntil", until.toISOString());
+                    } else {
+                      updatePref("hideUpgradeNudgesUntil", null);
+                    }
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Won't affect your access — just quiets the upgrade suggestions.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <Separator />
+
       {/* Section 5 — Accessibility Preferences */}
       <section aria-labelledby="section-a11y-heading">
         <h2 id="section-a11y-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">

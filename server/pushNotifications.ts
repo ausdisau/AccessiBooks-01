@@ -110,6 +110,47 @@ const NOTIFICATION_TEMPLATES: Record<string, (data?: Record<string, string | num
     url: data?.url as string ?? "/",
     tag: "system",
   }),
+  // Engagement & monetization (task #64) — welcome-back framing, no shame
+  streak_at_risk: (data) => ({
+    type: "streak_at_risk",
+    title: "A few minutes today? 🌱",
+    body: `You're on a ${data?.streak ?? 0}-day streak — listen for ${data?.minutes ?? 5} minutes to keep it going.`,
+    icon: "/assets/icons/streak.png",
+    url: "/hub",
+    tag: "streak-at-risk",
+  }),
+  friend_digest: (data) => ({
+    type: "friend_digest",
+    title: "What your friends are reading 📚",
+    body: `${data?.summary ?? "See what your community is enjoying this week."}`,
+    icon: "/assets/icons/community.png",
+    url: "/hub",
+    tag: "friend-digest",
+  }),
+  rsvp_reminder: (data) => ({
+    type: "rsvp_reminder",
+    title: `Event soon: ${data?.title ?? "an event you RSVP'd to"}`,
+    body: `Starts ${data?.when ?? "soon"}. Tap to join.`,
+    icon: "/assets/icons/event.png",
+    url: data?.url as string ?? "/events",
+    tag: `rsvp-${data?.eventId ?? "soon"}`,
+  }),
+  win_back: () => ({
+    type: "win_back",
+    title: "We're here when you're ready 💛",
+    body: "Whenever you're back, your library and bookmarks are waiting.",
+    icon: "/assets/icons/wave.png",
+    url: "/hub",
+    tag: "win-back",
+  }),
+  weekly_recap: (data) => ({
+    type: "weekly_recap",
+    title: "Your week in books 📊",
+    body: `${data?.minutes ?? 0} minutes listened, ${data?.books ?? 0} finished. See your recap.`,
+    icon: "/assets/icons/recap.png",
+    url: "/hub?recap=1",
+    tag: "weekly-recap",
+  }),
 };
 
 export function getNotificationPayload(

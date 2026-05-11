@@ -71,6 +71,7 @@ import { searchAmazonAudiobooks, getAmazonAudiobook, isAmazonEnabled } from "./a
 import { isSoundCloudEnabled, searchSoundCloudTracks, getSoundCloudTrack, getSoundCloudUser, getSoundCloudUserTracks, getSoundCloudStreamUrl, getSoundCloudGenreTracks, getSoundCloudRelated, SOUNDCLOUD_GENRES } from "./soundcloud";
 import { isGooglePlayEnabled, searchGooglePlayAudiobooks, getGooglePlayAudiobook, getGooglePlaySimilar, searchGooglePlayEbooks, getGooglePlayEbook, searchGooglePlay, getGooglePlayBook } from "./googlePlay";
 import { registerListeningPartyRoutes, setupListeningPartyWS } from "./listeningParty";
+import { registerEngagementRoutes, seedBulletinTopics } from "./engagement";
 import { registerStreamingQueueRoutes } from "./streamingQueue";
 import {
   getSkipStatus,
@@ -264,6 +265,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Analytics and monetization reporting dashboard routes
   registerAnalyticsRoutes(app);
+
+  // Engagement & monetization system (task #64): bulletin, events, hub, share-clip, nudges
+  registerEngagementRoutes(app);
+  seedBulletinTopics().catch(err => console.warn("[Engagement] seed topics:", err.message));
 
   // === EASY ENGLISH ADD-ON ROUTES ===
 

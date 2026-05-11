@@ -92,6 +92,10 @@ const SlotDetailPage = lazy(() => import('@/pages/ad-platform/slot-detail'));
 const DemoSlotPage = lazy(() => import('@/pages/ad-platform/demo-slot'));
 const WordBankPage = lazy(() => import('@/pages/word-bank').then(m => ({ default: m.WordBankPage })));
 const AchievementsPage = lazy(() => import('@/components/completion-certificate').then(m => ({ default: m.AchievementsPage })));
+// Engagement & monetization system (Task #64)
+const HubPage = lazy(() => import('@/pages/hub'));
+const CommunityPage = lazy(() => import('@/pages/community'));
+const EventsPage = lazy(() => import('@/pages/events'));
 const AccountSettingsPage = lazy(() => import('@/pages/account-settings').then(m => ({ default: m.AccountSettingsPage })));
 const AdminAnalyticsPage = lazy(() => import('@/pages/admin-analytics'));
 
@@ -121,6 +125,9 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
   {
     label: "Discover",
     items: [
+      { path: "/hub", label: "Hub", icon: <Home className="h-5 w-5" /> },
+      { path: "/community", label: "Community", icon: <MessageCircle className="h-5 w-5" /> },
+      { path: "/events", label: "Events", icon: <Clock className="h-5 w-5" /> },
       { path: "/feed", label: "Feed", icon: <Star className="h-5 w-5" /> },
       { path: "/accessible-picks", label: "Picks", icon: <HeartHandshake className="h-5 w-5" /> },
       { path: "/queue", label: "Queue", icon: <ListMusic className="h-5 w-5" /> },
@@ -1733,6 +1740,27 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="settings-panel" role="region" aria-label="Account Settings" data-testid="panel-settings">
                       <AccountSettingsPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/hub">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="hub-panel" role="region" aria-label="Engagement Hub" data-testid="panel-hub">
+                      <HubPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/community">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="community-panel" role="region" aria-label="Community Bulletin" data-testid="panel-community">
+                      <CommunityPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/events">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="events-panel" role="region" aria-label="Live Events" data-testid="panel-events">
+                      <EventsPage />
                     </div>
                   </Suspense>
                 </Route>
