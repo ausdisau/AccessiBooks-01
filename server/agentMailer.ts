@@ -142,7 +142,7 @@ const DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const dedupeStore = new Map<string, number>();
 
 function dedupeStoreKey(recipient: string, sender: string, dedupeKey: string): string {
-  return `${recipient.trim().toLowerCase()}|${sender.trim().toLowerCase()}|${dedupeKey}`;
+  return `${recipient.trim().toLowerCase()}|${sender.trim().toLowerCase()}|${dedupeKey.trim().toLowerCase()}`;
 }
 
 function pruneExpired(now: number): void {
@@ -304,7 +304,13 @@ export interface AutoResponseOptions {
   responderClass?: AutoResponderClass;
   /** Re-respond window. Default 7 days. */
   windowMs?: number;
-  /** Address this responder receives mail at (must appear in subject.to/cc for personal/group). */
+  /**
+   * The address this responder receives mail at — used both for the
+   * "recipient is in To/Cc/Bcc" check (personal/group) and as the
+   * recipient component of the dedupe key. Strongly recommended; if
+   * omitted, defaults to `opts.to` which can cause dedupe collisions
+   * when one app runs multiple responder mailboxes.
+   */
   recipient?: string;
 }
 
