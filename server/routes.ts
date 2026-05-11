@@ -266,7 +266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics and monetization reporting dashboard routes
   registerAnalyticsRoutes(app);
 
-  // Engagement & monetization system (task #64): bulletin, events, hub, share-clip, nudges
+  // Engagement & monetization system: bulletin, events, hub, share-clip, nudges
   registerEngagementRoutes(app);
   seedBulletinTopics().catch(err => console.warn("[Engagement] seed topics:", err.message));
 

@@ -6,9 +6,123 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Shield, AlertTriangle, CheckCircle, XCircle, Eye, Flag, Loader2 } from "lucide-react";
+import { Shield, AlertTriangle, CheckCircle, XCircle, Eye, Flag, Loader2, CalendarPlus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+function CreateEventPanel() {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [eventType, setEventType] = useState("listening_party");
+  const [hostDisplayName, setHostDisplayName] = useState("AccessiBooks");
+  const [scheduledStartAt, setScheduledStartAt] = useState("");
+  const [scheduledEndAt, setScheduledEndAt] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/events", {
+        eventType,
+        title,
+        description,
+        hostDisplayName,
+        scheduledStartAt: new Date(scheduledStartAt).toISOString(),
+        scheduledEndAt: new Date(scheduledEndAt).toISOString(),
+      }),
+    onSuccess: () => {
+      toast({ title: "Event scheduled", description: "Listeners can now RSVP from the Events page." });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      setOpen(false);
+      setTitle(""); setDescription(""); setScheduledStartAt(""); setScheduledEndAt("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Couldn't create event", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const valid = title.trim() && description.trim() && scheduledStartAt && scheduledEndAt &&
+    new Date(scheduledEndAt).getTime() > new Date(scheduledStartAt).getTime();
+
+  return (
+    <Card data-testid="admin-events-panel">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-5 w-5" aria-hidden="true" />
+              Live events
+            </CardTitle>
+            <CardDescription>Schedule listening parties, author Q&amp;As, and live readings.</CardDescription>
+          </div>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="btn-create-event">Create event</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>New live event</DialogTitle>
+                <DialogDescription>Visible to all members once published.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="evt-title">Title</Label>
+                  <Input id="evt-title" value={title} onChange={e => setTitle(e.target.value)} data-testid="input-event-title" />
+                </div>
+                <div>
+                  <Label htmlFor="evt-desc">Description</Label>
+                  <Textarea id="evt-desc" value={description} onChange={e => setDescription(e.target.value)} rows={3} data-testid="input-event-desc" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="evt-type">Type</Label>
+                    <select
+                      id="evt-type"
+                      value={eventType}
+                      onChange={e => setEventType(e.target.value)}
+                      className="w-full border rounded-md h-10 px-3 bg-background"
+                      data-testid="input-event-type"
+                    >
+                      <option value="listening_party">Listening party</option>
+                      <option value="author_qa">Author Q&amp;A</option>
+                      <option value="live_reading">Live reading</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="evt-host">Host name</Label>
+                    <Input id="evt-host" value={hostDisplayName} onChange={e => setHostDisplayName(e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="evt-start">Starts</Label>
+                    <Input id="evt-start" type="datetime-local" value={scheduledStartAt} onChange={e => setScheduledStartAt(e.target.value)} data-testid="input-event-start" />
+                  </div>
+                  <div>
+                    <Label htmlFor="evt-end">Ends</Label>
+                    <Input id="evt-end" type="datetime-local" value={scheduledEndAt} onChange={e => setScheduledEndAt(e.target.value)} data-testid="input-event-end" />
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={!valid || createMutation.isPending}
+                  onClick={() => createMutation.mutate()}
+                  data-testid="btn-submit-event"
+                >
+                  {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Schedule event
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
 
 interface ContentReporter {
   id: string;
@@ -335,6 +449,9 @@ export default function AdminModerationPage() {
           </p>
         </div>
       </div>
+
+      {/* Admin event scheduling */}
+      <CreateEventPanel />
 
       {/* Tabs */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
