@@ -7,6 +7,7 @@ import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 import { useQuery } from "@tanstack/react-query";
 import { usePlaybackAdHooks } from "@/hooks/use-playback-ad-hooks";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
+import { computeStreamQuality, appendStreamQualityParams, type StreamQualityInfo as SharedStreamQualityInfo, type StreamQualityTier as SharedStreamQualityTier } from "@/contexts/stream-quality";
 import {
   applySensoryClass,
   buildLimiterNodes,
@@ -22,14 +23,8 @@ interface AudioAdState {
   adType: "pre-roll" | "mid-roll" | null;
 }
 
-export type StreamQualityTier = "uhq" | "hd" | "sd";
-
-export interface StreamQualityInfo {
-  quality: "low" | "mid" | "high" | "ultra";
-  bitrate: number;
-  label: string;
-  tier: StreamQualityTier;
-}
+export type StreamQualityTier = SharedStreamQualityTier;
+export type StreamQualityInfo = SharedStreamQualityInfo;
 
 interface AudioContextType {
   currentBook: Book | null;
@@ -421,12 +416,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (audioRef.current && currentBook) {
-      audioRef.current.src = `/api/stream/${currentBook.id}`;
-      audioRef.current.load();
-    }
-  }, [currentBook?.id]);
+  // NOTE: stream URL effect lives below the streamQuality memo (line ~489)
+  // to avoid a TDZ reference. See "Set audio source for current book" effect.
 
   const lastPredictivePrefetchRef = useRef<number>(0);
 
@@ -484,18 +475,25 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Compute stream quality info from subscription tier — but Low-Bandwidth
   // Mode (Task #66) forces SD/128kbps for every tier so users on slow or
   // metered connections can opt out of higher-bitrate streams entirely.
-  const streamQuality = useMemo<StreamQualityInfo>(() => {
-    if (lowBandwidthMode) {
-      return { quality: "low", bitrate: 128, label: "SD · 128 kbps (Low-Bandwidth)", tier: "sd" };
+  const streamQuality = useMemo<StreamQualityInfo>(
+    () => computeStreamQuality(subscriptionTier, lowBandwidthMode),
+    [subscriptionTier, lowBandwidthMode],
+  );
+
+  // Set audio source for current book, tagged with the chosen quality
+  // tier + bitrate so low-bandwidth requests are provably distinct from
+  // premium requests on the wire (Task #66). The server reads `q` + `br`
+  // to pick a variant where one is available; otherwise it echoes the
+  // tier back via `X-Audio-Quality` for caches/analytics.
+  useEffect(() => {
+    if (audioRef.current && currentBook) {
+      audioRef.current.src = appendStreamQualityParams(
+        `/api/stream/${currentBook.id}`,
+        streamQuality,
+      );
+      audioRef.current.load();
     }
-    if (subscriptionTier === "premium") {
-      return { quality: "ultra", bitrate: 320, label: "UHQ · 320 kbps", tier: "uhq" };
-    }
-    if (subscriptionTier === "plus") {
-      return { quality: "mid", bitrate: 192, label: "HD · 192 kbps", tier: "hd" };
-    }
-    return { quality: "low", bitrate: 128, label: "SD · 128 kbps", tier: "sd" };
-  }, [subscriptionTier, lowBandwidthMode]);
+  }, [currentBook?.id, streamQuality.tier, streamQuality.bitrate]);
 
   // Fetch flat transcript segments when book changes — used by the sentence boundary guard in the ad hook
   useEffect(() => {

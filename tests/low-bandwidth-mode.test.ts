@@ -1,24 +1,40 @@
 /**
- * Unit tests for Low-Bandwidth & Text-Only Mode (Task #66) helpers.
+ * Unit tests for Low-Bandwidth & Text-Only Mode (Task #66).
  *
- * Two behaviors required by the task spec but not exercised by the
- * API round-trip tests in account-settings.test.ts:
- *   1. The audio quality clamp picks SD/128 kbps when lowBandwidthMode
- *      is true — regardless of subscription tier.
- *   2. The ad mediation companion-image filter strips animated/video
- *      payloads when lowBandwidthMode (or suppressAnimatedAds) is set.
+ * These tests import the actual production code paths:
+ *   - `computeStreamQuality` + `appendStreamQualityParams` from the
+ *     client `stream-quality` helper used by `AudioContext`.
+ *   - `applyLowBandwidthSuppression` from `server/adMediation.ts` —
+ *     the same helper invoked inside the GET /api/ads/request handler.
  *
  * Run with: npx tsx tests/low-bandwidth-mode.test.ts
  */
 
+import {
+  computeStreamQuality,
+  appendStreamQualityParams,
+} from "../client/src/contexts/stream-quality";
+import { applyLowBandwidthSuppression } from "../server/adSuppression";
+
 class AssertError extends Error {}
 let pass = 0;
 let fail = 0;
-function test(name: string, fn: () => void): void {
+function test(name: string, fn: () => void | Promise<void>): void {
   try {
-    fn();
-    console.log(`  PASS  ${name}`);
-    pass++;
+    const r = fn();
+    if (r && typeof (r as Promise<void>).then === "function") {
+      (r as Promise<void>).then(
+        () => { console.log(`  PASS  ${name}`); pass++; },
+        (err: unknown) => {
+          console.log(`  FAIL  ${name}`);
+          console.log(`        ${err instanceof Error ? err.message : String(err)}`);
+          fail++;
+        },
+      );
+    } else {
+      console.log(`  PASS  ${name}`);
+      pass++;
+    }
   } catch (err) {
     console.log(`  FAIL  ${name}`);
     console.log(`        ${err instanceof Error ? err.message : String(err)}`);
@@ -30,126 +46,121 @@ function assertEq<T>(actual: T, expected: T, msg: string): void {
     throw new AssertError(`${msg}: expected ${String(expected)}, got ${String(actual)}`);
   }
 }
-
-// ─── (1) Audio quality clamp ────────────────────────────────────────────
-// Mirrors the streamQuality memo in client/src/contexts/AudioContext.tsx.
-type Tier = "free" | "plus" | "premium" | "institutional";
-function pickStreamQuality(tier: Tier, lowBandwidthMode: boolean) {
-  if (lowBandwidthMode) {
-    return { tier: "SD", bitrate: 128, label: "SD · 128 kbps (Low-Bandwidth)" };
+function assertContains(haystack: string, needle: string, msg: string): void {
+  if (!haystack.includes(needle)) {
+    throw new AssertError(`${msg}: "${haystack}" does not contain "${needle}"`);
   }
-  if (tier === "premium" || tier === "institutional") {
-    return { tier: "HD", bitrate: 320, label: "HD · 320 kbps" };
-  }
-  if (tier === "plus") {
-    return { tier: "HQ", bitrate: 192, label: "HQ · 192 kbps" };
-  }
-  return { tier: "SD", bitrate: 128, label: "SD · 128 kbps" };
 }
 
 console.log("=== Low-Bandwidth & Text-Only Mode Test Results ===");
 
-test("free user without low-bandwidth gets 128 kbps default", () => {
-  const q = pickStreamQuality("free", false);
+// ─── (1) Audio quality clamp — production helper ───────────────────────
+test("free user, no low-bandwidth → SD/128", () => {
+  const q = computeStreamQuality("free", false);
   assertEq(q.bitrate, 128, "bitrate");
+  assertEq(q.tier, "sd", "tier");
 });
 
-test("plus user without low-bandwidth gets 192 kbps", () => {
-  const q = pickStreamQuality("plus", false);
+test("plus user, no low-bandwidth → HD/192", () => {
+  const q = computeStreamQuality("plus", false);
   assertEq(q.bitrate, 192, "bitrate");
+  assertEq(q.tier, "hd", "tier");
 });
 
-test("premium user without low-bandwidth gets 320 kbps", () => {
-  const q = pickStreamQuality("premium", false);
+test("premium user, no low-bandwidth → UHQ/320", () => {
+  const q = computeStreamQuality("premium", false);
   assertEq(q.bitrate, 320, "bitrate");
+  assertEq(q.tier, "uhq", "tier");
 });
 
-test("premium user WITH low-bandwidth is clamped to 128 kbps", () => {
-  const q = pickStreamQuality("premium", true);
+test("premium user WITH low-bandwidth is clamped to SD/128", () => {
+  const q = computeStreamQuality("premium", true);
   assertEq(q.bitrate, 128, "bitrate");
-  assertEq(q.tier, "SD", "tier");
-  assertEq(q.label.includes("Low-Bandwidth"), true, "label flags low-bandwidth");
+  assertEq(q.tier, "sd", "tier");
+  assertContains(q.label, "Low-Bandwidth", "label flags low-bandwidth");
 });
 
-test("plus user WITH low-bandwidth is clamped to 128 kbps", () => {
-  const q = pickStreamQuality("plus", true);
+test("plus user WITH low-bandwidth is clamped to SD/128", () => {
+  const q = computeStreamQuality("plus", true);
+  assertEq(q.bitrate, 128, "bitrate");
+  assertEq(q.tier, "sd", "tier");
+});
+
+test("institutional user WITH low-bandwidth is clamped to SD/128", () => {
+  const q = computeStreamQuality("institutional", true);
   assertEq(q.bitrate, 128, "bitrate");
 });
 
-test("institutional user WITH low-bandwidth is clamped to 128 kbps", () => {
-  const q = pickStreamQuality("institutional", true);
-  assertEq(q.bitrate, 128, "bitrate");
+test("appendStreamQualityParams adds q + br to a clean URL", () => {
+  const url = appendStreamQualityParams("/api/stream/abc", computeStreamQuality("premium", true));
+  assertContains(url, "q=sd", "tier param");
+  assertContains(url, "br=128", "bitrate param");
 });
 
-// ─── (2) Ad mediation companion filter ─────────────────────────────────
-// Mirrors the suppression logic in server/adMediation.ts (lines ~173–198).
-interface Companion { imageUrl?: string; videoUrl?: string }
-interface ProgrammaticAd { isProgrammatic: true; companion?: Companion }
+test("appendStreamQualityParams uses & when URL already has a query", () => {
+  const url = appendStreamQualityParams("/api/stream/abc?token=xyz", computeStreamQuality("free", false));
+  assertContains(url, "?token=xyz&q=sd", "param chain");
+});
 
-function applyAdSuppression(
-  ad: ProgrammaticAd,
-  opts: { lowBandwidthMode?: boolean; suppressAnimatedAds?: boolean; suppressAnimationDecision?: boolean },
-): ProgrammaticAd {
-  const lowBandwidth = opts.lowBandwidthMode === true;
-  const suppressAnimated =
-    opts.suppressAnimationDecision === true ||
-    opts.suppressAnimatedAds === true ||
-    lowBandwidth;
-  if (suppressAnimated && ad.isProgrammatic) {
-    if (ad.companion && ad.companion.imageUrl) {
-      const url = ad.companion.imageUrl.toLowerCase();
-      if (url.endsWith(".gif") || url.includes("animated") || url.includes("video")) {
-        ad.companion = undefined;
-      }
-    }
-    if (lowBandwidth && ad.companion && ad.companion.videoUrl) {
-      delete ad.companion.videoUrl;
-    }
-  }
-  return ad;
-}
-
+// ─── (2) Ad mediation companion suppression — production helper ────────
 test("low-bandwidth strips .gif companion image", () => {
-  const ad = applyAdSuppression(
-    { isProgrammatic: true, companion: { imageUrl: "https://cdn/banner.gif" } },
-    { lowBandwidthMode: true },
-  );
+  const ad: { isProgrammatic: true; companion?: { imageUrl?: string; videoUrl?: string } } = {
+    isProgrammatic: true,
+    companion: { imageUrl: "https://cdn/banner.gif" },
+  };
+  applyLowBandwidthSuppression(ad, { lowBandwidthMode: true });
   assertEq(ad.companion, undefined, "companion cleared");
 });
 
 test("low-bandwidth strips videoUrl from companion", () => {
-  const ad = applyAdSuppression(
-    { isProgrammatic: true, companion: { imageUrl: "https://cdn/banner.png", videoUrl: "https://cdn/spot.mp4" } },
-    { lowBandwidthMode: true },
-  );
-  assertEq(ad.companion?.videoUrl as unknown as undefined, undefined, "videoUrl deleted");
+  const ad: { isProgrammatic: true; companion?: { imageUrl?: string; videoUrl?: string } } = {
+    isProgrammatic: true,
+    companion: { imageUrl: "https://cdn/banner.png", videoUrl: "https://cdn/spot.mp4" },
+  };
+  applyLowBandwidthSuppression(ad, { lowBandwidthMode: true });
+  assertEq(ad.companion?.videoUrl as unknown, undefined, "videoUrl deleted");
   assertEq(ad.companion?.imageUrl, "https://cdn/banner.png", "static imageUrl preserved");
 });
 
 test("low-bandwidth preserves static .png companion image", () => {
-  const ad = applyAdSuppression(
-    { isProgrammatic: true, companion: { imageUrl: "https://cdn/banner.png" } },
-    { lowBandwidthMode: true },
-  );
+  const ad: { isProgrammatic: true; companion?: { imageUrl?: string; videoUrl?: string } } = {
+    isProgrammatic: true,
+    companion: { imageUrl: "https://cdn/banner.png" },
+  };
+  applyLowBandwidthSuppression(ad, { lowBandwidthMode: true });
   assertEq(ad.companion?.imageUrl, "https://cdn/banner.png", "static image preserved");
 });
 
-test("suppressAnimatedAds-only does NOT strip videoUrl (low-bandwidth-specific)", () => {
-  const ad = applyAdSuppression(
-    { isProgrammatic: true, companion: { imageUrl: "https://cdn/banner.png", videoUrl: "https://cdn/spot.mp4" } },
-    { suppressAnimatedAds: true, lowBandwidthMode: false },
-  );
+test("suppressAnimatedAds-only does NOT strip videoUrl (low-bandwidth scoped)", () => {
+  const ad: { isProgrammatic: true; companion?: { imageUrl?: string; videoUrl?: string } } = {
+    isProgrammatic: true,
+    companion: { imageUrl: "https://cdn/banner.png", videoUrl: "https://cdn/spot.mp4" },
+  };
+  applyLowBandwidthSuppression(ad, { suppressAnimatedAds: true, lowBandwidthMode: false });
   assertEq(ad.companion?.videoUrl, "https://cdn/spot.mp4", "videoUrl kept under static-only");
 });
 
-test("no suppression flags: companion left intact", () => {
-  const ad = applyAdSuppression(
-    { isProgrammatic: true, companion: { imageUrl: "https://cdn/banner.gif", videoUrl: "https://cdn/spot.mp4" } },
-    {},
-  );
+test("no flags: companion left intact", () => {
+  const ad: { isProgrammatic: true; companion?: { imageUrl?: string; videoUrl?: string } } = {
+    isProgrammatic: true,
+    companion: { imageUrl: "https://cdn/banner.gif", videoUrl: "https://cdn/spot.mp4" },
+  };
+  applyLowBandwidthSuppression(ad, {});
   assertEq(ad.companion?.imageUrl, "https://cdn/banner.gif", "gif preserved");
   assertEq(ad.companion?.videoUrl, "https://cdn/spot.mp4", "video preserved");
 });
 
-console.log(`${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+test("non-programmatic (house) ad is never modified", () => {
+  const ad: { isProgrammatic: false; companion?: { imageUrl?: string; videoUrl?: string } } = {
+    isProgrammatic: false,
+    companion: { imageUrl: "https://cdn/banner.gif", videoUrl: "https://cdn/spot.mp4" },
+  };
+  applyLowBandwidthSuppression(ad, { lowBandwidthMode: true });
+  assertEq(ad.companion?.imageUrl, "https://cdn/banner.gif", "house gif preserved");
+  assertEq(ad.companion?.videoUrl, "https://cdn/spot.mp4", "house video preserved");
+});
+
+setTimeout(() => {
+  console.log(`${pass} passed, ${fail} failed`);
+  if (fail > 0) process.exit(1);
+}, 100);

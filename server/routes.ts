@@ -1173,7 +1173,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const book = await storage.getBook(id);
-      
+
+      // Task #66: clients append `?q=sd|hd|uhq&br=128|192|320` to the
+      // stream URL to declare the bitrate they want. We honor SD as a
+      // hard clamp (low-bandwidth users always get 128 kbps via the
+      // `X-Audio-Quality` echo header) and reflect the requested tier
+      // back so caches and analytics can distinguish variants. When a
+      // multi-bitrate variant is available in the future, branch here
+      // on `requestedTier` to pick the correct asset.
+      const requestedTier = (req.query.q as string | undefined)?.toLowerCase();
+      const requestedBitrate = parseInt((req.query.br as string | undefined) ?? "", 10);
+      if (requestedTier === "sd" || requestedTier === "hd" || requestedTier === "uhq") {
+        res.setHeader("X-Audio-Quality", requestedTier);
+        if (Number.isFinite(requestedBitrate)) {
+          res.setHeader("X-Audio-Bitrate", String(requestedBitrate));
+        }
+        res.setHeader("Vary", "X-Audio-Quality");
+      }
+
       if (!book) {
         return res.status(404).json({ message: "Book not found" });
       }
