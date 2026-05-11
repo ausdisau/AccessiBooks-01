@@ -30,6 +30,7 @@ import {
   MousePointer,
   Accessibility,
   Settings2,
+  Heart,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { localStorageService } from "@/lib/storage";
@@ -104,6 +105,17 @@ const A11Y_ONBOARDING_PROFILES = [
       largerCursor: true,
       highlightFocus: true,
       highlightLinks: true,
+    } as Partial<AccessibilitySettings>,
+  },
+  {
+    id: "calm-mode",
+    name: "Calm Mode",
+    icon: Heart,
+    description: "No streaks, no leaderboards, no upgrade nudges — just listening",
+    settings: {
+      pauseAnimations: true,
+      // Marker consumed at apply-time to set calmMode + streakPaused on the server profile
+      calmMode: true as any,
     } as Partial<AccessibilitySettings>,
   },
   {
@@ -239,9 +251,16 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
         const current = localStorageService.getSettings();
         const merged = { ...current, ...profile.settings, activeProfile: selectedA11yProfile };
         localStorageService.saveSettings(merged);
-        // Persist to server if possible; errors are non-fatal
+        // Build the server-side a11y patch. For Calm Mode, also set streakPaused
+        // so streak counters do not advance for at least 7 days.
+        const serverPatch: any = { ...profile.settings };
+        if (selectedA11yProfile === "calm-mode") {
+          serverPatch.calmMode = true;
+          serverPatch.streakPaused = true;
+          serverPatch.streakPausedAt = new Date().toISOString().slice(0, 10);
+        }
         try {
-          await apiRequest("PUT", "/api/a11y/preferences", { profile: merged });
+          await apiRequest("PUT", "/api/a11y/preferences", { profile: serverPatch });
         } catch {
           // non-critical — settings are in localStorage
         }

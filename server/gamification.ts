@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { accessibilityPreferences } from "@shared/schema";
 import {
   userStreaks, userXp, userAchievements, dailyListeningLog,
   userGoals, readingChallenges, userChallengeProgress, users,
@@ -132,7 +133,24 @@ export async function recordListeningActivity(
   let newLongestStreak = streak.longestStreak;
   let newStreakStartDate = streak.streakStartDate;
 
-  if (streak.lastListenedDate !== today) {
+  // Calm Mode / streakPaused enforcement (Task #64): when the user opts to pause
+  // their streak, do not advance or reset it for 7 days. After 7 days, auto-resume.
+  let streakPausedActive = false;
+  try {
+    const [pref] = await db.select().from(accessibilityPreferences)
+      .where(eq(accessibilityPreferences.userId, userId)).limit(1);
+    const profile: any = pref?.profile ?? {};
+    if (profile.streakPaused === true) {
+      const pausedAt = profile.streakPausedAt ? new Date(profile.streakPausedAt) : null;
+      if (!pausedAt || (Date.now() - pausedAt.getTime()) < 7 * 24 * 60 * 60 * 1000) {
+        streakPausedActive = true;
+      }
+    }
+    // calmMode users also have streaks paused implicitly
+    if (profile.calmMode === true) streakPausedActive = true;
+  } catch { /* preferences table optional — fail open */ }
+
+  if (!streakPausedActive && streak.lastListenedDate !== today) {
     if (!streak.lastListenedDate) {
       newCurrentStreak = 1;
       newStreakStartDate = today;
