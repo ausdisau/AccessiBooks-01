@@ -184,6 +184,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           webAudioLimiterRef.current = buildLimiterNodes(ctx);
         }
         connectLimiterChain(ctx, webAudioSourceRef.current, webAudioLimiterRef.current);
+        // Browsers create AudioContext in "suspended" until a user
+        // gesture. resume() is a no-op once running and silently rejects
+        // if no gesture has happened yet — playback will then resume the
+        // context naturally on the next play click.
+        if (ctx.state === "suspended") {
+          ctx.resume().catch(() => {
+            /* awaiting user gesture; will resume on next play */
+          });
+        }
         webAudioActiveRef.current = true;
       } catch (err) {
         console.warn("[sensoryMode] Web Audio limiter unavailable:", err);
