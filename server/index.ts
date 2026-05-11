@@ -76,10 +76,17 @@ app.use((req, res, next) => {
 
 (async () => {
   validateEnv();
-  // Wire the persistent auto-response dedupe store (Task #133). The cache
-  // hydration itself runs after `ensureAutoResponseLogSchema` below, so the
-  // table is guaranteed to exist before we read from it.
+  // Wire the persistent auto-response dedupe store and rehydrate the cache
+  // from any rows that haven't yet expired (Task #133). We BLOCK on this
+  // before `server.listen` so the first inbound /api/agentmail/webhook
+  // call after a restart can never bypass the suppression window.
   setAutoResponseStorage(storage);
+  try {
+    await ensureAutoResponseLogSchema();
+    await hydrateAutoResponseDedupeFromStorage();
+  } catch (err) {
+    console.warn("[AgentMail] auto_response_log boot setup failed (continuing):", err);
+  }
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -124,9 +131,7 @@ app.use((req, res, next) => {
     setupWordBankTable().then(available => storage.setWordBankDbAvailable(available)).catch(() => {});
     ensureEntitlementSchema().catch(err => console.warn("[Entitlements] Schema setup failed:", err));
     ensureUserActivitySchema().catch(err => console.warn("[UserActivity] Schema setup failed:", err));
-    ensureAutoResponseLogSchema()
-      .then(() => hydrateAutoResponseDedupeFromStorage())
-      .catch(err => console.warn("[AgentMail] auto_response_log setup failed:", err));
+    // auto_response_log schema + hydration is awaited above before listen.
     seedPlans().catch(err => console.warn("[Seed] Plans seed failed:", err));
     startDailySpendResetCron();
     
