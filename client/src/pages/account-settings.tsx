@@ -123,13 +123,28 @@ export function AccountSettingsPage() {
   });
 
   const [localPrefs, setLocalPrefs] = useState<Partial<A11yProfile>>({});
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  // Per-field debounce timers. A single shared timer would let rapid edits in
+  // one field keep postponing an unrelated field's pending save (and any
+  // bug in clearTimeout ordering would lose the earlier patch entirely).
+  // Keying timers by field name makes each field's save schedule independent.
+  const debounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     if (summary?.preferences) {
       setLocalPrefs(summary.preferences);
     }
   }, [summary?.preferences]);
+
+  // Clear any pending debounce timers on unmount so they can't fire a save
+  // after the component is gone.
+  useEffect(() => {
+    return () => {
+      for (const t of Object.values(debounceTimersRef.current)) {
+        clearTimeout(t);
+      }
+      debounceTimersRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     if (localPrefs.reduceDistractionMode !== undefined) {
@@ -162,17 +177,21 @@ export function AccountSettingsPage() {
   });
 
   // Pending patch accumulates fields between debounced flushes so that
-  // back-to-back updatePref() calls (e.g. setting two related fields in
-  // the same handler) all reach the server in a single PUT instead of
-  // the last-write-wins behavior the previous implementation had.
+  // multiple fields whose timers fire in the same tick are sent in a single
+  // PUT, and the deep-merge backend never sees a partial overwrite.
   const pendingPatchRef = useRef<Partial<A11yProfile>>({});
 
   const updatePref = useCallback(
     <K extends keyof A11yProfile>(key: K, value: A11yProfile[K]) => {
       setLocalPrefs((prev) => ({ ...prev, [key]: value }));
       pendingPatchRef.current = { ...pendingPatchRef.current, [key]: value };
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
+      const fieldKey = key as string;
+      // Reset only this field's own timer — edits to other fields keep their
+      // own schedules and aren't postponed by activity here.
+      const existing = debounceTimersRef.current[fieldKey];
+      if (existing) clearTimeout(existing);
+      debounceTimersRef.current[fieldKey] = setTimeout(() => {
+        delete debounceTimersRef.current[fieldKey];
         const patch = pendingPatchRef.current;
         pendingPatchRef.current = {};
         if (Object.keys(patch).length > 0) saveMutation.mutate(patch);
@@ -184,13 +203,17 @@ export function AccountSettingsPage() {
   const resetMutation = useMutation({
     mutationFn: () =>
       apiRequest("PUT", "/api/a11y/preferences", { profile: DEFAULT_A11Y_PROFILE }),
-    onSuccess: () => {
-      // Cancel any pending debounced patch so it can't overwrite the reset.
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = null;
+    onMutate: () => {
+      // Cancel debounced patches *before* the reset request goes out so a
+      // pending timer can't fire and PUT a stale field value that would
+      // re-arrive after the reset and silently un-do it.
+      for (const t of Object.values(debounceTimersRef.current)) {
+        clearTimeout(t);
       }
+      debounceTimersRef.current = {};
       pendingPatchRef.current = {};
+    },
+    onSuccess: () => {
       // Update local state immediately so every control re-renders to defaults
       // without waiting for the next /api/settings/summary fetch.
       setLocalPrefs(DEFAULT_A11Y_PROFILE);
