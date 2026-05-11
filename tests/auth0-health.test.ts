@@ -16,6 +16,7 @@ import {
   isAuth0Usable,
   getAuth0HealthStatus,
   runAuth0HealthCheck,
+  startAuth0HealthRecoveryLoop,
   __resetAuth0HealthForTests,
 } from "../server/auth0Health";
 
@@ -134,6 +135,34 @@ async function run() {
     if (!/AUTH0_CLIENT_SECRET/.test(reason)) {
       throw new Error(`expected reason to name the missing var, got: ${reason}`);
     }
+  });
+
+  await test("recovery loop flips usable=true and logs once when tenant is fixed", async () => {
+    setEnv("test.auth0.com", "cid", "csec");
+    __resetAuth0HealthForTests();
+    // First probe: tenant misconfigured.
+    mockFetch({ error: "unauthorized_client" });
+    await runAuth0HealthCheck();
+    if (isAuth0Usable()) throw new Error("expected usable=false before recovery");
+
+    // Capture the recovery log line.
+    let recoveryLogs = 0;
+    console.log = (...args: any[]) => {
+      if (args.join(" ").includes("Sign-in re-enabled")) recoveryLogs++;
+    };
+    // Now simulate the operator fixing the tenant: probe returns invalid_grant.
+    mockFetch({ error: "invalid_grant" });
+    // Run the loop with a tiny interval and wait for two ticks.
+    startAuth0HealthRecoveryLoop(20);
+    await new Promise((r) => setTimeout(r, 80));
+    console.log = () => {};
+
+    if (!isAuth0Usable()) throw new Error("expected usable=true after recovery probe");
+    if (recoveryLogs !== 1) {
+      throw new Error(`expected exactly one re-enabled log, got ${recoveryLogs}`);
+    }
+    // Reset clears the timer so subsequent tests aren't affected.
+    __resetAuth0HealthForTests();
   });
 
   await test("no env vars set → silent (still usable)", async () => {
