@@ -3025,6 +3025,14 @@ export class ExternalAPIStorage implements IStorage {
       .set({ referralCredits: sql`${users.referralCredits} + ${REFERRER_MONTH_FREE_CENTS}` })
       .where(eq(users.id, referral.referrerId));
 
+    // Conversion analytics — fire-and-forget; never block the referral path.
+    try {
+      analyticsService.track("referral_converted", "free", {
+        referrerCreditCents: REFERRER_MONTH_FREE_CENTS,
+        refereeTrialDays: REFEREE_TRIAL_DAYS,
+      });
+    } catch { /* ignore */ }
+
     // Referee reward: 14-day Premium trial (only grant if not already on a paid tier)
     const [referee] = await db.select().from(users).where(eq(users.id, referredUserId)).limit(1);
     if (referee && (referee.subscriptionTier === "free" || !referee.subscriptionTier)) {

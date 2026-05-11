@@ -2167,6 +2167,7 @@ export const PRODUCT_EVENT_TYPES = [
   "upgrade_nudge_shown",
   "upgrade_nudge_dismissed",
   "upgrade_nudge_clicked",
+  "referral_converted",
 ] as const;
 export type ProductEventType = typeof PRODUCT_EVENT_TYPES[number];
 

@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns, accessibilityPreferences } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated, requireTier } from "./multiAuth";
 import { registerMagicLinkRoutes } from "./auth";
@@ -3828,8 +3828,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/gamification/leaderboard - Get leaderboard
-  app.get("/api/gamification/leaderboard", async (req, res) => {
+  // Calm Mode (Task #64 ethical guardrail): users in Calm Mode receive an
+  // empty leaderboard so the competitive comparison surface stays suppressed.
+  app.get("/api/gamification/leaderboard", async (req: any, res) => {
     try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      if (userId) {
+        try {
+          const [pref] = await db.select().from(accessibilityPreferences)
+            .where(eq(accessibilityPreferences.userId, userId)).limit(1);
+          const profile: any = pref?.profile ?? {};
+          if (profile?.calmMode) {
+            return res.json({ entries: [], suppressed: true, reason: "calm_mode" });
+          }
+        } catch { /* fall through to normal response */ }
+      }
       const period = (req.query.period as string) || "alltime";
       const limit = parseInt(req.query.limit as string) || 20;
       const leaderboard = await getLeaderboard(period as any, limit);
