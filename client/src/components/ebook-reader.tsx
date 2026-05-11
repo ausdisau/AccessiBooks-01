@@ -258,7 +258,7 @@ function ReaderViewToggle({ book, onBack, classic }: ReaderViewToggleProps) {
       <div
         role="group"
         aria-label="Reader view"
-        className="sticky top-0 z-30 flex items-center justify-end gap-1 px-3 py-2 bg-background/90 backdrop-blur border-b border-border"
+        className="flex items-center justify-end gap-1 px-3 py-2 bg-background border-b border-border"
       >
         <span className="text-xs text-muted-foreground mr-2">View:</span>
         <Button
