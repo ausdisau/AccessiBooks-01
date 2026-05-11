@@ -17,7 +17,7 @@ import memoize from "memoizee";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, RequestHandler, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { users } from "@shared/schema";
 import { db } from "./db";
@@ -602,7 +602,8 @@ export function setupMultiAuth(app: Express) {
       "/api/auth/callback/auth0",
       guardAuth0,
       makeAuth0CallbackHandler({
-        authenticator: (cb) => passport.authenticate("auth0", cb) as any,
+        authenticator: (cb) =>
+          passport.authenticate("auth0", cb) as RequestHandler,
         markUnusable: markAuth0Unusable,
       }),
     );
