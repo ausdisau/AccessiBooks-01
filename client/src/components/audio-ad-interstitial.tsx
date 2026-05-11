@@ -73,8 +73,8 @@ export function AudioAdInterstitial({ booksPlayed, onAdComplete, onSkip }: Audio
   const progress = ((currentAd.duration - remainingTime) / currentAd.duration) * 100;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
-      <Card className="max-w-md w-full bg-card/95 backdrop-blur-md shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <Card className="max-w-md w-full bg-card border-border/70 shadow-2xl">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">
@@ -191,7 +191,7 @@ export function RewardedAdInterstitial({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Rewarded advertisement playing"
@@ -202,7 +202,7 @@ export function RewardedAdInterstitial({
         </div>
       )}
 
-      <Card className="max-w-md w-full bg-card/95 backdrop-blur-md shadow-2xl">
+      <Card className="max-w-md w-full bg-card border-border/70 shadow-2xl">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

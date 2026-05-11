@@ -310,7 +310,7 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden bg-background border shadow-2xl rounded-[2rem]">
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden bg-card border border-border/70 shadow-2xl rounded-[2rem]">
         <DialogTitle className="sr-only">Onboarding</DialogTitle>
 
         {step > 1 && (

@@ -205,11 +205,15 @@ export function AccountSettingsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="page-hero mb-6">
+        <h1 className="page-title text-3xl mb-2">Account &amp; Settings</h1>
+        <p className="text-muted-foreground">Manage your plan, ad preferences, listening defaults, and accessibility.</p>
+      </div>
       <div className="flex flex-col md:flex-row gap-10">
         {/* Left Navigation Panel */}
-        <aside className="w-full md:w-64 shrink-0">
+        <aside className="w-full md:w-64 shrink-0" aria-label="Settings sections">
           <div className="sticky top-20 space-y-1">
-            <h1 className="text-2xl font-serif font-bold tracking-tight mb-6 px-3">Settings</h1>
+            <h2 className="text-sm font-semibold tracking-wider uppercase text-muted-foreground mb-3 px-3">Sections</h2>
             {[
               { id: "plan", label: "Your Plan", icon: Crown },
               { id: "ads", label: "Ad Preferences", icon: Zap },

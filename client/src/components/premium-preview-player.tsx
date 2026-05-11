@@ -123,8 +123,8 @@ export function PremiumPreviewPlayer({ book, onUpgrade, onDismiss }: PremiumPrev
   const remainingSeconds = Math.max(0, Math.ceil(PREVIEW_DURATION - elapsed));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/40">
-      <Card className="w-full max-w-md shadow-2xl border-primary/20">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <Card className="w-full max-w-md shadow-2xl border-primary/30 brand-glow">
         <CardContent className="p-5 relative">
           <div className="absolute top-3 right-3 bg-yellow-500 text-black text-xs font-bold px-2 py-0.5 rounded-full">
             Preview

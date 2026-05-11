@@ -305,7 +305,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label={`Audio advertisement: ${adTitle}`}
@@ -314,7 +314,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
       onKeyDown={handleKeyDown}
       data-testid="ad-overlay"
     >
-      <Card className="max-w-md w-full bg-card/95 backdrop-blur-md border-primary/20 shadow-2xl">
+      <Card className="max-w-md w-full bg-card border-border/70 shadow-2xl">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

@@ -63,7 +63,7 @@ export function PricingPage() {
   };
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-20 space-y-16">
+    <main className="max-w-6xl mx-auto px-6 py-20 space-y-16 app-shell-bg">
       <div className="text-center space-y-4">
         <h1 className="text-4xl sm:text-6xl font-serif font-bold tracking-tight text-foreground">
           Choose your plan

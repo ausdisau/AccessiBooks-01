@@ -74,10 +74,14 @@ export function ReferralsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-      <div className="text-center mb-8">
-        <Gift className="h-12 w-12 mx-auto text-primary mb-3" />
-        <h1 className="text-3xl font-bold dark:text-white">Referral Program</h1>
-        <p className="text-muted-foreground mt-2">
+      <div className="page-hero">
+        <div className="flex items-center gap-3 mb-2">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
+            <Gift className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <h1 className="page-title text-3xl">Referral Program</h1>
+        </div>
+        <p className="text-muted-foreground">
           Give friends a 14-day Premium trial — earn 1 free month of Plus for each one who joins.
         </p>
       </div>

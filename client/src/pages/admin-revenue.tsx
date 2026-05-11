@@ -130,7 +130,7 @@ export default function AdminRevenuePage() {
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
 
   return (
-    <div className="space-y-6" role="region" aria-label="Admin Revenue Dashboard">
+    <div className="space-y-6 operator-shell" role="region" aria-label="Admin Revenue Dashboard">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
