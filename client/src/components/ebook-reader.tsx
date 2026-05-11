@@ -1536,17 +1536,23 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           )}
         </div>
 
-        <div className="mb-4">
-          <VisualReader
-            bookId={book.id}
-            bookTitle={book.title || ""}
-            bookGenre={book.genre || undefined}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            bookText={content}
-            darkMode={settings.theme === "dark"}
-          />
-        </div>
+        {/* Visual Reader is hidden when the user has opted into Text-Only or
+            Low-Bandwidth mode (Task #66). Both modes are designed to strip
+            decorative video/imagery and would defeat the purpose of those
+            opt-ins if we kept rendering the AI scene videos. */}
+        {!a11yProfile.textOnlyMode && !a11yProfile.lowBandwidthMode && (
+          <div className="mb-4">
+            <VisualReader
+              bookId={book.id}
+              bookTitle={book.title || ""}
+              bookGenre={book.genre || undefined}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              bookText={content}
+              darkMode={settings.theme === "dark"}
+            />
+          </div>
+        )}
 
         <div className={`relative overflow-hidden rounded-lg ${pageTransition !== "none" ? "transition-transform duration-300" : ""}`}>
           <Card className={`${theme.cardBg} transition-colors duration-300 ${pageTransition === "slide-left" ? "animate-slide-in-left" : pageTransition === "slide-right" ? "animate-slide-in-right" : ""}`}>

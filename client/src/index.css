@@ -686,3 +686,25 @@ footer,
 .reduce-distraction .badge-icon-decorative {
   display: none !important;
 }
+
+/* Low-Bandwidth Mode (Task #66) — hides bandwidth-heavy decoration: video,
+   background images, large hero imagery, and animated GIFs. Audio bitrate
+   clamping is enforced in AudioContext, ad-video filtering is enforced
+   server-side in adMediation. */
+.low-bandwidth-mode video,
+.low-bandwidth-mode .hero-banner-image,
+.low-bandwidth-mode .background-video,
+.low-bandwidth-mode [data-bandwidth="heavy"] {
+  display: none !important;
+}
+.low-bandwidth-mode [style*="background-image"] {
+  background-image: none !important;
+}
+
+/* Text-Only Mode (Task #66) — strips visual chrome from the ebook reader. */
+.text-only-mode .book-cover-decoration,
+.text-only-mode .book-cover-large,
+.text-only-mode .book-illustration,
+.text-only-mode video {
+  display: none !important;
+}

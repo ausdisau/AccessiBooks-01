@@ -338,6 +338,69 @@ async function runTests() {
     }
   });
 
+  // ── Low-Bandwidth & Text-Only Mode (Task #66) round-trip ───────────────
+  await test("PUT /api/a11y/preferences persists lowBandwidthMode and textOnlyMode", async () => {
+    if (!authReady) throw new SkipError();
+    const putRes = await request("/api/a11y/preferences", {
+      method: "PUT",
+      cookie: sessionCookie!,
+      body: { profile: { lowBandwidthMode: true, textOnlyMode: true } },
+    });
+    if (putRes.status !== 200) throw new Error(`PUT expected 200, got ${putRes.status}`);
+
+    const getRes = await request("/api/a11y/preferences", { cookie: sessionCookie! });
+    const body = (await getRes.json()) as { profile: Record<string, unknown> };
+    if (body.profile.lowBandwidthMode !== true) {
+      throw new Error(`lowBandwidthMode not persisted; got ${body.profile.lowBandwidthMode}`);
+    }
+    if (body.profile.textOnlyMode !== true) {
+      throw new Error(`textOnlyMode not persisted; got ${body.profile.textOnlyMode}`);
+    }
+    // Deep-merge invariant: previously-set fields (incl. sensoryMode from
+    // the prior test in this run) must survive this patch.
+    if (body.profile.sensoryMode !== true) {
+      throw new Error(`Deep-merge violated by lowBandwidth patch (sensoryMode=${body.profile.sensoryMode}, expected true)`);
+    }
+    if (body.profile.preferredSkipForward !== 30) {
+      throw new Error(`Deep-merge violated by lowBandwidth patch (preferredSkipForward=${body.profile.preferredSkipForward}, expected 30)`);
+    }
+  });
+
+  // ── Toggling lowBandwidthMode off persists the false value ───────────────
+  await test("PUT /api/a11y/preferences accepts lowBandwidthMode=false to disable the clamp", async () => {
+    if (!authReady) throw new SkipError();
+    const putRes = await request("/api/a11y/preferences", {
+      method: "PUT",
+      cookie: sessionCookie!,
+      body: { profile: { lowBandwidthMode: false } },
+    });
+    if (putRes.status !== 200) throw new Error(`PUT expected 200, got ${putRes.status}`);
+
+    const getRes = await request("/api/a11y/preferences", { cookie: sessionCookie! });
+    const body = (await getRes.json()) as { profile: Record<string, unknown> };
+    if (body.profile.lowBandwidthMode !== false) {
+      throw new Error(`lowBandwidthMode should be false after toggle-off; got ${body.profile.lowBandwidthMode}`);
+    }
+    // Adjacent text-only flag must remain unchanged (deep-merge).
+    if (body.profile.textOnlyMode !== true) {
+      throw new Error(`Deep-merge violated: textOnlyMode (got ${body.profile.textOnlyMode}, expected true)`);
+    }
+  });
+
+  // ── /api/settings/summary surfaces the new flags too ─────────────────────
+  await test("GET /api/settings/summary includes lowBandwidthMode and textOnlyMode", async () => {
+    if (!authReady) throw new SkipError();
+    const res = await request("/api/settings/summary", { cookie: sessionCookie! });
+    if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
+    const body = (await res.json()) as { preferences: Record<string, unknown> };
+    if (body.preferences.lowBandwidthMode !== false) {
+      throw new Error(`/api/settings/summary should reflect lowBandwidthMode=false, got ${body.preferences.lowBandwidthMode}`);
+    }
+    if (body.preferences.textOnlyMode !== true) {
+      throw new Error(`/api/settings/summary should reflect textOnlyMode=true, got ${body.preferences.textOnlyMode}`);
+    }
+  });
+
   // ── Plus/Premium ad-free fork: tier exposed on /api/settings/summary ─────
   await test("GET /api/settings/summary exposes subscriptionTier so the UI can render the ad-free fork", async () => {
     if (!authReady) throw new SkipError();

@@ -170,9 +170,14 @@ export function registerAdMediationRoutes(router: Router) {
       };
 
       const ad = await adService.requestAd(context);
+      // Low-Bandwidth Mode (Task #66) implies suppress-animated and additionally
+      // strips any video creative URL on the companion payload. We treat the
+      // two flags together so a single check covers both opt-ins.
+      const lowBandwidth = (a11yProfile as { lowBandwidthMode?: boolean }).lowBandwidthMode === true;
       const suppressAnimated =
         decision.suppressAnimation === true ||
-        a11yProfile.suppressAnimatedAds === true;
+        a11yProfile.suppressAnimatedAds === true ||
+        lowBandwidth;
 
       // If user prefers static-only ads and the ad has a companion with animated format, filter it out
       // For house ads and audio-only ads this has no effect. For programmatic with companion, clear animated companions.
@@ -183,6 +188,12 @@ export function registerAdMediationRoutes(router: Router) {
           if (url.endsWith(".gif") || url.includes("animated") || url.includes("video")) {
             programmaticAd.companion = undefined;
           }
+        }
+        // Low-Bandwidth additionally strips any explicit video URL on the
+        // companion (regardless of file extension) so we never serve a video
+        // payload to a user who has opted out of high-bandwidth content.
+        if (lowBandwidth && programmaticAd.companion && (programmaticAd.companion as { videoUrl?: string }).videoUrl) {
+          delete (programmaticAd.companion as { videoUrl?: string }).videoUrl;
         }
       }
 
