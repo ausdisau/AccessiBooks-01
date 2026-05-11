@@ -17,8 +17,14 @@ import { analyticsService } from "./analyticsService";
 
 const MAX_PAGE = 50;
 
+type ReqUser = { id?: string; role?: string; claims?: { sub?: string } } | undefined;
+
+function reqUser(req: Request): ReqUser {
+  return (req as Request & { user?: ReqUser }).user;
+}
+
 function userIdFrom(req: Request): string | null {
-  const u: any = (req as any).user;
+  const u = reqUser(req);
   return u?.id || u?.claims?.sub || null;
 }
 
@@ -42,8 +48,7 @@ function isPaidTier(tier: string | null | undefined) {
 }
 
 function isAdmin(req: Request) {
-  const u: any = (req as any).user;
-  return u?.role === "admin";
+  return reqUser(req)?.role === "admin";
 }
 
 function requireAdmin(req: Request, res: Response, next: () => void) {
@@ -157,15 +162,15 @@ export function registerEngagementRoutes(app: Express) {
         }
       }
 
-      const baseWhere = topicId ? eq(bulletinThreads.topicId, topicId) : undefined;
+      const baseWhere = topicId ? eq(bulletinThreads.topicId, topicId) : sql`TRUE`;
       const rows = await db.select().from(bulletinThreads)
-        .where(baseWhere as any)
+        .where(baseWhere)
         .orderBy(desc(bulletinThreads.isPinned), desc(bulletinThreads.lastActivityAt))
         .limit(pageSize)
         .offset(offset);
 
       const totalRow = await db.select({ c: sql<number>`count(*)` }).from(bulletinThreads)
-        .where(baseWhere as any);
+        .where(baseWhere);
       const total = Number(totalRow[0]?.c ?? 0);
 
       res.json({ threads: rows, page, pageSize, total, hasMore: offset + rows.length < total });
@@ -337,9 +342,9 @@ export function registerEngagementRoutes(app: Express) {
           contentId: String(targetId),
           reason: String(reason).slice(0, 200),
           status: "pending",
-        } as any);
-      } catch {
-        // contentReports schema may differ; degrade gracefully
+        });
+      } catch (err: any) {
+        console.error("[Bulletin] report insert failed:", err?.message);
       }
       res.json({ ok: true });
     } catch (err: any) {
@@ -593,12 +598,16 @@ export function registerEngagementRoutes(app: Express) {
             ORDER BY listeners DESC
             LIMIT 6
           `);
-          const rows: any[] = (trending as any).rows ?? [];
+          const rows = (trending as unknown as { rows?: Array<{
+            book_id: string; book_title: string; book_author: string; listeners: number | string;
+          }> }).rows ?? [];
           friendActivity = rows.map(r => ({
             bookId: r.book_id, bookTitle: r.book_title, bookAuthor: r.book_author,
             listeners: Number(r.listeners),
           }));
-        } catch { /* ignore */ }
+        } catch (err: any) {
+          console.warn("[Hub] trending query failed:", err?.message);
+        }
       }
 
       // Weekly recap preview
@@ -739,11 +748,14 @@ export function registerEngagementRoutes(app: Express) {
       const fetchEventCount = async (eventType: string) => {
         try {
           const r = await db.execute(sql`SELECT user_tier as tier, COUNT(*) AS cnt FROM product_events WHERE event_type = ${eventType} AND occurred_at >= ${since} GROUP BY user_tier`);
-          const rows: any[] = (r as any).rows ?? [];
+          const rows = (r as unknown as { rows?: Array<{ tier: string | null; cnt: number | string }> }).rows ?? [];
           const out: Record<string, number> = { free: 0, plus: 0, premium: 0 };
           rows.forEach(rr => { out[rr.tier ?? "free"] = Number(rr.cnt); });
           return { total: rows.reduce((s, x) => s + Number(x.cnt), 0), byTier: out };
-        } catch { return { total: 0, byTier: { free: 0, plus: 0, premium: 0 } }; }
+        } catch (err: any) {
+          console.warn(`[Engagement Analytics] ${eventType} query failed:`, err?.message);
+          return { total: 0, byTier: { free: 0, plus: 0, premium: 0 } };
+        }
       };
 
       const [hubVisits, threads, replies, rsvps, attended, clips, nudgesShown, nudgesClicked] = await Promise.all([

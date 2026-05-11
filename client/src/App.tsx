@@ -1769,6 +1769,15 @@ function MainApp() {
                     </div>
                   </Suspense>
                 </Route>
+                <Route path="/events/:id">
+                  {(params) => (
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <div id="events-panel" role="region" aria-label="Live Event" data-testid="panel-events">
+                        <EventsPage focusEventId={params.id} />
+                      </div>
+                    </Suspense>
+                  )}
+                </Route>
                 <Route path="/events">
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="events-panel" role="region" aria-label="Live Events" data-testid="panel-events">
