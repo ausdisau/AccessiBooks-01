@@ -30,6 +30,7 @@ import { seedPlans } from "./seed";
 import { startDailySpendResetCron } from "./auctionEngine";
 import { storage } from "./storage";
 import { setAutoResponseStorage, hydrateAutoResponseDedupeFromStorage } from "./agentMailer";
+import { runAuth0HealthCheck } from "./auth0Health";
 
 const app = express();
 
@@ -87,6 +88,12 @@ app.use((req, res, next) => {
   } catch (err) {
     console.warn("[AgentMail] auto_response_log boot setup failed (continuing):", err);
   }
+  // Task #140: probe Auth0 once at boot so we can fail fast with a friendly
+  // error instead of redirecting users into a broken Universal Login flow.
+  // Fire-and-forget — never block server startup on the probe.
+  runAuth0HealthCheck().catch((err) =>
+    console.warn("[Auth0] Health check threw (continuing):", err?.message || err),
+  );
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -2222,6 +2222,16 @@ function App() {
         });
       }, 300);
     }
+    if (authStatus === "unavailable") {
+      window.history.replaceState({}, "", window.location.pathname);
+      setTimeout(() => {
+        toast({
+          title: "Sign-in temporarily unavailable",
+          description: "That sign-in option is misconfigured. Please use email or another method while we sort it out.",
+          variant: "destructive",
+        });
+      }, 300);
+    }
     const magicStatus = params.get("magic");
     if (magicStatus) {
       window.history.replaceState({}, "", window.location.pathname);
