@@ -19,6 +19,7 @@ import {
   userActivityEvents,
   userActivityShares,
   users,
+  listeningHistory,
   OUTCOME_TAGS,
   ACTIVITY_EVENT_TYPES,
   OUTCOME_TAG_LABELS,
@@ -28,6 +29,21 @@ import {
   type OutcomeTag,
   type UserActivityEvent,
 } from "@shared/schema";
+
+/**
+ * Per-book progress derived from the existing listening_history table.
+ * Surfaced in the report alongside session counts so users see real
+ * completion state, not just visit counts.
+ */
+export interface BookProgress {
+  bookId: string;
+  title: string | null;
+  currentTime: number; // seconds
+  totalDuration: number | null; // seconds
+  percent: number | null; // 0–100, null if duration unknown
+  completed: boolean;
+  lastPlayedAt: Date | null;
+}
 import { isAuthenticated } from "./multiAuth";
 
 function userIdFrom(req: Request): string | null {
@@ -161,8 +177,9 @@ export function renderActivityReportHtml(params: {
   events: UserActivityEvent[];
   audience: "self" | "caregiver";
   caregiverLabel?: string | null;
+  progress?: BookProgress[];
 }): string {
-  const { displayName, from, to, events, audience, caregiverLabel } = params;
+  const { displayName, from, to, events, audience, caregiverLabel, progress = [] } = params;
   const s = summarize(events);
   const fmtDate = (d: Date) =>
     d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -184,6 +201,24 @@ export function renderActivityReportHtml(params: {
     )
     .join("") ||
     `<tr><td colspan="3"><em>No book sessions in this period.</em></td></tr>`;
+
+  const progressRows = progress
+    .slice(0, 25)
+    .map((p) => {
+      const pct = p.percent != null ? `${p.percent}%` : "—";
+      const status = p.completed ? "Completed" : (p.percent != null ? "In progress" : "Started");
+      const lastPlayed = p.lastPlayedAt
+        ? p.lastPlayedAt.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+        : "—";
+      return `<tr>
+        <th scope="row">${escapeHtml(p.title ?? p.bookId)}</th>
+        <td>${pct}</td>
+        <td>${status}</td>
+        <td>${lastPlayed}</td>
+      </tr>`;
+    })
+    .join("") ||
+    `<tr><td colspan="4"><em>No per-book progress recorded.</em></td></tr>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -266,6 +301,18 @@ export function renderActivityReportHtml(params: {
   <table>
     <thead><tr><th scope="col">Title</th><th scope="col">Sessions</th><th scope="col">Time</th></tr></thead>
     <tbody>${bookRows}</tbody>
+  </table>
+
+  <h2>Per-book progress</h2>
+  <table>
+    <caption class="meta">Progress is read from your overall listening history, not just this date range.</caption>
+    <thead><tr>
+      <th scope="col">Title</th>
+      <th scope="col">Progress</th>
+      <th scope="col">Status</th>
+      <th scope="col">Last played</th>
+    </tr></thead>
+    <tbody>${progressRows}</tbody>
   </table>
 
   <h2>What this report is and isn't</h2>
@@ -518,7 +565,38 @@ export function registerUserActivityRoutes(app: Express) {
       .orderBy(desc(userActivityEvents.occurredAt))
       .limit(2000);
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    return { events: rows, user: u };
+
+    // Per-book progress from the user's listening_history. We surface this
+    // alongside session counts so the report shows real completion state, not
+    // just visit counts. Progress is *not* date-bounded — coordinators
+    // typically want the most recent overall position per title.
+    let progress: BookProgress[] = [];
+    try {
+      const histRows = await db
+        .select()
+        .from(listeningHistory)
+        .where(eq(listeningHistory.userId, userId))
+        .orderBy(desc(listeningHistory.lastPlayedAt))
+        .limit(50);
+      progress = histRows.map((h) => {
+        const total = h.totalDuration ?? null;
+        const cur = h.currentTime ?? 0;
+        const pct = total && total > 0 ? Math.min(100, Math.round((cur / total) * 100)) : null;
+        return {
+          bookId: h.bookId,
+          title: h.bookTitle ?? null,
+          currentTime: cur,
+          totalDuration: total,
+          percent: pct,
+          completed: !!h.completedAt || (pct != null && pct >= 99),
+          lastPlayedAt: h.lastPlayedAt ?? null,
+        };
+      });
+    } catch (err) {
+      console.error("[UserActivity] progress lookup failed:", (err as Error).message);
+    }
+
+    return { events: rows, user: u, progress };
   }
 
   app.get("/api/activity/report", isAuthenticated, async (req, res) => {
@@ -529,13 +607,14 @@ export function registerUserActivityRoutes(app: Express) {
     }
     const range = parseDateRange(req);
     try {
-      const { events } = await buildReport(userId, range);
+      const { events, progress } = await buildReport(userId, range);
       const html = renderActivityReportHtml({
         displayName: "AccessiBooks user",
         from: range.from,
         to: range.to,
         events,
         audience: "self",
+        progress,
       });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.send(html);
@@ -567,7 +646,7 @@ export function registerUserActivityRoutes(app: Express) {
         from: share.rangeFrom ?? new Date(Date.now() - 30 * 86400 * 1000),
         to: share.rangeTo ?? new Date(),
       };
-      const { events } = await buildReport(share.userId, range);
+      const { events, progress } = await buildReport(share.userId, range);
       const html = renderActivityReportHtml({
         displayName: "AccessiBooks user",
         from: range.from,
@@ -575,6 +654,7 @@ export function registerUserActivityRoutes(app: Express) {
         events,
         audience: "caregiver",
         caregiverLabel: share.caregiverLabel,
+        progress,
       });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.send(html);

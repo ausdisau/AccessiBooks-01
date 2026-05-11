@@ -298,6 +298,49 @@ export async function ensureEntitlementSchema(): Promise<void> {
   }
 }
 
+/**
+ * Task #67 — User-facing activity tables.
+ * Safe to call on every startup (IF NOT EXISTS).
+ */
+export async function ensureUserActivitySchema(): Promise<void> {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS user_activity_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        event_type varchar NOT NULL,
+        book_id varchar,
+        book_title text,
+        duration_seconds integer,
+        outcome_tag varchar,
+        note text,
+        occurred_at timestamp DEFAULT now()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_activity_events_user_time ON user_activity_events (user_id, occurred_at)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_activity_events_user_type ON user_activity_events (user_id, event_type)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_activity_events_user_book ON user_activity_events (user_id, book_id)`;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS user_activity_shares (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        caregiver_label text NOT NULL,
+        share_token varchar NOT NULL UNIQUE,
+        range_from timestamp,
+        range_to timestamp,
+        created_at timestamp DEFAULT now(),
+        revoked_at timestamp
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_activity_shares_user ON user_activity_shares (user_id)`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_activity_shares_token ON user_activity_shares (share_token)`;
+    console.log("[UserActivity] Schema ensured (user_activity_events + user_activity_shares)");
+  } catch (error: any) {
+    console.warn("[UserActivity] Schema setup warning:", error.message);
+  }
+}
+
 export async function setupWordBankTable(): Promise<boolean> {
   try {
     await sql`
