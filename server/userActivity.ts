@@ -104,18 +104,18 @@ export function trackUserActivity(
 const tagSchema = z.enum(OUTCOME_TAGS);
 const eventTypeSchema = z.enum(ACTIVITY_EVENT_TYPES);
 
-function parseDateRange(req: Request): { from: Date; to: Date } {
+function parseDateRange(req: Request): { from: Date; to: Date } | { error: string } {
   const now = new Date();
   const defaultFrom = new Date(now);
   defaultFrom.setDate(defaultFrom.getDate() - 30);
-  const fromStr = (req.query.from as string) || defaultFrom.toISOString();
-  const toStr = (req.query.to as string) || now.toISOString();
-  const from = new Date(fromStr);
-  const to = new Date(toStr);
-  return {
-    from: isNaN(from.getTime()) ? defaultFrom : from,
-    to: isNaN(to.getTime()) ? now : to,
-  };
+  const fromRaw = req.query.from as string | undefined;
+  const toRaw = req.query.to as string | undefined;
+  const from = fromRaw ? new Date(fromRaw) : defaultFrom;
+  const to = toRaw ? new Date(toRaw) : now;
+  if (isNaN(from.getTime())) return { error: "Invalid 'from' date." };
+  if (isNaN(to.getTime())) return { error: "Invalid 'to' date." };
+  if (from > to) return { error: "'from' must be on or before 'to'." };
+  return { from, to };
 }
 
 function summarize(events: UserActivityEvent[]) {
@@ -358,6 +358,15 @@ export function registerUserActivityRoutes(app: Express) {
           target: accessibilityPreferences.userId,
           set: { profile: merged, syncedAt: new Date() },
         });
+      // On opt-OUT, auto-revoke any outstanding caregiver shares so that
+      // re-enabling tracking later does not silently re-activate old
+      // tokens. Matches the user expectation of "stop sharing now".
+      if (!enabled) {
+        await db
+          .update(userActivityShares)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(userActivityShares.userId, userId), sql`${userActivityShares.revokedAt} IS NULL`));
+      }
     } catch (err) {
       console.error("[UserActivity] opt-in DB error:", (err as Error).message);
       return res.status(503).json({ message: "Could not save preference. Try again." });
@@ -375,7 +384,9 @@ export function registerUserActivityRoutes(app: Express) {
     if (!(await isOptedIn(userId))) {
       return res.json({ optedIn: false, events: [], summary: summarize([]) });
     }
-    const { from, to } = parseDateRange(req);
+    const range = parseDateRange(req);
+    if ("error" in range) return res.status(400).json({ message: range.error });
+    const { from, to } = range;
     try {
       const rows = await db
         .select()
@@ -606,6 +617,7 @@ export function registerUserActivityRoutes(app: Express) {
       return res.status(403).send("Enable activity tracking first.");
     }
     const range = parseDateRange(req);
+    if ("error" in range) return res.status(400).send(range.error);
     try {
       const { events, progress } = await buildReport(userId, range);
       const html = renderActivityReportHtml({
