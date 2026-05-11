@@ -61,9 +61,15 @@ function failedRedirect(reason: string | null | undefined): string {
 
 function getReqLogIn(req: Request): LogInFn | undefined {
   const candidate = (req as Request & { logIn?: unknown }).logIn;
-  return typeof candidate === "function"
-    ? (candidate as unknown as LogInFn)
-    : undefined;
+  if (typeof candidate !== "function") return undefined;
+  // IMPORTANT: passport's req.logIn relies on `this._sessionManager` to write
+  // the user into the session. Calling it as a detached function (e.g.
+  // `const fn = req.logIn; fn(user, done)`) loses `this`, which silently
+  // skips the session write and still invokes `done()` with no error — the
+  // callback then redirects the user "successfully" without a cookie. Bind
+  // it to `req` so the session manager is reachable. Regression coverage:
+  // tests/auth0-callback-success-flow.test.ts.
+  return (candidate as (...args: unknown[]) => unknown).bind(req) as LogInFn;
 }
 
 export function makeAuth0CallbackHandler(deps: {

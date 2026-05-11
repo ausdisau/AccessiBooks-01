@@ -75,12 +75,12 @@ args = "bash -c 'for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhos
 name = "google-oauth-test"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "TEST_BASE_URL=http://localhost:5000 SERVER_WAIT_MS=30000 npx tsx tests/google-oauth.test.ts && npx tsx tests/auth0-callback-classifier.test.ts && npx tsx tests/auth0-callback-route.test.ts"
-
-[workflows.workflow.metadata]
-isValidation = true
+args = "TEST_BASE_URL=http://localhost:5000 SERVER_WAIT_MS=30000 npx tsx tests/google-oauth.test.ts && npx tsx tests/auth0-callback-classifier.test.ts && npx tsx tests/auth0-callback-route.test.ts && npx tsx tests/auth0-callback-success-flow.test.ts && npx tsx tests/auth0-logout-flow.test.ts"
 
 [agent]
 integrations = ["javascript_mem_db:1.0.0", "javascript_auth_all_persistance:1.0.0", "spotify:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_stripe:1.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_object_storage:2.0.0", "agentmail:1.0.0"]

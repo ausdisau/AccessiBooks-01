@@ -24,6 +24,10 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { isAuth0Usable, markAuth0Unusable } from "./auth0Health";
 import { makeAuth0CallbackHandler } from "./auth0CallbackHandler";
+import {
+  makeAuth0LogoutGetHandler,
+  makeAuth0LogoutPostHandler,
+} from "./auth0LogoutHandlers";
 
 // Local strategy (username/password)
 passport.use(
@@ -345,56 +349,20 @@ export function setupMultiAuth(app: Express) {
     }
   });
   
-  // Shared logout helper.
+  // Shared logout helpers (see server/auth0LogoutHandlers.ts).
   // For Auth0-authenticated users, after destroying the local session we point
   // the client at Auth0's /v2/logout so the SSO session is also cleared
   // (otherwise the next /api/auth/auth0 visit silently re-auths the same user).
   // - GET /api/logout returns a 302 redirect (browser navigation)
   // - POST /api/auth/logout returns JSON with the redirect URL so SPA dashboards
   //   can navigate manually after their fetch resolves
-  function buildAuth0LogoutUrl(req: Request): string | null {
-    const user = req.user as any;
-    const isAuth0User = user?.authProvider === "auth0";
-    const auth0Domain = process.env.AUTH0_DOMAIN;
-    const auth0ClientId = process.env.AUTH0_CLIENT_ID;
-    if (!isAuth0User || !auth0Domain || !auth0ClientId) return null;
-    const returnTo = APP_URL || `${req.protocol}://${req.get("host")}`;
-    const url = new URL(`https://${auth0Domain}/v2/logout`);
-    url.searchParams.set("client_id", auth0ClientId);
-    url.searchParams.set("returnTo", returnTo);
-    return url.toString();
-  }
-
-  app.get("/api/logout", (req, res) => {
-    const auth0LogoutUrl = buildAuth0LogoutUrl(req);
-    req.logout((err) => {
-      if (err) {
-        console.error("Logout error:", err);
-        return res.status(500).json({ message: "Logout failed" });
-      }
-      req.session.destroy((sessErr) => {
-        if (sessErr) console.error("Session destroy error:", sessErr);
-        res.redirect(auth0LogoutUrl ?? "/");
-      });
-    });
-  });
-
-  // POST logout alias for ad-platform dashboards (SPA fetch).
-  // Returns the Auth0 logout URL when applicable so the client can redirect.
-  app.post("/api/auth/logout", (req, res) => {
-    const auth0LogoutUrl = buildAuth0LogoutUrl(req);
-    req.logout((err) => {
-      if (err) {
-        return res.status(500).json({ message: "Logout failed" });
-      }
-      req.session.destroy(() => {
-        res.json({
-          message: "Logged out",
-          ...(auth0LogoutUrl ? { logoutUrl: auth0LogoutUrl } : {}),
-        });
-      });
-    });
-  });
+  const logoutOpts = {
+    auth0Domain: process.env.AUTH0_DOMAIN,
+    auth0ClientId: process.env.AUTH0_CLIENT_ID,
+    appUrl: APP_URL,
+  };
+  app.get("/api/logout", makeAuth0LogoutGetHandler(logoutOpts));
+  app.post("/api/auth/logout", makeAuth0LogoutPostHandler(logoutOpts));
   
   // Local registration
   app.post("/api/auth/register", async (req: Request, res: Response) => {
