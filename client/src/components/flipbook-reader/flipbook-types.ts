@@ -6,6 +6,8 @@ import type {
   FlipbookTheme,
   FlipbookTypography,
 } from "./flipbook-typography";
+import type { PageMatch } from "./book-search";
+import type { TtsPreferences, TtsState, TtsVoice } from "./tts-service";
 
 export interface FlipbookPage {
   id: string;
@@ -33,6 +35,12 @@ export interface ReaderToolbarProps {
   shortcutsOpen: boolean;
   settingsButtonRef?: React.Ref<HTMLButtonElement>;
   annotationsButtonRef?: React.Ref<HTMLButtonElement>;
+  ttsSupported: boolean;
+  ttsState: TtsState;
+  onReadAloud: () => void;
+  onPauseTts: () => void;
+  onResumeTts: () => void;
+  onStopTts: () => void;
 }
 
 export interface ReaderSettingsPanelProps {
@@ -44,6 +52,10 @@ export interface ReaderSettingsPanelProps {
   onThemeChange: (theme: FlipbookTheme) => void;
   onPresetChange: (preset: FlipbookPreset) => void;
   onResetDefaults: () => void;
+  ttsSupported: boolean;
+  ttsVoices: TtsVoice[];
+  ttsPrefs: TtsPreferences;
+  onTtsPrefsChange: (patch: Partial<TtsPreferences>) => void;
 }
 
 export interface PageNavigatorProps {
@@ -59,6 +71,8 @@ export interface ReadingPageProps {
   flipDirection: "none" | "next" | "prev";
   reducedMotion: boolean;
   typography: FlipbookTypography;
+  highlightMatches: PageMatch[];
+  contentRef?: React.Ref<HTMLDivElement>;
 }
 
 export interface AnnotationPanelProps {

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import type { ReadingPageProps } from "./flipbook-types";
 import { FONT_FAMILY_STACK } from "./flipbook-typography";
+import { buildHighlightSegments } from "./book-search";
 
 export function ReadingPage({
   page,
   flipDirection,
   reducedMotion,
   typography,
+  highlightMatches,
+  contentRef,
 }: ReadingPageProps) {
   const [phase, setPhase] = useState<"idle" | "flipping">("idle");
 
@@ -33,6 +36,9 @@ export function ReadingPage({
     wordSpacing: `${typography.wordSpacing}em`,
   };
 
+  const segments = buildHighlightSegments(page.content, highlightMatches);
+  const matchCount = highlightMatches.length;
+
   return (
     <article
       className="relative h-full w-full"
@@ -49,9 +55,32 @@ export function ReadingPage({
           transformOrigin: flipDirection === "next" ? "left center" : "right center",
         }}
       >
-        <div className="max-w-none whitespace-pre-wrap" style={textStyle}>
-          {page.content}
+        <div
+          ref={contentRef}
+          className="max-w-none whitespace-pre-wrap"
+          style={textStyle}
+          data-testid="flipbook-page-content"
+        >
+          {segments.map((seg, i) =>
+            seg.isMatch ? (
+              <mark
+                key={i}
+                className="flipbook-search-match rounded px-0.5"
+                aria-label={`Search match: ${seg.text}`}
+                data-testid="flipbook-search-highlight"
+              >
+                {seg.text}
+              </mark>
+            ) : (
+              <span key={i}>{seg.text}</span>
+            ),
+          )}
         </div>
+        {matchCount > 0 && (
+          <p className="sr-only" data-testid="flipbook-page-match-count">
+            {matchCount} search match{matchCount === 1 ? "" : "es"} on this page.
+          </p>
+        )}
         <div
           className="mt-8 pt-4 text-xs text-center"
           style={{

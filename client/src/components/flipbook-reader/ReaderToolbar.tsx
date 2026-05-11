@@ -7,6 +7,10 @@ import {
   Settings,
   MessageSquare,
   Keyboard,
+  Volume2,
+  Pause,
+  Play,
+  Square,
 } from "lucide-react";
 import type { ReaderToolbarProps } from "./flipbook-types";
 
@@ -25,7 +29,17 @@ export function ReaderToolbar({
   shortcutsOpen,
   settingsButtonRef,
   annotationsButtonRef,
+  ttsSupported,
+  ttsState,
+  onReadAloud,
+  onPauseTts,
+  onResumeTts,
+  onStopTts,
 }: ReaderToolbarProps) {
+  const isSpeaking = ttsState === "speaking";
+  const isPaused = ttsState === "paused";
+  const isActive = isSpeaking || isPaused;
+
   return (
     <div
       role="toolbar"
@@ -82,12 +96,61 @@ export function ReaderToolbar({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-8"
+            aria-controls="flipbook-search-panel"
             data-testid="flipbook-search-input"
           />
         </div>
       </div>
 
       <div className="flex items-center gap-1 ml-auto">
+        {ttsSupported && (
+          <div className="flex items-center gap-1" role="group" aria-label="Read aloud controls">
+            {!isActive && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={onReadAloud}
+                aria-label="Read aloud"
+                data-testid="flipbook-btn-tts-read"
+              >
+                <Volume2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+            {isSpeaking && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={onPauseTts}
+                aria-label="Pause reading"
+                data-testid="flipbook-btn-tts-pause"
+              >
+                <Pause className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+            {isPaused && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={onResumeTts}
+                aria-label="Resume reading"
+                data-testid="flipbook-btn-tts-resume"
+              >
+                <Play className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+            {isActive && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={onStopTts}
+                aria-label="Stop reading"
+                data-testid="flipbook-btn-tts-stop"
+              >
+                <Square className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
+        )}
         <Button
           ref={settingsButtonRef}
           variant={settingsOpen ? "default" : "outline"}

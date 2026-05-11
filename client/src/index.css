@@ -827,6 +827,33 @@ footer,
   outline-offset: 2px;
 }
 
+/* Search match highlighting (Task #81). The mark element inherits the page
+   foreground colour so contrast remains compliant in every theme; we only
+   change the background and add a thin underline as a non-colour cue. */
+.flipbook-theme-light .flipbook-search-match,
+.flipbook-theme-sepia .flipbook-search-match {
+  background-color: hsl(48, 100%, 70%);
+  color: hsl(28, 50%, 12%);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+.flipbook-theme-dark .flipbook-search-match {
+  background-color: hsl(48, 95%, 50%);
+  color: hsl(220, 13%, 8%);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+.flipbook-theme-high-contrast .flipbook-search-match {
+  background-color: #ffff00;
+  color: #000000;
+  outline: 2px solid #ffff00;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
 /* Remap shadcn semantic tokens within the flipbook reader scope so that
    Button / Input / Slider / etc. inherit the active flipbook theme. */
 .flipbook-theme-light,
