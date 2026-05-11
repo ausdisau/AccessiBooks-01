@@ -122,19 +122,9 @@ export function AccountSettingsPage() {
     }
   }, [localPrefs.reduceDistractionMode]);
 
-  // Low-Bandwidth + Text-Only modes ride on the same documentElement-class
-  // pattern so the global CSS rules in index.css can take effect immediately
-  // without waiting for the next route change.
-  useEffect(() => {
-    if (localPrefs.lowBandwidthMode !== undefined) {
-      document.documentElement.classList.toggle("low-bandwidth-mode", !!localPrefs.lowBandwidthMode);
-    }
-  }, [localPrefs.lowBandwidthMode]);
-  useEffect(() => {
-    if (localPrefs.textOnlyMode !== undefined) {
-      document.documentElement.classList.toggle("text-only-mode", !!localPrefs.textOnlyMode);
-    }
-  }, [localPrefs.textOnlyMode]);
+  // Low-Bandwidth + Text-Only documentElement classes are applied globally
+  // by usePreferencesKernel so they take effect on app boot, not just when
+  // visiting this settings page.
 
   const saveMutation = useMutation({
     mutationFn: (profile: Partial<A11yProfile>) =>

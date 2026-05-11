@@ -151,7 +151,10 @@ export function OfflineDownloads() {
                       {book.author}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatBytes(book.sizeBytes)} • {new Date(book.downloadedAt).toLocaleDateString()}
+                      {formatBytes(book.sizeBytes)} • Saved {new Date(book.downloadedAt).toLocaleDateString()}
+                      {book.lastPlayedAt
+                        ? ` • Last played ${new Date(book.lastPlayedAt).toLocaleDateString()}`
+                        : " • Not yet played"}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -177,6 +180,21 @@ export function OfflineDownloads() {
               </CardContent>
             </Card>
           ))}
+
+          <Card className="border-dashed">
+            <CardContent className="py-3">
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <CloudOff className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                <p data-testid="undownloadable-note">
+                  <span className="font-medium block">Not available offline</span>
+                  Ad-supported free streams, podcasts, and DRM-protected partner
+                  catalog titles cannot be saved for offline listening. Borrow a
+                  copy via the library loan system to unlock offline playback for
+                  those titles.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       ) : (
         activeDownloads.length === 0 && (

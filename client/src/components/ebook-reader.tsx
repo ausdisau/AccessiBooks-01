@@ -256,7 +256,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [showQuiz, setShowQuiz] = useState(false);
   const [showBreakPrompt, setShowBreakPrompt] = useState(false);
 
-  const { profile: a11yProfile } = usePreferencesKernel();
+  const { profile: a11yProfile, updateProfile: updateA11yProfile } = usePreferencesKernel();
   const followAlong = a11yProfile.karaokeFollowAlong ?? false;
 
   const completionFiredRef = useRef(false);
@@ -1296,6 +1296,44 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                           {f === "dyslexia" ? "Dyslexia" : f.charAt(0).toUpperCase() + f.slice(1).replace("-", " ")}
                         </Button>
                       ))}
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-3">
+                    <span className="text-sm font-medium block mb-2">Data &amp; Imagery</span>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!a11yProfile.textOnlyMode}
+                          onChange={(e) => updateA11yProfile({ textOnlyMode: e.target.checked })}
+                          className="mt-1"
+                          data-testid="reader-toggle-text-only"
+                          aria-label="Text-only mode: hide cover images and decorative visuals in the reader"
+                        />
+                        <span className="text-xs">
+                          <span className="font-medium block">Text-only mode</span>
+                          <span className="text-muted-foreground">
+                            Hide cover images, illustrations, and the visual reader.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!a11yProfile.lowBandwidthMode}
+                          onChange={(e) => updateA11yProfile({ lowBandwidthMode: e.target.checked })}
+                          className="mt-1"
+                          data-testid="reader-toggle-low-bandwidth"
+                          aria-label="Low-bandwidth mode: clamp audio to lowest bitrate and strip videos"
+                        />
+                        <span className="text-xs">
+                          <span className="font-medium block">Low-bandwidth mode</span>
+                          <span className="text-muted-foreground">
+                            Force lowest audio quality and strip video ads + decorative video.
+                          </span>
+                        </span>
+                      </label>
                     </div>
                   </div>
 
