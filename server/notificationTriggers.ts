@@ -408,34 +408,74 @@ let friendDigestInterval: ReturnType<typeof setInterval> | null = null;
 export async function checkFriendDigest(): Promise<number> {
   let sent = 0;
   try {
-    const since = new Date();
-    since.setDate(since.getDate() - 7);
+    // Hard cap on lookback so a brand-new follower never receives a digest
+    // covering ancient history.
+    const lookbackFloor = new Date();
+    lookbackFloor.setDate(lookbackFloor.getDate() - 7);
 
-    const followerRows = await db.execute(sql`
-      SELECT uf.follower_id AS follower_id,
-             COUNT(DISTINCT lh.book_id)::int AS books_finished,
-             MAX(b.title) AS sample_title
+    // Per-follower window starts at max(lastFriendDigestSentAt, lookbackFloor),
+    // so the digest only fires when there are *new* completions since the last
+    // successful send. If a user already received a digest today and nothing
+    // new happened, no notification goes out (idempotent across daily runs).
+    const candidates = await db.execute(sql`
+      SELECT DISTINCT uf.follower_id AS follower_id
       FROM user_follows uf
       JOIN listening_history lh ON lh.user_id = uf.following_id
-      LEFT JOIN books b ON b.id = lh.book_id
-      WHERE lh.last_played_at >= ${since}
-        AND lh.completed_at IS NOT NULL
-      GROUP BY uf.follower_id
-      HAVING COUNT(DISTINCT lh.book_id) >= 1
+      WHERE lh.completed_at IS NOT NULL
+        AND lh.completed_at >= ${lookbackFloor}
     `);
-    const rows = friendDigestRowsAdapter(followerRows) as Array<{
-      follower_id: string; books_finished: number; sample_title: string | null
-    }>;
+    const candidateRows = friendDigestRowsAdapter(candidates) as Array<{ follower_id: string }>;
 
-    for (const r of rows) {
-      if (!(await shouldSendForUser(r.follower_id, "friend_digest"))) continue;
+    for (const c of candidateRows) {
+      const followerId = c.follower_id;
+      if (!(await shouldSendForUser(followerId, "friend_digest"))) continue;
+
+      const [pref] = await db.select().from(accessibilityPreferences)
+        .where(eq(accessibilityPreferences.userId, followerId)).limit(1);
+      const profile = (pref?.profile ?? {}) as A11yProfile;
+      const lastSent = profile.lastFriendDigestSentAt
+        ? new Date(profile.lastFriendDigestSentAt)
+        : null;
+      const windowStart = lastSent && lastSent > lookbackFloor ? lastSent : lookbackFloor;
+
+      const detailRows = await db.execute(sql`
+        SELECT COUNT(DISTINCT lh.book_id)::int AS books_finished,
+               MAX(b.title) AS sample_title,
+               MAX(lh.completed_at) AS latest_completed_at
+        FROM user_follows uf
+        JOIN listening_history lh ON lh.user_id = uf.following_id
+        LEFT JOIN books b ON b.id = lh.book_id
+        WHERE uf.follower_id = ${followerId}
+          AND lh.completed_at IS NOT NULL
+          AND lh.completed_at > ${windowStart}
+      `);
+      const detail = (friendDigestRowsAdapter(detailRows)[0] ?? {}) as {
+        books_finished?: number; sample_title?: string | null; latest_completed_at?: string | Date | null;
+      };
+      const newCount = Number(detail.books_finished ?? 0);
+      if (newCount < 1) continue; // nothing new since last digest — skip
+
       const payload = getNotificationPayload("friend_digest", {
-        count: r.books_finished,
-        sampleTitle: r.sample_title ?? "a book",
+        count: newCount,
+        sampleTitle: detail.sample_title ?? "a book",
         url: "/hub",
       });
-      const result = await sendNotificationToUser(r.follower_id, payload);
+      const result = await sendNotificationToUser(followerId, payload);
       sent += result.sent;
+
+      // Persist marker so the next run only counts completions newer than this.
+      const merged: A11yProfile = {
+        ...DEFAULT_A11Y_PROFILE,
+        ...profile,
+        lastFriendDigestSentAt: new Date().toISOString(),
+      };
+      if (pref) {
+        await db.update(accessibilityPreferences)
+          .set({ profile: merged, updatedAt: new Date() })
+          .where(eq(accessibilityPreferences.userId, followerId));
+      } else {
+        await db.insert(accessibilityPreferences).values({ userId: followerId, profile: merged });
+      }
     }
   } catch (err) {
     console.error("Friend digest check failed:", err);
