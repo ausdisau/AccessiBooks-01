@@ -35,6 +35,8 @@ import {
 import { registerCoachRoutes } from "./coachRoutes";
 import { registerAdPlatformRoutes } from "./adPlatformRoutes";
 import { registerAnalyticsRoutes } from "./analyticsRoutes";
+import { registerAdminEntitlementsRoutes } from "./adminEntitlementsRoutes";
+import { seedEntitlementConfigDefaults, loadEntitlementConfig } from "./entitlementConfig";
 import { analyticsService } from "./analyticsService";
 import { registerChatRoutes } from "./replit_integrations/chat";
 import {
@@ -265,6 +267,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Analytics and monetization reporting dashboard routes
   registerAnalyticsRoutes(app);
+
+  // Admin entitlement config grid (Task #70). Seed defaults and warm
+  // the in-memory cache so sync entitlement helpers see the configured
+  // values immediately on first request.
+  registerAdminEntitlementsRoutes(app);
+  seedEntitlementConfigDefaults()
+    .catch(err => console.warn("[Entitlements] seed skipped:", err.message))
+    .finally(() => loadEntitlementConfig().catch(() => {}));
 
   // Engagement & monetization system: bulletin, events, hub, share-clip, nudges
   registerEngagementRoutes(app);

@@ -14,6 +14,7 @@ import { db } from "./db";
 import { entitlements } from "@shared/schema";
 import { eq, and, or, isNull, gt } from "drizzle-orm";
 import type { SubscriptionTier } from "@shared/schema";
+import { isFeatureEnabledByConfig } from "./entitlementConfig";
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -211,6 +212,9 @@ export function shouldServeAds(
  * Only premium and institutional tiers allow offline downloads.
  */
 export function canDownloadOffline(effectiveTier: SubscriptionTier): boolean {
+  // Admin-configured override takes precedence (Task #70).
+  const cfg = isFeatureEnabledByConfig("offline_downloads", effectiveTier);
+  if (cfg !== undefined) return cfg;
   return effectiveTier === "premium" || effectiveTier === "institutional";
 }
 
@@ -233,6 +237,12 @@ export function canUsePremiumFeature(
   effectiveTier: SubscriptionTier,
   feature: PremiumFeature | string,
 ): boolean {
+  // Admin-configured override takes precedence (Task #70). When the
+  // feature key has a row for the requested tier in entitlement_config,
+  // honour it. Otherwise fall through to the hard-coded mapping below.
+  const cfg = isFeatureEnabledByConfig(feature, effectiveTier);
+  if (cfg !== undefined) return cfg;
+
   switch (feature) {
     case "advanced_personalization":
     case "ai_coach_full":
