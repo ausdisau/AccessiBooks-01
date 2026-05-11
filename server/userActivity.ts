@@ -629,6 +629,8 @@ export function registerUserActivityRoutes(app: Express) {
         progress,
       });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      res.setHeader("Pragma", "no-cache");
       res.send(html);
     } catch (err) {
       console.error("[UserActivity] report error:", (err as Error).message);
@@ -669,6 +671,8 @@ export function registerUserActivityRoutes(app: Express) {
         progress,
       });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      res.setHeader("Pragma", "no-cache");
       res.send(html);
     } catch (err) {
       console.error("[UserActivity] caregiver report error:", (err as Error).message);
