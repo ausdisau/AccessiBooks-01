@@ -49,6 +49,49 @@ export function __resetAuth0HealthForTests() {
   auth0Usable = true;
   lastReason = null;
   lastCheckedAt = null;
+  if (recoveryTimer) {
+    clearInterval(recoveryTimer);
+    recoveryTimer = null;
+  }
+}
+
+// Task #144: When Auth0 is marked unusable, poll the tenant periodically so
+// that fixing the dashboard (e.g. enabling the Authorization Code grant)
+// auto-recovers sign-in without requiring a server restart.
+let recoveryTimer: ReturnType<typeof setInterval> | null = null;
+const DEFAULT_RECOVERY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Start a background loop that re-probes Auth0 every `intervalMs` milliseconds
+ * whenever `auth0Usable === false`. On a successful probe, sign-in flips back
+ * to enabled and a single `[Auth0] Sign-in re-enabled` line is logged.
+ *
+ * Safe to call multiple times — subsequent calls are no-ops while a timer is
+ * already running. The timer is `unref()`-ed so it never blocks process exit.
+ */
+export function startAuth0HealthRecoveryLoop(
+  intervalMs: number = DEFAULT_RECOVERY_INTERVAL_MS,
+): void {
+  if (recoveryTimer) return;
+  recoveryTimer = setInterval(async () => {
+    if (auth0Usable) return; // Nothing to recover.
+    const wasUsable = auth0Usable;
+    try {
+      await runAuth0HealthCheck();
+    } catch (err: any) {
+      console.warn(
+        `[Auth0] Recovery probe threw (continuing): ${err?.message || err}`,
+      );
+      return;
+    }
+    if (!wasUsable && auth0Usable) {
+      console.log(
+        "[Auth0] Sign-in re-enabled — tenant config now accepts the authorization_code grant.",
+      );
+    }
+  }, intervalMs);
+  // Don't keep the event loop alive solely for this timer.
+  if (typeof recoveryTimer.unref === "function") recoveryTimer.unref();
 }
 
 /**
@@ -63,7 +106,8 @@ export function markAuth0Unusable(reason: string) {
   lastCheckedAt = Date.now();
   console.warn(
     `[Auth0] Sign-in disabled at runtime: ${reason}. ` +
-      `Auth0-mediated sign-in routes will redirect to /?auth=unavailable until the tenant config is fixed and the server restarts.`,
+      `Auth0-mediated sign-in routes will redirect to /?auth=unavailable until the tenant config is fixed; ` +
+      `the background health-recovery loop will re-enable sign-in automatically within ~5 minutes of the fix (no restart required).`,
   );
 }
 
@@ -198,6 +242,7 @@ export async function runAuth0HealthCheck(): Promise<void> {
   console.warn(
     `[Auth0] Sign-in is unhealthy: token endpoint returned an unexpected response ` +
       `(${lastReason}). Auth0-mediated sign-in routes will redirect to /?auth=unavailable ` +
-      `until the tenant config is fixed and the server restarts.`,
+      `until the tenant config is fixed; the background health-recovery loop will ` +
+      `re-enable sign-in automatically within ~5 minutes of the fix (no restart required).`,
   );
 }

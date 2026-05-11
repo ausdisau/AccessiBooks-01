@@ -143,11 +143,21 @@ Regular Web Application. In that case:
 
 If the misconfiguration is detected at runtime (e.g. via a callback that
 returns `unauthorized_client`), the same flag is flipped and the next click
-short-circuits immediately. Restart the server after fixing the tenant.
+short-circuits immediately.
 
 To fix: in the Auth0 dashboard, open **Applications → (your app) → Settings →
 Advanced Settings → Grant Types** and enable **Authorization Code**, OR
 repoint `AUTH0_CLIENT_ID` at a Regular Web Application.
+
+### Auto-recovery (Task #144)
+
+Once Auth0 is marked unusable (at boot or at runtime), a background timer
+re-runs the same `/oauth/token` probe every 5 minutes via
+`startAuth0HealthRecoveryLoop()` in `server/auth0Health.ts`. As soon as the
+tenant accepts the `authorization_code` grant again (the probe returns
+`invalid_grant` / `invalid_request`), the `auth0Usable` flag flips back to
+`true`, a single `[Auth0] Sign-in re-enabled` line is logged, and the next
+sign-in click goes through Auth0 normally — no server restart required.
 
 ## Smoke testing
 

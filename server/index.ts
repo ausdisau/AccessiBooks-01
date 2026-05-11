@@ -30,7 +30,7 @@ import { seedPlans } from "./seed";
 import { startDailySpendResetCron } from "./auctionEngine";
 import { storage } from "./storage";
 import { setAutoResponseStorage, hydrateAutoResponseDedupeFromStorage } from "./agentMailer";
-import { runAuth0HealthCheck } from "./auth0Health";
+import { runAuth0HealthCheck, startAuth0HealthRecoveryLoop } from "./auth0Health";
 
 const app = express();
 
@@ -94,6 +94,10 @@ app.use((req, res, next) => {
   runAuth0HealthCheck().catch((err) =>
     console.warn("[Auth0] Health check threw (continuing):", err?.message || err),
   );
+  // Task #144: When the boot probe (or a runtime markAuth0Unusable call) marks
+  // Auth0 as unusable, periodically re-probe so that fixing the tenant in the
+  // Auth0 dashboard auto-recovers sign-in without requiring a server restart.
+  startAuth0HealthRecoveryLoop();
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
