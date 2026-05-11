@@ -1,11 +1,11 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry, plans, type Plan, type InsertPlan, subscriptions, type Subscription, type InsertSubscription, entitlements, type Entitlement, type InsertEntitlement, listeningSessions, type ListeningSession, type InsertListeningSession, adRewards, type AdReward, type InsertAdReward, accessibilityPreferences, type AccessibilityPreferences, type InsertAccessibilityPreferences, userPreferences } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry, plans, type Plan, type InsertPlan, subscriptions, type Subscription, type InsertSubscription, entitlements, type Entitlement, type InsertEntitlement, listeningSessions, type ListeningSession, type InsertListeningSession, adRewards, type AdReward, type InsertAdReward, accessibilityPreferences, type AccessibilityPreferences, type InsertAccessibilityPreferences, userPreferences, autoResponseLog, type AutoResponseLog } from "@shared/schema";
 import { analyticsService } from "./analyticsService";
 import { computeReadingLevel, genrePatternsForLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { db } from "./db";
-import { eq, desc, and, sql, count, asc } from "drizzle-orm";
+import { eq, desc, and, sql, count, asc, gt, lte } from "drizzle-orm";
 import { fetchWithRetry, cachedFetch, CACHE_TTL } from "./apiCache";
 import {
   fetchLoyalBooks, searchLoyalBooks,
@@ -76,6 +76,11 @@ function mapRowToBook(row: any): Book {
 }
 
 export interface IStorage {
+  // Auto-response dedupe persistence (Task #133)
+  recordAutoResponse(recipient: string, sender: string, dedupeKey: string, expiresAt: Date): Promise<void>;
+  getActiveAutoResponses(now?: Date): Promise<AutoResponseLog[]>;
+  pruneExpiredAutoResponses(now?: Date): Promise<number>;
+
   getBooks(): Promise<Book[]>;
   getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>>;
   getBookCount(filters?: { source?: string; contentType?: string; genre?: string }): Promise<number>;
@@ -3242,6 +3247,40 @@ export class ExternalAPIStorage implements IStorage {
       .onConflictDoUpdate({ target: accessibilityPreferences.userId, set: { ...prefs, updatedAt: new Date() } })
       .returning();
     return result;
+  }
+
+  // ----- Auto-response log (Task #133) ---------------------------------------
+  // Persists per-(recipient, sender, dedupeKey) suppression windows so the
+  // dedupe state survives server restarts. Used by server/agentMailer.ts.
+
+  async recordAutoResponse(
+    recipient: string,
+    sender: string,
+    dedupeKey: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    await db
+      .insert(autoResponseLog)
+      .values({ recipient, sender, dedupeKey, expiresAt })
+      .onConflictDoUpdate({
+        target: [autoResponseLog.recipient, autoResponseLog.sender, autoResponseLog.dedupeKey],
+        set: { expiresAt },
+      });
+  }
+
+  async getActiveAutoResponses(now: Date = new Date()): Promise<AutoResponseLog[]> {
+    return await db
+      .select()
+      .from(autoResponseLog)
+      .where(gt(autoResponseLog.expiresAt, now));
+  }
+
+  async pruneExpiredAutoResponses(now: Date = new Date()): Promise<number> {
+    const rows = await db
+      .delete(autoResponseLog)
+      .where(lte(autoResponseLog.expiresAt, now))
+      .returning({ id: autoResponseLog.id });
+    return rows.length;
   }
 }
 

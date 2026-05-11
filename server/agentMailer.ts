@@ -138,12 +138,68 @@ export interface ShouldAutoRespondResult {
 
 const DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-// In-process dedupe store — sufficient for single-instance deployment.
+// In-process dedupe store — hot cache. Persistence is provided by an
+// optional storage adapter (see `setAutoResponseStorage` below) so the
+// dedupe window survives server restarts and multi-instance deploys.
 // Key: `${recipient}|${sender}|${dedupeKey}` (lowercased). Value: expiresAt epoch ms.
 const dedupeStore = new Map<string, number>();
 
 function dedupeStoreKey(recipient: string, sender: string, dedupeKey: string): string {
   return `${recipient.trim().toLowerCase()}|${sender.trim().toLowerCase()}|${dedupeKey.trim().toLowerCase()}`;
+}
+
+/**
+ * Pluggable persistence layer for the auto-response dedupe store.
+ * In tests we leave this null and rely on the in-memory `Map` only.
+ * In production, `server/index.ts` wires the DB-backed `storage` instance
+ * and calls `hydrateAutoResponseDedupeFromStorage()` at boot so the cache
+ * is repopulated from any rows that haven't yet expired.
+ */
+export interface AutoResponseStorage {
+  recordAutoResponse(recipient: string, sender: string, dedupeKey: string, expiresAt: Date): Promise<void>;
+  getActiveAutoResponses(now?: Date): Promise<Array<{ recipient: string; sender: string; dedupeKey: string; expiresAt: Date }>>;
+  pruneExpiredAutoResponses?(now?: Date): Promise<number>;
+}
+
+let autoResponseStorage: AutoResponseStorage | null = null;
+
+/** Wire the persistent (DB-backed) store. Pass `null` to detach (tests). */
+export function setAutoResponseStorage(s: AutoResponseStorage | null): void {
+  autoResponseStorage = s;
+}
+
+/**
+ * Repopulate the in-memory dedupe cache from the persistent store. Should
+ * be called once at server boot, after `setAutoResponseStorage`. Failures
+ * are logged but never thrown — a missing/empty table just means nothing
+ * is currently suppressed.
+ */
+export async function hydrateAutoResponseDedupeFromStorage(now: number = Date.now()): Promise<number> {
+  if (!autoResponseStorage) return 0;
+  try {
+    const rows = await autoResponseStorage.getActiveAutoResponses(new Date(now));
+    let loaded = 0;
+    for (const row of rows) {
+      const exp = row.expiresAt instanceof Date ? row.expiresAt.getTime() : new Date(row.expiresAt).getTime();
+      if (exp > now) {
+        dedupeStore.set(dedupeStoreKey(row.recipient, row.sender, row.dedupeKey), exp);
+        loaded++;
+      }
+    }
+    if (loaded > 0) {
+      console.log(`[AgentMail] Hydrated ${loaded} auto-response dedupe entries from storage`);
+    }
+    // Best-effort prune of stale rows so the table doesn't grow unbounded.
+    if (autoResponseStorage.pruneExpiredAutoResponses) {
+      autoResponseStorage.pruneExpiredAutoResponses(new Date(now)).catch((err) => {
+        console.warn("[AgentMail] pruneExpiredAutoResponses failed:", err);
+      });
+    }
+    return loaded;
+  } catch (err) {
+    console.error("[AgentMail] hydrateAutoResponseDedupeFromStorage failed:", err);
+    return 0;
+  }
 }
 
 function pruneExpired(now: number): void {
@@ -258,7 +314,23 @@ export function recordAutoResponse(
   windowMs: number = DEFAULT_WINDOW_MS,
   now: number = Date.now(),
 ): void {
-  dedupeStore.set(dedupeStoreKey(recipient, sender, dedupeKey), now + windowMs);
+  const expiresAtMs = now + windowMs;
+  dedupeStore.set(dedupeStoreKey(recipient, sender, dedupeKey), expiresAtMs);
+  // Fire-and-forget persistence so restarts and additional instances see
+  // the same suppression window. Errors are logged but never thrown — the
+  // in-memory cache remains authoritative for the current process.
+  if (autoResponseStorage) {
+    autoResponseStorage
+      .recordAutoResponse(
+        recipient.trim().toLowerCase(),
+        sender.trim().toLowerCase(),
+        dedupeKey.trim().toLowerCase(),
+        new Date(expiresAtMs),
+      )
+      .catch((err) => {
+        console.warn("[AgentMail] persistAutoResponse failed:", err);
+      });
+  }
 }
 
 /** Test/admin helpers for the in-memory dedupe store. */

@@ -2566,6 +2566,30 @@ export const ENTITLEMENT_FEATURES = [
 ] as const;
 export type EntitlementFeatureKey = typeof ENTITLEMENT_FEATURES[number]["key"];
 
+// ============================================================
+// AUTO RESPONSE LOG (Task #133)
+// Persists which (recipient, sender, dedupeKey) tuples have already received
+// an automated reply, so the dedupe window survives server restarts /
+// multi-instance deploys. Mirrors the in-memory Map in server/agentMailer.ts.
+// ============================================================
+export const autoResponseLog = pgTable("auto_response_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipient: text("recipient").notNull(),
+  sender: text("sender").notNull(),
+  dedupeKey: text("dedupe_key").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("ux_auto_response_log_recipient_sender_key").on(t.recipient, t.sender, t.dedupeKey),
+  index("idx_auto_response_log_expires").on(t.expiresAt),
+]);
+
+export const insertAutoResponseLogSchema = createInsertSchema(autoResponseLog).omit({
+  id: true, createdAt: true,
+});
+export type InsertAutoResponseLog = z.infer<typeof insertAutoResponseLogSchema>;
+export type AutoResponseLog = typeof autoResponseLog.$inferSelect;
+
 /** Default (featureKey × tier) → enabled mapping. Mirrors current code. */
 export const DEFAULT_ENTITLEMENT_MATRIX: Record<EntitlementFeatureKey, Record<SubscriptionTier, boolean>> = {
   advanced_personalization: { free: false, plus: false, premium: true,  institutional: true,  admin: true },
