@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Calendar, MessageSquare, Trophy, BarChart3, Sparkles, BookOpen, Heart } from "lucide-react";
 import type { Book } from "@shared/schema";
 import { UpgradeNudge } from "@/components/upgrade-nudge";
+import { AdSlot } from "@/components/AdSlot";
 
 const ReferralSection = lazy(() => import('@/components/referral-section').then(m => ({ default: m.ReferralSection })));
 
@@ -128,6 +129,13 @@ export default function HubPage() {
           />
         )}
       </div>
+
+      {/* Hub banner ad — free tier only; suppressed for Plus/Premium server-side */}
+      {!data?.plan.paid && (
+        <section aria-label="Sponsored banner" data-testid="hub-banner-ad">
+          <AdSlot placementId="hub-banner" />
+        </section>
+      )}
 
       {/* For You rail — personalized recommendations */}
       {forYouBooks.length > 0 && (

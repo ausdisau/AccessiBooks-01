@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Calendar, Users, Lock, PlayCircle, MessageCircle } from "lucide-react";
+import { Calendar, Users, Lock, PlayCircle, MessageCircle, CalendarPlus } from "lucide-react";
+import { AdSlot } from "@/components/AdSlot";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
@@ -30,6 +31,36 @@ interface LiveEvent {
 function formatWhen(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function toIcsDate(iso: string): string {
+  return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+function downloadEventIcs(event: LiveEvent): void {
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//AccessiBooks//Live Events//EN",
+    "BEGIN:VEVENT",
+    `UID:accessibooks-event-${event.id}`,
+    `DTSTAMP:${toIcsDate(new Date().toISOString())}`,
+    `DTSTART:${toIcsDate(event.scheduledStartAt)}`,
+    `DTEND:${toIcsDate(event.scheduledEndAt)}`,
+    `SUMMARY:${(event.title || "AccessiBooks event").replace(/\n/g, " ")}`,
+    `DESCRIPTION:${(event.description || "").replace(/\n/g, "\\n")}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${(event.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 const EVENTS_PAGE_SIZE = 5;
@@ -273,17 +304,30 @@ function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: 
               <Users className="h-3 w-3" aria-hidden="true" /> {event.rsvpCount} going · {event.attendedCount} attended
             </p>
           </div>
-          {user && event.status !== "ended" && (
-            <Button
-              size="sm"
-              variant={detail?.rsvped ? "secondary" : "default"}
-              onClick={() => rsvpM.mutate()}
-              disabled={rsvpM.isPending}
-              data-testid={`event-rsvp-${event.id}`}
-            >
-              {detail?.rsvped ? "Going ✓" : "RSVP"}
-            </Button>
-          )}
+          <div className="flex flex-col items-end gap-2">
+            {user && event.status !== "ended" && (
+              <Button
+                size="sm"
+                variant={detail?.rsvped ? "secondary" : "default"}
+                onClick={() => rsvpM.mutate()}
+                disabled={rsvpM.isPending}
+                data-testid={`event-rsvp-${event.id}`}
+              >
+                {detail?.rsvped ? "Going ✓" : "RSVP"}
+              </Button>
+            )}
+            {event.status !== "ended" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => downloadEventIcs(event)}
+                data-testid={`event-add-to-calendar-${event.id}`}
+                aria-label={`Add ${event.title} to calendar`}
+              >
+                <CalendarPlus className="h-4 w-4 mr-1" aria-hidden="true" /> Add to calendar
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       {expanded && (
@@ -299,7 +343,18 @@ function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: 
           )}
 
           {event.status === "ended" && event.replayUrl && (
-            <ReplaySection access={detail?.replayAccess ?? "none"} replayUrl={event.replayUrl} previewSec={event.freeReplayPreviewSeconds} />
+            <>
+              {/* Pre-replay sponsor card — free users only; suppressed server-side for Plus/Premium */}
+              {(!user?.subscriptionTier || user.subscriptionTier === "free") && (
+                <div className="rounded-md border-2 border-dashed border-muted-foreground/30 p-2" data-testid="replay-sponsor-slot">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-1">
+                    Sponsored · before the replay
+                  </p>
+                  <AdSlot placementId="event-replay-preroll" />
+                </div>
+              )}
+              <ReplaySection access={detail?.replayAccess ?? "none"} replayUrl={event.replayUrl} previewSec={event.freeReplayPreviewSeconds} />
+            </>
           )}
 
           <EventChat eventId={event.id} />

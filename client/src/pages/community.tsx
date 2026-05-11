@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Lock, MessageSquare, Heart, ChevronLeft, ChevronRight, Plus, Flag } from "lucide-react";
 import { Link } from "wouter";
+import { AdSlot } from "@/components/AdSlot";
 
 interface Topic {
   id: string;
@@ -180,15 +181,30 @@ export default function CommunityPage() {
           )}
 
           <ul className="space-y-3">
-            {(threadsData?.threads ?? []).map(t => (
-              <li key={t.id}>
-                <ThreadCard
-                  thread={t}
-                  expanded={activeThreadId === t.id}
-                  onToggle={() => setActiveThreadId(activeThreadId === t.id ? null : t.id)}
-                />
-              </li>
-            ))}
+            {(threadsData?.threads ?? []).flatMap((t, idx) => {
+              const items = [
+                <li key={t.id}>
+                  <ThreadCard
+                    thread={t}
+                    expanded={activeThreadId === t.id}
+                    onToggle={() => setActiveThreadId(activeThreadId === t.id ? null : t.id)}
+                  />
+                </li>,
+              ];
+              // Sponsored bulletin slot: one labeled placement after the 3rd thread.
+              // Suppressed in accessibility/disability-themed topics per ad rules.
+              if (idx === 2 && currentTopic && !currentTopic.isAccessibilityCategory) {
+                items.push(
+                  <li key={`sponsored-${t.id}`} aria-label="Sponsored thread" data-testid="bulletin-sponsored-slot">
+                    <div className="rounded-md border-2 border-dashed border-muted-foreground/30 p-2">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 px-1">Sponsored</p>
+                      <AdSlot placementId="community-thread" />
+                    </div>
+                  </li>
+                );
+              }
+              return items;
+            })}
           </ul>
 
           {/* Pagination — explicit page controls, no infinite scroll */}

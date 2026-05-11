@@ -13,6 +13,7 @@ import {
   type A11yProfile,
   type NotificationType,
 } from "@shared/schema";
+import { sendEmail } from "./mailer";
 import { eq, sql, lt, and, isNotNull, ne, gte, lte, isNull } from "drizzle-orm";
 import { sendNotificationToUser, getNotificationPayload } from "./pushNotifications";
 
@@ -249,6 +250,21 @@ export async function checkWinBack(): Promise<number> {
       const result = await sendNotificationToUser(userId, payload);
       sent += result.sent;
 
+      // Send accompanying email when configured. Category opt-out is already
+      // honored above via shouldSendForUser; quietHours guards push timing only.
+      try {
+        const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+        if (u?.email) {
+          await sendEmail({
+            to: u.email,
+            subject: "We miss you on AccessiBooks",
+            text: "It's been a while since your last listen. Pick up where you left off — your progress and bookmarks are saved.\n\nOpen AccessiBooks: " + (process.env.PUBLIC_BASE_URL || "https://accessibooks.app") + "/hub",
+          });
+        }
+      } catch (mailErr) {
+        console.warn("[Win-back] email send failed:", (mailErr as Error)?.message);
+      }
+
       // Persist marker so subsequent runs skip this user. The marker is cleared
       // by the analytics/playback path when the user returns (resetWinBackOnReturn).
       const merged: A11yProfile = { ...DEFAULT_A11Y_PROFILE, ...profile, lastWinBackSentAt: new Date().toISOString() };
@@ -357,6 +373,20 @@ export async function checkWeeklyRecap(): Promise<number> {
       const payload = getNotificationPayload("weekly_recap", { minutes, books });
       const result = await sendNotificationToUser(userId, payload);
       sent += result.sent;
+
+      // Accompanying weekly-recap email (category opt-out already enforced).
+      try {
+        const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+        if (u?.email) {
+          await sendEmail({
+            to: u.email,
+            subject: `Your week on AccessiBooks: ${minutes} min, ${books} finished`,
+            text: `Hi! Here's your weekly listening recap:\n\n• ${minutes} minutes listened\n• ${books} title${books === 1 ? "" : "s"} finished\n\nView the full breakdown: ${process.env.PUBLIC_BASE_URL || "https://accessibooks.app"}/hub`,
+          });
+        }
+      } catch (mailErr) {
+        console.warn("[Weekly recap] email send failed:", (mailErr as Error)?.message);
+      }
     }
   } catch (err) {
     console.error("Weekly recap check failed:", err);
@@ -389,7 +419,7 @@ export async function checkFriendDigest(): Promise<number> {
       JOIN listening_history lh ON lh.user_id = uf.following_id
       LEFT JOIN books b ON b.id = lh.book_id
       WHERE lh.last_played_at >= ${since}
-        AND lh.progress >= 0.95
+        AND lh.completed_at IS NOT NULL
       GROUP BY uf.follower_id
       HAVING COUNT(DISTINCT lh.book_id) >= 1
     `);
