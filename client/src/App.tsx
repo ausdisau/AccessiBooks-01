@@ -1396,6 +1396,28 @@ function MainApp() {
 
   const stopListeningRef = useRef<() => void>(() => {});
 
+  // Audible confirmation for voice intents (Task #68). Pairs the visible
+  // toast with a short spoken acknowledgement via the Web Speech API so
+  // hands-free / low-vision users get immediate feedback that the command
+  // was understood. Silently no-ops when speech synthesis is unavailable.
+  const speakConfirmation = useCallback((message: string) => {
+    try {
+      const synth =
+        typeof window !== "undefined" && "speechSynthesis" in window
+          ? window.speechSynthesis
+          : null;
+      if (!synth) return;
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(message);
+      u.rate = 1.0;
+      u.pitch = 1.0;
+      u.volume = 1.0;
+      synth.speak(u);
+    } catch {
+      // Speech synthesis is best-effort; the toast still confirms visually.
+    }
+  }, []);
+
   const voiceCommands = useMemo<VoiceCommand[]>(() => [
     {
       patterns: ["stop", "stop listening", "cancel", "never mind"],
@@ -1505,6 +1527,7 @@ function MainApp() {
           description: "Opening your Accessibility Coach to explain this passage.",
           duration: 2500,
         });
+        speakConfirmation("Asking your coach to explain this passage.");
       },
       description: "Ask the coach to explain the current passage",
     },
@@ -1536,6 +1559,7 @@ function MainApp() {
           description: "Jumped to the Easy Read catalog — reading levels 1 & 2.",
           duration: 2500,
         });
+        speakConfirmation("Showing easier books from the Easy Read catalog.");
       },
       description: "Show easier books from the Easy Read catalog",
     },
@@ -1554,10 +1578,11 @@ function MainApp() {
           description: "Softened motion and audio peaks. Disable any time from Settings.",
           duration: 3000,
         });
+        speakConfirmation("Low Sensory Mode is on.");
       },
       description: "Turn on Low Sensory Mode",
     },
-  ], [isPlaying, togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate, sensoryMutation, toast]);
+  ], [isPlaying, togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate, sensoryMutation, toast, speakConfirmation]);
 
   const voiceControl = useVoiceControl({
     commands: voiceCommands,
