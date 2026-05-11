@@ -122,7 +122,11 @@ const NOTIFICATION_TEMPLATES: Record<string, (data?: Record<string, string | num
   friend_digest: (data) => ({
     type: "friend_digest",
     title: "What your friends are reading 📚",
-    body: `${data?.summary ?? "See what your community is enjoying this week."}`,
+    body: data?.summary
+      ? String(data.summary)
+      : (data?.count
+          ? `${data.count} friend${Number(data.count) === 1 ? "" : "s"} listened to ${data?.sampleTitle ?? "new books"} recently.`
+          : "See what your community is enjoying this week."),
     icon: "/assets/icons/community.png",
     url: "/hub",
     tag: "friend-digest",
