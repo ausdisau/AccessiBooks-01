@@ -44,7 +44,7 @@ import {
   Keyboard,
   Music2,
 } from "lucide-react";
-import { useAudioContext } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
 import { InteractiveTranscript } from "./interactive-transcript";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";

@@ -1,13 +1,13 @@
-import { createContext, useContext, useState, useRef, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { Book, Progress, Chapter, type A11yProfile as SharedA11yProfile } from "@shared/schema";
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
-import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
+import { audioAdService } from "@/services/audio-ad-service";
 import { useQuery } from "@tanstack/react-query";
 import { usePlaybackAdHooks } from "@/hooks/use-playback-ad-hooks";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
-import { computeStreamQuality, appendStreamQualityParams, type StreamQualityInfo as SharedStreamQualityInfo, type StreamQualityTier as SharedStreamQualityTier } from "@/contexts/stream-quality";
+import { computeStreamQuality, appendStreamQualityParams } from "@/contexts/stream-quality";
 import {
   applySensoryClass,
   buildLimiterNodes,
@@ -16,67 +16,7 @@ import {
   getAudioContextCtor,
   type LimiterNodes,
 } from "@/contexts/sensory-audio";
-
-interface AudioAdState {
-  isAdPlaying: boolean;
-  currentAd: AdResponse | null;
-  adType: "pre-roll" | "mid-roll" | null;
-}
-
-export type StreamQualityTier = SharedStreamQualityTier;
-export type StreamQualityInfo = SharedStreamQualityInfo;
-
-interface AudioContextType {
-  currentBook: Book | null;
-  audioRef: React.RefObject<HTMLAudioElement>;
-  isPlaying: boolean;
-  isMuted: boolean;
-  currentTime: number;
-  duration: number;
-  playbackRate: number;
-  isLoading: boolean;
-  isBuffering: boolean;
-  isOffline: boolean;
-  sleepTimer: number | null;
-  sleepTimerRemaining: number | null;
-  chapters: Chapter[];
-  currentChapter: Chapter | null;
-  currentChapterIndex: number;
-  adState: AudioAdState;
-  skipAfterMs: number;
-  streamQuality: StreamQualityInfo;
-  bufferedAhead: number;
-  setCurrentBook: (book: Book | null) => void;
-  togglePlayPause: () => Promise<void>;
-  toggleMute: () => void;
-  skip: (seconds: number) => void;
-  seekTo: (time: number) => void;
-  changeSpeed: (delta: number) => void;
-  setSpeed: (speed: number) => void;
-  formatTime: (seconds: number) => string;
-  playBook: (book: Book) => void;
-  setSleepTimer: (minutes: number | null) => void;
-  cancelSleepTimer: () => void;
-  onTrackEndCallback: React.MutableRefObject<(() => void) | null>;
-  onChapterEndCallback: React.MutableRefObject<(() => void) | null>;
-  nextChapter: () => void;
-  prevChapter: () => void;
-  seekToChapter: (chapterIndex: number) => void;
-  onAdComplete: (skipped: boolean) => void;
-  onAdUpgrade: () => void;
-  /** True while an ad request is in-flight (pre-roll or mid-roll). Use to guard skip/chapter controls. */
-  adLoading: boolean;
-}
-
-const AudioContext = createContext<AudioContextType | null>(null);
-
-export function useAudioContext() {
-  const context = useContext(AudioContext);
-  if (!context) {
-    throw new Error("useAudioContext must be used within AudioProvider");
-  }
-  return context;
-}
+import { AudioContext, type AudioAdState, type AudioContextType, type StreamQualityInfo } from "@/contexts/audio-context";
 
 export function AudioProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();

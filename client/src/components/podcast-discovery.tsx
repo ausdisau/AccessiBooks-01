@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Search, Podcast, Play, Pause, Clock, ChevronLeft, ChevronRight, Rss, ExternalLink, Loader2, Star, Calendar, Headphones, TrendingUp, Volume2, X, SkipForward } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAudioContext } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
 import { useSubscription } from "@/hooks/use-subscription";
 import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 

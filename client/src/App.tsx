@@ -27,7 +27,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { AudioProvider, useAudioContext } from "@/contexts/AudioContext";
+import { AudioProvider } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
+import { EbookProvider } from "@/contexts/EbookProvider";
 import { AudioAdOverlay } from "@/components/audio-ad-overlay";
 import { MiniPlayer } from "@/components/mini-player";
 import { PremiumBadge } from "@/components/premium-badge";
@@ -2304,6 +2306,7 @@ function App() {
     <TooltipProvider>
       <Router>
         <AudioProvider>
+          <EbookProvider>
           <AudioAdManager />
           <Switch>
             <Route path="/demo-slot">
@@ -2353,6 +2356,7 @@ function App() {
           <FocusModeExitButton />
           <FocusShell />
           <Toaster />
+          </EbookProvider>
         </AudioProvider>
       </Router>
     </TooltipProvider>

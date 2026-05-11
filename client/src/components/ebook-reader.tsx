@@ -46,7 +46,7 @@ import {
   Shapes,
   Volume2,
 } from "lucide-react";
-import { useAudioContext } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
 import { useKaraokeAlignment } from "@/hooks/use-karaoke-alignment";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 import {
@@ -58,6 +58,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { localStorageService, wordBankService } from "@/lib/storage";
+import { useEbookContext } from "@/contexts/ebook-context";
 import { PdfViewer } from "./pdf-viewer";
 import { EpubViewer } from "./epub-viewer";
 import { TTSPlayer } from "./tts-player";
@@ -218,13 +219,38 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const {
+    location,
+    totalLocations,
+    bookmarks: providerBookmarks,
+    fontSize,
+    setCurrentBook: setEbookCurrentBook,
+    setLocation,
+    setTotalLocations,
+    setFontSize,
+    toggleBookmarkAt,
+  } = useEbookContext();
+  const currentPage = location?.kind === "page" ? (location.value as number) : 1;
+  const totalPages = totalLocations || 1;
+  const setCurrentPage = useCallback(
+    (n: number) => setLocation({ kind: "page", value: n }),
+    [setLocation],
+  );
+  const setTotalPages = useCallback(
+    (n: number) => setTotalLocations(n),
+    [setTotalLocations],
+  );
+  const bookmarks = useMemo(
+    () =>
+      providerBookmarks
+        .filter((b) => b.location.kind === "page")
+        .map((b) => b.location.value as number),
+    [providerBookmarks],
+  );
   const [settings, setSettings] = useState<ReadingSettings>(() => {
     const saved = localStorage.getItem(`ebook-settings-${book.id}`);
     return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
   });
-  const [bookmarks, setBookmarks] = useState<number[]>([]);
   const [highlightedWordIndex, setHighlightedWordIndex] = useState<number | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [showSearch, setShowSearch] = useState(false);
@@ -672,14 +698,17 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   }, [currentPage]);
 
   useEffect(() => {
+    setEbookCurrentBook(book);
     loadContent();
-    loadReadingProgress();
-    loadBookmarks();
     loadAnnotations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id]);
 
   useEffect(() => {
-    localStorage.setItem(`ebook-settings-${book.id}`, JSON.stringify(settings));
+    // fontSize is owned by EbookProvider and persisted there; strip it out so
+    // local settings writes never clobber the provider's value on reload.
+    const { fontSize: _omitFontSize, ...rest } = settings;
+    localStorage.setItem(`ebook-settings-${book.id}`, JSON.stringify(rest));
   }, [settings, book.id]);
 
   const loadContent = async () => {
@@ -738,18 +767,6 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     setTocEntries(entries);
   };
 
-  const loadReadingProgress = () => {
-    const progress = localStorageService.getProgress(book.id);
-    if (progress?.currentTime) {
-      setCurrentPage(Math.max(1, Math.floor(progress.currentTime)));
-    }
-  };
-
-  const loadBookmarks = () => {
-    const saved = localStorage.getItem(`ebook-bookmarks-${book.id}`);
-    if (saved) setBookmarks(JSON.parse(saved));
-  };
-
   const loadAnnotations = async () => {
     const saved = localStorage.getItem(`ebook-annotations-${book.id}`);
     if (saved) setAnnotations(JSON.parse(saved));
@@ -801,13 +818,10 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   }, [currentPage, totalPages, saveProgress]);
 
   const toggleBookmark = () => {
-    const newBookmarks = bookmarks.includes(currentPage)
-      ? bookmarks.filter(p => p !== currentPage)
-      : [...bookmarks, currentPage].sort((a, b) => a - b);
-    setBookmarks(newBookmarks);
-    localStorage.setItem(`ebook-bookmarks-${book.id}`, JSON.stringify(newBookmarks));
+    const wasBookmarked = bookmarks.includes(currentPage);
+    toggleBookmarkAt({ kind: "page", value: currentPage });
     toast({
-      title: bookmarks.includes(currentPage) ? "Bookmark removed" : "Bookmark added",
+      title: wasBookmarked ? "Bookmark removed" : "Bookmark added",
       description: `Page ${currentPage}`,
     });
   };
@@ -1283,14 +1297,14 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">Font Size</span>
-                      <span className="text-sm text-muted-foreground">{settings.fontSize}px</span>
+                      <span className="text-sm text-muted-foreground">{fontSize}px</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateSetting("fontSize", Math.max(12, settings.fontSize - 2))} aria-label="Decrease font size">
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setFontSize(Math.max(12, fontSize - 2))} aria-label="Decrease font size">
                         <Minus className="h-4 w-4" />
                       </Button>
-                      <Slider value={[settings.fontSize]} min={12} max={32} step={2} onValueChange={([v]) => updateSetting("fontSize", v)} className="flex-1" aria-label="Font size" />
-                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateSetting("fontSize", Math.min(32, settings.fontSize + 2))} aria-label="Increase font size">
+                      <Slider value={[fontSize]} min={12} max={32} step={2} onValueChange={([v]) => setFontSize(v)} className="flex-1" aria-label="Font size" />
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setFontSize(Math.min(32, fontSize + 2))} aria-label="Increase font size">
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1696,7 +1710,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                     leading-relaxed select-text
                   `}
                   style={{
-                    fontSize: `${settings.fontSize}px`,
+                    fontSize: `${fontSize}px`,
                     lineHeight: settings.lineHeight,
                     letterSpacing: settings.fontFamily === "dyslexia" ? "0.05em" : undefined,
                     wordSpacing: settings.fontFamily === "dyslexia" ? "0.1em" : undefined,
