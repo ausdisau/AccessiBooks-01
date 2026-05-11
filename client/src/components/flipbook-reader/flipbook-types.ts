@@ -20,6 +20,13 @@ export type { FlipbookPage } from "./flipbook-content-types";
 export interface FlipbookReaderProps {
   book: Book;
   onBack: () => void;
+  /**
+   * Stage 6 — pluggable content source. When omitted, the reader uses the
+   * built-in in-memory demo provider so existing callers keep working.
+   * A future EPUB parser, mock API, or audiobook transcript feed can swap
+   * in here without any renderer changes.
+   */
+  contentProvider?: import("./content-provider").FlipbookContentProvider;
 }
 
 export interface ReaderToolbarProps {
