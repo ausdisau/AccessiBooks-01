@@ -1,4 +1,4 @@
-import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry, plans, type Plan, type InsertPlan, subscriptions, type Subscription, type InsertSubscription, entitlements, type Entitlement, type InsertEntitlement, listeningSessions, type ListeningSession, type InsertListeningSession, adRewards, type AdReward, type InsertAdReward, accessibilityPreferences, type AccessibilityPreferences, type InsertAccessibilityPreferences } from "@shared/schema";
+import { type Book, type InsertBook, type User, type InsertUser, type UpsertUser, users, listeningHistory, type ListeningHistory, type InsertListeningHistory, playlists, playlistItems, type Playlist, type InsertPlaylist, type PlaylistItem, type InsertPlaylistItem, type PlaylistWithCount, type DJRecommendation, chapters, type Chapter, type InsertChapter, books as booksTable, purchases, type Purchase, type InsertPurchase, referrals, type Referral, wordBankEntries, type DbWordBankEntry, plans, type Plan, type InsertPlan, subscriptions, type Subscription, type InsertSubscription, entitlements, type Entitlement, type InsertEntitlement, listeningSessions, type ListeningSession, type InsertListeningSession, adRewards, type AdReward, type InsertAdReward, accessibilityPreferences, type AccessibilityPreferences, type InsertAccessibilityPreferences, userPreferences } from "@shared/schema";
 import { analyticsService } from "./analyticsService";
 import { computeReadingLevel, genrePatternsForLevel } from "./readingLevelUtils";
 import { randomUUID } from "crypto";
@@ -3010,19 +3010,49 @@ export class ExternalAPIStorage implements IStorage {
     const [referral] = await db.select().from(referrals).where(eq(referrals.referralCode, code));
     if (!referral) throw new Error("Referral not found");
 
-    const creditAmount = referral.creditAmount;
+    // Task #64 referral terms:
+    //   - Referrer: 1 month free Plus (recorded as $4.99 / 499¢ credit equivalent for accounting + UI display)
+    //   - Referee:  14-day Premium trial (premiumTrialEndDate + subscriptionTier="premium")
+    const REFERRER_MONTH_FREE_CENTS = 499;
+    const REFEREE_TRIAL_DAYS = 14;
 
     await db.update(referrals)
-      .set({ status: "completed", referredUserId })
+      .set({ status: "completed", referredUserId, creditAmount: REFERRER_MONTH_FREE_CENTS })
       .where(eq(referrals.id, referral.id));
 
+    // Referrer reward: 1 month free credit (used by billing to discount next renewal)
     await db.update(users)
-      .set({ referralCredits: sql`${users.referralCredits} + ${creditAmount}` })
+      .set({ referralCredits: sql`${users.referralCredits} + ${REFERRER_MONTH_FREE_CENTS}` })
       .where(eq(users.id, referral.referrerId));
 
-    await db.update(users)
-      .set({ referralCredits: sql`${users.referralCredits} + ${creditAmount}` })
-      .where(eq(users.id, referredUserId));
+    // Referee reward: 14-day Premium trial (only grant if not already on a paid tier)
+    const [referee] = await db.select().from(users).where(eq(users.id, referredUserId)).limit(1);
+    if (referee && (referee.subscriptionTier === "free" || !referee.subscriptionTier)) {
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + REFEREE_TRIAL_DAYS);
+      await db.update(users)
+        .set({
+          subscriptionTier: "premium",
+          subscriptionStatus: "trialing",
+        })
+        .where(eq(users.id, referredUserId));
+      // premiumTrialEndDate lives on user_preferences; upsert so the trial end is tracked.
+      const [existingPrefs] = await db
+        .select()
+        .from(userPreferences)
+        .where(eq(userPreferences.userId, referredUserId))
+        .limit(1);
+      if (existingPrefs) {
+        await db.update(userPreferences)
+          .set({ premiumTrialEndDate: trialEnd })
+          .where(eq(userPreferences.userId, referredUserId));
+      } else {
+        await db.insert(userPreferences).values({
+          userId: referredUserId,
+          premiumTrialEndDate: trialEnd,
+        });
+      }
+    }
   }
 
   async getUserReferrals(userId: string): Promise<Referral[]> {

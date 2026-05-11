@@ -814,7 +814,7 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   endpoint: text("endpoint").notNull(),
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
-  enabledTypes: text("enabled_types").array().notNull().default(sql`ARRAY['streak_reminder','goal_nudge','new_content','achievement','recommendation','re_engagement','author_update','system']::text[]`),
+  enabledTypes: text("enabled_types").array().notNull().default(sql`ARRAY['streak_reminder','goal_nudge','new_content','achievement','recommendation','re_engagement','author_update','system','rsvp_reminder','friend_digest','win_back','weekly_recap','streak_at_risk']::text[]`),
   createdAt: timestamp("created_at").defaultNow(),
   lastUsedAt: timestamp("last_used_at").defaultNow(),
 }, (table) => [

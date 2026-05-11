@@ -78,7 +78,7 @@ export function ReferralsPage() {
         <Gift className="h-12 w-12 mx-auto text-primary mb-3" />
         <h1 className="text-3xl font-bold dark:text-white">Referral Program</h1>
         <p className="text-muted-foreground mt-2">
-          Invite friends and earn $1.00 credit for each person who joins!
+          Give friends a 14-day Premium trial — earn 1 free month of Plus for each one who joins.
         </p>
       </div>
 
@@ -89,7 +89,7 @@ export function ReferralsPage() {
             Your Referral Link
           </CardTitle>
           <CardDescription>
-            Share this link with friends. Both you and your friend earn $1.00 credit when they sign up.
+            Your friend gets a 14-day Premium trial when they sign up. You get 1 month of Plus free, on us.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -136,7 +136,7 @@ export function ReferralsPage() {
               variant="outline"
               className="flex-1"
               onClick={() => {
-                const text = `Join me on AccessiBooks! Use my referral link to get $1.00 credit: ${shareUrl}`;
+                const text = `Join me on AccessiBooks — use my link for a 14-day Premium trial: ${shareUrl}`;
                 window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank", "width=550,height=420");
               }}
             >
@@ -183,7 +183,7 @@ export function ReferralsPage() {
               <div className="text-3xl font-bold dark:text-white">
                 ${((stats?.creditsEarned || 0) / 100).toFixed(2)}
               </div>
-              <div className="text-sm text-muted-foreground">Credits Earned</div>
+              <div className="text-sm text-muted-foreground">Free months earned (Plus equivalent)</div>
             </div>
           </CardContent>
         </Card>

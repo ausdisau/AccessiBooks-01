@@ -1606,7 +1606,11 @@ function MainApp() {
                 <Route path="/party">
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="party-panel" role="region" aria-label="Listening Party" data-testid="panel-party">
-                      <ListeningParty book={selectedBook || currentBook} onBack={handleBackToLibrary} />
+                      <ListeningParty
+                        book={selectedBook || currentBook}
+                        onBack={handleBackToLibrary}
+                        eventId={typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("event") : null}
+                      />
                     </div>
                   </Suspense>
                 </Route>
