@@ -295,21 +295,21 @@ export function registerUserActivityRoutes(app: Express) {
     const userId = userIdFrom(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const enabled = !!req.body?.enabled;
-    const existing = await getProfile(userId);
-    const merged: Partial<A11yProfile> = {
-      ...(existing as any),
+    const existing: A11yProfile = (await getProfile(userId)) ?? ({} as A11yProfile);
+    const merged: A11yProfile = {
+      ...existing,
       activityTrackingEnabled: enabled,
       activityTrackingEnabledAt: enabled
-        ? existing?.activityTrackingEnabledAt ?? new Date().toISOString()
+        ? existing.activityTrackingEnabledAt ?? new Date().toISOString()
         : null,
     };
     try {
       await db
         .insert(accessibilityPreferences)
-        .values({ userId, profile: merged as any })
+        .values({ userId, profile: merged })
         .onConflictDoUpdate({
           target: accessibilityPreferences.userId,
-          set: { profile: merged as any, syncedAt: new Date() },
+          set: { profile: merged, syncedAt: new Date() },
         });
     } catch (err) {
       console.error("[UserActivity] opt-in DB error:", (err as Error).message);

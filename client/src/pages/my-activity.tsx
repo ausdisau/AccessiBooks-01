@@ -200,9 +200,51 @@ export default function MyActivityPage() {
           className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground"
         >
           Turn on activity tracking above to see your listening summary, attach outcome tags, and
-          generate a report.
+          generate a report. You can still wipe any previously stored activity below.
         </p>
       )}
+
+      {/* Wipe is always available — including after opting out — so users can
+          permanently delete anything that was stored while tracking was on. */}
+      <section
+        aria-labelledby="wipe-heading"
+        className="rounded-lg border p-4 space-y-3 order-last"
+        data-testid="section-wipe"
+      >
+        <h2 id="wipe-heading" className="text-lg font-semibold flex items-center gap-2 text-red-600">
+          <Trash2 className="h-5 w-5" />
+          Wipe all activity
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Permanently delete every activity event for your account and revoke any active caregiver
+          shares. Available even when tracking is off. This cannot be undone.
+        </p>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" data-testid="button-wipe">
+              Wipe my activity
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Wipe all activity?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This deletes every activity event for your account and revokes all caregiver
+                shares. It cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => wipeMut.mutate()}
+                data-testid="button-wipe-confirm"
+              >
+                Yes, wipe everything
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </section>
 
       {enabled && (
         <>
@@ -278,7 +320,7 @@ export default function MyActivityPage() {
                         {ACTIVITY_EVENT_LABELS[e.eventType as ActivityEventType] ?? e.eventType}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {new Date(e.occurredAt as any).toLocaleString()}
+                        {new Date(String(e.occurredAt)).toLocaleString()}
                         {e.bookTitle && <> &middot; {e.bookTitle}</>}
                         {e.durationSeconds ? ` · ${formatDuration(e.durationSeconds)}` : ""}
                       </div>
@@ -395,44 +437,6 @@ export default function MyActivityPage() {
             )}
           </section>
 
-          <Separator />
-
-          {/* Wipe */}
-          <section aria-labelledby="wipe-heading" className="rounded-lg border p-4 space-y-3">
-            <h2 id="wipe-heading" className="text-lg font-semibold flex items-center gap-2 text-red-600">
-              <Trash2 className="h-5 w-5" />
-              Wipe all activity
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Permanently delete every activity event and revoke any active caregiver shares.
-              This cannot be undone.
-            </p>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" data-testid="button-wipe">
-                  Wipe my activity
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Wipe all activity?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This deletes every activity event for your account and revokes all caregiver
-                    shares. It cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => wipeMut.mutate()}
-                    data-testid="button-wipe-confirm"
-                  >
-                    Yes, wipe everything
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </section>
         </>
       )}
     </div>
