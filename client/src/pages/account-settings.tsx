@@ -32,7 +32,9 @@ import {
   Check,
   X,
   Wifi,
+  Activity,
 } from "lucide-react";
+import { Link } from "wouter";
 import type { A11yProfile } from "@shared/schema";
 
 interface SettingsSummary {
@@ -788,6 +790,27 @@ export function AccountSettingsPage() {
         </h2>
         <div className="rounded-lg border p-4">
           <OfflineDownloads />
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Section 4f — My Activity (Task #67) */}
+      <section aria-labelledby="section-activity-heading" data-testid="section-activity">
+        <h2 id="section-activity-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Activity className="h-5 w-5 text-emerald-600" />
+          My Activity
+        </h2>
+        <div className="rounded-lg border p-4 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Opt in to record your own listening, transcript, and accessibility-feature use,
+            attach outcome tags (capacity building, independent access, daily living,
+            communication support), and generate a plain-language report you can save, print,
+            or share with a caregiver. Wipe everything in one click.
+          </p>
+          <Button asChild variant="outline" data-testid="link-my-activity">
+            <Link href="/activity">Open My Activity</Link>
+          </Button>
         </div>
       </section>
 

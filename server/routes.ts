@@ -268,6 +268,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Engagement & monetization system: bulletin, events, hub, share-clip, nudges
   registerEngagementRoutes(app);
+
+  // Task #67: NDIS-friendly per-user activity reports.
+  const { registerUserActivityRoutes } = await import("./userActivity");
+  registerUserActivityRoutes(app);
   seedBulletinTopics().catch(err => console.warn("[Engagement] seed topics:", err.message));
 
   // === EASY ENGLISH ADD-ON ROUTES ===
@@ -3100,6 +3104,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Task #64: clear win-back marker so the user is eligible again after
         // their next inactivity episode. Fire-and-forget — never block playback.
         import("./notificationTriggers").then(m => m.resetWinBackOnReturn(userId)).catch(() => {});
+        // Task #67: opt-in NDIS-friendly per-user activity log.
+        import("./userActivity").then(m => m.trackUserActivity(userId, "playback_session", { bookId })).catch(() => {});
       }
 
       res.json({

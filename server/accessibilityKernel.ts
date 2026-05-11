@@ -185,6 +185,13 @@ export function registerAccessibilityKernelRoutes(app: Express) {
         // Mirror to in-memory cache so subsequent GETs work even if the DB
         // becomes unreachable later in the same session.
         memPrefs.set(userId, { profile: mergedProfile, activePreset: activePreset || null });
+        // Task #67: opt-in NDIS-friendly activity log. Skip if the patch
+        // itself is the opt-in toggle so we don't immediately log it.
+        if (!("activityTrackingEnabled" in (incomingProfile as object))) {
+          import("./userActivity")
+            .then(m => m.trackUserActivity(userId, "accessibility_change"))
+            .catch(() => {});
+        }
         res.json(result);
       } catch (err) {
         if (!isDbOutage(err)) throw err;

@@ -99,6 +99,7 @@ const HubPage = lazy(() => import('@/pages/hub'));
 const CommunityPage = lazy(() => import('@/pages/community'));
 const EventsPage = lazy(() => import('@/pages/events'));
 const AccountSettingsPage = lazy(() => import('@/pages/account-settings').then(m => ({ default: m.AccountSettingsPage })));
+const MyActivityPage = lazy(() => import('@/pages/my-activity'));
 const AdminAnalyticsPage = lazy(() => import('@/pages/admin-analytics'));
 
 function LoadingSpinner() {
@@ -1805,6 +1806,13 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="settings-panel" role="region" aria-label="Account Settings" data-testid="panel-settings">
                       <AccountSettingsPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/activity">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="activity-panel" role="region" aria-label="My Activity" data-testid="panel-activity">
+                      <MyActivityPage />
                     </div>
                   </Suspense>
                 </Route>
