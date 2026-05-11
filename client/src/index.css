@@ -709,9 +709,7 @@ footer,
   display: none !important;
 }
 
-/* Flipbook reader page-flip animation (Task #79).
-   Falls back to a simple fade automatically via prefers-reduced-motion
-   rules above which clamp animation-duration to 0.01ms. */
+/* Flipbook reader page-flip animation (Task #79). */
 @keyframes flipbook-flip-next {
   0%   { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
   50%  { transform: perspective(1400px) rotateY(-12deg); opacity: 0.85; }
@@ -731,10 +729,9 @@ footer,
   will-change: transform, opacity;
 }
 
-/* Reduced-motion fallback: a minimal but visible cross-fade (≈200ms).
-   Uses !important + class specificity to win over the global
-   prefers-reduced-motion clamp so the page change still has a calm,
-   perceptible cue rather than a jarring instant swap. */
+/* Reduced-motion fallback: a minimal ~200ms cross-fade so the page
+   change still has a calm, perceptible cue. Marked !important so it is
+   not flattened by the project-wide reduced-motion rule. */
 @keyframes flipbook-page-fade {
   0%   { opacity: 1; }
   50%  { opacity: 0.35; }
