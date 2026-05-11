@@ -728,6 +728,15 @@ export function registerEngagementRoutes(app: Express) {
     }
   });
 
+  app.post("/api/nudge/clicked", async (req: Request, res: Response) => {
+    try {
+      const userId = userIdFrom(req);
+      const user = userId ? await getUser(userId) : null;
+      analyticsService.track("upgrade_nudge_clicked", user?.subscriptionTier ?? "free", { surface: req.body?.surface });
+      res.json({ ok: true });
+    } catch { res.json({ ok: true }); }
+  });
+
   app.post("/api/nudge/dismiss", async (req: Request, res: Response) => {
     try {
       const userId = userIdFrom(req);

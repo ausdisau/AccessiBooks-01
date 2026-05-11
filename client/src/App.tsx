@@ -90,6 +90,7 @@ const PublisherDashboard = lazy(() => import('@/pages/ad-platform/publisher-dash
 const AdminPlatformDashboard = lazy(() => import('@/pages/ad-platform/admin-dashboard'));
 const SlotDetailPage = lazy(() => import('@/pages/ad-platform/slot-detail'));
 const DemoSlotPage = lazy(() => import('@/pages/ad-platform/demo-slot'));
+const ClipViewPage = lazy(() => import('@/pages/clip-view'));
 const WordBankPage = lazy(() => import('@/pages/word-bank').then(m => ({ default: m.WordBankPage })));
 const AchievementsPage = lazy(() => import('@/components/completion-certificate').then(m => ({ default: m.AchievementsPage })));
 // Engagement & monetization system (Task #64)
@@ -2109,6 +2110,11 @@ function App() {
             <Route path="/demo-slot">
               <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
                 <DemoSlotPage />
+              </Suspense>
+            </Route>
+            <Route path="/c/:token">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <ClipViewPage />
               </Suspense>
             </Route>
             <Route path="/ad-platform">
