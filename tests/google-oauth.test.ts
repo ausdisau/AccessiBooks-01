@@ -221,7 +221,40 @@ async function runTests() {
     }
   });
 
-  // ── 6. /api/auth/me returns 401 when unauthenticated ───────────────────────
+  // ── 5c. Auth0 callback wiring (Task #145) ────────────────────────────────
+  // The custom callback in server/multiAuth.ts must always redirect within
+  // the app — never 5xx, never bounce back out to Auth0. The classification
+  // logic itself is unit-tested in tests/auth0-callback-classifier.test.ts;
+  // this case proves the route is wired and reachable.
+  await test("/api/auth/callback/auth0 redirects within the app on a missing/invalid request", async () => {
+    if (!providers.auth0 && !providers.facebook && !providers.microsoft) {
+      console.log("    [SKIP] Auth0 not configured — skipping callback wiring test");
+      skip();
+    }
+    const res = await get("/api/auth/callback/auth0", { followRedirects: false });
+    if (res.status >= 500) {
+      throw new Error(
+        `/api/auth/callback/auth0 returned server error ${res.status}. ` +
+        `It must redirect to /?auth=failed or /?auth=unavailable instead.`
+      );
+    }
+    if (res.status === 404) {
+      throw new Error(
+        "/api/auth/callback/auth0 returned 404 — route is not registered. " +
+        "Check setupMultiAuth() registers it when AUTH0_DOMAIN/CLIENT_ID/SECRET are set."
+      );
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location") || "";
+      if (/^https?:\/\//i.test(location) && !location.startsWith(BASE_URL)) {
+        throw new Error(
+          `Callback redirected off-site to "${location}". ` +
+          `It must redirect to an in-app URL (e.g. /?auth=failed or /?auth=unavailable).`
+        );
+      }
+    }
+  });
+
   await test("/api/auth/me returns 401 for unauthenticated requests", async () => {
     const res = await get("/api/auth/me");
     if (res.status !== 401) {
