@@ -708,3 +708,25 @@ footer,
 .text-only-mode video {
   display: none !important;
 }
+
+/* Flipbook reader page-flip animation (Task #79).
+   Falls back to a simple fade automatically via prefers-reduced-motion
+   rules above which clamp animation-duration to 0.01ms. */
+@keyframes flipbook-flip-next {
+  0%   { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+  50%  { transform: perspective(1400px) rotateY(-12deg); opacity: 0.85; }
+  100% { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+}
+@keyframes flipbook-flip-prev {
+  0%   { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+  50%  { transform: perspective(1400px) rotateY(12deg);  opacity: 0.85; }
+  100% { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+}
+.flipbook-page-flip-next {
+  animation: flipbook-flip-next 360ms ease-in-out;
+  will-change: transform, opacity;
+}
+.flipbook-page-flip-prev {
+  animation: flipbook-flip-prev 360ms ease-in-out;
+  will-change: transform, opacity;
+}
