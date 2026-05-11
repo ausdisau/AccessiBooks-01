@@ -5,6 +5,22 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { PageNavigatorProps } from "./flipbook-types";
 
+const PAGE_WINDOW_THRESHOLD = 30;
+const PAGE_WINDOW_RADIUS = 5;
+
+function buildPageWindow(current: number, total: number): number[] {
+  if (total <= PAGE_WINDOW_THRESHOLD) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const set = new Set<number>();
+  set.add(1);
+  set.add(total);
+  for (let i = current - PAGE_WINDOW_RADIUS; i <= current + PAGE_WINDOW_RADIUS; i++) {
+    if (i >= 1 && i <= total) set.add(i);
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
 export function PageNavigator({
   currentPage,
   totalPages,
@@ -84,8 +100,8 @@ export function PageNavigator({
       </form>
 
       <ScrollArea className="max-h-32">
-        <ul role="list" className="flex flex-wrap gap-1.5">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
+        <ul role="list" className="flex flex-wrap gap-1.5" aria-label="Quick page jump">
+          {buildPageWindow(currentPage, totalPages).map((p) => {
             const active = p === currentPage;
             return (
               <li key={p}>

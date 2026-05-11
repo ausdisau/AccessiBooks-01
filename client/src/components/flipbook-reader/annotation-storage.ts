@@ -17,13 +17,34 @@ function storageKey(bookId: string): string {
   return STORAGE_PREFIX + bookId;
 }
 
+function isValidAnnotation(value: unknown): value is Annotation {
+  if (!value || typeof value !== "object") return false;
+  const a = value as Record<string, unknown>;
+  if (typeof a.id !== "string" || a.id.length === 0) return false;
+  if (typeof a.bookId !== "string") return false;
+  if (typeof a.pageIndex !== "number" || !Number.isFinite(a.pageIndex)) return false;
+  if (typeof a.createdAt !== "number" || typeof a.updatedAt !== "number") return false;
+  if (a.kind === "text") {
+    return typeof a.body === "string";
+  }
+  if (a.kind === "voice") {
+    return (
+      typeof a.audioBase64 === "string" &&
+      typeof a.mimeType === "string" &&
+      typeof a.durationMs === "number"
+    );
+  }
+  return false;
+}
+
 function readAll(bookId: string): Annotation[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(storageKey(bookId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Annotation[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isValidAnnotation);
   } catch {
     return [];
   }

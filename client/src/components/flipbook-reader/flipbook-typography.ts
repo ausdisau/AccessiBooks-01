@@ -166,16 +166,90 @@ export function applyPreset(preset: FlipbookPreset): FlipbookSettings {
 
 const STORAGE_PREFIX = "accessibooks:flipbook-settings:v1:";
 
+const VALID_THEMES: readonly FlipbookTheme[] = [
+  "light",
+  "sepia",
+  "dark",
+  "high-contrast",
+];
+const VALID_FONT_FAMILIES: readonly FlipbookFontFamily[] = [
+  "system-sans",
+  "serif",
+  "atkinson",
+  "opendyslexic",
+];
+const VALID_PRESETS: readonly FlipbookPreset[] = [
+  "none",
+  "dyslexia",
+  "low-vision",
+  "cognitive-ease",
+  "high-contrast",
+  "keyboard-only",
+  "screen-reader",
+];
+
+function clampNumber(
+  value: unknown,
+  fallback: number,
+  bounds: { min: number; max: number },
+): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(bounds.max, Math.max(bounds.min, n));
+}
+
+function sanitizeTypography(input: unknown): FlipbookTypography {
+  const t = (input ?? {}) as Partial<FlipbookTypography>;
+  const fontFamily =
+    typeof t.fontFamily === "string" &&
+    (VALID_FONT_FAMILIES as readonly string[]).includes(t.fontFamily)
+      ? (t.fontFamily as FlipbookFontFamily)
+      : DEFAULT_TYPOGRAPHY.fontFamily;
+  return {
+    fontFamily,
+    fontSize: clampNumber(
+      t.fontSize,
+      DEFAULT_TYPOGRAPHY.fontSize,
+      TYPOGRAPHY_BOUNDS.fontSize,
+    ),
+    lineHeight: clampNumber(
+      t.lineHeight,
+      DEFAULT_TYPOGRAPHY.lineHeight,
+      TYPOGRAPHY_BOUNDS.lineHeight,
+    ),
+    letterSpacing: clampNumber(
+      t.letterSpacing,
+      DEFAULT_TYPOGRAPHY.letterSpacing,
+      TYPOGRAPHY_BOUNDS.letterSpacing,
+    ),
+    wordSpacing: clampNumber(
+      t.wordSpacing,
+      DEFAULT_TYPOGRAPHY.wordSpacing,
+      TYPOGRAPHY_BOUNDS.wordSpacing,
+    ),
+  };
+}
+
 export function loadSettings(bookId: string | number): FlipbookSettings {
   if (typeof window === "undefined") return { ...DEFAULT_SETTINGS };
   try {
     const raw = window.localStorage.getItem(STORAGE_PREFIX + String(bookId));
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<FlipbookSettings>;
+    const theme =
+      typeof parsed.theme === "string" &&
+      (VALID_THEMES as readonly string[]).includes(parsed.theme)
+        ? (parsed.theme as FlipbookTheme)
+        : DEFAULT_SETTINGS.theme;
+    const activePreset =
+      typeof parsed.activePreset === "string" &&
+      (VALID_PRESETS as readonly string[]).includes(parsed.activePreset)
+        ? (parsed.activePreset as FlipbookPreset)
+        : "none";
     return {
-      typography: { ...DEFAULT_TYPOGRAPHY, ...(parsed.typography ?? {}) },
-      theme: parsed.theme ?? DEFAULT_SETTINGS.theme,
-      activePreset: parsed.activePreset ?? "none",
+      typography: sanitizeTypography(parsed.typography),
+      theme,
+      activePreset,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
