@@ -28,6 +28,7 @@ export const books = pgTable("books", {
   freeTierAvailable: boolean("free_tier_available").notNull().default(true), // Whether free-tier users can access this title
   adSupported: boolean("ad_supported").notNull().default(true), // Whether ads may be served for this title
   transcriptAvailable: boolean("transcript_available").notNull().default(false), // Whether an interactive transcript is available (display hint only — NOT an access gate)
+  narrationType: text("narration_type"), // "human" | "ai" | null (null = not specified). Display hint only — NOT an access gate.
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
   readingLevel: integer("reading_level"), // 1=Very Easy, 2=Easy, 3=Moderate, 4=Advanced (FK grade estimate)

@@ -7,6 +7,7 @@ import { BookCover } from "@/components/book-cover";
 import { usePurchaseCheckout } from "@/hooks/use-purchases";
 import { useSubscription } from "@/hooks/use-subscription";
 import { BookAccessibilityRatings } from "@/components/book-accessibility-ratings";
+import { BookA11yBadges } from "@/components/book-a11y-badges";
 import { Separator } from "@/components/ui/separator";
 import { useBookPrefetch } from "@/hooks/use-book-prefetch";
 
@@ -163,6 +164,9 @@ export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact =
           {sourceLabels[book.source] && (
             <p className="text-[10px] text-muted-foreground/70 mt-0.5">{sourceLabels[book.source]}</p>
           )}
+          <div className="mt-1.5">
+            <BookA11yBadges book={book} showEmpty={false} />
+          </div>
         </CardContent>
       </Card>
     );
@@ -241,6 +245,10 @@ export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact =
         {sourceLabels[book.source] && (
           <p className="text-xs text-muted-foreground/70 mb-3">via {sourceLabels[book.source]}</p>
         )}
+
+        <div className="mb-3">
+          <BookA11yBadges book={book} />
+        </div>
 
         <div className="space-y-2">
           <div className="flex gap-2">

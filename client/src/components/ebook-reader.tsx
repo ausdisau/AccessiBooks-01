@@ -86,6 +86,18 @@ interface Annotation {
   note: string;
   color: string;
   createdAt: string;
+  /**
+   * Annotation provenance (Task #69). When omitted, treated as "personal".
+   *  - "personal": this user's own highlight (default)
+   *  - "community": an approved community-contributed annotation, must be
+   *                 visually distinguished from official editorial content
+   *                 with a clear label and source attribution.
+   */
+  source?: "personal" | "community";
+  /** Display name of the contributor when source === "community". */
+  contributor?: string;
+  /** ISO timestamp the annotation was approved by a moderator. */
+  approvedAt?: string;
 }
 
 interface SearchResult {
@@ -1152,19 +1164,44 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                   <>
                     <Separator className="my-3" />
                     <p className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider ${theme.mutedText}`}>Highlights</p>
-                    {annotations.map(ann => (
-                      <button
-                        key={ann.id}
-                        onClick={() => { goToPage(ann.page); setShowToc(false); }}
-                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:bg-primary/10 ${theme.text}`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: ann.color }} />
-                          <span className="truncate">{ann.text.slice(0, 40)}...</span>
-                        </span>
-                        <span className={`text-xs ${theme.mutedText}`}>Page {ann.page}</span>
-                      </button>
-                    ))}
+                    {annotations.map(ann => {
+                      const isCommunity = ann.source === "community";
+                      return (
+                        <button
+                          key={ann.id}
+                          onClick={() => { goToPage(ann.page); setShowToc(false); }}
+                          title={isCommunity
+                            ? `Community-contributed annotation${ann.contributor ? ` by ${ann.contributor}` : ""}. Approved by an AccessiBooks moderator.`
+                            : "Your personal highlight."}
+                          aria-label={isCommunity
+                            ? `Community annotation${ann.contributor ? ` by ${ann.contributor}` : ""} on page ${ann.page}: ${ann.text.slice(0, 60)}`
+                            : `Your highlight on page ${ann.page}: ${ann.text.slice(0, 60)}`}
+                          data-testid={`annotation-toc-${isCommunity ? "community" : "personal"}-${ann.id}`}
+                          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:bg-primary/10 ${theme.text} ${
+                            isCommunity ? "border-l-4 border-purple-500 dark:border-purple-400 bg-purple-50/40 dark:bg-purple-900/15" : ""
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: ann.color }} />
+                            <span className="truncate">{ann.text.slice(0, 40)}...</span>
+                            {isCommunity && (
+                              <span
+                                className="ml-auto inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-purple-100 text-purple-900 dark:bg-purple-900/40 dark:text-purple-200 border border-purple-300 dark:border-purple-700 uppercase tracking-wide flex-shrink-0"
+                                aria-hidden="true"
+                              >
+                                Community
+                              </span>
+                            )}
+                          </span>
+                          <span className={`text-xs ${theme.mutedText}`}>
+                            Page {ann.page}
+                            {isCommunity && ann.contributor && (
+                              <> · by {ann.contributor}</>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </>
                 )}
               </div>
@@ -1785,18 +1822,49 @@ function TextReader({ book, onBack }: EbookReaderProps) {
 
         {currentPageAnnotations.length > 0 && !showAnnotationPanel && (
           <div className="mt-3 space-y-1.5">
-            {currentPageAnnotations.map(ann => (
-              <div key={ann.id} className={`flex items-start gap-2 px-3 py-2 rounded-md text-sm ${settings.theme === "dark" ? "bg-gray-800/60" : "bg-white/60"}`}>
-                <span className="w-3 h-3 rounded-full mt-0.5 flex-shrink-0" style={{ backgroundColor: ann.color }} />
-                <div className="flex-1 min-w-0">
-                  <span className={`${theme.text} italic`}>"{ann.text.slice(0, 60)}{ann.text.length > 60 ? "..." : ""}"</span>
-                  {ann.note && <p className={`text-xs mt-0.5 ${theme.mutedText}`}>{ann.note}</p>}
+            {currentPageAnnotations.map(ann => {
+              const isCommunity = ann.source === "community";
+              return (
+                <div
+                  key={ann.id}
+                  data-testid={`annotation-inline-${isCommunity ? "community" : "personal"}-${ann.id}`}
+                  title={isCommunity
+                    ? `Community-contributed annotation${ann.contributor ? ` by ${ann.contributor}` : ""}. Approved by an AccessiBooks moderator — not official editorial content.`
+                    : "Your personal highlight."}
+                  className={`flex items-start gap-2 px-3 py-2 rounded-md text-sm ${
+                    settings.theme === "dark" ? "bg-gray-800/60" : "bg-white/60"
+                  } ${
+                    isCommunity
+                      ? "border-l-4 border-purple-500 dark:border-purple-400 ring-1 ring-purple-200 dark:ring-purple-800/50"
+                      : ""
+                  }`}
+                >
+                  <span className="w-3 h-3 rounded-full mt-0.5 flex-shrink-0" style={{ backgroundColor: ann.color }} />
+                  <div className="flex-1 min-w-0">
+                    {isCommunity && (
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-900 dark:bg-purple-900/40 dark:text-purple-200 border border-purple-300 dark:border-purple-700"
+                          aria-label="Community annotation"
+                        >
+                          Community
+                        </span>
+                        <span className={`text-[10px] ${theme.mutedText}`}>
+                          {ann.contributor ? `Contributed by ${ann.contributor}` : "Approved community contribution"}
+                        </span>
+                      </div>
+                    )}
+                    <span className={`${theme.text} italic`}>"{ann.text.slice(0, 60)}{ann.text.length > 60 ? "..." : ""}"</span>
+                    {ann.note && <p className={`text-xs mt-0.5 ${theme.mutedText}`}>{ann.note}</p>}
+                  </div>
+                  {!isCommunity && (
+                    <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => removeAnnotation(ann.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
-                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => removeAnnotation(ann.id)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
