@@ -36,6 +36,8 @@ app.use(compression({ level: 6, threshold: 1024 }));
 
 // Stripe webhook needs raw body for signature verification
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+// AgentMail inbound webhook also needs raw body for HMAC-SHA256 verification.
+app.use('/api/agentmail/webhook', express.raw({ type: '*/*', limit: '1mb' }));
 
 // All other routes use JSON parsing
 app.use(express.json());

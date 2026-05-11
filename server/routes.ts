@@ -22,6 +22,7 @@ import { registerSelfServeAdRoutes } from "./selfServeAds";
 import { registerAdRewardRoutes } from "./adRewardRoutes";
 import { registerBillingRoutes, recordTransaction, updateTransactionStatus } from "./billing";
 import { registerLimitNotificationRoutes } from "./limitNotifications";
+import { processInboundAgentMailWebhook } from "./agentMailer";
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
 import { registerMoatScaffoldRoutes, ensureMoatMigrations } from "./moatScaffold";
@@ -218,6 +219,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Centralized billing platform (transactions, invoices, billing portal)
   registerBillingRoutes(app);
   registerLimitNotificationRoutes(app);
+
+  // POST /api/agentmail/webhook — inbound AgentMail webhook → RFC 3834 auto-reply.
+  // The raw body is captured by pre-mounted middleware in server/index.ts
+  // (`app.use('/api/agentmail/webhook', express.raw(...))`) so HMAC-SHA256
+  // signature verification operates on the exact bytes AgentMail signed.
+  app.post("/api/agentmail/webhook", async (req, res) => {
+    try {
+      const secret = process.env.AGENTMAIL_WEBHOOK_SECRET || null;
+      if (!Buffer.isBuffer(req.body)) {
+        // Should never happen given the pre-mounted express.raw() middleware,
+        // but if some other parser ran first we cannot trust signature verification.
+        if (secret) {
+          console.warn("[AgentMail] Webhook body was not raw — refusing because a secret is configured");
+          return res.status(500).json({ ok: false, outcome: "internal-error" });
+        }
+      }
+      const rawBody: Buffer = Buffer.isBuffer(req.body)
+        ? req.body
+        : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body ?? {}), "utf8");
+      const signature =
+        (req.headers["x-agentmail-signature"] as string | undefined) ??
+        (req.headers["x-agentmail-webhook-signature"] as string | undefined) ??
+        null;
+      const result = await processInboundAgentMailWebhook({
+        rawBody,
+        signature,
+        secret,
+      });
+      return res.status(result.status).json({
+        ok: result.ok,
+        outcome: result.outcome,
+        ...(result.reason ? { reason: result.reason } : {}),
+        ...(result.matchedPolicy ? { matchedPolicy: result.matchedPolicy } : {}),
+      });
+    } catch (err) {
+      console.error("[AgentMail] Inbound webhook handler error:", err);
+      return res.status(500).json({ ok: false, outcome: "internal-error" });
+    }
+  });
 
   // Revenue expansion routes (voice packs, annotations, gifts, enterprise, sponsorships)
   registerRevenueRoutes(app);

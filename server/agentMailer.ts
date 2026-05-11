@@ -1,6 +1,7 @@
 // AgentMail integration — uses @replit/connectors-sdk to send transactional emails
 // without requiring external SMTP credentials. Includes RFC 3834 compliant
 // auto-response helpers for safe automated replies.
+import crypto from "crypto";
 import { ReplitConnectors } from "@replit/connectors-sdk";
 
 import type { EmailMessage } from "./mailer";
@@ -440,4 +441,275 @@ export async function sendAutoResponse(opts: AutoResponseOptions): Promise<AutoR
   const sender = extractEmail(opts.inReplyTo.returnPath || opts.inReplyTo.from || opts.to);
   recordAutoResponse(recipient, sender, opts.dedupeKey, opts.windowMs);
   return { sent: true };
+}
+
+// ---------------------------------------------------------------------------
+// Inbound webhook — feed AgentMail-delivered messages into sendAutoResponse
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify an HMAC-SHA256 webhook signature from AgentMail.
+ *
+ * Expected header format (mirrors GitHub/Stripe-style webhooks):
+ *   `sha256=<hex>` — raw `<hex>` is also accepted.
+ *
+ * Returns false on any malformed input. Uses constant-time comparison so a
+ * mismatched signature does not leak via timing.
+ */
+export function verifyAgentMailWebhookSignature(
+  rawBody: Buffer | string,
+  signatureHeader: string | undefined | null,
+  secret: string,
+): boolean {
+  if (!signatureHeader || !secret) return false;
+  const provided = signatureHeader.startsWith("sha256=")
+    ? signatureHeader.slice("sha256=".length)
+    : signatureHeader;
+  if (!/^[0-9a-f]+$/i.test(provided)) return false;
+  const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody, "utf8");
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  const a = Buffer.from(provided.toLowerCase(), "hex");
+  const b = Buffer.from(expected, "hex");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+/** Header bag from an inbound webhook payload (case-insensitive lookups). */
+function pickHeader(headers: Record<string, unknown> | undefined, name: string): string | undefined {
+  if (!headers) return undefined;
+  const lname = name.toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === lname) {
+      if (Array.isArray(v)) return v.map(String).join(", ");
+      return v == null ? undefined : String(v);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Shape of an AgentMail inbound webhook payload that we care about.
+ * AgentMail's exact JSON varies; we accept either a flat layout (top-level
+ * `from`, `to`, `subject`, `headers`) or a nested `message: { ... }` envelope.
+ */
+export interface AgentMailInboundPayload {
+  from?: string;
+  to?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
+  subject?: string;
+  text?: string;
+  html?: string;
+  headers?: Record<string, unknown>;
+  message?: AgentMailInboundPayload;
+}
+
+/** Parse an inbound AgentMail webhook payload into RFC 3834 SubjectMessageHeaders. */
+export function parseInboundAgentMailMessage(
+  payload: AgentMailInboundPayload,
+): { headers: SubjectMessageHeaders; sender: string; recipients: string[] } {
+  const m: AgentMailInboundPayload = payload.message ?? payload;
+  const h = m.headers ?? {};
+  const messageId = pickHeader(h, "Message-ID") ?? pickHeader(h, "Message-Id");
+  const references = pickHeader(h, "References");
+  const autoSubmitted = pickHeader(h, "Auto-Submitted");
+  const returnPath = pickHeader(h, "Return-Path");
+  const fromHeader = m.from ?? pickHeader(h, "From");
+  const toHeader = m.to ?? pickHeader(h, "To");
+  const ccHeader = m.cc ?? pickHeader(h, "Cc");
+  const bccHeader = m.bcc ?? pickHeader(h, "Bcc");
+  const resentTo = pickHeader(h, "Resent-To");
+  const resentCc = pickHeader(h, "Resent-Cc");
+  const listId = pickHeader(h, "List-Id");
+  const precedence = pickHeader(h, "Precedence");
+  // Any other List-* header indicates list mail, even without List-Id.
+  const hasListHeaders = Object.keys(h).some((k) => k.toLowerCase().startsWith("list-"));
+
+  const headers: SubjectMessageHeaders = {
+    messageId,
+    references,
+    subject: m.subject ?? pickHeader(h, "Subject"),
+    returnPath,
+    from: fromHeader,
+    autoSubmitted,
+    to: toHeader,
+    cc: ccHeader,
+    bcc: bccHeader,
+    resentTo,
+    resentCc,
+    listId,
+    hasListHeaders,
+    precedence,
+  };
+
+  const sender = extractEmail(returnPath || fromHeader || "");
+  const recipients = [
+    ...listAddresses(toHeader),
+    ...listAddresses(ccHeader),
+    ...listAddresses(bccHeader),
+  ];
+  return { headers, sender, recipients };
+}
+
+/**
+ * Policy entry: when an inbound message is addressed to `match` (an exact
+ * lowercased mailbox or a string-match function), reply with the configured
+ * service-class receipt.
+ */
+export interface InboundAutoReplyPolicy {
+  /** Exact local-part or full address (lowercased), or a predicate. */
+  match: string | ((recipient: string) => boolean);
+  /** Logical dedupe key, e.g. "support-receipt", "vacation-responder". */
+  dedupeKey: string;
+  /** Reply body. */
+  text: string;
+  /** Optional override subject (otherwise derived from the inbound subject). */
+  subject?: string;
+  /** Responder class. Defaults to "service". */
+  responderClass?: AutoResponderClass;
+  /** Re-respond window in ms. Defaults to 7 days. */
+  windowMs?: number;
+}
+
+const DEFAULT_INBOUND_POLICY: InboundAutoReplyPolicy[] = [
+  {
+    match: (r) => r.startsWith("support@") || r.startsWith("support+"),
+    dedupeKey: "support-receipt",
+    text:
+      "Thanks for contacting AccessiBooks support. We've received your message " +
+      "and a teammate will reply within 1 business day. " +
+      "If your request is urgent, please include 'URGENT' in the subject line.",
+  },
+];
+
+let activeInboundPolicy: InboundAutoReplyPolicy[] = DEFAULT_INBOUND_POLICY;
+
+/** Replace the policy used by `processInboundAgentMailWebhook`. Pass null to reset. */
+export function setInboundAutoReplyPolicy(policy: InboundAutoReplyPolicy[] | null): void {
+  activeInboundPolicy = policy ?? DEFAULT_INBOUND_POLICY;
+}
+
+export function getInboundAutoReplyPolicy(): InboundAutoReplyPolicy[] {
+  return activeInboundPolicy;
+}
+
+function findPolicyForRecipients(
+  recipients: string[],
+  policies: InboundAutoReplyPolicy[],
+): { policy: InboundAutoReplyPolicy; recipient: string } | null {
+  for (const recipient of recipients) {
+    for (const policy of policies) {
+      const matched =
+        typeof policy.match === "function"
+          ? policy.match(recipient)
+          : recipient === policy.match.toLowerCase();
+      if (matched) return { policy, recipient };
+    }
+  }
+  return null;
+}
+
+export interface ProcessInboundResult {
+  ok: boolean;
+  status: number;
+  /** Stable machine-readable outcome code for tests/observability. */
+  outcome:
+    | "sent"
+    | "skipped"
+    | "no-policy-match"
+    | "no-sender"
+    | "invalid-payload"
+    | "invalid-signature"
+    | "send-failed";
+  reason?: ShouldAutoRespondResult["reason"] | "send-failed";
+  matchedPolicy?: string;
+}
+
+export interface ProcessInboundOptions {
+  rawBody: Buffer | string;
+  /** Pre-parsed JSON body (skip re-parsing rawBody when provided). */
+  parsedBody?: AgentMailInboundPayload;
+  /** Value of the AgentMail signature header, if any. */
+  signature?: string | null;
+  /** Shared secret used for HMAC verification. If absent, signature check is skipped. */
+  secret?: string | null;
+  /** Override policy list (otherwise uses module-level activeInboundPolicy). */
+  policies?: InboundAutoReplyPolicy[];
+}
+
+/**
+ * End-to-end inbound webhook handler. Verifies signature (if a secret is
+ * configured), parses the inbound message into RFC 3834 headers, finds a
+ * matching policy by recipient, and calls `sendAutoResponse`. Always returns
+ * a structured result instead of throwing — the route handler maps it to HTTP.
+ */
+export async function processInboundAgentMailWebhook(
+  opts: ProcessInboundOptions,
+): Promise<ProcessInboundResult> {
+  if (opts.secret) {
+    if (!verifyAgentMailWebhookSignature(opts.rawBody, opts.signature ?? "", opts.secret)) {
+      return { ok: false, status: 401, outcome: "invalid-signature" };
+    }
+  }
+
+  let payload: AgentMailInboundPayload | undefined = opts.parsedBody;
+  if (!payload) {
+    try {
+      const text = Buffer.isBuffer(opts.rawBody) ? opts.rawBody.toString("utf8") : opts.rawBody;
+      payload = JSON.parse(text) as AgentMailInboundPayload;
+    } catch {
+      return { ok: false, status: 400, outcome: "invalid-payload" };
+    }
+  }
+  if (!payload || typeof payload !== "object") {
+    return { ok: false, status: 400, outcome: "invalid-payload" };
+  }
+
+  const parsed = parseInboundAgentMailMessage(payload);
+  if (!parsed.sender) {
+    // No usable From/Return-Path — can't reply safely.
+    return { ok: true, status: 202, outcome: "no-sender" };
+  }
+
+  const policies = opts.policies ?? activeInboundPolicy;
+  const match = findPolicyForRecipients(parsed.recipients, policies);
+  if (!match) {
+    return { ok: true, status: 202, outcome: "no-policy-match" };
+  }
+
+  const result = await sendAutoResponse({
+    to: parsed.sender,
+    text: match.policy.text,
+    subject: match.policy.subject,
+    inReplyTo: parsed.headers,
+    dedupeKey: match.policy.dedupeKey,
+    recipient: match.recipient,
+    responderClass: match.policy.responderClass ?? "service",
+    windowMs: match.policy.windowMs,
+  });
+
+  if (result.sent) {
+    return {
+      ok: true,
+      status: 202,
+      outcome: "sent",
+      matchedPolicy: match.policy.dedupeKey,
+    };
+  }
+  if (result.skippedReason === "send-failed") {
+    return {
+      ok: false,
+      status: 502,
+      outcome: "send-failed",
+      reason: "send-failed",
+      matchedPolicy: match.policy.dedupeKey,
+    };
+  }
+  return {
+    ok: true,
+    status: 202,
+    outcome: "skipped",
+    reason: result.skippedReason,
+    matchedPolicy: match.policy.dedupeKey,
+  };
 }

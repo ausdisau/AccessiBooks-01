@@ -224,6 +224,171 @@ import("../server/agentMailer").then(async (m) => {
   check("custom 1s windowMs blocks within window", m.autoResponseDedupe.has("a@b.com", "c@d.com", "k", T0 + 500) === true);
   check("custom 1s windowMs expires after window", m.autoResponseDedupe.has("a@b.com", "c@d.com", "k", T0 + 1500) === false);
 
+  // ---------------------------------------------------------------------
+  // Inbound webhook handler — processInboundAgentMailWebhook + signature
+  // ---------------------------------------------------------------------
+  const {
+    processInboundAgentMailWebhook,
+    verifyAgentMailWebhookSignature,
+    setInboundAutoReplyPolicy,
+    parseInboundAgentMailMessage,
+  } = m;
+  const crypto = await import("node:crypto");
+
+  // Signature verification round-trip
+  autoResponseDedupe.clear();
+  const secret = "shh-its-a-secret";
+  const goodBody = Buffer.from(JSON.stringify({ ping: true }), "utf8");
+  const goodSig =
+    "sha256=" + crypto.createHmac("sha256", secret).update(goodBody).digest("hex");
+  check("verifyAgentMailWebhookSignature accepts a valid sha256= signature",
+    verifyAgentMailWebhookSignature(goodBody, goodSig, secret) === true);
+  check("verifyAgentMailWebhookSignature rejects a tampered body",
+    verifyAgentMailWebhookSignature(Buffer.from("{}"), goodSig, secret) === false);
+  check("verifyAgentMailWebhookSignature rejects with the wrong secret",
+    verifyAgentMailWebhookSignature(goodBody, goodSig, "different") === false);
+  check("verifyAgentMailWebhookSignature rejects when no header is sent",
+    verifyAgentMailWebhookSignature(goodBody, "", secret) === false);
+
+  // parseInboundAgentMailMessage extracts headers from a flat payload
+  const parsed = parseInboundAgentMailMessage({
+    from: "Alice <alice@example.com>",
+    to: "support@accessibooks.app",
+    subject: "Help",
+    headers: {
+      "Message-ID": "<m1@x>",
+      "Return-Path": "alice@example.com",
+      References: "<old@x>",
+    },
+  });
+  check("parseInboundAgentMailMessage extracts sender",
+    parsed.sender === "alice@example.com");
+  check("parseInboundAgentMailMessage extracts recipients",
+    parsed.recipients.includes("support@accessibooks.app"));
+  check("parseInboundAgentMailMessage extracts Message-ID",
+    parsed.headers.messageId === "<m1@x>");
+
+  // Default policy: support@ → service-class auto-reply
+  autoResponseDedupe.clear();
+  const captured2: Parameters<AgentMailTransport>[0][] = [];
+  __setAgentMailTransportForTesting(async (p) => {
+    captured2.push(p);
+    return true;
+  });
+  const inboundBody = Buffer.from(JSON.stringify({
+    from: "alice@example.com",
+    to: "support@accessibooks.app",
+    subject: "Refund question",
+    headers: {
+      "Message-ID": "<inbound-1@example.com>",
+      "Return-Path": "alice@example.com",
+    },
+  }), "utf8");
+  const inboundSig =
+    "sha256=" + crypto.createHmac("sha256", secret).update(inboundBody).digest("hex");
+  const r = await processInboundAgentMailWebhook({
+    rawBody: inboundBody,
+    signature: inboundSig,
+    secret,
+  });
+  check("inbound webhook with valid signature is accepted",
+    r.outcome === "sent" && r.status === 202,
+    `got outcome=${r.outcome} status=${r.status}`);
+  check("inbound webhook produced an outgoing auto-reply",
+    captured2.length === 1 && captured2[0]?.to === "alice@example.com");
+  check("auto-reply subject prefixes Auto:",
+    captured2[0]?.subject === "Auto: Refund question");
+
+  // Bad signature → 401
+  const bad = await processInboundAgentMailWebhook({
+    rawBody: inboundBody,
+    signature: "sha256=deadbeef",
+    secret,
+  });
+  check("inbound webhook with invalid signature is rejected",
+    bad.outcome === "invalid-signature" && bad.status === 401);
+
+  // Repeat inbound from same sender within window → suppressed via dedupe
+  const rDup = await processInboundAgentMailWebhook({
+    rawBody: inboundBody,
+    signature: inboundSig,
+    secret,
+  });
+  check("duplicate inbound is suppressed by dedupe",
+    rDup.outcome === "skipped" && rDup.reason === "deduped");
+
+  // Auto-Submitted on the inbound → never reply
+  autoResponseDedupe.clear();
+  captured2.length = 0;
+  const looped = Buffer.from(JSON.stringify({
+    from: "bot@example.com",
+    to: "support@accessibooks.app",
+    subject: "Out of office",
+    headers: {
+      "Message-ID": "<loop-1@example.com>",
+      "Return-Path": "bot@example.com",
+      "Auto-Submitted": "auto-replied",
+    },
+  }), "utf8");
+  const rLoop = await processInboundAgentMailWebhook({
+    rawBody: looped,
+    signature:
+      "sha256=" + crypto.createHmac("sha256", secret).update(looped).digest("hex"),
+    secret,
+  });
+  check("inbound Auto-Submitted: auto-replied is silently skipped",
+    rLoop.outcome === "skipped" && rLoop.reason === "auto-submitted");
+  check("no outgoing reply for an Auto-Submitted inbound",
+    captured2.length === 0);
+
+  // Unmatched recipient → no policy match (silent)
+  const noMatch = Buffer.from(JSON.stringify({
+    from: "carol@example.com",
+    to: "marketing@accessibooks.app",
+    subject: "Hello",
+    headers: { "Message-ID": "<nm-1@example.com>", "Return-Path": "carol@example.com" },
+  }), "utf8");
+  const rNM = await processInboundAgentMailWebhook({
+    rawBody: noMatch,
+    signature:
+      "sha256=" + crypto.createHmac("sha256", secret).update(noMatch).digest("hex"),
+    secret,
+  });
+  check("inbound with no policy match returns no-policy-match",
+    rNM.outcome === "no-policy-match" && rNM.status === 202);
+
+  // Custom one-off policy
+  setInboundAutoReplyPolicy([
+    {
+      match: "vacation@accessibooks.app",
+      dedupeKey: "vacation",
+      text: "I'm out of office until Monday.",
+      responderClass: "personal",
+    },
+  ]);
+  autoResponseDedupe.clear();
+  captured2.length = 0;
+  const personal = Buffer.from(JSON.stringify({
+    from: "dan@example.com",
+    to: "vacation@accessibooks.app",
+    subject: "Quick q",
+    headers: { "Message-ID": "<v-1@example.com>", "Return-Path": "dan@example.com" },
+  }), "utf8");
+  const rPersonal = await processInboundAgentMailWebhook({
+    rawBody: personal,
+    // No secret -> signature check skipped
+  });
+  check("custom personal policy fires for matching recipient",
+    rPersonal.outcome === "sent");
+  check("personal responder uses Auto-Submitted: auto-replied",
+    captured2[0]?.headers?.["Auto-Submitted"] === "auto-replied");
+  setInboundAutoReplyPolicy(null);
+
+  // Invalid JSON → 400
+  const rBad = await processInboundAgentMailWebhook({ rawBody: Buffer.from("not-json") });
+  check("invalid JSON body returns invalid-payload (400)",
+    rBad.outcome === "invalid-payload" && rBad.status === 400);
+
   __setAgentMailTransportForTesting(null);
 
   console.log(`\n${pass} passed, ${fail} failed`);
