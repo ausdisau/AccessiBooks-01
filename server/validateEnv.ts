@@ -24,6 +24,10 @@ const OPTIONAL_BUT_WARN = [
   { key: "VITE_DFP_NETWORK_CODE", note: "Google DFP ads disabled" },
   { key: "DRM_SIGNING_SECRET", note: "DRM token signing disabled" },
   { key: "AI_INTEGRATIONS_OPENAI_API_KEY", note: "AI features disabled" },
+  {
+    key: "AGENTMAIL_WEBHOOK_SECRET",
+    note: "AgentMail inbound webhook accepts unsigned requests — set this in production to enforce HMAC verification",
+  },
 ];
 
 export function validateEnv(): void {

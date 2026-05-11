@@ -391,6 +391,70 @@ import("../server/agentMailer").then(async (m) => {
 
   __setAgentMailTransportForTesting(null);
 
+  // ---------------------------------------------------------------------
+  // Route-level acceptance test — POST /api/agentmail/webhook
+  // Hits the live dev server when TEST_BASE_URL is set. Verifies the raw
+  // body middleware ordering (bug surfaced in code review): if
+  // express.json() runs before express.raw() on this path, bad JSON would
+  // bubble up as a 400 from the parser, not as our structured
+  // `invalid-payload` outcome.
+  // ---------------------------------------------------------------------
+  const baseUrl = process.env.TEST_BASE_URL;
+  if (baseUrl) {
+    console.log("\n--- Route-level acceptance test ---");
+    const post = async (body: string, headers: Record<string, string> = {}) => {
+      const res = await fetch(`${baseUrl}/api/agentmail/webhook`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body,
+      });
+      const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      return { status: res.status, json };
+    };
+
+    const r1 = await post("not-json");
+    check(
+      "route returns invalid-payload for malformed JSON (raw body intact)",
+      r1.status === 400 && r1.json.outcome === "invalid-payload",
+      `got status=${r1.status} body=${JSON.stringify(r1.json)}`,
+    );
+
+    const r2 = await post(JSON.stringify({
+      from: "no-policy@example.com",
+      to: "marketing@example.com",
+      subject: "hi",
+      headers: { "Message-ID": "<rt-nm@example.com>", "Return-Path": "no-policy@example.com" },
+    }));
+    check(
+      "route returns no-policy-match for unmatched recipient",
+      r2.status === 202 && r2.json.outcome === "no-policy-match",
+      `got status=${r2.status} body=${JSON.stringify(r2.json)}`,
+    );
+
+    const supportBody = JSON.stringify({
+      from: "alice@example.com",
+      to: "support@accessibooks.app",
+      subject: "Refund question",
+      headers: {
+        "Message-ID": "<rt-support@example.com>",
+        "Return-Path": "alice@example.com",
+      },
+    });
+    const r3 = await post(supportBody);
+    check(
+      "route reaches support policy and attempts a send",
+      r3.status === 202 || r3.status === 502,
+      `got status=${r3.status} body=${JSON.stringify(r3.json)}`,
+    );
+    check(
+      "route policy match is support-receipt",
+      r3.json.matchedPolicy === "support-receipt",
+      `got matchedPolicy=${r3.json.matchedPolicy}`,
+    );
+  } else {
+    console.log("\n(Skipping route-level test — set TEST_BASE_URL to enable.)");
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail > 0) {
     for (const f of fails) console.log(`  - ${f}`);
