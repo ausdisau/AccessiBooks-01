@@ -709,7 +709,7 @@ export function FlipbookReader({
             onClick={goPrev}
             disabled={currentPage <= 1}
             aria-label="Previous page"
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 opacity-70 hover:opacity-100"
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-11 w-11 opacity-70 hover:opacity-100"
             data-testid="flipbook-edge-prev"
           >
             <ChevronLeft className="h-6 w-6" aria-hidden="true" />
@@ -742,7 +742,7 @@ export function FlipbookReader({
             onClick={goNext}
             disabled={currentPage >= totalPages}
             aria-label="Next page"
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 opacity-70 hover:opacity-100"
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-11 w-11 opacity-70 hover:opacity-100"
             data-testid="flipbook-edge-next"
           >
             <ChevronRight className="h-6 w-6" aria-hidden="true" />

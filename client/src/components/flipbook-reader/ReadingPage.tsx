@@ -76,6 +76,8 @@ export function ReadingPage({
               alt={page.image.alt}
               width={page.image.width}
               height={page.image.height}
+              loading="lazy"
+              decoding="async"
               className="rounded max-w-full h-auto mx-auto"
               data-testid="flipbook-page-image"
             />

@@ -223,6 +223,16 @@ export const DEFAULT_TTS_PREFS: TtsPreferences = {
 
 const TTS_STORAGE_KEY = "accessibooks:flipbook-tts:v1";
 
+function clampPref(
+  value: unknown,
+  fallback: number,
+  bounds: { min: number; max: number },
+): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(bounds.max, Math.max(bounds.min, n));
+}
+
 export function loadTtsPreferences(): TtsPreferences {
   if (typeof window === "undefined") return { ...DEFAULT_TTS_PREFS };
   try {
@@ -230,10 +240,10 @@ export function loadTtsPreferences(): TtsPreferences {
     if (!raw) return { ...DEFAULT_TTS_PREFS };
     const parsed = JSON.parse(raw) as Partial<TtsPreferences>;
     return {
-      voiceId: parsed.voiceId ?? null,
-      rate: parsed.rate ?? DEFAULT_TTS_PREFS.rate,
-      pitch: parsed.pitch ?? DEFAULT_TTS_PREFS.pitch,
-      volume: parsed.volume ?? DEFAULT_TTS_PREFS.volume,
+      voiceId: typeof parsed.voiceId === "string" ? parsed.voiceId : null,
+      rate: clampPref(parsed.rate, DEFAULT_TTS_PREFS.rate, TTS_BOUNDS.rate),
+      pitch: clampPref(parsed.pitch, DEFAULT_TTS_PREFS.pitch, TTS_BOUNDS.pitch),
+      volume: clampPref(parsed.volume, DEFAULT_TTS_PREFS.volume, TTS_BOUNDS.volume),
     };
   } catch {
     return { ...DEFAULT_TTS_PREFS };
