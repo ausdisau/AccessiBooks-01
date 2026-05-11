@@ -16,14 +16,13 @@ import type { FlipbookPage, FlipbookReaderProps } from "./flipbook-types";
 import {
   applyPreset,
   DEFAULT_SETTINGS,
-  loadSettings,
-  saveSettings,
   type FlipbookFontFamily,
   type FlipbookPreset,
   type FlipbookSettings,
   type FlipbookTheme,
   type FlipbookTypography,
 } from "./flipbook-typography";
+import { type TtsPreferences } from "./tts-service";
 import {
   loadReaderSessionSync,
   localReaderSessionStorage,
@@ -83,18 +82,20 @@ export function FlipbookReader({
   const totalPages = pages.length;
   const bookKey = String(book.id);
 
-  // Hydrate from local session synchronously so the initial paint already
-  // shows the persisted page and Focus Mode state.
+  // Hydrate the full session synchronously so the initial paint already shows
+  // every persisted slice (page, Focus Mode, settings, TTS prefs).
   const initialSession = useMemo<ReaderSession>(() => {
     const s = loadReaderSessionSync(bookKey);
     return {
+      ...s,
       currentPage: Math.min(Math.max(s.currentPage, 1), totalPages),
-      focusMode: s.focusMode,
     };
   }, [bookKey, totalPages]);
 
   const [currentPage, setCurrentPage] = useState(initialSession.currentPage);
   const [focusMode, setFocusMode] = useState(initialSession.focusMode);
+  const [settings, setSettings] = useState<FlipbookSettings>(initialSession.settings);
+  const [ttsPrefsState, setTtsPrefsState] = useState<TtsPreferences>(initialSession.ttsPrefs);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -103,7 +104,6 @@ export function FlipbookReader({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [flipDirection, setFlipDirection] = useState<"none" | "next" | "prev">("none");
   const [liveMessage, setLiveMessage] = useState(`Page ${initialSession.currentPage} of ${totalPages}`);
-  const [settings, setSettings] = useState<FlipbookSettings>(() => loadSettings(bookKey));
 
   // Dedupe consecutive identical announcements so screen readers stay calm.
   const lastMessageRef = useRef(liveMessage);
@@ -130,6 +130,8 @@ export function FlipbookReader({
     const safePage = Math.min(Math.max(s.currentPage, 1), totalPages);
     setCurrentPage(safePage);
     setFocusMode(s.focusMode);
+    setSettings(s.settings);
+    setTtsPrefsState(s.ttsPrefs);
     lastMessageRef.current = "";
     setLiveMessage(`Page ${safePage} of ${totalPages}`);
   }, [bookKey, totalPages]);
@@ -142,6 +144,8 @@ export function FlipbookReader({
       const safePage = Math.min(Math.max(s.currentPage, 1), totalPages);
       setCurrentPage((prev) => (prev === safePage ? prev : safePage));
       setFocusMode(s.focusMode);
+      setSettings(s.settings);
+      setTtsPrefsState(s.ttsPrefs);
       hydratedKeyRef.current = bookKey;
     });
     return () => {
@@ -149,13 +153,19 @@ export function FlipbookReader({
     };
   }, [bookKey, sessionStorage, totalPages]);
 
-  // Persist session whenever the relevant slices change — but only after
-  // hydration for the current book has completed, so a stale state snapshot
-  // cannot clobber the freshly loaded session of a different book.
+  // Persist the entire session through the unified adapter whenever any slice
+  // changes — but only after hydration for the current book has completed, so
+  // a stale state snapshot cannot clobber the freshly loaded session of a
+  // different book.
   useEffect(() => {
     if (hydratedKeyRef.current !== bookKey) return;
-    void sessionStorage.save(bookKey, { currentPage, focusMode });
-  }, [bookKey, currentPage, focusMode, sessionStorage]);
+    void sessionStorage.save(bookKey, {
+      currentPage,
+      focusMode,
+      settings,
+      ttsPrefs: ttsPrefsState,
+    });
+  }, [bookKey, currentPage, focusMode, settings, ttsPrefsState, sessionStorage]);
 
   // Debounce the search query so we don't run a full-book scan on every keystroke.
   useEffect(() => {
@@ -168,62 +178,39 @@ export function FlipbookReader({
     if (searchQuery.trim().length >= 2) setSearchOpen(true);
   }, [searchQuery]);
 
-  // Resync settings when the book changes (parent may reuse the component instance).
-  useEffect(() => {
-    setSettings(loadSettings(bookKey));
-  }, [bookKey]);
-
-  const persist = useCallback(
-    (next: FlipbookSettings) => {
-      saveSettings(bookKey, next);
-      return next;
-    },
-    [bookKey],
-  );
-
+  // Settings/TTS prefs change handlers — state is the single source of truth;
+  // the persistence effect above routes the full composite through the
+  // unified adapter, so we never call module-level save helpers here.
   const handleTypographyChange = useCallback(
     (patch: Partial<FlipbookTypography>) => {
-      setSettings((prev) =>
-        persist({
-          ...prev,
-          typography: { ...prev.typography, ...patch },
-          activePreset: "none",
-        }),
-      );
+      setSettings((prev) => ({
+        ...prev,
+        typography: { ...prev.typography, ...patch },
+        activePreset: "none",
+      }));
     },
-    [persist],
+    [],
   );
 
-  const handleFontFamilyChange = useCallback(
-    (font: FlipbookFontFamily) => {
-      setSettings((prev) =>
-        persist({
-          ...prev,
-          typography: { ...prev.typography, fontFamily: font },
-          activePreset: "none",
-        }),
-      );
-    },
-    [persist],
-  );
+  const handleFontFamilyChange = useCallback((font: FlipbookFontFamily) => {
+    setSettings((prev) => ({
+      ...prev,
+      typography: { ...prev.typography, fontFamily: font },
+      activePreset: "none",
+    }));
+  }, []);
 
-  const handleThemeChange = useCallback(
-    (theme: FlipbookTheme) => {
-      setSettings((prev) => persist({ ...prev, theme, activePreset: "none" }));
-    },
-    [persist],
-  );
+  const handleThemeChange = useCallback((theme: FlipbookTheme) => {
+    setSettings((prev) => ({ ...prev, theme, activePreset: "none" }));
+  }, []);
 
-  const handlePresetChange = useCallback(
-    (preset: FlipbookPreset) => {
-      setSettings(() => persist(applyPreset(preset)));
-    },
-    [persist],
-  );
+  const handlePresetChange = useCallback((preset: FlipbookPreset) => {
+    setSettings(() => applyPreset(preset));
+  }, []);
 
   const handleResetDefaults = useCallback(() => {
-    setSettings(() => persist({ ...DEFAULT_SETTINGS }));
-  }, [persist]);
+    setSettings(() => ({ ...DEFAULT_SETTINGS }));
+  }, []);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -308,7 +295,13 @@ export function FlipbookReader({
   );
 
   // ── TTS ────────────────────────────────────────────────────────────────────
-  const tts = useTts();
+  // Inject initial prefs from the unified session adapter and route every
+  // pref change back through state so persistence flows through the same
+  // adapter (no direct module-level localStorage writes from here).
+  const tts = useTts({
+    initialPrefs: ttsPrefsState,
+    onPrefsChange: setTtsPrefsState,
+  });
 
   // Translate provider events into live-region announcements (deduped).
   useEffect(() => {
