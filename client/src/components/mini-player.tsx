@@ -42,7 +42,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
         animate={{ y: 0 }}
         exit={{ y: 100 }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border shadow-[0_-8px_32px_-8px_hsl(0_0%_0%_/_0.5)]"
         role="region"
         aria-label="Audio player"
         data-testid="mini-player"
@@ -76,7 +76,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
             className="h-full bg-primary transition-all duration-100 relative"
             style={{ width: `${progress}%` }}
           >
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-[0_0_10px_rgba(249,115,22,0.5)]" />
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 transition-opacity brand-glow" />
           </div>
         </div>
 
@@ -183,7 +183,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
             <Button
               variant="default"
               size="icon"
-              className="h-10 w-10 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)] flex-shrink-0 bg-primary hover:bg-primary/90"
+              className="h-10 w-10 rounded-full brand-glow flex-shrink-0 bg-primary hover:bg-primary/90"
               onClick={togglePlayPause}
               disabled={isLoading || isBuffering}
               aria-label={isPlaying ? "Pause" : "Play"}
@@ -266,7 +266,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
               <Button
                 variant="default"
                 size="icon"
-                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)] bg-primary hover:bg-primary/90"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full brand-glow bg-primary hover:bg-primary/90"
                 onClick={togglePlayPause}
                 disabled={isLoading || isBuffering}
                 aria-label={isPlaying ? "Pause" : "Play"}

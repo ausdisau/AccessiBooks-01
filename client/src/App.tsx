@@ -223,7 +223,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
 
   return (
     <>
-    <header className="bg-card border-b border-border h-14 flex items-center px-4 sm:px-6 sticky top-0 z-30" role="banner">
+    <header className="bg-card/95 backdrop-blur-md border-b border-border h-14 flex items-center px-4 sm:px-6 sticky top-0 z-30" role="banner">
       <div className="flex items-center gap-3 shrink-0">
         <Button
           variant="ghost"
@@ -322,15 +322,6 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
                 <SubscriptionCard />
               </DialogContent>
             </Dialog>
-            <Link
-              href="/pricing"
-              className="hidden sm:flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="View all plans and pricing"
-            >
-              <Crown className="h-4 w-4" />
-              Plans
-            </Link>
-            
             <Button
               variant="ghost"
               size="sm"
@@ -1746,7 +1737,7 @@ function MainApp() {
 
           <main 
             id="main-content" 
-            className="flex-1 overflow-y-auto"
+            className="flex-1 overflow-y-auto app-shell-bg"
           >
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
               <TrialNudge

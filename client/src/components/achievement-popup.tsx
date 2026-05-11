@@ -26,7 +26,7 @@ export function AchievementPopup({ achievement, onDismiss }: AchievementPopupPro
 
   return (
     <div className={`fixed top-4 right-4 z-[100] transition-all duration-300 ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"}`}>
-      <Card className="w-80 border-2 border-primary/50 bg-card shadow-[0_0_20px_rgba(249,115,22,0.2)] dark:shadow-[0_0_30px_rgba(249,115,22,0.3)]">
+      <Card className="w-80 border-2 border-primary/50 bg-card brand-glow">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="text-4xl">{achievement.icon}</div>

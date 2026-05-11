@@ -57,17 +57,19 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
 
   return (
     <section className="space-y-4" aria-label={title} data-testid="book-carousel">
-      <div className="flex items-end justify-between px-1">
-        <div>
-          <h3 className="font-serif text-2xl font-bold flex items-center gap-2">
-            <Icon className="h-6 w-6 text-primary" aria-hidden="true" />
+      <div className="flex items-end justify-between px-1 pb-2 section-rule">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <h3 className="font-serif text-2xl font-bold tracking-tight">
             {title}
           </h3>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {seeAllHref && (
             <Link href={seeAllHref}>
-              <a className="text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors">
+              <a className="text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
                 See all
               </a>
             </Link>
@@ -76,7 +78,7 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-full bg-secondary/50 hover:bg-secondary"
+              className="h-9 w-9 rounded-full bg-secondary/60 hover:bg-secondary"
               onClick={() => scroll("left")}
               aria-label={`Scroll ${title} left`}
             >
@@ -85,7 +87,7 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-full bg-secondary/50 hover:bg-secondary"
+              className="h-9 w-9 rounded-full bg-secondary/60 hover:bg-secondary"
               onClick={() => scroll("right")}
               aria-label={`Scroll ${title} right`}
             >

@@ -241,6 +241,62 @@
   }
 }
 
+/* ============================================================
+   Task #100 — App shell chrome.
+   - .app-shell-bg: subtle radial wash on the main content area so
+     dark mode doesn't read as a flat black slab. Inspired by
+     Spotify's top-of-page tint. Light mode gets a faint cream wash
+     so the warm Audible feel carries through.
+   - .brand-glow: token-based ring/glow used by the play button
+     and other primary call-to-action surfaces, replacing hard-coded
+     orange RGB shadows.
+   - .section-rule: thin underline used by section headers on
+     discovery pages.
+   ============================================================ */
+.app-shell-bg {
+  background:
+    radial-gradient(
+      120% 60% at 50% -10%,
+      hsl(var(--primary) / 0.08) 0%,
+      hsl(var(--primary) / 0) 60%
+    ),
+    hsl(var(--background));
+}
+
+.dark .app-shell-bg {
+  background:
+    radial-gradient(
+      120% 70% at 50% -10%,
+      hsl(var(--primary) / 0.10) 0%,
+      hsl(var(--primary) / 0) 55%
+    ),
+    hsl(var(--background));
+}
+
+/* High-contrast mode wins over the gradient in any combination so
+   the page background stays the token-driven solid surface. */
+.high-contrast .app-shell-bg,
+.high-contrast.dark .app-shell-bg,
+.dark.high-contrast .app-shell-bg {
+  background: hsl(var(--background)) !important;
+}
+
+.brand-glow {
+  box-shadow:
+    0 1px 2px hsl(0 0% 0% / 0.25),
+    0 8px 24px -8px hsl(var(--primary) / 0.55);
+}
+
+.brand-glow:hover {
+  box-shadow:
+    0 1px 2px hsl(0 0% 0% / 0.25),
+    0 10px 28px -6px hsl(var(--primary) / 0.7);
+}
+
+.section-rule {
+  border-bottom: 1px solid hsl(var(--border));
+}
+
 /* Adaptive Accessibility Styles */
 :root {
   --a11y-font-size: 100%;
