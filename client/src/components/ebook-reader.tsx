@@ -63,6 +63,7 @@ import { PdfViewer } from "./pdf-viewer";
 import { EpubViewer } from "./epub-viewer";
 import { TTSPlayer } from "./tts-player";
 import { VisualReader } from "./visual-reader";
+import { FlipbookReader } from "./flipbook-reader";
 import { useToast } from "@/hooks/use-toast";
 
 interface EbookReaderProps {
@@ -212,7 +213,64 @@ export function EbookReader({ book, onBack }: EbookReaderProps) {
 
   if (detectedFormat === "pdf") return <PdfViewer book={book} onBack={onBack} />;
   if (detectedFormat === "epub") return <EpubViewer book={book} onBack={onBack} />;
-  return <TextReader book={book} onBack={onBack} />;
+  return <TextReaderWithViewToggle book={book} onBack={onBack} />;
+}
+
+function TextReaderWithViewToggle({ book, onBack }: EbookReaderProps) {
+  const storageKey = `ebook-view-mode-${book.id}`;
+  const [view, setView] = useState<"text" | "flipbook">(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved === "flipbook" ? "flipbook" : "text";
+    } catch {
+      return "text";
+    }
+  });
+
+  const updateView = useCallback(
+    (next: "text" | "flipbook") => {
+      setView(next);
+      try {
+        localStorage.setItem(storageKey, next);
+      } catch {}
+    },
+    [storageKey],
+  );
+
+  return (
+    <div className="relative">
+      <div
+        role="group"
+        aria-label="Reader view"
+        className="sticky top-0 z-30 flex items-center justify-end gap-1 px-3 py-2 bg-background/90 backdrop-blur border-b border-border"
+      >
+        <span className="text-xs text-muted-foreground mr-2">View:</span>
+        <Button
+          size="sm"
+          variant={view === "text" ? "default" : "outline"}
+          onClick={() => updateView("text")}
+          aria-pressed={view === "text"}
+          data-testid="reader-view-text"
+        >
+          Classic
+        </Button>
+        <Button
+          size="sm"
+          variant={view === "flipbook" ? "default" : "outline"}
+          onClick={() => updateView("flipbook")}
+          aria-pressed={view === "flipbook"}
+          data-testid="reader-view-flipbook"
+        >
+          Flipbook view
+        </Button>
+      </div>
+      {view === "flipbook" ? (
+        <FlipbookReader book={book} onBack={onBack} />
+      ) : (
+        <TextReader book={book} onBack={onBack} />
+      )}
+    </div>
+  );
 }
 
 function TextReader({ book, onBack }: EbookReaderProps) {
