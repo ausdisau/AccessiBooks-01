@@ -202,6 +202,14 @@ export interface AutoResponseStorage {
  * write-through whenever `set` is called. Persistence failures are logged
  * but never thrown — the local process always has a correct view of the
  * windows it has issued.
+ *
+ * Consistency note: `has()` is a cache read, not a DB read-through. That
+ * means cross-instance dedupe is *eventually consistent*: a write on
+ * instance A is not visible to instance B until B re-hydrates (today,
+ * only at boot). This is sufficient for the restart-persistence goal of
+ * Task #133. Stronger multi-instance consistency would require either a
+ * periodic refresh, a short-TTL read-through, or moving `has()` to a DB
+ * lookup — see follow-up #141.
  */
 export class DbBackedAutoResponseStore implements AutoResponseStore {
   private cache = new InMemoryAutoResponseStore();
