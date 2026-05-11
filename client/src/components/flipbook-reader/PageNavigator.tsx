@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,27 +100,41 @@ export function PageNavigator({
       </form>
 
       <ScrollArea className="max-h-32">
-        <ul role="list" className="flex flex-wrap gap-1.5" aria-label="Quick page jump">
-          {buildPageWindow(currentPage, totalPages).map((p) => {
+        <ul role="list" className="flex flex-wrap items-center gap-1.5" aria-label="Quick page jump">
+          {buildPageWindow(currentPage, totalPages).map((p, i, arr) => {
             const active = p === currentPage;
+            const prev = i > 0 ? arr[i - 1] : null;
+            const showGap = prev !== null && p - prev > 1;
             return (
-              <li key={p}>
-                <button
-                  type="button"
-                  onClick={() => onJumpTo(p)}
-                  aria-label={`Go to page ${p}`}
-                  aria-current={active ? "page" : undefined}
-                  className="min-w-[2.25rem] h-9 px-2 rounded-md text-sm font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2"
-                  style={{
-                    background: active ? "var(--fb-accent)" : "var(--fb-page-bg)",
-                    color: active ? "var(--fb-on-accent)" : "var(--fb-fg)",
-                    borderColor: active ? "var(--fb-accent)" : "var(--fb-border)",
-                  }}
-                  data-testid={`flipbook-jump-page-${p}`}
-                >
-                  {p}
-                </button>
-              </li>
+              <Fragment key={p}>
+                {showGap && (
+                  <li
+                    aria-hidden="true"
+                    className="px-1 text-sm select-none"
+                    style={{ color: "var(--fb-muted)" }}
+                    data-testid={`flipbook-jump-gap-${prev}-${p}`}
+                  >
+                    …
+                  </li>
+                )}
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => onJumpTo(p)}
+                    aria-label={`Go to page ${p}`}
+                    aria-current={active ? "page" : undefined}
+                    className="min-w-[2.25rem] h-9 px-2 rounded-md text-sm font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2"
+                    style={{
+                      background: active ? "var(--fb-accent)" : "var(--fb-page-bg)",
+                      color: active ? "var(--fb-on-accent)" : "var(--fb-fg)",
+                      borderColor: active ? "var(--fb-accent)" : "var(--fb-border)",
+                    }}
+                    data-testid={`flipbook-jump-page-${p}`}
+                  >
+                    {p}
+                  </button>
+                </li>
+              </Fragment>
             );
           })}
         </ul>
