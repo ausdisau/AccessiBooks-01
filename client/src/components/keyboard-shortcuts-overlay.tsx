@@ -68,7 +68,7 @@ export function KeyboardShortcutsOverlay({ open, onOpenChange }: KeyboardShortcu
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-lg focus:outline-none"
+        className="sm:max-w-lg focus:outline-none bg-card/95 backdrop-blur-md shadow-2xl border-primary/20"
         aria-describedby="shortcuts-description"
       >
         <DialogTitle className="flex items-center gap-2 text-lg font-semibold">

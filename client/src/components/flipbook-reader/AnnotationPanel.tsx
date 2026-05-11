@@ -9,10 +9,16 @@ export function AnnotationPanel({ open, onClose }: AnnotationPanelProps) {
       id="flipbook-annotations-panel"
       role="region"
       aria-label="Annotations"
-      className="border-l border-border bg-card w-72 flex flex-col"
+      data-flipbook-panel="annotations"
+      className="border-l w-72 flex flex-col"
+      style={{
+        background: "var(--fb-surface)",
+        color: "var(--fb-fg)",
+        borderColor: "var(--fb-border)",
+      }}
       data-testid="flipbook-annotations-panel"
     >
-      <header className="flex items-center justify-between p-3 border-b border-border">
+      <header className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--fb-border)" }}>
         <h2 className="text-sm font-semibold">Annotations</h2>
         <Button
           variant="ghost"

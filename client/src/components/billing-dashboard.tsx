@@ -320,213 +320,187 @@ export function BillingDashboard() {
   };
 
   return (
-    <div className="space-y-6" role="region" aria-label="Billing and Payments">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Receipt className="h-6 w-6" aria-hidden="true" />
-            Billing & Payments
-            <PremiumBadge size="md" />
-          </h2>
-          <p className="text-muted-foreground mt-1">
-            View your plan, usage, payment history, and invoices
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => portalMutation.mutate()}
-          disabled={portalMutation.isPending || !hasStripeSubscription}
-          aria-label="Open billing management portal"
-        >
-          <ExternalLink className="h-4 w-4 mr-2" aria-hidden="true" />
-          Manage Billing
-        </Button>
-      </div>
-
+    <div className="space-y-10" role="region" aria-label="Billing and Payments">
       {statusLoading ? (
-        <div className="space-y-3">
-          {[1, 2].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        <div className="space-y-4">
+          <Skeleton className="h-32 rounded-2xl" />
+          <Skeleton className="h-64 rounded-2xl" />
         </div>
       ) : (
-        <>
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary/10 rounded-full p-2">
-                    <Crown className="h-5 w-5 text-primary" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base">Your Plan</CardTitle>
-                    <CardDescription className="text-xs">
-                      {subscriptionStatus?.subscriptionEndDate
-                        ? `${currentTier === "free" ? "Expires" : "Renews"} ${formatDate(subscriptionStatus.subscriptionEndDate)}`
-                        : currentTier === "free" ? "No active subscription" : "Active subscription"
-                      }
-                    </CardDescription>
-                  </div>
+        <div className="space-y-10">
+          <div className="rounded-2xl border-none bg-card/50 backdrop-blur-sm p-6">
+            <div className="flex items-center justify-between flex-wrap gap-4 mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Crown className="h-6 w-6 text-primary" aria-hidden="true" />
                 </div>
-                <div className="flex items-center gap-2">
-                  <PlanBadge tier={currentTier} />
-                  {currentTier !== "free" && hasStripeSubscription && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => cancelSubscription()}
-                      disabled={isCancelling}
-                      className="text-destructive hover:text-destructive"
-                      aria-label="Cancel subscription"
-                    >
-                      {isCancelling ? "Cancelling..." : "Cancel"}
-                    </Button>
-                  )}
+                <div>
+                  <h3 className="text-xl font-serif font-bold">Your Plan</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {subscriptionStatus?.subscriptionEndDate
+                      ? `${currentTier === "free" ? "Expires" : "Renews"} ${formatDate(subscriptionStatus.subscriptionEndDate)}`
+                      : currentTier === "free" ? "No active subscription" : "Active subscription"
+                    }
+                  </p>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-6 pt-0">
-              <UsageMeters tier={currentTier} skipStatus={skipStatus} />
-              <Separator />
-              <PlanComparisonTable currentTier={currentTier} onUpgrade={handleUpgrade} />
-            </CardContent>
-          </Card>
-        </>
+              <div className="flex items-center gap-3">
+                <PlanBadge tier={currentTier} />
+                {currentTier !== "free" && hasStripeSubscription && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => cancelSubscription()}
+                    disabled={isCancelling}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10 font-bold uppercase text-[10px] tracking-wider"
+                    aria-label="Cancel subscription"
+                  >
+                    {isCancelling ? "Cancelling..." : "Cancel"}
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            <UsageMeters tier={currentTier} skipStatus={skipStatus} />
+            <Separator className="my-10" />
+            <PlanComparisonTable currentTier={currentTier} onUpgrade={handleUpgrade} />
+          </div>
+        </div>
       )}
 
-      <Separator />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Receipt className="h-5 w-5" aria-hidden="true" />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-serif font-bold flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-primary" aria-hidden="true" />
             Transaction History
-          </CardTitle>
-          <CardDescription>
-            All payments across Stripe, PayPal, and cryptocurrency
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => portalMutation.mutate()}
+            disabled={portalMutation.isPending || !hasStripeSubscription}
+            className="text-primary hover:text-primary hover:bg-primary/10 font-bold uppercase text-[10px] tracking-wider"
+          >
+            Manage via Stripe →
+          </Button>
+        </div>
+
+        <div className="rounded-2xl border bg-card/50 overflow-hidden">
           {txLoading ? (
-            <div className="space-y-3">
+            <div className="p-6 space-y-4">
               {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
+                <Skeleton key={i} className="h-16 rounded-xl" />
               ))}
             </div>
           ) : transactions.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Receipt className="h-12 w-12 mx-auto mb-3 opacity-30" aria-hidden="true" />
-              <p>No transactions yet</p>
+            <div className="text-center py-16 text-muted-foreground">
+              <Receipt className="h-12 w-12 mx-auto mb-4 opacity-20 text-primary" aria-hidden="true" />
+              <p className="font-medium text-foreground">No transactions yet</p>
               <p className="text-sm">Your payment history will appear here</p>
             </div>
           ) : (
-            <>
-              <div className="space-y-2" role="list" aria-label="Transaction history">
-                {transactions.map((tx: any) => (
-                  <div
-                    key={tx.id}
-                    role="listitem"
-                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="shrink-0" aria-hidden="true">
-                        {tx.provider === "stripe" && <CreditCard className="h-4 w-4 text-indigo-500" />}
-                        {tx.provider === "paypal" && <DollarSign className="h-4 w-4 text-blue-500" />}
-                        {tx.provider === "coinbase" && <DollarSign className="h-4 w-4 text-orange-500" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{tx.description || tx.type}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {typeBadge(tx.type)}
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(tx.createdAt)}
-                          </span>
-                        </div>
-                      </div>
+            <div className="divide-y">
+              {transactions.map((tx: any) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between p-6 hover:bg-accent/30 transition-colors"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      {tx.provider === "stripe" && <CreditCard className="h-5 w-5 text-indigo-500" />}
+                      {tx.provider === "paypal" && <DollarSign className="h-5 w-5 text-blue-500" />}
+                      {tx.provider === "coinbase" && <DollarSign className="h-5 w-5 text-orange-500" />}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className={`font-semibold text-sm ${tx.status === "failed" ? "text-destructive" : ""}`}>
-                        {tx.amountCents > 0 ? formatCents(tx.amountCents, tx.currency) : "—"}
-                      </span>
-                      {statusBadge(tx.status)}
-                      {tx.receiptUrl && (
-                        <a
-                          href={tx.receiptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground"
-                          aria-label="View receipt"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                        </a>
-                      )}
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-foreground truncate">{tx.description || tx.type}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {typeBadge(tx.type)}
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(tx.createdAt)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Page {txPage + 1} of {totalPages} ({totalTx} total)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={txPage === 0}
-                      onClick={() => setTxPage((p) => p - 1)}
-                      aria-label="Previous page"
-                    >
-                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={txPage >= totalPages - 1}
-                      onClick={() => setTxPage((p) => p + 1)}
-                      aria-label="Next page"
-                    >
-                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                    </Button>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className={`font-bold text-base ${tx.status === "failed" ? "text-destructive" : "text-foreground"}`}>
+                      {tx.amountCents > 0 ? formatCents(tx.amountCents, tx.currency) : "—"}
+                    </span>
+                    {statusBadge(tx.status)}
+                    {tx.receiptUrl && (
+                      <a
+                        href={tx.receiptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+                        aria-label="View receipt"
+                      >
+                        <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                      </a>
+                    )}
                   </div>
                 </div>
-              )}
-            </>
+              ))}
+            </div>
           )}
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <FileText className="h-5 w-5" aria-hidden="true" />
-            Invoices
-          </CardTitle>
-          <CardDescription>Download PDF invoices from Stripe</CardDescription>
-        </CardHeader>
-        <CardContent>
+          {totalPages > 1 && (
+            <div className="p-6 bg-muted/30 flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground">
+                Page {txPage + 1} of {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={txPage === 0}
+                  onClick={() => setTxPage((p) => p - 1)}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={txPage >= totalPages - 1}
+                  onClick={() => setTxPage((p) => p + 1)}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <h3 className="text-lg font-serif font-bold flex items-center gap-2">
+          <FileText className="h-5 w-5 text-primary" aria-hidden="true" />
+          Invoices
+        </h3>
+        <div className="rounded-2xl border bg-card/50 overflow-hidden">
           {invoicesLoading ? (
-            <div className="space-y-3">
+            <div className="p-6 space-y-4">
               {[1, 2].map((i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
+                <Skeleton key={i} className="h-16 rounded-xl" />
               ))}
             </div>
           ) : invoices.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <FileText className="h-10 w-10 mx-auto mb-2 opacity-30" aria-hidden="true" />
-              <p className="text-sm">No invoices available</p>
+            <div className="text-center py-16 text-muted-foreground">
+              <FileText className="h-12 w-12 mx-auto mb-4 opacity-20 text-primary" aria-hidden="true" />
+              <p className="font-medium text-foreground">No invoices available</p>
             </div>
           ) : (
-            <div className="space-y-2" role="list" aria-label="Invoices">
+            <div className="divide-y">
               {invoices.map((inv: any) => (
                 <div
                   key={inv.id}
-                  role="listitem"
-                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors"
+                  className="flex items-center justify-between p-6 hover:bg-accent/30 transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="font-medium text-sm">{inv.description}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-muted-foreground">
+                    <p className="font-bold text-sm text-foreground">{inv.description}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground font-mono">
                         {inv.number || inv.id}
                       </span>
                       <span className="text-xs text-muted-foreground">
@@ -534,22 +508,19 @@ export function BillingDashboard() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="font-semibold text-sm">
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className="font-bold text-base text-foreground">
                       {formatCents(inv.amountCents, inv.currency)}
                     </span>
                     {statusBadge(inv.status || "completed")}
-                    <div className="flex gap-1">
+                    <div className="flex gap-2">
                       {inv.pdfUrl && (
                         <a
                           href={inv.pdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label="Download PDF invoice"
+                          className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+                          title="Download PDF"
                         >
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                          </Button>
+                          <Download className="h-4 w-4" />
                         </a>
                       )}
                       {inv.hostedUrl && (
@@ -557,11 +528,10 @@ export function BillingDashboard() {
                           href={inv.hostedUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label="View invoice online"
+                          className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+                          title="View online"
                         >
-                          <Button variant="ghost" size="sm">
-                            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                          </Button>
+                          <ExternalLink className="h-4 w-4" />
                         </a>
                       )}
                     </div>
@@ -570,10 +540,8 @@ export function BillingDashboard() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Separator />
+        </div>
+      </div>
 
       <GiftCards />
     </div>

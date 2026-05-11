@@ -29,11 +29,11 @@ export function ContinueListening({ onSelectBook, books }: ContinueListeningProp
 
   if (isLoading) {
     return (
-      <section className="mb-8" aria-label="Continue Listening">
-        <h2 className="text-xl font-semibold mb-4">Continue Listening</h2>
+      <section className="mb-10" aria-label="Continue Listening">
+        <h2 className="font-serif text-2xl font-bold mb-6 px-1">Continue Listening</h2>
         <div className="flex gap-4 overflow-hidden">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex-shrink-0 w-64 h-32 bg-muted rounded-lg animate-pulse" />
+            <div key={i} className="flex-shrink-0 w-64 h-24 bg-card animate-pulse rounded-xl" />
           ))}
         </div>
       </section>
@@ -52,10 +52,10 @@ export function ContinueListening({ onSelectBook, books }: ContinueListeningProp
   };
 
   return (
-    <section className="mb-8" aria-label="Continue Listening">
-      <h2 className="text-xl font-semibold mb-4">Continue Listening</h2>
+    <section className="mb-10" aria-label="Continue Listening">
+      <h2 className="font-serif text-2xl font-bold mb-6 px-1">Continue Listening</h2>
       <ScrollArea className="w-full whitespace-nowrap">
-        <div className="flex gap-4 pb-4">
+        <div className="flex gap-4 pb-4 px-1">
           {continueItems.map((item) => {
             const progress = formatProgress(item.currentTime, item.totalDuration);
             const timeLeft = item.totalDuration 
@@ -65,57 +65,64 @@ export function ContinueListening({ onSelectBook, books }: ContinueListeningProp
             return (
               <Card 
                 key={item.id} 
-                className="flex-shrink-0 w-72 cursor-pointer hover:bg-accent/50 transition-colors group"
+                className="flex-shrink-0 w-72 bg-card/60 border-none shadow-md cursor-pointer hover:bg-card/90 transition-all duration-300 group rounded-xl overflow-hidden"
                 onClick={() => handlePlay(item)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handlePlay(item); } }}
                 tabIndex={0}
                 role="button"
                 aria-label={`Continue ${item.bookTitle}${item.bookAuthor ? ` by ${item.bookAuthor}` : ""}. ${progress}% complete`}
               >
-                <CardContent className="p-4">
-                  <div className="flex gap-3">
-                    <div className="relative w-16 h-20 flex-shrink-0 overflow-hidden rounded-md bg-muted">
+                <CardContent className="p-0">
+                  <div className="flex h-24">
+                    <div className="relative w-24 h-24 flex-shrink-0 overflow-hidden">
                       {item.bookCover ? (
                         <img
                           src={item.bookCover}
                           alt=""
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                          <Clock className="h-6 w-6" />
+                        <div className="w-full h-full flex items-center justify-center bg-secondary text-muted-foreground">
+                          <Clock className="h-8 w-8" />
                         </div>
                       )}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Play className="h-6 w-6 text-white fill-white" />
+                        <div className="bg-primary rounded-full p-2 shadow-lg">
+                          <Play className="h-5 w-5 text-primary-foreground fill-current" />
+                        </div>
                       </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm truncate" title={item.bookTitle}>
+                    <div className="flex-1 min-w-0 p-3 flex flex-col justify-center">
+                      <h3 className="font-bold text-sm truncate leading-tight group-hover:text-primary transition-colors" title={item.bookTitle}>
                         {item.bookTitle}
                       </h3>
                       {item.bookAuthor && (
-                        <p className="text-xs text-muted-foreground truncate">
+                        <p className="text-xs text-muted-foreground truncate font-medium mt-0.5">
                           {item.bookAuthor}
                         </p>
                       )}
-                      {timeLeft && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {timeLeft}
-                        </p>
-                      )}
-                      <div
-                        className="mt-2 h-1 bg-muted rounded-full overflow-hidden"
-                        role="progressbar"
-                        aria-valuenow={progress}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-label={`Listening progress: ${progress}%`}
-                      >
-                        <div 
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${progress}%` }}
-                        />
+                      <div className="mt-auto">
+                        <div className="flex justify-between items-center mb-1.5">
+                          {timeLeft && (
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">
+                              {timeLeft}
+                            </p>
+                          )}
+                          <span className="text-[10px] font-bold text-primary">{progress}%</span>
+                        </div>
+                        <div
+                          className="h-1 bg-secondary rounded-full overflow-hidden"
+                          role="progressbar"
+                          aria-valuenow={progress}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`Listening progress: ${progress}%`}
+                        >
+                          <div 
+                            className="h-full bg-primary rounded-full transition-all duration-500"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

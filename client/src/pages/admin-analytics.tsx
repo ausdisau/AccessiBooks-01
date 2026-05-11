@@ -52,16 +52,16 @@ function formatPct(rate: number): string {
 
 function StatCard({ title, value, sub, icon }: { title: string; value: string | number; sub?: string; icon?: React.ReactNode }) {
   return (
-    <Card className="dark:bg-slate-900/50">
+    <Card className="dark:bg-card">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+        <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
           {icon}
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
-        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+        {sub && <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">{sub}</p>}
       </CardContent>
     </Card>
   );
@@ -69,13 +69,13 @@ function StatCard({ title, value, sub, icon }: { title: string; value: string | 
 
 function StatCardSkeleton() {
   return (
-    <Card className="dark:bg-slate-900/50">
+    <Card className="dark:bg-card">
       <CardHeader className="pb-2">
-        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-24" />
       </CardHeader>
       <CardContent>
         <Skeleton className="h-8 w-20 mb-1" />
-        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-2 w-16" />
       </CardContent>
     </Card>
   );
@@ -108,45 +108,45 @@ function SubscriptionsTab({ from, to }: { from: string; to: string }) {
       </div>
 
       {!isLoading && total > 0 && (
-        <Card className="dark:bg-slate-900/50">
+        <Card className="dark:bg-card">
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Tier Breakdown</CardTitle>
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Tier Breakdown</CardTitle>
           </CardHeader>
           <CardContent>
             <div
-              className="flex h-8 rounded overflow-hidden"
+              className="flex h-6 rounded overflow-hidden"
               role="img"
               aria-label={`User tier breakdown: Free ${freeWidth}%, Plus ${plusWidth}%, Premium ${premiumWidth}%`}
             >
               {freeWidth > 0 && (
                 <div
-                  className="bg-slate-400 dark:bg-slate-600 flex items-center justify-center text-xs text-white font-medium"
+                  className="bg-muted flex items-center justify-center text-[10px] text-muted-foreground font-bold"
                   style={{ width: `${freeWidth}%` }}
                 >
-                  {freeWidth > 10 ? `Free ${freeWidth}%` : ""}
+                  {freeWidth > 10 ? `FREE ${freeWidth}%` : ""}
                 </div>
               )}
               {plusWidth > 0 && (
                 <div
-                  className="bg-blue-500 flex items-center justify-center text-xs text-white font-medium"
+                  className="bg-blue-600 flex items-center justify-center text-[10px] text-white font-bold"
                   style={{ width: `${plusWidth}%` }}
                 >
-                  {plusWidth > 10 ? `Plus ${plusWidth}%` : ""}
+                  {plusWidth > 10 ? `PLUS ${plusWidth}%` : ""}
                 </div>
               )}
               {premiumWidth > 0 && (
                 <div
-                  className="bg-purple-600 flex items-center justify-center text-xs text-white font-medium"
+                  className="bg-purple-700 flex items-center justify-center text-[10px] text-white font-bold"
                   style={{ width: `${premiumWidth}%` }}
                 >
-                  {premiumWidth > 10 ? `Premium ${premiumWidth}%` : ""}
+                  {premiumWidth > 10 ? `PREMIUM ${premiumWidth}%` : ""}
                 </div>
               )}
             </div>
-            <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-slate-400 dark:bg-slate-600 inline-block" />Free</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" />Plus</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-purple-600 inline-block" />Premium</span>
+            <div className="flex gap-4 mt-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-muted inline-block border border-border" />Free</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-600 inline-block" />Plus</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-purple-700 inline-block" />Premium</span>
             </div>
           </CardContent>
         </Card>
@@ -170,16 +170,16 @@ function AdsTab({ from, to }: { from: string; to: string }) {
             <StatCard title="Click Rate" value={formatPct(data?.clickRate ?? 0)} sub="of impressions" icon={<TrendingUp className="h-4 w-4" />} />
             <StatCard title="Rewarded Completions" value={(data?.rewardedCompletions ?? 0).toLocaleString()} sub="rewarded ad completes" icon={<BarChart3 className="h-4 w-4" />} />
             <StatCard title="Est. Ad Revenue" value={formatCents(data?.estimatedAdRevenueCents ?? 0)} sub="from impressions" icon={<DollarSign className="h-4 w-4" />} />
-            <Card className="dark:bg-slate-900/50">
+            <Card className="dark:bg-card">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
                   <BarChart3 className="h-4 w-4" />
                   Fill Rate
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatPct(data?.fillRate ?? 0)}</div>
-                <Badge variant={data && data.fillRate > 0.8 ? "default" : "secondary"} className="mt-1 text-xs">
+                <Badge variant="outline" className="mt-1 text-[10px] h-5 px-1.5 uppercase font-bold tracking-wider">
                   {data && data.fillRate > 0.8 ? "Good" : data && data.fillRate > 0.5 ? "Fair" : "Low"}
                 </Badge>
               </CardContent>
@@ -293,52 +293,52 @@ function FunnelTab({ from, to }: { from: string; to: string }) {
           ))}
         </div>
       ) : (
-        <Card className="dark:bg-slate-900/50">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Conversion Funnel</CardTitle>
-            <CardDescription>Signed Up → Free Active → Upgraded → Retained</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4" role="list" aria-label="Conversion funnel steps">
-              {(data?.funnel ?? []).map((step, i) => {
-                const widthPct = maxCount > 0 ? Math.round((step.count / maxCount) * 100) : 0;
-                return (
-                  <div key={step.step} role="listitem" className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{step.step}</span>
-                      <span className="text-muted-foreground">{step.count.toLocaleString()}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="h-8 rounded bg-primary/80 transition-all"
-                        style={{ width: `${widthPct}%`, minWidth: widthPct > 0 ? "2px" : "0" }}
-                        aria-label={`${step.step}: ${step.count} users`}
-                      />
-                    </div>
-                    {i > 0 && step.dropoffRate > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Drop-off: {formatPct(step.dropoffRate)}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <Separator className="my-4" />
-
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Signup → Upgrade</p>
-                <p className="font-semibold text-lg">{formatPct(data?.signupToUpgradeRate ?? 0)}</p>
+    <Card className="dark:bg-card">
+      <CardHeader>
+        <CardTitle className="text-xs font-semibold uppercase tracking-wider">Conversion Funnel</CardTitle>
+        <CardDescription className="text-[10px] uppercase tracking-tight">Signed Up → Free Active → Upgraded → Retained</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4" role="list" aria-label="Conversion funnel steps">
+          {(data?.funnel ?? []).map((step, i) => {
+            const widthPct = maxCount > 0 ? Math.round((step.count / maxCount) * 100) : 0;
+            return (
+              <div key={step.step} role="listitem" className="space-y-1">
+                <div className="flex items-center justify-between text-xs font-medium uppercase tracking-tight">
+                  <span>{step.step}</span>
+                  <span className="text-muted-foreground">{step.count.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="h-6 rounded bg-primary/20 border-l-2 border-primary transition-all"
+                    style={{ width: `${widthPct}%`, minWidth: widthPct > 0 ? "2px" : "0" }}
+                    aria-label={`${step.step}: ${step.count} users`}
+                  />
+                </div>
+                {i > 0 && step.dropoffRate > 0 && (
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                    DROP-OFF: {formatPct(step.dropoffRate)}
+                  </p>
+                )}
               </div>
-              <div>
-                <p className="text-muted-foreground">Upgrade Retention</p>
-                <p className="font-semibold text-lg">{formatPct(data?.upgradeToRetainRate ?? 0)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            );
+          })}
+        </div>
+
+        <Separator className="my-6" />
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Signup → Upgrade</p>
+            <p className="font-bold text-xl">{formatPct(data?.signupToUpgradeRate ?? 0)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Upgrade Retention</p>
+            <p className="font-bold text-xl">{formatPct(data?.upgradeToRetainRate ?? 0)}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
       )}
     </div>
   );
@@ -445,9 +445,9 @@ function AccessibilityTab() {
         </CardContent>
       </Card>
 
-      <Card className="dark:bg-slate-900/50">
+      <Card className="dark:bg-card">
         <CardHeader>
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2">
             <Accessibility className="h-4 w-4" />
             Feature Usage
           </CardTitle>
@@ -456,36 +456,36 @@ function AccessibilityTab() {
           {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-8 w-full" />
+                <Skeleton key={i} className="h-6 w-full" />
               ))}
             </div>
           ) : !data || data.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-8">No accessibility preference data yet.</p>
+            <p className="text-muted-foreground text-xs text-center py-8">No accessibility preference data yet.</p>
           ) : (
             <Table>
-              <caption className="text-xs text-muted-foreground text-left mb-2">
+              <caption className="text-[10px] text-muted-foreground text-left mb-2 uppercase tracking-tight">
                 Accessibility feature adoption across all users with saved preferences
               </caption>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Feature</TableHead>
-                  <TableHead className="text-right">Users</TableHead>
-                  <TableHead className="w-40">Usage</TableHead>
+                  <TableHead className="text-[11px] font-bold uppercase tracking-wider h-10">Feature</TableHead>
+                  <TableHead className="text-right text-[11px] font-bold uppercase tracking-wider h-10">Users</TableHead>
+                  <TableHead className="w-40 text-[11px] font-bold uppercase tracking-wider h-10">Usage</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.map((feature) => (
                   <TableRow key={feature.featureKey}>
-                    <TableCell className="font-medium">{feature.featureName}</TableCell>
-                    <TableCell className="text-right">{feature.enabledCount.toLocaleString()}</TableCell>
-                    <TableCell>
+                    <TableCell className="font-medium text-xs py-2">{feature.featureName}</TableCell>
+                    <TableCell className="text-right text-xs py-2">{feature.enabledCount.toLocaleString()}</TableCell>
+                    <TableCell className="py-2">
                       <div className="flex items-center gap-2">
                         <div
-                          className="h-2 rounded bg-primary flex-shrink-0"
-                          style={{ width: `${feature.percentage}%`, maxWidth: "80px", minWidth: "2px" }}
+                          className="h-1.5 rounded-full bg-primary flex-shrink-0"
+                          style={{ width: `${feature.percentage}%`, maxWidth: "80px", minWidth: "1px" }}
                           aria-label={`${feature.percentage}% of users`}
                         />
-                        <span className="text-xs text-muted-foreground">{feature.percentage}%</span>
+                        <span className="text-[10px] font-bold text-muted-foreground">{feature.percentage}%</span>
                       </div>
                     </TableCell>
                   </TableRow>

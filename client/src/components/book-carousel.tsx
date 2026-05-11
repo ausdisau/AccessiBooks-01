@@ -3,21 +3,23 @@ import { useQuery } from "@tanstack/react-query";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Play, BookOpen } from "lucide-react";
+import { Link } from "wouter";
 
 interface BookCarouselProps {
   title: string;
   books: Book[];
   onBookSelect: (book: Book) => void;
   icon?: typeof BookOpen;
+  seeAllHref?: string;
 }
 
-export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen }: BookCarouselProps) {
+export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen, seeAllHref }: BookCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
 
   const scroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return;
-    const scrollAmount = 300;
+    const scrollAmount = 400;
     scrollRef.current.scrollBy({
       left: direction === "left" ? -scrollAmount : scrollAmount,
       behavior: "smooth",
@@ -54,37 +56,48 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
   if (books.length === 0) return null;
 
   return (
-    <section className="space-y-3" aria-label={title} data-testid="book-carousel">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-lg flex items-center gap-2">
-          <Icon className="h-5 w-5" aria-hidden="true" />
-          {title}
-        </h3>
-        <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => scroll("left")}
-            aria-label={`Scroll ${title} left`}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => scroll("right")}
-            aria-label={`Scroll ${title} right`}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+    <section className="space-y-4" aria-label={title} data-testid="book-carousel">
+      <div className="flex items-end justify-between px-1">
+        <div>
+          <h3 className="font-serif text-2xl font-bold flex items-center gap-2">
+            <Icon className="h-6 w-6 text-primary" aria-hidden="true" />
+            {title}
+          </h3>
+        </div>
+        <div className="flex items-center gap-4">
+          {seeAllHref && (
+            <Link href={seeAllHref}>
+              <a className="text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors">
+                See all
+              </a>
+            </Link>
+          )}
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-full bg-secondary/50 hover:bg-secondary"
+              onClick={() => scroll("left")}
+              aria-label={`Scroll ${title} left`}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-full bg-secondary/50 hover:bg-secondary"
+              onClick={() => scroll("right")}
+              aria-label={`Scroll ${title} right`}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
       <div
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4 snap-x snap-mandatory"
+        className="flex gap-6 overflow-x-auto scrollbar-hide pb-4 -mx-4 px-4 snap-x snap-proximity"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         role="list"
         aria-label={`${title} - ${books.length} books`}
@@ -95,37 +108,37 @@ export function BookCarousel({ title, books, onBookSelect, icon: Icon = BookOpen
             data-carousel-item
             role="listitem"
             tabIndex={index === focusedIndex || (focusedIndex === -1 && index === 0) ? 0 : -1}
-            className="flex-shrink-0 w-36 md:w-44 cursor-pointer group snap-start carousel-item"
+            className="flex-shrink-0 w-36 md:w-40 cursor-pointer group snap-start carousel-item"
             onClick={() => onBookSelect(book)}
             onKeyDown={(e) => handleKeyDown(e, index)}
             onFocus={() => setFocusedIndex(index)}
             aria-label={`${book.title} by ${book.author}. ${book.contentType || "Audiobook"}`}
           >
-            <div className="relative aspect-[2/3] rounded-lg overflow-hidden shadow-md group-hover:shadow-xl transition-shadow">
+            <div className="relative aspect-square rounded-lg overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-300">
               {book.coverImage ? (
                 <img
                   src={book.coverImage}
                   alt=""
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
               ) : (
                 <div className="w-full h-full bg-secondary flex items-center justify-center">
-                  <BookOpen className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
+                  <BookOpen className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
                 </div>
               )}
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="bg-primary rounded-full p-3 shadow-lg">
-                    <Play className="h-6 w-6 text-primary-foreground" aria-hidden="true" />
+                <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+                  <div className="bg-primary rounded-full p-4 shadow-xl">
+                    <Play className="h-6 w-6 text-primary-foreground fill-current" aria-hidden="true" />
                   </div>
                 </div>
               </div>
             </div>
-            <div className="mt-2">
-              <h4 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors">
+            <div className="mt-3 px-1">
+              <h4 className="font-bold text-sm line-clamp-2 leading-tight group-hover:text-primary transition-colors">
                 {book.title}
               </h4>
-              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+              <p className="text-xs text-muted-foreground line-clamp-1 mt-1 font-medium">
                 {book.author}
               </p>
             </div>

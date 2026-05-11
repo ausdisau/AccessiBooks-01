@@ -1,5 +1,6 @@
 import { useDJRecommendations } from "@/hooks/use-playlists";
 import { Book, DJRecommendation } from "@shared/schema";
+import { BookCard } from "@/components/book-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,68 +65,46 @@ export function DJSection({ onPlayBook }: DJSectionProps) {
   }
 
   return (
-    <section className="space-y-6" aria-label="DJ Recommendations">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
-        <h2 className="text-2xl font-bold">For You</h2>
+    <section className="space-y-10" aria-label="DJ Recommendations">
+      <div className="flex items-center gap-3 px-1">
+        <Sparkles className="h-8 w-8 text-primary animate-pulse" aria-hidden="true" />
+        <h2 className="font-serif text-3xl font-bold">AccessiDJ</h2>
       </div>
       
-      <div className="space-y-8">
+      <div className="space-y-12">
         {recommendations.map((rec) => {
           const Icon = getIconForType(rec.type);
           return (
-            <div key={rec.id} className="space-y-4">
-              <div className="flex items-start gap-2">
-                <Icon className="h-5 w-5 text-muted-foreground mt-0.5" aria-hidden="true" />
+            <div key={rec.id} className="space-y-6">
+              <div className="flex items-start gap-4 px-1">
+                <div className="p-2 rounded-lg bg-secondary/50 mt-1">
+                  <Icon className="h-6 w-6 text-primary" aria-hidden="true" />
+                </div>
                 <div>
-                  <h3 className="text-lg font-semibold">{rec.title}</h3>
-                  <p className="text-sm text-muted-foreground">{rec.intro || rec.description}</p>
-                  {rec.source === "agent" && (
-                    <p className="text-[10px] uppercase tracking-wide text-primary/70 mt-1">AccessiDJ pick</p>
-                  )}
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-serif text-2xl font-bold">{rec.title}</h3>
+                    {rec.source === "agent" && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                        AI Pick
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground font-medium mt-1">{rec.intro || rec.description}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 px-1">
                 {rec.books.map((book) => {
                   const rationale = getRationale(rec, book.id);
                   return (
-                    <Card
-                      key={book.id}
-                      className="hover:shadow-lg transition-shadow cursor-pointer group"
-                      onClick={() => onPlayBook(book)}
-                      tabIndex={0}
-                      onKeyDown={(e) => e.key === 'Enter' && onPlayBook(book)}
-                      role="button"
-                      aria-label={`Play ${book.title} by ${book.author}${rationale ? `. ${rationale}` : ''}`}
-                    >
-                      <CardContent className="p-3">
-                        <div className="relative">
-                          {book.coverImage ? (
-                            <img
-                              src={book.coverImage}
-                              alt={`${book.title} cover`}
-                              className="w-full h-32 object-cover rounded-md mb-2"
-                            />
-                          ) : (
-                            <div className="w-full h-32 bg-gradient-to-br from-primary/20 to-primary/40 rounded-md mb-2 flex items-center justify-center">
-                              <Play className="h-8 w-8 text-primary" />
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
-                            <Play className="h-10 w-10 text-white fill-white" />
-                          </div>
-                        </div>
-
-                        <h4 className="text-sm font-medium line-clamp-2">{book.title}</h4>
-                        <p className="text-xs text-muted-foreground truncate">{book.author}</p>
-                        {rationale && (
-                          <p className="text-[11px] text-muted-foreground italic mt-1 line-clamp-3" title={rationale}>
-                            {rationale}
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
+                    <div key={book.id} className="group flex flex-col gap-3">
+                      <BookCard book={book} onPlayBook={onPlayBook} compact />
+                      {rationale && (
+                        <p className="text-[11px] leading-relaxed text-muted-foreground italic line-clamp-2 px-1 font-medium group-hover:text-foreground transition-colors" title={rationale}>
+                          "{rationale}"
+                        </p>
+                      )}
+                    </div>
                   );
                 })}
               </div>

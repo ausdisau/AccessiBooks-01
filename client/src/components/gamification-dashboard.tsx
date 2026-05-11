@@ -54,8 +54,8 @@ function ProgressRing({ progress, size = 120, strokeWidth = 10 }: { progress: nu
       />
       <defs>
         <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#f59e0b" />
-          <stop offset="100%" stopColor="#ef4444" />
+          <stop offset="0%" stopColor="hsl(var(--primary))" />
+          <stop offset="100%" stopColor="hsl(14, 95%, 55%)" />
         </linearGradient>
       </defs>
     </svg>
@@ -108,15 +108,15 @@ function OverviewTab({ profile }: { profile: GamificationProfile }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="relative overflow-hidden border-amber-200/50 dark:border-amber-800/50 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40">
+        <Card className="relative overflow-hidden border-primary/20 dark:border-primary/20 bg-card">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
               <div className="text-5xl">🔥</div>
               <div>
-                <div className="text-3xl font-bold text-amber-700 dark:text-amber-400">
+                <div className="text-3xl font-bold text-primary">
                   {profile.streak.currentStreak} Day{profile.streak.currentStreak !== 1 ? "s" : ""}!
                 </div>
-                <p className="text-sm text-amber-600/80 dark:text-amber-500/80 font-medium">
+                <p className="text-sm text-muted-foreground font-medium">
                   Current Streak
                 </p>
                 <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
@@ -125,18 +125,18 @@ function OverviewTab({ profile }: { profile: GamificationProfile }) {
                 </p>
               </div>
             </div>
-            <div className="absolute -right-4 -bottom-4 text-8xl opacity-10">🔥</div>
+            <div className="absolute -right-4 -bottom-4 text-8xl opacity-5">🔥</div>
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden border-purple-200/50 dark:border-purple-800/50 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/40">
+        <Card className="relative overflow-hidden border-primary/20 bg-card">
           <CardContent className="p-6">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
-                <Star className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Star className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-purple-700 dark:text-purple-400">
+                <div className="text-2xl font-bold text-foreground">
                   Level {profile.level}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -145,8 +145,8 @@ function OverviewTab({ profile }: { profile: GamificationProfile }) {
               </div>
             </div>
             <div className="space-y-1">
-              <Progress value={Math.max(0, Math.min(xpProgress, 100))} className="h-2.5 bg-purple-100 dark:bg-purple-900/50 [&>[role=progressbar]]:bg-gradient-to-r [&>[role=progressbar]]:from-purple-500 [&>[role=progressbar]]:to-indigo-500" />
-              <p className="text-xs text-muted-foreground text-right">
+              <Progress value={Math.max(0, Math.min(xpProgress, 100))} className="h-2.5 bg-muted [&>[role=progressbar]]:bg-primary" />
+              <p className="text-xs text-muted-foreground text-right font-medium">
                 {profile.xpToNextLevel - profile.xp.totalXp > 0
                   ? `${(profile.xpToNextLevel - profile.xp.totalXp).toLocaleString()} XP to Level ${profile.level + 1}`
                   : "Max level reached!"}

@@ -95,26 +95,24 @@ export function PremiumUpgradeModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" aria-labelledby={headingId}>
-        <DialogHeader>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="bg-yellow-500 rounded-full p-2">
-              <LimitIcon className="h-5 w-5 text-white" aria-hidden="true" />
-            </div>
-            <DialogTitle id={headingId}>{limitCopy.heading}</DialogTitle>
+      <DialogContent className="sm:max-w-lg p-0 overflow-hidden border-none" aria-labelledby={headingId}>
+        <div className="bg-primary p-6 text-white text-center space-y-2">
+          <div className="w-12 h-12 rounded-full bg-white/20 mx-auto mb-2 flex items-center justify-center">
+            <LimitIcon className="h-6 w-6 text-white" aria-hidden="true" />
           </div>
-          <DialogDescription>
+          <DialogTitle id={headingId} className="text-2xl font-serif font-bold">{limitCopy.heading}</DialogTitle>
+          <DialogDescription className="text-white/80 text-sm">
             {dialogDescription}
           </DialogDescription>
-        </DialogHeader>
+        </div>
 
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-1 gap-3">
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 gap-4">
             <div
-              className={`rounded-lg border p-3 cursor-pointer transition-all ${
+              className={`rounded-xl border-2 p-4 cursor-pointer transition-all ${
                 selectedTier === "plus"
-                  ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500"
-                  : "border-border hover:border-blue-300"
+                  ? "border-primary bg-primary/5 shadow-inner"
+                  : "border-border hover:border-primary/30"
               }`}
               onClick={() => setSelectedTier("plus")}
               role="radio"
@@ -122,35 +120,33 @@ export function PremiumUpgradeModal({
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") setSelectedTier("plus"); }}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Star className="h-5 w-5 text-blue-500 shrink-0" aria-hidden="true" />
-                  <div>
-                    <p className="text-sm font-semibold">Plus — {TIER_PRICING.plus.monthlyDisplay}/mo</p>
-                    <ul className="mt-1 space-y-0.5" aria-label="Plus plan features">
-                      <li className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> Ad-free listening
-                      </li>
-                      <li className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> Selected free catalog, ad-free
-                      </li>
-                      <li className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> 192 kbps audio, unlimited skips
-                      </li>
-                      <li className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> 10 TTS pages/day, 10% off purchases
-                      </li>
-                    </ul>
+              <div className="flex items-start gap-4">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${selectedTier === "plus" ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
+                  <Star className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-serif font-bold text-lg">Plus</p>
+                    <Badge className="bg-muted text-muted-foreground border-none text-[10px] uppercase font-bold">Standard</Badge>
                   </div>
+                  <p className="text-sm font-medium text-primary mb-3">{TIER_PRICING.plus.monthlyDisplay}/mo</p>
+                  <ul className="space-y-1.5" aria-label="Plus plan features">
+                    <li className="text-xs text-muted-foreground flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Ad-free listening
+                    </li>
+                    <li className="text-xs text-muted-foreground flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> 192 kbps audio, unlimited skips
+                    </li>
+                  </ul>
                 </div>
               </div>
             </div>
 
             <div
-              className={`relative rounded-lg border p-3 cursor-pointer transition-all ${
+              className={`relative rounded-xl border-2 p-4 cursor-pointer transition-all ${
                 selectedTier === "premium"
-                  ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500"
-                  : "border-border hover:border-amber-300"
+                  ? "border-primary bg-primary/5 shadow-inner"
+                  : "border-border hover:border-primary/30"
               }`}
               onClick={() => setSelectedTier("premium")}
               role="radio"
@@ -158,84 +154,70 @@ export function PremiumUpgradeModal({
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") setSelectedTier("premium"); }}
             >
-              <Badge className="absolute -top-2.5 right-3 bg-amber-500 text-white hover:bg-amber-500 text-[10px] px-2">
-                Best Value
-              </Badge>
-              <div className="flex items-center gap-3">
-                <Crown className="h-5 w-5 text-amber-500 shrink-0" aria-hidden="true" />
+              <div className="absolute -top-3 right-4 z-10">
+                <Badge className="bg-primary text-white border-none px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
+                  Recommended
+                </Badge>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${selectedTier === "premium" ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
+                  <Crown className="h-5 w-5" aria-hidden="true" />
+                </div>
                 <div>
-                  <p className="text-sm font-semibold">Premium — {TIER_PRICING.premium.monthlyDisplay}/mo</p>
-                  <ul className="mt-1 space-y-0.5" aria-label="Premium plan features">
-                    <li className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> Full catalog access, ad-free
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-serif font-bold text-lg">Premium</p>
+                    <Badge className="bg-primary/20 text-primary border-none text-[10px] uppercase font-bold">Best Value</Badge>
+                  </div>
+                  <p className="text-sm font-medium text-primary mb-3">{TIER_PRICING.premium.monthlyDisplay}/mo</p>
+                  <ul className="space-y-1.5" aria-label="Premium plan features">
+                    <li className="text-xs text-muted-foreground flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Full catalog, ad-free, offline
                     </li>
-                    <li className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> Offline downloads
-                    </li>
-                    <li className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> UHQ 320 kbps audio, unlimited TTS
-                    </li>
-                    <li className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Check className="h-3 w-3 text-green-500" aria-hidden="true" /> 20% off purchases, 5 devices
+                    <li className="text-xs text-muted-foreground flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> UHQ 320 kbps HD audio
                     </li>
                   </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-dashed border-border p-3 bg-muted/20">
-              <div className="flex items-center gap-3">
-                <Building2 className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
-                <div>
-                  <p className="text-sm font-semibold">Institutional</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Available via partner organisations or libraries.{" "}
-                    <a href="/institutional" className="underline hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring rounded">
-                      Learn more
-                    </a>
-                  </p>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="flex-col gap-2 sm:flex-col">
-          <Button
-            onClick={() => handleUpgrade(selectedTier === "premium" ? "Premium" : "Plus")}
-            disabled={isUpgrading}
-            aria-label={`Upgrade to ${selectedTier === "premium" ? "Premium" : "Plus"}`}
-            className={`w-full focus-visible:ring-2 focus-visible:ring-offset-2 ${selectedTier === "premium" ? "bg-amber-500 hover:bg-amber-600 text-white focus-visible:ring-amber-400" : "bg-blue-500 hover:bg-blue-600 text-white focus-visible:ring-blue-400"}`}
-          >
-            {selectedTier === "premium" ? <Crown className="h-4 w-4 mr-2" aria-hidden="true" /> : <Star className="h-4 w-4 mr-2" aria-hidden="true" />}
-            {isUpgrading
-              ? "Processing..."
-              : `Subscribe to ${selectedTier === "premium" ? "Premium" : "Plus"} — ${selectedTier === "premium" ? TIER_PRICING.premium.monthlyDisplay : TIER_PRICING.plus.monthlyDisplay}/mo`
-            }
-          </Button>
-          <ComingSoonBanner />
-          {book && !limitType && (
+        <DialogFooter className="p-6 pt-0 flex-col gap-3 sm:flex-col">
+          <div className="space-y-3 w-full">
             <Button
-              variant="outline"
-              onClick={() => {
-                purchaseTitle({ bookId: book.id, bookTitle: book.title, contentType });
-                onOpenChange(false);
-              }}
-              disabled={isPurchasing}
-              className="w-full"
+              onClick={() => handleUpgrade(selectedTier === "premium" ? "Premium" : "Plus")}
+              disabled={isUpgrading}
+              size="lg"
+              aria-label={`Upgrade to ${selectedTier === "premium" ? "Premium" : "Plus"}`}
+              className="w-full bg-primary hover:bg-primary/90 text-white font-bold"
             >
-              <ShoppingCart className="h-4 w-4 mr-2" aria-hidden="true" />
-              {isPurchasing ? "Processing..." : `Buy just this title — ${titlePrice.label}`}
+              {isUpgrading ? "Processing..." : `Subscribe to ${selectedTier === "premium" ? "Premium" : "Plus"}`}
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="w-full focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="No thanks, stay free and close this dialog"
-          >
-            No thanks, stay free
-          </Button>
+            <ComingSoonBanner />
+            {book && !limitType && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  purchaseTitle({ bookId: book.id, bookTitle: book.title, contentType });
+                  onOpenChange(false);
+                }}
+                disabled={isPurchasing}
+                className="w-full"
+              >
+                <ShoppingCart className="h-4 w-4 mr-2" aria-hidden="true" />
+                {isPurchasing ? "Processing..." : `Buy just this title — ${titlePrice.label}`}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              className="w-full text-muted-foreground hover:text-foreground font-medium"
+              aria-label="No thanks, stay free and close this dialog"
+            >
+              No thanks, stay free
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -109,25 +109,25 @@ export function SubscriptionCard() {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold text-foreground">Choose Your Plan</h2>
-        <p className="text-muted-foreground">All content is free with ads. Upgrade for ad-free listening and more.</p>
-        <div className="flex items-center justify-center gap-3 mt-4">
-          <span className={`text-sm ${!isAnnual ? "font-semibold text-foreground" : "text-muted-foreground"}`}>Monthly</span>
+    <div className="w-full max-w-4xl mx-auto space-y-10">
+      <div className="text-center space-y-4">
+        <h2 className="text-3xl font-serif font-bold text-foreground">Choose Your Plan</h2>
+        <p className="text-muted-foreground text-lg">All content is free with ads. Upgrade for ad-free listening and more.</p>
+        <div className="flex items-center justify-center gap-4 mt-6">
+          <span className={`text-sm font-medium ${!isAnnual ? "text-foreground" : "text-muted-foreground"}`}>Monthly</span>
           <Switch checked={isAnnual} onCheckedChange={setIsAnnual} />
-          <span className={`text-sm ${isAnnual ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+          <span className={`text-sm font-medium ${isAnnual ? "text-foreground" : "text-muted-foreground"}`}>
             Annual
           </span>
           {isAnnual && (
-            <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs">
+            <Badge className="bg-primary/10 text-primary border-none text-xs font-bold px-3 py-1">
               Save up to 17%
             </Badge>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {TIERS.map((t) => {
           const isCurrentTier = tier === t.id;
           const isUpgrade = (t.id === "plus" && tier === "free") || (t.id === "premium" && (tier === "free" || tier === "plus"));
@@ -137,118 +137,121 @@ export function SubscriptionCard() {
           return (
             <Card
               key={t.id}
-              className={`relative transition-all ${isCurrentTier ? `${t.borderColor} border-2 ${t.bgColor}` : "border"} ${t.id === "premium" ? "md:scale-105 premium-card-animated shadow-lg shadow-amber-500/10" : ""}`}
+              className={`relative transition-all border-none bg-card/50 backdrop-blur-sm flex flex-col ${isCurrentTier ? `ring-2 ring-primary` : ""} ${t.id === "premium" ? "md:scale-105 shadow-2xl shadow-primary/10" : ""}`}
             >
               {t.id === "premium" && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-                  <Badge className="premium-shimmer-bg text-white border-0 px-3 py-1 text-xs font-bold shadow-md">
+                  <Badge className="bg-primary text-white border-none px-4 py-1 text-xs font-bold shadow-xl uppercase tracking-wider">
                     ⭐ Best Value
                   </Badge>
                 </div>
               )}
-              <CardHeader className="text-center pb-2">
-                <Icon className={`h-8 w-8 mx-auto mb-1 ${t.color}`} />
-                <CardTitle className="text-lg">
+              <CardHeader className="text-center pb-6">
+                <div className={`w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center ${t.id === "premium" ? "bg-primary" : "bg-muted"}`}>
+                  <Icon className={`h-6 w-6 ${t.id === "premium" ? "text-white" : "text-muted-foreground"}`} />
+                </div>
+                <CardTitle className="text-xl font-serif font-bold">
                   {t.name}
                   {isCurrentTier && (
-                    <Badge variant="secondary" className={`ml-2 text-[10px] ${t.badgeColor || "bg-muted"}`}>
+                    <Badge className="ml-2 bg-primary/20 text-primary border-none text-[10px] uppercase font-bold">
                       Current
                     </Badge>
                   )}
                 </CardTitle>
-                <div className="mt-2">
+                <div className="mt-4">
                   {t.id === "free" ? (
-                    <div className="text-3xl font-bold text-foreground">$0</div>
+                    <div className="text-4xl font-bold text-foreground">$0</div>
                   ) : (
                     <>
-                      <div className="text-3xl font-bold text-foreground">{price!.display}</div>
-                      <p className="text-xs text-muted-foreground">{price!.period}</p>
+                      <div className="text-4xl font-bold text-foreground">{price!.display}</div>
+                      <p className="text-sm text-muted-foreground">{price!.period}</p>
                       {price!.total && (
-                        <p className="text-xs text-muted-foreground mt-0.5">Billed {price!.total}</p>
+                        <p className="text-xs text-primary font-medium mt-1">Billed {price!.total}</p>
                       )}
                     </>
                   )}
                 </div>
               </CardHeader>
 
-              <CardContent className="space-y-4">
-                <ul className="space-y-2">
+              <CardContent className="space-y-6 flex-1 flex flex-col">
+                <ul className="space-y-3 flex-1">
                   {t.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
+                    <li key={i} className="flex items-start gap-3 text-sm">
                       {feature.included ? (
-                        <Check className="h-4 w-4 mt-0.5 text-green-500 shrink-0" />
+                        <Check className="h-5 w-5 text-primary shrink-0" />
                       ) : (
-                        <X className="h-4 w-4 mt-0.5 text-muted-foreground/40 shrink-0" />
+                        <X className="h-5 w-5 text-muted-foreground/30 shrink-0" />
                       )}
-                      <span className={feature.included ? "text-foreground" : "text-muted-foreground/60"}>
+                      <span className={feature.included ? "text-foreground font-medium" : "text-muted-foreground"}>
                         {feature.text}
                       </span>
                     </li>
                   ))}
                 </ul>
 
-                {t.id === "free" ? (
-                  isCurrentTier ? (
-                    <Button variant="outline" className="w-full" disabled>
-                      Current Plan
-                    </Button>
-                  ) : null
-                ) : isCurrentTier ? (
-                  <div className="space-y-2">
-                    {subscription?.subscriptionEndDate && (
-                      <p className="text-xs text-center text-muted-foreground">
-                        Renews {new Date(subscription.subscriptionEndDate).toLocaleDateString()}
-                      </p>
-                    )}
-                    <Button variant="outline" className="w-full" onClick={() => cancelSubscription()} disabled={isCancelling}>
-                      {isCancelling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Cancelling...</> : "Cancel Subscription"}
-                    </Button>
-                  </div>
-                ) : isUpgrade ? (
-                  <>
-                    <Button
-                      className={`w-full focus-visible:ring-2 focus-visible:ring-offset-2 ${t.id === "premium" ? "bg-amber-500 hover:bg-amber-600 text-white focus-visible:ring-amber-400" : ""}`}
-                      onClick={() => handleUpgradeClick(t.name)}
-                      aria-label={`Upgrade to ${t.name}`}
-                    >
-                      <CreditCard className="h-4 w-4 mr-2" aria-hidden="true" /> Upgrade to {t.name}
-                    </Button>
-                    <ComingSoonBanner />
-                  </>
-                ) : null}
+                <div className="pt-4 border-t border-border/50">
+                  {t.id === "free" ? (
+                    isCurrentTier ? (
+                      <Button variant="outline" className="w-full" disabled>
+                        Current Plan
+                      </Button>
+                    ) : null
+                  ) : isCurrentTier ? (
+                    <div className="space-y-4">
+                      {subscription?.subscriptionEndDate && (
+                        <p className="text-xs text-center text-muted-foreground font-medium">
+                          Renews {new Date(subscription.subscriptionEndDate).toLocaleDateString()}
+                        </p>
+                      )}
+                      <Button variant="outline" className="w-full" onClick={() => cancelSubscription()} disabled={isCancelling}>
+                        {isCancelling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Cancelling...</> : "Cancel Subscription"}
+                      </Button>
+                    </div>
+                  ) : isUpgrade ? (
+                    <div className="space-y-4">
+                      <Button
+                        size="lg"
+                        className={`w-full ${t.id === "premium" ? "bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20" : ""}`}
+                        onClick={() => handleUpgradeClick(t.name)}
+                        aria-label={`Upgrade to ${t.name}`}
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" aria-hidden="true" /> Upgrade to {t.name}
+                      </Button>
+                      <ComingSoonBanner />
+                    </div>
+                  ) : null}
 
-                {t.id !== "free" && (
-                  <p className="text-xs text-center text-muted-foreground">
-                    {t.id === "plus" ? "10% off individual titles" : "20% off individual titles"}
-                  </p>
-                )}
+                  {t.id !== "free" && (
+                    <p className="text-xs text-center text-primary font-bold mt-4 tracking-tight uppercase">
+                      {t.id === "plus" ? "10% off individual titles" : "20% off individual titles"}
+                    </p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           );
         })}
       </div>
 
-      <Separator />
-
-      <div className="rounded-lg border border-dashed border-border p-4 flex items-start gap-3">
-        <Building2 className="h-6 w-6 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+      <div className="rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 p-8 flex items-start gap-4">
+        <Building2 className="h-8 w-8 text-primary shrink-0 mt-1" aria-hidden="true" />
         <div className="flex-1">
-          <p className="font-semibold text-sm text-foreground">Institutional Access</p>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="font-serif font-bold text-lg text-foreground">Institutional Access</p>
+          <p className="text-muted-foreground mt-1">
             Available via partner organisations or libraries. If your school, library, or workplace provides AccessiBooks access, you can activate it through your institution.
           </p>
           <Link
             href="/institutional"
-            className="inline-block mt-2 text-sm text-primary underline hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+            className="inline-block mt-4 text-sm font-bold text-primary hover:text-primary/80 transition-colors uppercase tracking-tight"
           >
-            Contact us about institutional access
+            Learn about institutional access →
           </Link>
         </div>
       </div>
 
-      <div className="text-center">
+      <div className="text-center pt-4">
         <p className="text-sm text-muted-foreground">
-          Don't want a subscription? Buy individual titles starting at $1.99 each.
+          Don't want a subscription? <span className="text-foreground font-medium">Buy individual titles</span> starting at $1.99 each.
         </p>
       </div>
     </div>

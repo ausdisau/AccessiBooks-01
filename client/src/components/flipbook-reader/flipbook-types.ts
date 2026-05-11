@@ -1,4 +1,11 @@
 import type { Book } from "@shared/schema";
+import type {
+  FlipbookFontFamily,
+  FlipbookPreset,
+  FlipbookSettings,
+  FlipbookTheme,
+  FlipbookTypography,
+} from "./flipbook-typography";
 
 export interface FlipbookPage {
   id: string;
@@ -31,6 +38,12 @@ export interface ReaderToolbarProps {
 export interface ReaderSettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  settings: FlipbookSettings;
+  onTypographyChange: (patch: Partial<FlipbookTypography>) => void;
+  onFontFamilyChange: (font: FlipbookFontFamily) => void;
+  onThemeChange: (theme: FlipbookTheme) => void;
+  onPresetChange: (preset: FlipbookPreset) => void;
+  onResetDefaults: () => void;
 }
 
 export interface PageNavigatorProps {
@@ -45,6 +58,7 @@ export interface ReadingPageProps {
   page: FlipbookPage;
   flipDirection: "none" | "next" | "prev";
   reducedMotion: boolean;
+  typography: FlipbookTypography;
 }
 
 export interface AnnotationPanelProps {

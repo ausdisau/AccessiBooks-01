@@ -510,6 +510,10 @@ export function Library({ onSelectBook }: LibraryProps) {
 
   const displayedBooks = filteredAndSortedBooks;
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const firstName = user?.firstName || user?.name?.split(" ")[0] || null;
+
   return (
     <div className="space-y-8">
       {showRewardedAd && offer && rewardedImpressionId && (
@@ -524,12 +528,34 @@ export function Library({ onSelectBook }: LibraryProps) {
           }}
         />
       )}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold">Library</h1>
-        {isFree && activeRewards.length > 0 && (
-          <ActiveRewardBadge rewards={activeRewards} />
-        )}
-      </div>
+
+      {/* Hero greeting — only shown when logged in and no active search/filter */}
+      {user && !searchQuery && !selectedGenre && (
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-2">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {firstName ? `${greeting}, ${firstName}` : greeting}
+            </h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              What would you like to listen to today?
+            </p>
+          </div>
+          {isFree && activeRewards.length > 0 && (
+            <ActiveRewardBadge rewards={activeRewards} />
+          )}
+        </div>
+      )}
+
+      {/* Compact header for filtered / search states */}
+      {(!user || searchQuery || selectedGenre) && (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h1 className="text-2xl font-bold">Library</h1>
+          {isFree && activeRewards.length > 0 && (
+            <ActiveRewardBadge rewards={activeRewards} />
+          )}
+        </div>
+      )}
+
       {showPersonalizedSections && (
         <ListeningStatsCard />
       )}

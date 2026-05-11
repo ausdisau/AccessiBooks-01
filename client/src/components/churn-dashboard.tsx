@@ -94,48 +94,48 @@ export function ChurnDashboard() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Total At-Risk Users */}
-        <Card className="dark:bg-slate-900/50">
+        <Card className="dark:bg-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
+              <Users className="h-3.5 w-3.5" />
               Total At-Risk Users
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalAtRisk}</div>
-            <p className="text-xs text-muted-foreground mt-1">need attention</p>
+            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">need attention</p>
           </CardContent>
         </Card>
 
         {/* High Risk Count */}
-        <Card className="dark:bg-slate-900/50 border-red-200 dark:border-red-900">
+        <Card className="dark:bg-card border-red-500/20">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-red-500">
+              <AlertTriangle className="h-3.5 w-3.5" />
               High Risk
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+            <div className="text-2xl font-bold text-red-500">
               {highRiskCount}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">inactive 20+ days</p>
+            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">inactive 20+ days</p>
           </CardContent>
         </Card>
 
         {/* Medium Risk Count */}
-        <Card className="dark:bg-slate-900/50 border-yellow-200 dark:border-yellow-900">
+        <Card className="dark:bg-card border-yellow-500/20">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-yellow-500">
+              <AlertTriangle className="h-3.5 w-3.5" />
               Medium Risk
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-500">
+            <div className="text-2xl font-bold text-yellow-500">
               {mediumRiskCount}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">inactive 10-20 days</p>
+            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">inactive 10-20 days</p>
           </CardContent>
         </Card>
       </div>
@@ -149,47 +149,51 @@ export function ChurnDashboard() {
           At-Risk Users
         </h3>
 
-        <Card className="dark:bg-slate-900/50">
-          <CardContent className="pt-6">
+        <Card className="dark:bg-card">
+          <CardContent className="p-0">
             {sortedUsers.length === 0 ? (
-              <div className="text-center py-8">
+              <div className="text-center py-12">
                 <Users className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-50" />
-                <p className="text-muted-foreground">No at-risk users detected</p>
+                <p className="text-muted-foreground text-sm uppercase tracking-widest">No at-risk users detected</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Username</TableHead>
-                      <TableHead>Last Active</TableHead>
-                      <TableHead>Risk Level</TableHead>
-                      <TableHead className="text-right">Sessions (30d)</TableHead>
-                      <TableHead className="text-center">Win-back Sent</TableHead>
+                    <TableRow className="hover:bg-transparent border-b">
+                      <TableHead className="text-[11px] font-bold uppercase tracking-wider h-10">Username</TableHead>
+                      <TableHead className="text-[11px] font-bold uppercase tracking-wider h-10">Last Active</TableHead>
+                      <TableHead className="text-[11px] font-bold uppercase tracking-wider h-10">Risk Level</TableHead>
+                      <TableHead className="text-right text-[11px] font-bold uppercase tracking-wider h-10">Sessions (30d)</TableHead>
+                      <TableHead className="text-center text-[11px] font-bold uppercase tracking-wider h-10">Win-back</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {sortedUsers.map((user) => (
-                      <TableRow key={user.userId}>
-                        <TableCell className="font-medium">{user.username}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                      <TableRow key={user.userId} className="hover:bg-muted/30">
+                        <TableCell className="font-bold text-xs py-2">{user.username}</TableCell>
+                        <TableCell className="text-[11px] text-muted-foreground uppercase tracking-tight py-2">
                           {getRelativeTime(user.lastActiveAt)}
                         </TableCell>
-                        <TableCell>
-                          <Badge variant={getRiskColor(user.churnRisk)}>
-                            {getRiskLabel(user.churnRisk)}
+                        <TableCell className="py-2">
+                          <Badge variant="outline" className={`text-[10px] h-5 px-1.5 font-bold uppercase tracking-wider ${
+                            user.churnRisk === 'high' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+                            user.churnRisk === 'medium' ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 
+                            'bg-muted text-muted-foreground'
+                          }`}>
+                            {user.churnRisk}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right font-bold text-xs py-2">
                           {user.totalSessionsLast30d}
                         </TableCell>
-                        <TableCell className="text-center">
+                        <TableCell className="text-center py-2">
                           {user.winbackOfferSent ? (
-                            <span className="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/30 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
-                              ✓
+                            <span className="inline-flex items-center rounded-full bg-green-500/10 px-1.5 py-0.5 text-[10px] font-bold text-green-500 uppercase">
+                              Sent
                             </span>
                           ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-[10px] text-muted-foreground uppercase font-bold">—</span>
                           )}
                         </TableCell>
                       </TableRow>

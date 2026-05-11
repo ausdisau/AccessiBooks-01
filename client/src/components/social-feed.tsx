@@ -47,7 +47,7 @@ function FeedReviewCard({ review }: { review: ReviewWithUser & { bookTitle?: str
           </div>
         </div>
 
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 mb-3">
+        <div className="bg-muted/50 rounded-lg p-3 mb-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-muted-foreground" />

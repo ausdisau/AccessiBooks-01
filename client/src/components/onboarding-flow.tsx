@@ -310,25 +310,25 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg p-0 overflow-hidden bg-background dark:bg-gray-950 border dark:border-gray-800">
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden bg-background border shadow-2xl rounded-[2rem]">
         <DialogTitle className="sr-only">Onboarding</DialogTitle>
 
         {step > 1 && (
-          <div className="px-6 pt-5 pb-0">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground dark:text-gray-400">
+          <div className="px-10 pt-10 pb-0">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
                 Step {step} of {TOTAL_STEPS}
               </span>
-              <span className="text-xs font-medium text-muted-foreground dark:text-gray-400">
-                {Math.round(progressPercent)}%
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+                {Math.round(progressPercent)}% Complete
               </span>
             </div>
-            <Progress value={progressPercent} className="h-1.5" />
+            <Progress value={progressPercent} className="h-1 bg-muted" />
           </div>
         )}
 
         <div
-          className={`px-6 pb-6 ${step === 1 ? "pt-6" : "pt-4"} transition-all duration-200 ease-in-out ${transitionClass}`}
+          className={`px-10 pb-10 ${step === 1 ? "pt-10" : "pt-8"} transition-all duration-300 ease-in-out ${transitionClass} flex flex-col items-center justify-center min-h-[400px]`}
         >
           {step === 1 && <WelcomeStep onNext={handleNext} />}
           {step === 2 && (
@@ -404,28 +404,28 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
 
 function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
-    <div className="text-center space-y-6 py-4">
-      <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center">
-        <Headphones className="h-8 w-8 text-primary" />
+    <div className="text-center space-y-8 py-6">
+      <div className="mx-auto w-24 h-24 rounded-3xl bg-primary/10 flex items-center justify-center shadow-inner">
+        <Headphones className="h-12 w-12 text-primary" />
       </div>
-      <div className="space-y-2">
-        <h2 className="text-2xl font-bold text-foreground dark:text-white">
+      <div className="space-y-3">
+        <h2 className="text-4xl font-serif font-bold text-foreground">
           Welcome to AccessiBooks
         </h2>
-        <p className="text-muted-foreground dark:text-gray-400 text-base">
+        <p className="text-xl text-muted-foreground font-medium">
           Your Accessible Audio Library
         </p>
       </div>
-      <p className="text-sm text-muted-foreground dark:text-gray-500 max-w-xs mx-auto">
+      <p className="text-base text-muted-foreground/80 max-w-sm mx-auto leading-relaxed">
         Let's personalize your experience in just a few quick steps. It only takes a minute!
       </p>
       <Button
         size="lg"
-        className="w-full mt-4"
+        className="w-full mt-6 h-14 text-lg font-bold shadow-lg shadow-primary/20"
         onClick={onNext}
       >
         Get Started
-        <ChevronRight className="ml-2 h-4 w-4" />
+        <ChevronRight className="ml-2 h-5 w-5" />
       </Button>
     </div>
   );
@@ -445,47 +445,42 @@ function GenreStep({
   canProceed: boolean;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="text-center space-y-1">
-        <h2 className="text-xl font-bold text-foreground dark:text-white">
+    <div className="space-y-6">
+      <div className="text-center space-y-2">
+        <h2 className="text-3xl font-serif font-bold text-foreground">
           What interests you?
         </h2>
-        <p className="text-sm text-muted-foreground dark:text-gray-400">
+        <p className="text-base text-muted-foreground font-medium">
           Pick at least 2 genres you enjoy
         </p>
       </div>
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
         {GENRES.map((genre) => {
           const isSelected = selected.includes(genre);
           return (
             <button
               key={genre}
               onClick={() => onToggle(genre)}
-              className={`relative flex flex-col items-center gap-1 rounded-xl border-2 p-3 text-center transition-all duration-150 ${
+              className={`relative flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition-all duration-200 shadow-sm ${
                 isSelected
-                  ? "border-primary bg-primary/10 dark:bg-primary/20 text-primary"
-                  : "border-border dark:border-gray-700 hover:border-primary/50 text-foreground dark:text-gray-300"
+                  ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20"
+                  : "border-border hover:border-primary/50 text-foreground"
               }`}
             >
-              {isSelected && (
-                <div className="absolute top-1 right-1">
-                  <Check className="h-3.5 w-3.5 text-primary" />
-                </div>
-              )}
-              <span className="text-xl">{GENRE_EMOJIS[genre]}</span>
-              <span className="text-xs font-medium leading-tight">{genre}</span>
+              <span className="text-3xl">{GENRE_EMOJIS[genre]}</span>
+              <span className="text-[10px] font-bold uppercase tracking-tight leading-tight">{genre}</span>
             </button>
           );
         })}
       </div>
 
-      <div className="flex items-center justify-between pt-2">
-        <Badge variant="secondary" className="text-xs dark:bg-gray-800 dark:text-gray-300">
+      <div className="flex items-center justify-between py-2">
+        <Badge className="bg-primary/10 text-primary border-none px-4 py-1 font-bold">
           {selected.length} selected
         </Badge>
         {!canProceed && (
-          <span className="text-xs text-muted-foreground dark:text-gray-500">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">
             Select at least 2
           </span>
         )}
@@ -881,12 +876,20 @@ function NavigationButtons({
   nextLabel?: string;
 }) {
   return (
-    <div className="flex gap-2 pt-2">
-      <Button variant="outline" onClick={onBack} className="dark:border-gray-700 dark:text-gray-300">
-        <ChevronLeft className="h-4 w-4 mr-1" />
+    <div className="flex gap-4 pt-6">
+      <Button
+        variant="outline"
+        className="flex-1 h-12 font-bold uppercase tracking-wider text-[10px] border-2"
+        onClick={onBack}
+      >
+        <ChevronLeft className="mr-2 h-4 w-4" />
         Back
       </Button>
-      <Button className="flex-1" onClick={onNext} disabled={!canProceed}>
+      <Button
+        className="flex-[2] h-12 font-bold uppercase tracking-wider text-[10px] shadow-lg shadow-primary/20"
+        onClick={onNext}
+        disabled={!canProceed}
+      >
         {nextLabel}
         <ChevronRight className="ml-2 h-4 w-4" />
       </Button>

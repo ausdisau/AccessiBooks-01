@@ -92,31 +92,40 @@ export function ForYouSection({ books, onSelectBook }: ForYouSectionProps) {
     agentBookById.get(id) ?? bookById.get(id);
 
   return (
-    <section className="mb-8" aria-label="Recommended For You" data-testid="for-you-section">
-      <div className="flex items-center gap-2 mb-1">
-        <Sparkles className="h-5 w-5 text-primary" />
-        <h2 className="text-xl font-semibold">For You{titleSuffix ? ` — ${titleSuffix}` : ""}</h2>
-        {agentFirstSet && (
-          <span className="text-[10px] uppercase tracking-wide text-primary/70 ml-1">AccessiDJ pick</span>
-        )}
+    <section className="mb-12" aria-label="Recommended For You" data-testid="for-you-section">
+      <div className="flex items-end justify-between mb-6 px-1">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-primary" />
+            <h2 className="font-serif text-2xl font-bold">Made For You</h2>
+            {agentFirstSet && (
+              <span className="text-[10px] font-bold uppercase tracking-widest bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-2">
+                AccessiDJ pick
+              </span>
+            )}
+          </div>
+          {intro && <p className="text-sm text-muted-foreground font-medium" data-testid="for-you-intro">{intro}</p>}
+        </div>
       </div>
-      {intro && <p className="text-sm text-muted-foreground mb-3" data-testid="for-you-intro">{intro}</p>}
+      
       <ScrollArea className="w-full whitespace-nowrap">
-        <div className="flex gap-4 pb-4">
+        <div className="flex gap-6 pb-4 px-1">
           {recommendations.map((rec) => {
             const book = resolveBook(rec.bookId);
             if (!book) return null;
             return (
-              <div key={book.id} className="flex-shrink-0 w-56">
+              <div key={book.id} className="flex-shrink-0 w-44 group">
                 <BookCard book={book} onPlayBook={onSelectBook} compact />
                 {rec.rationale && (
-                  <p
-                    className="text-[11px] text-muted-foreground italic mt-1 line-clamp-3 px-1 whitespace-normal"
-                    title={rec.rationale}
-                    data-testid={`for-you-rationale-${book.id}`}
-                  >
-                    {rec.rationale}
-                  </p>
+                  <div className="mt-3 px-1">
+                    <p
+                      className="text-[11px] leading-relaxed text-muted-foreground italic line-clamp-2 whitespace-normal font-medium group-hover:text-foreground transition-colors"
+                      title={rec.rationale}
+                      data-testid={`for-you-rationale-${book.id}`}
+                    >
+                      "{rec.rationale}"
+                    </p>
+                  </div>
                 )}
               </div>
             );

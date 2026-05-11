@@ -100,54 +100,47 @@ export function GenreCards({ books, onGenreSelect, selectedGenre }: GenreCardsPr
   }
 
   return (
-    <section className="mb-8" aria-label="Browse by Genre" data-testid="genre-cards">
-      <h2 className="text-xl font-semibold mb-4">Browse by Genre</h2>
+    <section className="mb-10" aria-label="Browse by Genre" data-testid="genre-cards">
+      <h2 className="font-serif text-2xl font-bold mb-6 px-1">Browse by Genre</h2>
       <ScrollArea className="w-full whitespace-nowrap">
-        <div className="flex gap-3 pb-4">
-          <Card 
-            className={`flex-shrink-0 w-32 cursor-pointer transition-all ${
+        <div className="flex gap-4 pb-4">
+          <div 
+            className={`flex-shrink-0 w-40 h-28 cursor-pointer transition-all duration-300 rounded-xl overflow-hidden relative group shadow-md ${
               selectedGenre === null 
-                ? "ring-2 ring-primary" 
+                ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-105" 
                 : "hover:scale-105"
             }`}
             onClick={() => onGenreSelect("")}
           >
-            <CardContent className="p-0">
-              <div className={`h-20 bg-gradient-to-br from-gray-500 to-gray-700 rounded-t-lg flex items-center justify-center`}>
-                <BookOpen className="h-8 w-8 text-white" />
+            <div className={`absolute inset-0 bg-gradient-to-br from-gray-600 to-gray-900 flex flex-col items-start justify-between p-4`}>
+              <p className="text-white font-bold text-lg leading-tight z-10">All Books</p>
+              <div className="self-end opacity-40 group-hover:opacity-60 transition-opacity">
+                <BookOpen className="h-10 w-10 text-white transform rotate-12" />
               </div>
-              <div className="p-2 text-center">
-                <p className="text-sm font-medium">All Books</p>
-                <p className="text-xs text-muted-foreground">{books.length}</p>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
           
           {availableGenres.map(([key, config]) => {
             const Icon = config.icon;
-            const count = genreCounts[key] || 0;
             const isSelected = selectedGenre?.toLowerCase() === key;
             
             return (
-              <Card 
+              <div 
                 key={key}
-                className={`flex-shrink-0 w-32 cursor-pointer transition-all ${
+                className={`flex-shrink-0 w-40 h-28 cursor-pointer transition-all duration-300 rounded-xl overflow-hidden relative group shadow-md ${
                   isSelected 
-                    ? "ring-2 ring-primary" 
+                    ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-105" 
                     : "hover:scale-105"
                 }`}
                 onClick={() => onGenreSelect(key)}
               >
-                <CardContent className="p-0">
-                  <div className={`h-20 bg-gradient-to-br ${config.gradient} rounded-t-lg flex items-center justify-center`}>
-                    <Icon className="h-8 w-8 text-white" />
+                <div className={`absolute inset-0 bg-gradient-to-br ${config.gradient} flex flex-col items-start justify-between p-4`}>
+                  <p className="text-white font-bold text-lg leading-tight z-10">{config.label}</p>
+                  <div className="self-end opacity-40 group-hover:opacity-60 transition-opacity">
+                    <Icon className="h-10 w-10 text-white transform rotate-12" />
                   </div>
-                  <div className="p-2 text-center">
-                    <p className="text-sm font-medium">{config.label}</p>
-                    <p className="text-xs text-muted-foreground">{count} books</p>
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>

@@ -214,41 +214,41 @@ export function BattlePassComponent() {
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
       <Card className="overflow-hidden">
-        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-4 sm:p-6 text-white">
+        <div className="bg-card p-4 sm:p-6 border-b">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                <Sparkles className="h-6 w-6" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Sparkles className="h-6 w-6 text-primary" />
               </div>
               <div>
                 <h2 className="text-lg sm:text-xl font-bold">{season.seasonName}</h2>
-                <p className="text-sm text-white/80">{season.description}</p>
+                <p className="text-sm text-muted-foreground">{season.description}</p>
               </div>
             </div>
             <div className="text-right">
-              <div className="flex items-center gap-1 text-sm text-white/80">
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
                 {daysLeft} days left
               </div>
-              <p className="text-lg font-bold">${(season.priceCents / 100).toFixed(2)}</p>
+              <p className="text-lg font-bold text-primary">${(season.priceCents / 100).toFixed(2)}</p>
             </div>
           </div>
 
           {purchase ? (
             <div>
               <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-white/80">Season Progress</span>
+                <span className="text-muted-foreground">Season Progress</span>
                 <span className="font-medium">{currentXp.toLocaleString()} / {maxXp.toLocaleString()} XP</span>
               </div>
-              <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
+              <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-yellow-400 to-amber-400 rounded-full transition-all duration-500"
+                  className="h-full bg-primary rounded-full transition-all duration-500"
                   style={{ width: `${overallProgress}%` }}
                 />
               </div>
               <div className="flex items-center justify-between mt-2 text-sm">
-                <span className="text-white/80">Current Tier: {purchase.currentTier} / {milestones.length}</span>
-                <span className="text-white/80">
+                <span className="text-muted-foreground font-medium text-xs">Current Tier: {purchase.currentTier} / {milestones.length}</span>
+                <span className="text-muted-foreground font-medium text-xs">
                   {claimedMilestones.length} / {milestones.filter(m => currentXp >= m.xpRequired).length} rewards claimed
                 </span>
               </div>
@@ -259,7 +259,7 @@ export function BattlePassComponent() {
                 <Button
                   onClick={() => purchaseMutation.mutate()}
                   disabled={purchaseMutation.isPending}
-                  className="bg-white text-purple-700 hover:bg-white/90 font-semibold"
+                  className="bg-primary hover:bg-primary/90 text-white font-semibold"
                 >
                   {purchaseMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -269,7 +269,7 @@ export function BattlePassComponent() {
                   Get Battle Pass - ${(season.priceCents / 100).toFixed(2)}
                 </Button>
               ) : (
-                <p className="text-sm text-white/80">Sign in to purchase the Battle Pass</p>
+                <p className="text-sm text-muted-foreground">Sign in to purchase the Battle Pass</p>
               )}
             </div>
           )}

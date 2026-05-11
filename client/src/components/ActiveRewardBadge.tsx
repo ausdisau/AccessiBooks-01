@@ -37,7 +37,7 @@ export function ActiveRewardBadge({ rewards }: ActiveRewardBadgeProps) {
           <Badge
             key={reward.type}
             variant="secondary"
-            className="flex items-center gap-1 text-xs bg-primary/10 text-primary border-primary/20"
+            className="flex items-center gap-1 text-xs bg-primary/20 text-primary border-primary/30 font-bold"
             aria-label={`Active reward: ${reward.label}, ${remaining} minutes remaining`}
           >
             <Clock className="h-3 w-3" aria-hidden="true" />

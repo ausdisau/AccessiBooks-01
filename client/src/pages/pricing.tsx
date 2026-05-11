@@ -63,42 +63,44 @@ export function PricingPage() {
   };
 
   return (
-    <main className="max-w-6xl mx-auto px-4 py-10 space-y-10">
-      <div className="text-center space-y-3">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
+    <main className="max-w-6xl mx-auto px-6 py-20 space-y-16">
+      <div className="text-center space-y-4">
+        <h1 className="text-4xl sm:text-6xl font-serif font-bold tracking-tight text-foreground">
           Choose your plan
         </h1>
-        <p className="text-muted-foreground max-w-xl mx-auto text-base">
-          Start for free with our curated catalog, or unlock the full AccessiBooks experience with Premium. Institutional access is available through partner organisations and libraries.
+        <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
+          Start for free with our curated catalog, or unlock the full AccessiBooks experience with Premium.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
         <Card
-          className="border"
+          className="border-none bg-card/50 backdrop-blur-sm flex flex-col"
           aria-label="Free plan"
         >
-          <CardHeader className="pb-4 text-center space-y-3">
-            <div className="flex justify-center">
-              <Zap className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+          <CardHeader className="pb-8 text-center space-y-4">
+            <div className="flex justify-center mb-2">
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                <Zap className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-foreground">Free</h2>
+            <h2 className="text-2xl font-serif font-bold text-foreground">Free</h2>
             <div>
-              <span className="text-4xl font-bold text-foreground">$0</span>
+              <span className="text-5xl font-bold text-foreground">$0</span>
               <span className="text-muted-foreground text-sm"> / month</span>
             </div>
-            <p className="text-sm text-muted-foreground">Great for trying AccessiBooks with a curated selection.</p>
+            <p className="text-sm text-muted-foreground px-4">Great for trying AccessiBooks with a curated selection.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="space-y-2" aria-label="Free plan features">
+          <CardContent className="space-y-8 flex-1 flex flex-col">
+            <ul className="space-y-4 flex-1" aria-label="Free plan features">
               {FREE_FEATURES.map((f, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
+                <li key={i} className="flex items-start gap-3 text-sm">
                   {f.included ? (
-                    <Check className="h-4 w-4 mt-0.5 text-green-500 shrink-0" aria-hidden="true" />
+                    <Check className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
                   ) : (
-                    <X className="h-4 w-4 mt-0.5 text-muted-foreground/40 shrink-0" aria-hidden="true" />
+                    <X className="h-5 w-5 text-muted-foreground/30 shrink-0" aria-hidden="true" />
                   )}
-                  <span className={f.included ? "text-foreground" : "text-muted-foreground/60"}>
+                  <span className={f.included ? "text-foreground font-medium" : "text-muted-foreground"}>
                     {f.text}
                   </span>
                 </li>
@@ -106,8 +108,9 @@ export function PricingPage() {
             </ul>
             <Button
               variant="outline"
-              className="w-full focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Upgrade to Free"
+              size="lg"
+              className="w-full"
+              aria-label="Get started free"
               onClick={() => navigate("/")}
             >
               Get started free
@@ -116,94 +119,104 @@ export function PricingPage() {
         </Card>
 
         <Card
-          className="border-2 border-amber-500 bg-amber-500/5 md:scale-105 shadow-lg shadow-amber-500/10 relative"
+          className="border-2 border-primary bg-primary/5 md:scale-105 shadow-2xl shadow-primary/10 relative flex flex-col"
           aria-label="Premium plan — recommended"
         >
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-            <Badge className="bg-amber-500 text-white border-0 px-3 py-1 text-xs font-bold shadow-md">
-              ⭐ Best Value
+          <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
+            <Badge className="bg-primary text-white border-0 px-4 py-1.5 text-xs font-bold shadow-xl uppercase tracking-wider">
+              Recommended
             </Badge>
           </div>
-          <CardHeader className="pb-4 text-center space-y-3">
-            <div className="flex justify-center">
-              <Crown className="h-8 w-8 text-amber-500" aria-hidden="true" />
+          <CardHeader className="pb-8 text-center space-y-4">
+            <div className="flex justify-center mb-2">
+              <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
+                <Crown className="h-6 w-6 text-white" aria-hidden="true" />
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-foreground">Premium</h2>
+            <h2 className="text-2xl font-serif font-bold text-foreground">Premium</h2>
             <div>
-              <span className="text-4xl font-bold text-foreground">{TIER_PRICING.premium.monthlyDisplay}</span>
+              <span className="text-5xl font-bold text-foreground">{TIER_PRICING.premium.monthlyDisplay}</span>
               <span className="text-muted-foreground text-sm"> / month</span>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-primary font-medium">
               Or {TIER_PRICING.premium.yearlyDisplay}/year — save 17%
             </p>
-            <p className="text-sm text-muted-foreground">Full access, ad-free. No compromises.</p>
+            <p className="text-sm text-muted-foreground px-4">Full access, ad-free. No compromises.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="space-y-2" aria-label="Premium plan features">
+          <CardContent className="space-y-8 flex-1 flex flex-col">
+            <ul className="space-y-4 flex-1" aria-label="Premium plan features">
               {PREMIUM_FEATURES.map((f, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <Check className="h-4 w-4 mt-0.5 text-green-500 shrink-0" aria-hidden="true" />
-                  <span className="text-foreground">{f.text}</span>
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <Check className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+                  <span className="text-foreground font-medium">{f.text}</span>
                 </li>
               ))}
             </ul>
-            <Button
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white focus-visible:ring-2 focus-visible:ring-amber-400"
-              aria-label="Upgrade to Premium"
-              onClick={() => handleUpgradeClick("Premium")}
-            >
-              <Crown className="h-4 w-4 mr-2" aria-hidden="true" />
-              Upgrade to Premium
-            </Button>
-            <ComingSoonBanner />
+            <div className="space-y-4">
+              <Button
+                size="lg"
+                className="w-full bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
+                aria-label="Upgrade to Premium"
+                onClick={() => handleUpgradeClick("Premium")}
+              >
+                <Crown className="h-4 w-4 mr-2" aria-hidden="true" />
+                Upgrade to Premium
+              </Button>
+              <ComingSoonBanner />
+            </div>
           </CardContent>
         </Card>
 
         <Card
-          className="border"
+          className="border-none bg-card/50 backdrop-blur-sm flex flex-col"
           aria-label="Institutional plan"
         >
-          <CardHeader className="pb-4 text-center space-y-3">
-            <div className="flex justify-center">
-              <Building2 className="h-8 w-8 text-primary" aria-hidden="true" />
+          <CardHeader className="pb-8 text-center space-y-4">
+            <div className="flex justify-center mb-2">
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                <Building2 className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-foreground">Institutional</h2>
+            <h2 className="text-2xl font-serif font-bold text-foreground">Institutional</h2>
             <div>
-              <span className="text-2xl font-bold text-foreground">Contact us</span>
+              <span className="text-3xl font-bold text-foreground">Contact us</span>
             </div>
-            <p className="text-sm text-muted-foreground">Available via partner organisations or libraries.</p>
+            <p className="text-sm text-muted-foreground px-4">Available via partner organisations or libraries.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="space-y-2" aria-label="Institutional plan features">
+          <CardContent className="space-y-8 flex-1 flex flex-col">
+            <ul className="space-y-4 flex-1" aria-label="Institutional plan features">
               {INSTITUTIONAL_FEATURES.map((f, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <Check className="h-4 w-4 mt-0.5 text-green-500 shrink-0" aria-hidden="true" />
-                  <span className="text-foreground">{f.text}</span>
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <Check className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+                  <span className="text-foreground font-medium">{f.text}</span>
                 </li>
               ))}
             </ul>
-            <Button
-              variant="outline"
-              className="w-full focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Upgrade to Institutional"
-              onClick={() => navigate("/institutional")}
-            >
-              <Building2 className="h-4 w-4 mr-2" aria-hidden="true" />
-              Learn more
-            </Button>
-            <ComingSoonBanner />
+            <div className="space-y-4">
+              <Button
+                variant="outline"
+                size="lg"
+                className="w-full"
+                aria-label="Learn more about Institutional access"
+                onClick={() => navigate("/institutional")}
+              >
+                <Building2 className="h-4 w-4 mr-2" aria-hidden="true" />
+                Learn more
+              </Button>
+              <ComingSoonBanner />
+            </div>
           </CardContent>
         </Card>
       </div>
 
       <section
-        className="rounded-xl border border-dashed border-muted-foreground/30 bg-muted/20 p-6 text-center space-y-2"
+        className="rounded-2xl border-2 border-dashed border-primary/20 bg-primary/5 p-10 text-center space-y-4"
         aria-labelledby="pricing-note-heading"
       >
-        <h3 id="pricing-note-heading" className="font-semibold text-foreground">
+        <h3 id="pricing-note-heading" className="text-xl font-serif font-bold text-foreground">
           No subscription? No problem.
         </h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground max-w-xl mx-auto">
           You can buy individual titles starting at $1.99. Premium subscribers receive a 20% discount on all purchases.
         </p>
       </section>

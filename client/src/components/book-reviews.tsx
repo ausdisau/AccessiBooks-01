@@ -41,7 +41,7 @@ function StarRating({ rating, onRatingChange, readonly = false, size = "md" }: S
           className={`${readonly ? "cursor-default" : "cursor-pointer hover:scale-110 transition-transform"}`}
         >
           <Star
-            className={`${sizeClass} ${star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300 dark:text-gray-600"}`}
+            className={`${sizeClass} ${star <= rating ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30"}`}
           />
         </button>
       ))}
@@ -51,7 +51,7 @@ function StarRating({ rating, onRatingChange, readonly = false, size = "md" }: S
 
 function RatingSourceBadge({ source }: { source: AggregatedRatings["sources"][0] }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/60 rounded-lg">
       <span className="text-sm font-medium">{source.name}</span>
       <StarRating rating={source.rating} readonly size="sm" />
       <span className="text-xs text-muted-foreground">({source.reviewCount})</span>
