@@ -56,14 +56,16 @@ const FAQS = [
 ];
 
 function CoverTile({ cover, size = "md", widthOverride }: { cover: Cover; size?: "sm" | "md" | "lg"; widthOverride?: number }) {
-  const dims = size === "lg" ? "w-44 h-44" : size === "sm" ? "w-32 h-32" : "w-36 h-36";
   const titleSize = size === "lg" ? "text-base" : "text-[11px]";
   const bg = `linear-gradient(135deg, hsl(${cover.hue}, 70%, 32%), hsl(${(cover.hue + 30) % 360}, 65%, 18%))`;
+  // Book covers are portrait (2:3 aspect). When widthOverride is set, height = width * 1.5.
+  const w = widthOverride ?? (size === "lg" ? 160 : size === "sm" ? 120 : 140);
+  const h = Math.round(w * 1.5);
   return (
-    <div className="flex flex-col gap-1 group" style={widthOverride ? { width: widthOverride } : undefined}>
+    <div className="flex flex-col gap-1 group" style={{ width: w }}>
       <div
-        className={`${dims} rounded-sm shadow-md relative overflow-hidden cursor-pointer transition-transform hover:-translate-y-0.5`}
-        style={{ background: bg, width: widthOverride, height: widthOverride }}
+        className="rounded-sm shadow-md relative overflow-hidden cursor-pointer transition-transform hover:-translate-y-0.5"
+        style={{ background: bg, width: w, height: h }}
       >
         <div className="absolute inset-0 p-3 flex flex-col justify-between">
           <div className={`${titleSize} font-bold leading-tight text-white drop-shadow uppercase tracking-tight`}>{cover.title}</div>
@@ -127,12 +129,12 @@ function Header() {
 function Hero() {
   // Fanned cover cluster
   const fan = [
-    { title: "British Comedy", hue: 5, x: -180, y: 30, r: -14 },
-    { title: "The Devoted Wife", hue: 35, x: -40, y: -10, r: -4 },
-    { title: "Harry Potter Vol II", hue: 22, x: 90, y: -40, r: 6 },
-    { title: "The Bone Hunter", hue: 215, x: -110, y: 140, r: -6 },
-    { title: "Harry Potter Vol IV", hue: 230, x: 30, y: 110, r: 4 },
-    { title: "Harry Potter Vol V", hue: 200, x: 160, y: 80, r: 12 },
+    { title: "British Comedy", hue: 5, x: -200, y: 10, r: -14 },
+    { title: "The Devoted Wife", hue: 35, x: -50, y: -30, r: -4 },
+    { title: "Harry Potter Vol II", hue: 22, x: 110, y: -55, r: 6 },
+    { title: "The Bone Hunter", hue: 215, x: -130, y: 140, r: -6 },
+    { title: "Harry Potter Vol IV", hue: 230, x: 30, y: 120, r: 4 },
+    { title: "Harry Potter Vol V", hue: 200, x: 180, y: 90, r: 12 },
   ];
   return (
     <section className="relative" style={{ background: SOFT }}>
@@ -158,15 +160,17 @@ function Hero() {
           {fan.map((c, i) => (
             <div
               key={i}
-              className="absolute w-32 h-32 rounded-sm shadow-xl"
+              className="absolute rounded-sm shadow-xl"
               style={{
+                width: 110,
+                height: 165,
                 left: `calc(50% + ${c.x}px)`,
-                top: `calc(50% + ${c.y}px - 64px)`,
+                top: `calc(50% + ${c.y}px - 82px)`,
                 transform: `rotate(${c.r}deg)`,
                 background: `linear-gradient(135deg, hsl(${c.hue}, 70%, 30%), hsl(${(c.hue + 30) % 360}, 65%, 14%))`,
               }}
             >
-              <div className="absolute inset-0 p-2 flex flex-col justify-between">
+              <div className="absolute inset-0 p-2.5 flex flex-col justify-between">
                 <div className="text-[10px] font-bold text-white uppercase leading-tight drop-shadow">{c.title}</div>
                 <div className="text-[8px] text-white/80 uppercase tracking-wider">Audible</div>
               </div>
@@ -190,16 +194,27 @@ function CtaTiles() {
   ];
   return (
     <section className="bg-white">
-      <div className="max-w-[920px] mx-auto px-6 -mt-8 pb-10 grid grid-cols-3 gap-4 relative z-10">
-        {tiles.map((t, i) => (
-          <div
-            key={i}
-            className="rounded-md h-20 px-4 flex items-center text-[13px] font-semibold shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-            style={{ background: t.bg, color: t.color }}
-          >
-            {t.title}
-          </div>
-        ))}
+      <div className="max-w-[920px] mx-auto px-6 -mt-8 pb-10 grid grid-cols-3 gap-4 relative z-10 items-center">
+        {tiles.map((t, i) => {
+          const isCenter = i === 1;
+          return (
+            <div
+              key={i}
+              className={`rounded-md px-4 flex items-center text-[13px] font-semibold cursor-pointer transition-all ${
+                isCenter
+                  ? "h-24 -my-1 shadow-2xl ring-2 ring-offset-2"
+                  : "h-20 shadow-md hover:shadow-lg"
+              }`}
+              style={{
+                background: t.bg,
+                color: t.color,
+                ...(isCenter ? { boxShadow: "0 16px 40px -8px rgba(11,19,32,0.45)" } : {}),
+              }}
+            >
+              {t.title}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
