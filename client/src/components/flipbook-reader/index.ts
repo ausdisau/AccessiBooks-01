@@ -7,3 +7,4 @@ export { AnnotationPanel } from "./AnnotationPanel";
 export { KeyboardShortcutHelp } from "./KeyboardShortcutHelp";
 export { LiveStatusRegion } from "./LiveStatusRegion";
 export type * from "./flipbook-types";
+export * from "./flipbook-typography";

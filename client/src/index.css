@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap');
 @import url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/web-font/opendyslexic.css');
 
 @tailwind base;
@@ -769,6 +769,87 @@ footer,
 .flipbook-page-fade {
   animation: flipbook-page-fade 200ms ease-in-out !important;
   will-change: opacity;
+}
+
+/* Flipbook reader theme tokens (Task #80).
+   Each .flipbook-theme-* class is applied on the FlipbookReader root and
+   defines the --fb-* CSS variables that all flipbook surfaces consume. */
+.flipbook-theme-light {
+  --fb-bg: hsl(0, 0%, 98%);
+  --fb-fg: hsl(220, 14%, 12%);
+  --fb-surface: hsl(0, 0%, 100%);
+  --fb-page-bg: hsl(0, 0%, 100%);
+  --fb-page-fg: hsl(220, 14%, 12%);
+  --fb-border: hsl(220, 14%, 88%);
+  --fb-muted: hsl(220, 9%, 46%);
+  --fb-accent: hsl(221, 83%, 53%);
+  --fb-on-accent: hsl(0, 0%, 100%);
+  --fb-focus: hsl(221, 83%, 53%);
+}
+.flipbook-theme-sepia {
+  --fb-bg: hsl(38, 50%, 92%);
+  --fb-fg: hsl(28, 35%, 18%);
+  --fb-surface: hsl(38, 55%, 95%);
+  --fb-page-bg: hsl(38, 60%, 96%);
+  --fb-page-fg: hsl(28, 40%, 16%);
+  --fb-border: hsl(34, 30%, 75%);
+  --fb-muted: hsl(28, 18%, 38%);
+  --fb-accent: hsl(20, 60%, 35%);
+  --fb-on-accent: hsl(38, 60%, 96%);
+  --fb-focus: hsl(20, 80%, 35%);
+}
+.flipbook-theme-dark {
+  --fb-bg: hsl(220, 13%, 8%);
+  --fb-fg: hsl(0, 0%, 92%);
+  --fb-surface: hsl(220, 13%, 12%);
+  --fb-page-bg: hsl(220, 13%, 14%);
+  --fb-page-fg: hsl(0, 0%, 92%);
+  --fb-border: hsl(220, 13%, 22%);
+  --fb-muted: hsl(220, 9%, 65%);
+  --fb-accent: hsl(25, 95%, 58%);
+  --fb-on-accent: hsl(220, 13%, 8%);
+  --fb-focus: hsl(25, 95%, 58%);
+}
+.flipbook-theme-high-contrast {
+  --fb-bg: #000000;
+  --fb-fg: #ffffff;
+  --fb-surface: #000000;
+  --fb-page-bg: #000000;
+  --fb-page-fg: #ffffff;
+  --fb-border: #ffffff;
+  --fb-muted: #ffffff;
+  --fb-accent: #ffff00;
+  --fb-on-accent: #000000;
+  --fb-focus: #ffff00;
+}
+.flipbook-theme-high-contrast :focus-visible {
+  outline: 3px solid #ffff00 !important;
+  outline-offset: 2px;
+}
+
+/* Remap shadcn semantic tokens within the flipbook reader scope so that
+   Button / Input / Slider / etc. inherit the active flipbook theme. */
+.flipbook-theme-light,
+.flipbook-theme-sepia,
+.flipbook-theme-dark,
+.flipbook-theme-high-contrast {
+  --background: var(--fb-page-bg);
+  --foreground: var(--fb-fg);
+  --card: var(--fb-surface);
+  --card-foreground: var(--fb-fg);
+  --popover: var(--fb-surface);
+  --popover-foreground: var(--fb-fg);
+  --primary: var(--fb-accent);
+  --primary-foreground: var(--fb-on-accent);
+  --secondary: var(--fb-surface);
+  --secondary-foreground: var(--fb-fg);
+  --muted: var(--fb-surface);
+  --muted-foreground: var(--fb-muted);
+  --accent: var(--fb-accent);
+  --accent-foreground: var(--fb-on-accent);
+  --border: var(--fb-border);
+  --input: var(--fb-border);
+  --ring: var(--fb-focus);
 }
 
 

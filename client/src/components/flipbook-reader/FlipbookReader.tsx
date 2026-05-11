@@ -9,14 +9,25 @@ import { AnnotationPanel } from "./AnnotationPanel";
 import { KeyboardShortcutHelp } from "./KeyboardShortcutHelp";
 import { LiveStatusRegion } from "./LiveStatusRegion";
 import type { FlipbookPage, FlipbookReaderProps } from "./flipbook-types";
+import {
+  applyPreset,
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  type FlipbookFontFamily,
+  type FlipbookPreset,
+  type FlipbookSettings,
+  type FlipbookTheme,
+  type FlipbookTypography,
+} from "./flipbook-typography";
 
 const DEMO_PARAGRAPHS = [
-  "Welcome to the AccessiBooks flipbook reader. This Stage 1 shell focuses on the core navigation, layout, and accessibility scaffolding that every later stage will build on.",
+  "Welcome to the AccessiBooks flipbook reader. Stage 2 brings the reading customisation layer: dyslexia-friendly fonts, accessibility presets, and four reading themes.",
+  "Open the Settings panel from the toolbar to choose a preset like Dyslexia Support or Low Vision, switch theme between Light, Sepia, Dark, and High Contrast, or fine-tune typography with the live sliders.",
+  "Every change applies instantly across pages and persists for this book the next time you open it.",
   "Use the previous and next buttons in the toolbar, swipe on touch devices, or press the Left and Right arrow keys to turn pages. Page Up and Page Down work too, and Home or End jump to the first or last page.",
-  "Settings, annotations, and the keyboard shortcut help are all available from the toolbar. They open and close with proper focus and screen reader support, even though their content arrives in later stages.",
-  "Page changes are announced through an off-screen live region so screen reader users always know which page they are on after a flip.",
+  "Settings, annotations, and the keyboard shortcut help are all available from the toolbar. They open and close with proper focus and screen reader support.",
   "When you have set the operating system to reduce motion, the page-flip animation gracefully degrades to a quick fade so the reader stays comfortable.",
-  "Stage 2 will add typography controls, theming, and reading presets. Stage 3 brings text-to-speech and in-book search behaviour, and Stage 4 introduces written and voice annotations.",
 ];
 
 function buildDemoPages(title: string): FlipbookPage[] {
@@ -25,7 +36,7 @@ function buildDemoPages(title: string): FlipbookPage[] {
     return {
       id: `demo-${i + 1}`,
       pageNumber: i + 1,
-      content: `${title} — sample chapter\n\n${para}\n\nThis is page ${i + 1} of the Stage 1 demo content. Real book data and an EPUB-ready architecture arrive in Stage 6.`,
+      content: `${title} — sample chapter\n\n${para}\n\nThis is page ${i + 1} of the demo content. Real book data and an EPUB-ready architecture arrive in Stage 6.`,
     };
   });
 }
@@ -57,6 +68,64 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [flipDirection, setFlipDirection] = useState<"none" | "next" | "prev">("none");
   const [liveMessage, setLiveMessage] = useState(`Page 1 of ${totalPages}`);
+  const [settings, setSettings] = useState<FlipbookSettings>(() => loadSettings(book.id));
+
+  // Resync settings when the book changes (parent may reuse the component instance).
+  useEffect(() => {
+    setSettings(loadSettings(book.id));
+  }, [book.id]);
+
+  const persist = useCallback(
+    (next: FlipbookSettings) => {
+      saveSettings(book.id, next);
+      return next;
+    },
+    [book.id],
+  );
+
+  const handleTypographyChange = useCallback(
+    (patch: Partial<FlipbookTypography>) => {
+      setSettings((prev) =>
+        persist({
+          ...prev,
+          typography: { ...prev.typography, ...patch },
+          activePreset: "none",
+        }),
+      );
+    },
+    [persist],
+  );
+
+  const handleFontFamilyChange = useCallback(
+    (font: FlipbookFontFamily) => {
+      setSettings((prev) =>
+        persist({
+          ...prev,
+          typography: { ...prev.typography, fontFamily: font },
+          activePreset: "none",
+        }),
+      );
+    },
+    [persist],
+  );
+
+  const handleThemeChange = useCallback(
+    (theme: FlipbookTheme) => {
+      setSettings((prev) => persist({ ...prev, theme, activePreset: "none" }));
+    },
+    [persist],
+  );
+
+  const handlePresetChange = useCallback(
+    (preset: FlipbookPreset) => {
+      setSettings(() => persist(applyPreset(preset)));
+    },
+    [persist],
+  );
+
+  const handleResetDefaults = useCallback(() => {
+    setSettings(() => persist({ ...DEFAULT_SETTINGS }));
+  }, [persist]);
 
   const pageRef = useRef<HTMLDivElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -100,9 +169,12 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           tag === "INPUT" ||
           tag === "TEXTAREA" ||
           tag === "SELECT" ||
-          target.isContentEditable
+          target.isContentEditable ||
+          target.closest('[role="slider"]') ||
+          target.closest("[data-flipbook-panel]")
         ) {
-          return;
+          // Still allow Esc handling to reach panel-close logic below.
+          if (e.key !== "Escape") return;
         }
       }
       if (shortcutsOpen) return;
@@ -180,13 +252,19 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
   };
 
   const currentPageData = pages[currentPage - 1];
+  const themeClass = `flipbook-theme-${settings.theme}`;
 
   return (
     <div
-      className="flex flex-col h-[calc(100vh-4rem)] min-h-[600px] bg-background"
+      className={`${themeClass} flex flex-col h-[calc(100vh-4rem)] min-h-[600px]`}
+      style={{ background: "var(--fb-bg)", color: "var(--fb-fg)" }}
       data-testid="flipbook-reader"
+      data-theme={settings.theme}
     >
-      <header className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
+      <header
+        className="flex items-center justify-between px-3 py-2 border-b"
+        style={{ background: "var(--fb-surface)", borderColor: "var(--fb-border)" }}
+      >
         <Button
           variant="ghost"
           size="sm"
@@ -200,7 +278,9 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
         <h1 className="text-sm font-semibold truncate max-w-[60%]" data-testid="flipbook-title">
           {book.title}
         </h1>
-        <span className="text-xs text-muted-foreground hidden sm:inline">Flipbook view</span>
+        <span className="text-xs hidden sm:inline" style={{ color: "var(--fb-muted)" }}>
+          Flipbook view
+        </span>
       </header>
 
       <ReaderToolbar
@@ -230,7 +310,8 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
 
       <div className="flex-1 flex min-h-0">
         <main
-          className="flex-1 relative flex items-stretch justify-center p-4 sm:p-6 bg-muted/30"
+          className="flex-1 relative flex items-stretch justify-center p-4 sm:p-6"
+          style={{ background: "var(--fb-bg)" }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -257,6 +338,7 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
                 page={currentPageData}
                 flipDirection={flipDirection}
                 reducedMotion={reducedMotion}
+                typography={settings.typography}
               />
             )}
           </div>
@@ -274,7 +356,16 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           </Button>
         </main>
 
-        <ReaderSettingsPanel open={settingsOpen} onClose={closeSettings} />
+        <ReaderSettingsPanel
+          open={settingsOpen}
+          onClose={closeSettings}
+          settings={settings}
+          onTypographyChange={handleTypographyChange}
+          onFontFamilyChange={handleFontFamilyChange}
+          onThemeChange={handleThemeChange}
+          onPresetChange={handlePresetChange}
+          onResetDefaults={handleResetDefaults}
+        />
         <AnnotationPanel open={annotationsOpen} onClose={closeAnnotations} />
       </div>
 

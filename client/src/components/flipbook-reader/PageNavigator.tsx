@@ -26,7 +26,8 @@ export function PageNavigator({
   return (
     <nav
       aria-label="Page navigator"
-      className="flex flex-col gap-3 p-3 border-b border-border bg-muted/40"
+      className="flex flex-col gap-3 p-3 border-b"
+      style={{ background: "var(--fb-surface)", borderColor: "var(--fb-border)" }}
       data-testid="flipbook-navigator"
     >
       <div className="flex items-center justify-between gap-2">
@@ -63,7 +64,7 @@ export function PageNavigator({
         </Button>
       </div>
       <form onSubmit={handleJump} className="flex items-center gap-2">
-        <label htmlFor="flipbook-jump" className="text-xs font-medium text-muted-foreground">
+        <label htmlFor="flipbook-jump" className="text-xs font-medium" style={{ color: "var(--fb-muted)" }}>
           Jump to
         </label>
         <Input
@@ -93,11 +94,12 @@ export function PageNavigator({
                   onClick={() => onJumpTo(p)}
                   aria-label={`Go to page ${p}`}
                   aria-current={active ? "page" : undefined}
-                  className={`min-w-[2.25rem] h-9 px-2 rounded-md text-sm font-medium border transition-colors ${
-                    active
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background hover:bg-muted border-border"
-                  }`}
+                  className="min-w-[2.25rem] h-9 px-2 rounded-md text-sm font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2"
+                  style={{
+                    background: active ? "var(--fb-accent)" : "var(--fb-page-bg)",
+                    color: active ? "var(--fb-on-accent)" : "var(--fb-fg)",
+                    borderColor: active ? "var(--fb-accent)" : "var(--fb-border)",
+                  }}
                   data-testid={`flipbook-jump-page-${p}`}
                 >
                   {p}

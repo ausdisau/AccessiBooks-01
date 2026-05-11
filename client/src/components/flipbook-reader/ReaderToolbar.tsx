@@ -30,7 +30,8 @@ export function ReaderToolbar({
     <div
       role="toolbar"
       aria-label="Flipbook reader controls"
-      className="flex flex-wrap items-center gap-2 p-3 border-b border-border bg-card"
+      className="flex flex-wrap items-center gap-2 p-3 border-b"
+      style={{ background: "var(--fb-surface)", borderColor: "var(--fb-border)" }}
       data-testid="flipbook-toolbar"
     >
       <div className="flex items-center gap-1">
@@ -70,7 +71,8 @@ export function ReaderToolbar({
         </label>
         <div className="relative w-full">
           <Search
-            className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+            className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4"
+            style={{ color: "var(--fb-muted)" }}
             aria-hidden="true"
           />
           <Input

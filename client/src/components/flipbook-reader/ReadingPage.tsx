@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import type { ReadingPageProps } from "./flipbook-types";
+import { FONT_FAMILY_STACK } from "./flipbook-typography";
 
-export function ReadingPage({ page, flipDirection, reducedMotion }: ReadingPageProps) {
+export function ReadingPage({
+  page,
+  flipDirection,
+  reducedMotion,
+  typography,
+}: ReadingPageProps) {
   const [phase, setPhase] = useState<"idle" | "flipping">("idle");
 
   useEffect(() => {
@@ -19,6 +25,14 @@ export function ReadingPage({ page, flipDirection, reducedMotion }: ReadingPageP
       : "flipbook-page-flip-prev";
   })();
 
+  const textStyle: React.CSSProperties = {
+    fontFamily: FONT_FAMILY_STACK[typography.fontFamily],
+    fontSize: `${typography.fontSize}px`,
+    lineHeight: typography.lineHeight,
+    letterSpacing: `${typography.letterSpacing}em`,
+    wordSpacing: `${typography.wordSpacing}em`,
+  };
+
   return (
     <article
       className="relative h-full w-full"
@@ -27,13 +41,24 @@ export function ReadingPage({ page, flipDirection, reducedMotion }: ReadingPageP
     >
       <div
         key={page.id}
-        className={`h-full w-full bg-card text-card-foreground rounded-lg shadow-md border border-border p-8 sm:p-12 overflow-y-auto transition-opacity duration-150 ${animationClass}`}
-        style={{ transformOrigin: flipDirection === "next" ? "left center" : "right center" }}
+        className={`h-full w-full rounded-lg shadow-md p-8 sm:p-12 overflow-y-auto transition-opacity duration-150 ${animationClass}`}
+        style={{
+          background: "var(--fb-page-bg)",
+          color: "var(--fb-page-fg)",
+          border: "1px solid var(--fb-border)",
+          transformOrigin: flipDirection === "next" ? "left center" : "right center",
+        }}
       >
-        <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none whitespace-pre-wrap leading-relaxed">
+        <div className="max-w-none whitespace-pre-wrap" style={textStyle}>
           {page.content}
         </div>
-        <div className="mt-8 pt-4 border-t border-border text-xs text-muted-foreground text-center">
+        <div
+          className="mt-8 pt-4 text-xs text-center"
+          style={{
+            borderTop: "1px solid var(--fb-border)",
+            color: "var(--fb-muted)",
+          }}
+        >
           Page {page.pageNumber}
         </div>
       </div>
