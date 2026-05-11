@@ -455,6 +455,70 @@ import("../server/agentMailer").then(async (m) => {
     console.log("\n(Skipping route-level test — set TEST_BASE_URL to enable.)");
   }
 
+  // ---------------------------------------------------------------------
+  // Restart / hydration regression (Task #133)
+  // Verify that DbBackedAutoResponseStore.hydrate() repopulates the cache
+  // from a fake persistent store, so a "restart" does not allow a
+  // duplicate auto-reply within the suppression window.
+  // ---------------------------------------------------------------------
+  const { DbBackedAutoResponseStore, setAutoResponseStore, resetAutoResponseStoreForTesting } = m;
+  const T1 = 2_000_000_000_000;
+  const fakeRows: Array<{ recipient: string; sender: string; dedupeKey: string; expiresAt: Date }> = [];
+  const fakeStorage = {
+    async recordAutoResponse(recipient: string, sender: string, dedupeKey: string, expiresAt: Date) {
+      const i = fakeRows.findIndex(r => r.recipient === recipient && r.sender === sender && r.dedupeKey === dedupeKey);
+      if (i >= 0) fakeRows[i].expiresAt = expiresAt;
+      else fakeRows.push({ recipient, sender, dedupeKey, expiresAt });
+    },
+    async getActiveAutoResponses(now?: Date) {
+      const cutoff = (now ?? new Date()).getTime();
+      return fakeRows.filter(r => r.expiresAt.getTime() > cutoff);
+    },
+    async pruneExpiredAutoResponses(now?: Date) {
+      const cutoff = (now ?? new Date()).getTime();
+      const before = fakeRows.length;
+      for (let i = fakeRows.length - 1; i >= 0; i--) {
+        if (fakeRows[i].expiresAt.getTime() <= cutoff) fakeRows.splice(i, 1);
+      }
+      return before - fakeRows.length;
+    },
+  };
+
+  // 1) Wire DB-backed store, record an auto-response → row persisted.
+  const dbStore = new DbBackedAutoResponseStore(fakeStorage);
+  setAutoResponseStore(dbStore);
+  m.recordAutoResponse("ops@accessibooks.app", "user@example.com", "support-receipt", 60_000, T1);
+  // give the fire-and-forget write a tick
+  await new Promise(r => setTimeout(r, 5));
+  check("record persists row to fake storage", fakeRows.length === 1);
+
+  // 2) Simulate restart: brand-new DbBackedAutoResponseStore (empty cache),
+  // then hydrate from the same fake storage. A second send within the
+  // window must be deduped — proving the suppression survived restart.
+  const restartedStore = new DbBackedAutoResponseStore(fakeStorage);
+  setAutoResponseStore(restartedStore);
+  check("restart store is empty before hydrate",
+    restartedStore.has("ops@accessibooks.app", "user@example.com", "support-receipt", T1 + 1000) === false);
+  const loaded = await restartedStore.hydrate(T1 + 1000);
+  check("hydrate loaded the row from fake storage", loaded === 1);
+  const decision = shouldAutoRespond({
+    subject: { messageId: "<x@y>", subject: "Help", from: "user@example.com", returnPath: "user@example.com", to: "ops@accessibooks.app" },
+    recipient: "ops@accessibooks.app",
+    dedupeKey: "support-receipt",
+    now: T1 + 5_000,
+  });
+  check("after hydrate, repeat shouldAutoRespond is deduped",
+    decision.ok === false && decision.reason === "deduped");
+
+  // 3) Expired rows are not re-hydrated. Advance past the window.
+  const futureStore = new DbBackedAutoResponseStore(fakeStorage);
+  setAutoResponseStore(futureStore);
+  const loadedAfterExpiry = await futureStore.hydrate(T1 + 120_000);
+  check("expired rows are not re-hydrated", loadedAfterExpiry === 0);
+
+  // restore default in-memory store so any later/global state is clean
+  resetAutoResponseStoreForTesting();
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail > 0) {
     for (const f of fails) console.log(`  - ${f}`);

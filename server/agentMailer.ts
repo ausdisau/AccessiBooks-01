@@ -138,22 +138,57 @@ export interface ShouldAutoRespondResult {
 
 const DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-// In-process dedupe store — hot cache. Persistence is provided by an
-// optional storage adapter (see `setAutoResponseStorage` below) so the
-// dedupe window survives server restarts and multi-instance deploys.
-// Key: `${recipient}|${sender}|${dedupeKey}` (lowercased). Value: expiresAt epoch ms.
-const dedupeStore = new Map<string, number>();
+// ---------------------------------------------------------------------------
+// Auto-response dedupe store (Task #133)
+//
+// All read AND write decisions about the suppression window route through
+// the `AutoResponseStore` interface below. The default in-process
+// implementation keeps the existing `Map`-based behaviour (and is what
+// every test exercises). Production wires a DB-backed implementation that
+// extends the in-memory store with write-through persistence and a
+// rehydrate-from-DB step at boot, so the suppression window survives
+// server restarts.
+// ---------------------------------------------------------------------------
 
 function dedupeStoreKey(recipient: string, sender: string, dedupeKey: string): string {
   return `${recipient.trim().toLowerCase()}|${sender.trim().toLowerCase()}|${dedupeKey.trim().toLowerCase()}`;
 }
 
+/** Synchronous read/write surface used by `shouldAutoRespond`/`recordAutoResponse`. */
+export interface AutoResponseStore {
+  has(recipient: string, sender: string, dedupeKey: string, now: number): boolean;
+  set(recipient: string, sender: string, dedupeKey: string, expiresAtMs: number): void;
+  pruneExpired(now: number): void;
+  clear(): void;
+  size(): number;
+}
+
+/** Pure in-memory implementation. Used by tests and as the default. */
+export class InMemoryAutoResponseStore implements AutoResponseStore {
+  private map = new Map<string, number>();
+  has(recipient: string, sender: string, dedupeKey: string, now: number): boolean {
+    const exp = this.map.get(dedupeStoreKey(recipient, sender, dedupeKey));
+    return Boolean(exp && exp > now);
+  }
+  set(recipient: string, sender: string, dedupeKey: string, expiresAtMs: number): void {
+    this.map.set(dedupeStoreKey(recipient, sender, dedupeKey), expiresAtMs);
+  }
+  pruneExpired(now: number): void {
+    for (const [k, exp] of Array.from(this.map.entries())) {
+      if (exp <= now) this.map.delete(k);
+    }
+  }
+  clear(): void {
+    this.map.clear();
+  }
+  size(): number {
+    return this.map.size;
+  }
+}
+
 /**
- * Pluggable persistence layer for the auto-response dedupe store.
- * In tests we leave this null and rely on the in-memory `Map` only.
- * In production, `server/index.ts` wires the DB-backed `storage` instance
- * and calls `hydrateAutoResponseDedupeFromStorage()` at boot so the cache
- * is repopulated from any rows that haven't yet expired.
+ * Persistence layer for the DB-backed store. Production wires
+ * `server/storage.ts`; tests can pass a fake.
  */
 export interface AutoResponseStorage {
   recordAutoResponse(recipient: string, sender: string, dedupeKey: string, expiresAt: Date): Promise<void>;
@@ -161,51 +196,112 @@ export interface AutoResponseStorage {
   pruneExpiredAutoResponses?(now?: Date): Promise<number>;
 }
 
-let autoResponseStorage: AutoResponseStorage | null = null;
+/**
+ * DB-backed store. Reads are served from a hot in-memory cache that is
+ * (a) seeded from the DB at boot via `hydrate()`, and (b) updated
+ * write-through whenever `set` is called. Persistence failures are logged
+ * but never thrown — the local process always has a correct view of the
+ * windows it has issued.
+ */
+export class DbBackedAutoResponseStore implements AutoResponseStore {
+  private cache = new InMemoryAutoResponseStore();
+  constructor(private storage: AutoResponseStorage) {}
 
-/** Wire the persistent (DB-backed) store. Pass `null` to detach (tests). */
-export function setAutoResponseStorage(s: AutoResponseStorage | null): void {
-  autoResponseStorage = s;
+  has(recipient: string, sender: string, dedupeKey: string, now: number): boolean {
+    return this.cache.has(recipient, sender, dedupeKey, now);
+  }
+
+  set(recipient: string, sender: string, dedupeKey: string, expiresAtMs: number): void {
+    this.cache.set(recipient, sender, dedupeKey, expiresAtMs);
+    this.storage
+      .recordAutoResponse(
+        recipient.trim().toLowerCase(),
+        sender.trim().toLowerCase(),
+        dedupeKey.trim().toLowerCase(),
+        new Date(expiresAtMs),
+      )
+      .catch((err) => {
+        console.warn("[AgentMail] persistAutoResponse failed:", err);
+      });
+  }
+
+  pruneExpired(now: number): void {
+    this.cache.pruneExpired(now);
+  }
+  clear(): void {
+    this.cache.clear();
+  }
+  size(): number {
+    return this.cache.size();
+  }
+
+  /**
+   * Repopulate the hot cache from the DB. Should be awaited at server
+   * boot so the first inbound webhook after restart sees the same dedupe
+   * window the previous process had recorded.
+   */
+  async hydrate(now: number = Date.now()): Promise<number> {
+    let loaded = 0;
+    try {
+      const rows = await this.storage.getActiveAutoResponses(new Date(now));
+      for (const row of rows) {
+        const exp = row.expiresAt instanceof Date ? row.expiresAt.getTime() : new Date(row.expiresAt).getTime();
+        if (exp > now) {
+          this.cache.set(row.recipient, row.sender, row.dedupeKey, exp);
+          loaded++;
+        }
+      }
+      if (loaded > 0) {
+        console.log(`[AgentMail] Hydrated ${loaded} auto-response dedupe entries from storage`);
+      }
+      if (this.storage.pruneExpiredAutoResponses) {
+        this.storage.pruneExpiredAutoResponses(new Date(now)).catch((err) => {
+          console.warn("[AgentMail] pruneExpiredAutoResponses failed:", err);
+        });
+      }
+    } catch (err) {
+      console.error("[AgentMail] DbBackedAutoResponseStore.hydrate failed:", err);
+    }
+    return loaded;
+  }
+}
+
+let autoResponseStore: AutoResponseStore = new InMemoryAutoResponseStore();
+
+/** Get the active store. All read AND write paths must route through this. */
+export function getAutoResponseStore(): AutoResponseStore {
+  return autoResponseStore;
+}
+
+/** Swap the active store (e.g. install the DB-backed one in production). */
+export function setAutoResponseStore(s: AutoResponseStore): void {
+  autoResponseStore = s;
+}
+
+/** Restore the default in-memory store (used by tests between cases). */
+export function resetAutoResponseStoreForTesting(): void {
+  autoResponseStore = new InMemoryAutoResponseStore();
+}
+
+// ----- Back-compat thin wrappers (keep existing call sites + index.ts working) -----
+
+/** @deprecated Use `setAutoResponseStore(new DbBackedAutoResponseStore(storage))` instead. */
+export function setAutoResponseStorage(storage: AutoResponseStorage | null): void {
+  autoResponseStore = storage
+    ? new DbBackedAutoResponseStore(storage)
+    : new InMemoryAutoResponseStore();
 }
 
 /**
- * Repopulate the in-memory dedupe cache from the persistent store. Should
- * be called once at server boot, after `setAutoResponseStorage`. Failures
- * are logged but never thrown — a missing/empty table just means nothing
- * is currently suppressed.
+ * Hydrate the active store from its persistence layer, if any.
+ * Returns the number of rows loaded; 0 for stores that have no backing DB.
  */
 export async function hydrateAutoResponseDedupeFromStorage(now: number = Date.now()): Promise<number> {
-  if (!autoResponseStorage) return 0;
-  try {
-    const rows = await autoResponseStorage.getActiveAutoResponses(new Date(now));
-    let loaded = 0;
-    for (const row of rows) {
-      const exp = row.expiresAt instanceof Date ? row.expiresAt.getTime() : new Date(row.expiresAt).getTime();
-      if (exp > now) {
-        dedupeStore.set(dedupeStoreKey(row.recipient, row.sender, row.dedupeKey), exp);
-        loaded++;
-      }
-    }
-    if (loaded > 0) {
-      console.log(`[AgentMail] Hydrated ${loaded} auto-response dedupe entries from storage`);
-    }
-    // Best-effort prune of stale rows so the table doesn't grow unbounded.
-    if (autoResponseStorage.pruneExpiredAutoResponses) {
-      autoResponseStorage.pruneExpiredAutoResponses(new Date(now)).catch((err) => {
-        console.warn("[AgentMail] pruneExpiredAutoResponses failed:", err);
-      });
-    }
-    return loaded;
-  } catch (err) {
-    console.error("[AgentMail] hydrateAutoResponseDedupeFromStorage failed:", err);
-    return 0;
+  const s = autoResponseStore;
+  if (s instanceof DbBackedAutoResponseStore) {
+    return await s.hydrate(now);
   }
-}
-
-function pruneExpired(now: number): void {
-  for (const [k, exp] of Array.from(dedupeStore.entries())) {
-    if (exp <= now) dedupeStore.delete(k);
-  }
+  return 0;
 }
 
 /** Extract a bare email address from a header value like `"Foo" <foo@bar>`. */
@@ -295,11 +391,12 @@ export function shouldAutoRespond(input: ShouldAutoRespondInput): ShouldAutoResp
     }
   }
 
-  // (6) Per-sender rate limit / loop prevention.
-  pruneExpired(now);
-  const key = dedupeStoreKey(input.recipient, envelopeFrom, input.dedupeKey);
-  const exp = dedupeStore.get(key);
-  if (exp && exp > now) {
+  // (6) Per-sender rate limit / loop prevention. Routes through the
+  // active store so DB-backed deployments (Task #133) see the same
+  // suppression window across restarts.
+  const store = autoResponseStore;
+  store.pruneExpired(now);
+  if (store.has(input.recipient, envelopeFrom, input.dedupeKey, now)) {
     return { ok: false, reason: "deduped" };
   }
 
@@ -315,35 +412,25 @@ export function recordAutoResponse(
   now: number = Date.now(),
 ): void {
   const expiresAtMs = now + windowMs;
-  dedupeStore.set(dedupeStoreKey(recipient, sender, dedupeKey), expiresAtMs);
-  // Fire-and-forget persistence so restarts and additional instances see
-  // the same suppression window. Errors are logged but never thrown — the
-  // in-memory cache remains authoritative for the current process.
-  if (autoResponseStorage) {
-    autoResponseStorage
-      .recordAutoResponse(
-        recipient.trim().toLowerCase(),
-        sender.trim().toLowerCase(),
-        dedupeKey.trim().toLowerCase(),
-        new Date(expiresAtMs),
-      )
-      .catch((err) => {
-        console.warn("[AgentMail] persistAutoResponse failed:", err);
-      });
-  }
+  // Routes through the active store; the DB-backed store also persists
+  // write-through so the suppression survives a process restart.
+  autoResponseStore.set(recipient, sender, dedupeKey, expiresAtMs);
 }
 
-/** Test/admin helpers for the in-memory dedupe store. */
+/**
+ * Test/admin helpers. Delegate to the active store so they see entries
+ * regardless of whether tests use the default in-memory store or wire a
+ * DB-backed one.
+ */
 export const autoResponseDedupe = {
   clear(): void {
-    dedupeStore.clear();
+    autoResponseStore.clear();
   },
   size(): number {
-    return dedupeStore.size;
+    return autoResponseStore.size();
   },
   has(recipient: string, sender: string, dedupeKey: string, now: number = Date.now()): boolean {
-    const exp = dedupeStore.get(dedupeStoreKey(recipient, sender, dedupeKey));
-    return Boolean(exp && exp > now);
+    return autoResponseStore.has(recipient, sender, dedupeKey, now);
   },
 };
 
