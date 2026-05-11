@@ -1446,22 +1446,34 @@ function MainApp() {
     },
     {
       patterns: ["skip forward", "forward", "skip ahead", "fast forward"],
-      handler: () => skip(skipForwardSec),
+      handler: () => {
+        if (adState.isAdPlaying || adLoading) return;
+        skip(skipForwardSec);
+      },
       description: `Skip forward ${skipForwardSec}s`,
     },
     {
       patterns: ["skip back", "skip backward", "go back", "rewind"],
-      handler: () => skip(-skipBackSec),
+      handler: () => {
+        if (adState.isAdPlaying || adLoading) return;
+        skip(-skipBackSec);
+      },
       description: `Skip back ${skipBackSec}s`,
     },
     {
       patterns: ["next chapter", "next"],
-      handler: () => nextChapter(),
+      handler: () => {
+        if (adState.isAdPlaying || adLoading) return;
+        nextChapter();
+      },
       description: "Next chapter",
     },
     {
       patterns: ["previous chapter", "previous", "last chapter", "go back chapter"],
-      handler: () => prevChapter(),
+      handler: () => {
+        if (adState.isAdPlaying || adLoading) return;
+        prevChapter();
+      },
       description: "Previous chapter",
     },
     {
@@ -1592,7 +1604,7 @@ function MainApp() {
       },
       description: "Turn on Low Sensory Mode",
     },
-  ], [isPlaying, togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate, sensoryMutation, toast, speakConfirmation]);
+  ], [isPlaying, togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate, sensoryMutation, toast, speakConfirmation, adState.isAdPlaying, adLoading, skipForwardSec, skipBackSec]);
 
   const voiceControl = useVoiceControl({
     commands: voiceCommands,
