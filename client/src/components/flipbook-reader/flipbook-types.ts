@@ -37,6 +37,8 @@ export interface PageNavigatorProps {
   currentPage: number;
   totalPages: number;
   onJumpTo: (page: number) => void;
+  onPrev: () => void;
+  onNext: () => void;
 }
 
 export interface ReadingPageProps {
