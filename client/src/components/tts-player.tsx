@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useAudioContext } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 

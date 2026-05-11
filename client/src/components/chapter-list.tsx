@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Play, ListMusic } from "lucide-react";
-import { useAudioContext } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
 
 interface ChapterListProps {
   bookId: string;

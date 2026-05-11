@@ -7,7 +7,7 @@ import { ClipShareDialog } from "@/components/clip-share-dialog";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, User, Scissors } from "lucide-react";
 import { AudioAdInterstitial, RewardedAdInterstitial, useAudioAds } from "@/components/audio-ad-interstitial";
-import { useAudioContext } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
 import { useRewardedAd } from "@/hooks/use-rewarded-ad";
 import { useSubscription } from "@/hooks/use-subscription";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";

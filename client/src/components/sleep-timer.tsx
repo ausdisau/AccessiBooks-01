@@ -1,4 +1,4 @@
-import { useAudioContext } from "@/contexts/AudioContext";
+import { useAudioContext } from "@/contexts/audio-context";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
