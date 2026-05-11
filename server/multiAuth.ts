@@ -23,7 +23,7 @@ import { users } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { isAuth0Usable, markAuth0Unusable } from "./auth0Health";
-import { classifyAuth0CallbackError } from "./auth0CallbackClassifier";
+import { makeAuth0CallbackHandler } from "./auth0CallbackHandler";
 
 // Local strategy (username/password)
 passport.use(
@@ -601,34 +601,10 @@ export function setupMultiAuth(app: Express) {
     app.get(
       "/api/auth/callback/auth0",
       guardAuth0,
-      (req, res, next) => {
-        passport.authenticate("auth0", (err: any, user: any) => {
-          if (err) {
-            // passport-auth0 surfaces upstream OAuth errors in several
-            // shapes; classifyAuth0CallbackError encapsulates that logic
-            // (and is unit-tested in tests/auth0-callback-classifier.test.ts
-            // so a refactor here can't silently break the friendly path).
-            const classified = classifyAuth0CallbackError(err);
-            if (classified.kind === "unauthorized_client") {
-              markAuth0Unusable(classified.reason);
-              return res.redirect("/?auth=unavailable");
-            }
-            console.warn(
-              "[Auth0] Callback error:",
-              classified.code || err?.message || err,
-            );
-            return res.redirect("/?auth=failed");
-          }
-          if (!user) return res.redirect("/?auth=failed");
-          req.logIn(user, (loginErr) => {
-            if (loginErr) {
-              console.warn("[Auth0] Session login failed:", loginErr?.message || loginErr);
-              return res.redirect("/?auth=failed");
-            }
-            return res.redirect("/");
-          });
-        })(req, res, next);
-      },
+      makeAuth0CallbackHandler({
+        authenticator: (cb) => passport.authenticate("auth0", cb) as any,
+        markUnusable: markAuth0Unusable,
+      }),
     );
   }
 
