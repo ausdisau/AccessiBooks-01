@@ -124,6 +124,31 @@ connection in the Auth0 dashboard, set `AUTH0_FACEBOOK_ENABLED=false` or
 `AUTH0_MICROSOFT_ENABLED=false` so the corresponding button is hidden in the
 login modal — otherwise users will hit an Auth0 error page.
 
+## Boot-time health probe (Task #140)
+
+On startup, `server/auth0Health.ts` POSTs an intentionally invalid
+`authorization_code` request to `https://<AUTH0_DOMAIN>/oauth/token`. If Auth0
+responds with `unauthorized_client`, the application backing
+`AUTH0_CLIENT_ID` cannot accept the Authorization Code grant — usually because
+the env var was pointed at a Machine-to-Machine (M2M) application instead of a
+Regular Web Application. In that case:
+
+- A single warning is logged at boot explaining how to fix it.
+- `GET /api/auth/auth0`, `/api/auth/facebook`, and `/api/auth/microsoft`
+  short-circuit to `/?auth=unavailable` (the login modal then shows a friendly
+  toast) instead of bouncing the user to a broken Auth0 page.
+- The `auth0` provider is still reported as `true` by `/api/auth/providers`
+  (configuration-based), so the button stays visible — users just see the
+  toast on click. To hide the button entirely, unset `AUTH0_CLIENT_ID`.
+
+If the misconfiguration is detected at runtime (e.g. via a callback that
+returns `unauthorized_client`), the same flag is flipped and the next click
+short-circuits immediately. Restart the server after fixing the tenant.
+
+To fix: in the Auth0 dashboard, open **Applications → (your app) → Settings →
+Advanced Settings → Grant Types** and enable **Authorization Code**, OR
+repoint `AUTH0_CLIENT_ID` at a Regular Web Application.
+
 ## Smoke testing
 
 After changing any of the above, restart the `Start application` workflow and

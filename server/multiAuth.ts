@@ -22,6 +22,7 @@ import { storage } from "./storage";
 import { users } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import { isAuth0Usable, markAuth0Unusable } from "./auth0Health";
 
 // Local strategy (username/password)
 passport.use(
@@ -547,12 +548,29 @@ export function setupMultiAuth(app: Express) {
     });
   }
 
+  // Task #140: short-circuit Auth0-mediated entry points when the boot-time
+  // health probe (or a runtime callback) determined the tenant is misconfigured
+  // (e.g. AUTH0_CLIENT_ID points at an M2M app that can't run authorization_code).
+  // Returning a redirect with `?auth=unavailable` lets the login modal surface
+  // a friendly toast instead of dumping users on Auth0's error page.
+  const guardAuth0 = (req: Request, res: Response, next: NextFunction) => {
+    if (!isAuth0Usable()) {
+      // These are top-level browser-navigation endpoints, so always 302 to a
+      // friendly in-app URL — the React shell reads `?auth=unavailable` and
+      // shows a toast. We deliberately do NOT branch on the Accept header:
+      // most user agents include `application/json` in their default Accept,
+      // and serving a 503 here would break the click-to-sign-in flow.
+      return res.redirect("/?auth=unavailable");
+    }
+    next();
+  };
+
   // Facebook via Auth0 social connection.
   // Auth0's connection name for the Facebook social IdP is "facebook" by
   // default; it can be overridden with AUTH0_FACEBOOK_CONNECTION.
   if (facebookEnabled) {
     const facebookConnection = process.env.AUTH0_FACEBOOK_CONNECTION || "facebook";
-    app.get("/api/auth/facebook", (req, res, next) =>
+    app.get("/api/auth/facebook", guardAuth0, (req, res, next) =>
       passport.authenticate("auth0", auth0SocialOpts(facebookConnection))(req, res, next)
     );
   }
@@ -563,7 +581,7 @@ export function setupMultiAuth(app: Express) {
   // tenant uses a different name (e.g. "azuread").
   if (microsoftEnabled) {
     const microsoftConnection = process.env.AUTH0_MICROSOFT_CONNECTION || "windowslive";
-    app.get("/api/auth/microsoft", (req, res, next) =>
+    app.get("/api/auth/microsoft", guardAuth0, (req, res, next) =>
       passport.authenticate("auth0", auth0SocialOpts(microsoftConnection))(req, res, next)
     );
   }
@@ -574,14 +592,48 @@ export function setupMultiAuth(app: Express) {
   if (auth0Enabled) {
     app.get(
       "/api/auth/auth0",
+      guardAuth0,
       passport.authenticate("auth0", {
         scope: "openid profile email offline_access",
       })
     );
     app.get(
       "/api/auth/callback/auth0",
-      passport.authenticate("auth0", { failureRedirect: "/?auth=failed" }),
-      (req, res) => res.redirect("/")
+      (req, res, next) => {
+        passport.authenticate("auth0", (err: any, user: any) => {
+          if (err) {
+            // passport-auth0 surfaces upstream OAuth errors on err.oauthError
+            // (the underlying oauth2 layer) or directly on err. Detect the
+            // grant-type misconfig and flip the cached health flag so future
+            // /api/auth/auth0 starts short-circuit immediately.
+            const oauthErr = err?.oauthError || err;
+            const data = (() => {
+              try {
+                return typeof oauthErr?.data === "string" ? JSON.parse(oauthErr.data) : oauthErr?.data;
+              } catch {
+                return null;
+              }
+            })();
+            const code = data?.error || oauthErr?.error || err?.code;
+            if (code === "unauthorized_client") {
+              markAuth0Unusable(
+                data?.error_description || "unauthorized_client (authorization_code grant disabled)",
+              );
+              return res.redirect("/?auth=unavailable");
+            }
+            console.warn("[Auth0] Callback error:", code || err?.message || err);
+            return res.redirect("/?auth=failed");
+          }
+          if (!user) return res.redirect("/?auth=failed");
+          req.logIn(user, (loginErr) => {
+            if (loginErr) {
+              console.warn("[Auth0] Session login failed:", loginErr?.message || loginErr);
+              return res.redirect("/?auth=failed");
+            }
+            return res.redirect("/");
+          });
+        })(req, res, next);
+      },
     );
   }
 
