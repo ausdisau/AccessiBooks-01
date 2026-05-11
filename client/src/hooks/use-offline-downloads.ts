@@ -12,6 +12,7 @@ interface DownloadRecord {
   coverImage: string;
   audioBlob: Blob;
   downloadedAt: string;
+  lastPlayedAt?: string;
   sizeBytes: number;
   loanId?: string;
   loanExpiresAt?: string;
@@ -274,6 +275,20 @@ export function useOfflineDownloads() {
     [downloads]
   );
 
+  const markPlayed = useCallback(
+    async (bookId: string) => {
+      try {
+        const existing = await dbGet(bookId);
+        if (!existing) return;
+        await dbPut({ ...existing, lastPlayedAt: new Date().toISOString() });
+        await refreshDownloads();
+      } catch {
+        // ignore
+      }
+    },
+    [refreshDownloads]
+  );
+
   return {
     isPremium,
     downloads,
@@ -287,5 +302,6 @@ export function useOfflineDownloads() {
     storageEstimate,
     getLoanDownloads,
     cleanupExpiredLoans,
+    markPlayed,
   };
 }

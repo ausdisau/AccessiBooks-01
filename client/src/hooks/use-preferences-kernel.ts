@@ -173,6 +173,8 @@ export function usePreferencesKernel() {
     document.documentElement.classList.toggle("high-contrast", profile.highContrast);
     document.documentElement.classList.toggle("dyslexia-font", profile.dyslexiaFont);
     document.documentElement.classList.toggle("dark", profile.darkMode);
+    document.documentElement.classList.toggle("low-bandwidth-mode", !!profile.lowBandwidthMode);
+    document.documentElement.classList.toggle("text-only-mode", !!profile.textOnlyMode);
     const fontPct = Math.min(150, Math.max(80, (profile.fontSize / 16) * 100));
     document.documentElement.style.setProperty("--a11y-font-size", `${fontPct}%`);
     document.documentElement.style.setProperty("--a11y-line-spacing", `${profile.lineSpacing}`);
