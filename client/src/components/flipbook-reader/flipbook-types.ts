@@ -24,6 +24,8 @@ export interface ReaderToolbarProps {
   settingsOpen: boolean;
   annotationsOpen: boolean;
   shortcutsOpen: boolean;
+  settingsButtonRef?: React.Ref<HTMLButtonElement>;
+  annotationsButtonRef?: React.Ref<HTMLButtonElement>;
 }
 
 export interface ReaderSettingsPanelProps {
