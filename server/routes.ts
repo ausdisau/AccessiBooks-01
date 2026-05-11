@@ -3104,8 +3104,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Task #64: clear win-back marker so the user is eligible again after
         // their next inactivity episode. Fire-and-forget — never block playback.
         import("./notificationTriggers").then(m => m.resetWinBackOnReturn(userId)).catch(() => {});
-        // Task #67: opt-in NDIS-friendly per-user activity log.
-        import("./userActivity").then(m => m.trackUserActivity(userId, "playback_session", { bookId })).catch(() => {});
+        // Task #67: NDIS activity log records duration on session END (see
+        // /api/monetization/session/end below) so listening time is real.
       }
 
       res.json({
@@ -3159,6 +3159,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tier = user?.subscriptionTier || "free";
 
       analyticsService.track("playback_session_ended", tier, { durationSeconds: durationSeconds ?? 0 });
+
+      // Task #67: opt-in NDIS-friendly per-user activity log. Capture the
+      // session length so the user-facing report shows meaningful listening
+      // time totals. Look up the book title best-effort for nicer reports.
+      if (userId) {
+        const sessionMeta = (req.body?.bookId
+          ? { bookId: String(req.body.bookId) }
+          : {}) as { bookId?: string };
+        const title = sessionMeta.bookId
+          ? (await storage.getBook(sessionMeta.bookId).catch(() => null))?.title ?? null
+          : null;
+        import("./userActivity").then(m => m.trackUserActivity(userId, "playback_session", {
+          bookId: sessionMeta.bookId ?? null,
+          bookTitle: title,
+          durationSeconds: typeof durationSeconds === "number" ? Math.max(0, Math.round(durationSeconds)) : null,
+        })).catch(() => {});
+      }
 
       endPlaybackSession(sessionId);
 
