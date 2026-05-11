@@ -36,25 +36,35 @@ const EVENTS_PAGE_SIZE = 5;
 
 interface AuthUser { id?: string; role?: string; subscriptionTier?: string | null; }
 
-export default function EventsPage() {
+export default function EventsPage({ focusEventId }: { focusEventId?: string } = {}) {
   const { user } = useAuth() as { user: AuthUser | null | undefined };
   const isAdmin = user?.role === "admin";
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(focusEventId ?? null);
   const [upcomingPage, setUpcomingPage] = useState(1);
   const [pastPage, setPastPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [newEvent, setNewEvent] = useState({
-    title: "", description: "", eventType: "live_listen",
+    title: "", description: "",
+    eventType: "group_listen" as "author_qa" | "group_listen" | "launch_party" | "community_ama",
     scheduledStartAt: "", durationMinutes: 60,
   });
   const { toast } = useToast();
   const createMutation = useMutation({
-    mutationFn: async (payload: typeof newEvent) =>
-      apiRequest("POST", "/api/events", payload),
+    mutationFn: async (payload: typeof newEvent) => {
+      const start = new Date(payload.scheduledStartAt);
+      const end = new Date(start.getTime() + payload.durationMinutes * 60_000);
+      return apiRequest("POST", "/api/events", {
+        eventType: payload.eventType,
+        title: payload.title,
+        description: payload.description,
+        scheduledStartAt: start.toISOString(),
+        scheduledEndAt: end.toISOString(),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       setShowCreate(false);
-      setNewEvent({ title: "", description: "", eventType: "live_listen", scheduledStartAt: "", durationMinutes: 60 });
+      setNewEvent({ title: "", description: "", eventType: "group_listen", scheduledStartAt: "", durationMinutes: 60 });
       toast({ title: "Event scheduled" });
     },
     onError: (e: any) => toast({ title: "Could not create event", description: e?.message ?? "Try again.", variant: "destructive" }),
@@ -108,12 +118,12 @@ export default function EventsPage() {
                   <label htmlFor="ev-type" className="text-sm font-medium">Type</label>
                   <select id="ev-type" className="w-full border rounded-md h-10 px-2 bg-background"
                     value={newEvent.eventType}
-                    onChange={(e) => setNewEvent({ ...newEvent, eventType: e.target.value })}
+                    onChange={(e) => setNewEvent({ ...newEvent, eventType: e.target.value as typeof newEvent.eventType })}
                     data-testid="select-event-type">
-                    <option value="live_listen">Live listen</option>
+                    <option value="group_listen">Group listen</option>
                     <option value="author_qa">Author Q&amp;A</option>
-                    <option value="ama">AMA</option>
-                    <option value="launch">Launch</option>
+                    <option value="community_ama">Community AMA</option>
+                    <option value="launch_party">Launch party</option>
                   </select>
                 </div>
                 <div className="md:col-span-2">
