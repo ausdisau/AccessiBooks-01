@@ -1125,6 +1125,7 @@ function MainApp() {
     return "full";
   });
   const { settings: a11ySettings, toggleHighContrast, toggleDarkMode } = useAccessibility();
+  const { isAuthenticated: mainAppIsAuthenticated } = useAuth();
 
   // Apply reduceDistractionMode class from server preferences
   const { data: a11yPrefs } = useQuery<{ profile: Record<string, unknown> }>({
@@ -1160,6 +1161,11 @@ function MainApp() {
   useEffect(() => {
     if (!a11yPrefs) return;
     if (sensoryAutoToastShown.current) return;
+    // Only persist for authenticated users — guests would hit a 401 from
+    // PUT /api/a11y/preferences and the toast would feel like a broken
+    // experience. They still get the OS-level reduced-motion respect from
+    // the existing CSS @media rules.
+    if (!mainAppIsAuthenticated) return;
     const chosen = !!a11yPrefs.profile?.sensoryModeChosen;
     if (chosen) return;
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -1174,7 +1180,7 @@ function MainApp() {
         "We softened motion and audio peaks based on your system settings. You can change this in Settings.",
       duration: 8000,
     });
-  }, [a11yPrefs, sensoryMutation, sensoryToast]);
+  }, [a11yPrefs, mainAppIsAuthenticated, sensoryMutation, sensoryToast]);
 
   const skipForwardSec = Number(a11yPrefs?.profile?.preferredSkipForward ?? 30);
   const skipBackSec = Number(a11yPrefs?.profile?.preferredSkipBack ?? 30);
