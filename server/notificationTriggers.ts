@@ -222,19 +222,22 @@ export async function checkReEngagement(): Promise<number> {
   return sent;
 }
 
-// Win-back: 14+ days inactive, single email/push, opt-out honored
+// Win-back: 14+ days inactive, single email/push, opt-out honored.
+// Eligibility is based on listening activity + an email on file — push
+// enrollment is NOT required, so users who never opted into web push still
+// receive the win-back email when inactive.
 export async function checkWinBack(): Promise<number> {
   let sent = 0;
   try {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 14);
     const inactive = await db
-      .select({ userId: pushSubscriptions.userId })
-      .from(pushSubscriptions)
-      .innerJoin(listeningHistory, eq(pushSubscriptions.userId, listeningHistory.userId))
-      .where(lt(listeningHistory.lastPlayedAt, cutoff))
-      .groupBy(pushSubscriptions.userId)
-      .limit(50);
+      .select({ userId: listeningHistory.userId })
+      .from(listeningHistory)
+      .innerJoin(users, eq(users.id, listeningHistory.userId))
+      .where(and(lt(listeningHistory.lastPlayedAt, cutoff), sql`${users.email} IS NOT NULL`))
+      .groupBy(listeningHistory.userId)
+      .limit(200);
 
     for (const { userId } of inactive) {
       if (!(await shouldSendForUser(userId, "win_back"))) continue;
@@ -362,8 +365,16 @@ export async function checkWeeklyRecap(): Promise<number> {
     weekAgo.setDate(weekAgo.getDate() - 7);
     const wkAgoStr = weekAgo.toISOString().slice(0, 10);
 
-    const subscribed = await db.selectDistinct({ userId: pushSubscriptions.userId }).from(pushSubscriptions);
-    for (const { userId } of subscribed) {
+    // Recipients = users with any listening activity in the past week and a
+    // valid email on file. Push enrollment is NOT a precondition — the recap
+    // is delivered via email (and additionally via push if the user is
+    // subscribed). This matches the spec of a Sunday recap email.
+    const recipients = await db
+      .selectDistinct({ userId: dailyListeningLog.userId })
+      .from(dailyListeningLog)
+      .innerJoin(users, eq(users.id, dailyListeningLog.userId))
+      .where(and(gte(dailyListeningLog.date, wkAgoStr), sql`${users.email} IS NOT NULL`));
+    for (const { userId } of recipients) {
       if (!(await shouldSendForUser(userId, "weekly_recap"))) continue;
       const logs = await db.select().from(dailyListeningLog)
         .where(and(eq(dailyListeningLog.userId, userId), gte(dailyListeningLog.date, wkAgoStr)));

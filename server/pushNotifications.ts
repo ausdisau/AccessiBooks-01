@@ -110,7 +110,7 @@ const NOTIFICATION_TEMPLATES: Record<string, (data?: Record<string, string | num
     url: data?.url as string ?? "/",
     tag: "system",
   }),
-  // Engagement & monetization (task #64) — welcome-back framing, no shame
+  // Re-engagement notifications — welcome-back framing, no shame
   streak_at_risk: (data) => ({
     type: "streak_at_risk",
     title: "A few minutes today? 🌱",

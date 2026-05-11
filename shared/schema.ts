@@ -803,7 +803,7 @@ export type PodcastEpisode = typeof podcastEpisodes.$inferSelect;
 export const NOTIFICATION_TYPES = [
   "streak_reminder", "goal_nudge", "new_content", "achievement",
   "recommendation", "re_engagement", "author_update", "system",
-  // Engagement & monetization (task #64)
+  // Engagement & monetization
   "rsvp_reminder", "friend_digest", "win_back", "weekly_recap", "streak_at_risk"
 ] as const;
 export type NotificationType = typeof NOTIFICATION_TYPES[number];
@@ -2157,7 +2157,7 @@ export const PRODUCT_EVENT_TYPES = [
   "rewarded_ad_offered",
   "playback_session_started",
   "playback_session_ended",
-  // Engagement & monetization (task #64)
+  // Engagement & monetization
   "hub_visit",
   "bulletin_thread_created",
   "bulletin_reply_created",

@@ -203,7 +203,7 @@ export function registerEngagementRoutes(app: Express) {
         }
       }
 
-      // Suppress moderator-hidden replies from public reads (Task #64 review note).
+      // Suppress moderator-hidden replies from public reads.
       const replies = await db.select().from(bulletinReplies)
         .where(and(eq(bulletinReplies.threadId, thread.id), isNull(bulletinReplies.hiddenAt)))
         .orderBy(bulletinReplies.createdAt);
