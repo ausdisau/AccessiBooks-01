@@ -374,8 +374,20 @@ export function registerEngagementRoutes(app: Express) {
 
   // ───────────────── EVENTS ─────────────────
 
+  // Helper: strip the full replayUrl from event rows for non-paid callers so
+  // the paywall cannot be bypassed by reading the API response directly.
+  const sanitizeEventForTier = (event: any, paid: boolean) => {
+    if (!event) return event;
+    if (paid) return event;
+    const { replayUrl: _omitted, ...rest } = event;
+    return { ...rest, replayUrl: null };
+  };
+
   app.get("/api/events", async (req: Request, res: Response) => {
     try {
+      const userId = userIdFrom(req);
+      const user = userId ? await getUser(userId) : null;
+      const paid = isPaidTier(user?.subscriptionTier);
       const upcoming = await db.select().from(liveEvents)
         .where(inArray(liveEvents.status, ["scheduled", "live"]))
         .orderBy(liveEvents.scheduledStartAt)
@@ -384,7 +396,10 @@ export function registerEngagementRoutes(app: Express) {
         .where(eq(liveEvents.status, "ended"))
         .orderBy(desc(liveEvents.scheduledStartAt))
         .limit(20);
-      res.json({ upcoming, past });
+      res.json({
+        upcoming: upcoming.map(e => sanitizeEventForTier(e, paid)),
+        past: past.map(e => sanitizeEventForTier(e, paid)),
+      });
     } catch (err: any) {
       console.error("[Events] list error:", err?.message);
       res.json({ upcoming: [], past: [] });
@@ -406,13 +421,18 @@ export function registerEngagementRoutes(app: Express) {
       const user = userId ? await getUser(userId) : null;
       const paid = isPaidTier(user?.subscriptionTier);
 
-      // Replay gating
+      // Replay gating — full URL only for paid; free callers get null + preview.
       let replayAccess: "none" | "preview" | "full" = "none";
       if (event.status === "ended" && event.replayUrl) {
         replayAccess = paid ? "full" : "preview";
       }
 
-      res.json({ event, rsvped, replayAccess, freeReplayPreviewSeconds: event.freeReplayPreviewSeconds });
+      res.json({
+        event: sanitizeEventForTier(event, paid),
+        rsvped,
+        replayAccess,
+        freeReplayPreviewSeconds: event.freeReplayPreviewSeconds,
+      });
     } catch (err: any) {
       console.error("[Events] detail error:", err?.message);
       res.status(500).json({ message: "Failed to load event" });
