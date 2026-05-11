@@ -105,6 +105,18 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           return;
         }
       }
+      if (e.key === "Escape") {
+        if (settingsOpen) {
+          e.preventDefault();
+          closeSettings();
+          return;
+        }
+        if (annotationsOpen) {
+          e.preventDefault();
+          closeAnnotations();
+          return;
+        }
+      }
       switch (e.key) {
         case "ArrowRight":
         case "PageDown":
@@ -130,7 +142,7 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [goNext, goPrev, goToPage, totalPages]);
+  }, [goNext, goPrev, goToPage, totalPages, settingsOpen, annotationsOpen, closeSettings, closeAnnotations]);
 
   // Focus the reading page after a flip so screen reader users land on new content
   useEffect(() => {
