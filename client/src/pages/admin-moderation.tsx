@@ -18,7 +18,7 @@ function CreateEventPanel() {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [eventType, setEventType] = useState("listening_party");
+  const [eventType, setEventType] = useState("group_listen");
   const [hostDisplayName, setHostDisplayName] = useState("AccessiBooks");
   const [scheduledStartAt, setScheduledStartAt] = useState("");
   const [scheduledEndAt, setScheduledEndAt] = useState("");
@@ -86,9 +86,10 @@ function CreateEventPanel() {
                       className="w-full border rounded-md h-10 px-3 bg-background"
                       data-testid="input-event-type"
                     >
-                      <option value="listening_party">Listening party</option>
+                      <option value="group_listen">Group listen</option>
                       <option value="author_qa">Author Q&amp;A</option>
-                      <option value="live_reading">Live reading</option>
+                      <option value="launch_party">Launch party</option>
+                      <option value="community_ama">Community AMA</option>
                     </select>
                   </div>
                   <div>
