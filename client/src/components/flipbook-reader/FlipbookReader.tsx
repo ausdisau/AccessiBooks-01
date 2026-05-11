@@ -670,6 +670,7 @@ export function FlipbookReader({
           currentPage={currentPage}
           getSelectedText={getSelectedTextFromPage}
           onAnnounce={announce}
+          storage={sessionStorage.loadAnnotationStorage()}
         />
       </div>
 

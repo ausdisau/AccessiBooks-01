@@ -41,9 +41,10 @@ export function AnnotationPanel({
   currentPage,
   getSelectedText,
   onAnnounce,
+  storage,
 }: AnnotationPanelProps) {
   const { annotations, ready, addText, updateText, addVoice, remove } =
-    useAnnotations(bookId);
+    useAnnotations(bookId, storage);
   const recorder = useVoiceRecorder();
 
   const [draftAnchor, setDraftAnchor] = useState("");
