@@ -167,18 +167,31 @@ export function BookA11yBadges({ book, metadata, showEmpty = true, size = "sm" }
       >
         {badges.map(({ key, icon: Icon, label, ariaLabel, tooltip, className }) => (
           <Tooltip key={key}>
+            {/*
+              TooltipTrigger asChild requires a ref-forwarding element. The
+              shadcn Badge is a plain function component, so we use a native
+              <span role="button" tabIndex=0> as the trigger and put the Badge
+              inside it. The native element forwards refs reliably to Radix
+              and the role="button" + tabIndex make the badge keyboard
+              focusable so screen-reader users can hear the source attribution.
+            */}
             <TooltipTrigger asChild>
-              <Badge
-                variant="outline"
-                role="listitem"
+              <span
+                role="button"
                 tabIndex={0}
                 aria-label={ariaLabel}
                 data-testid={`a11y-badge-${key}`}
-                className={`gap-1 font-medium border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${padding} ${className}`}
+                className="inline-flex focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
               >
-                <Icon className="h-3 w-3" aria-hidden={true} />
-                {label}
-              </Badge>
+                <Badge
+                  variant="outline"
+                  className={`gap-1 font-medium border ${padding} ${className}`}
+                  aria-hidden="true"
+                >
+                  <Icon className="h-3 w-3" aria-hidden={true} />
+                  {label}
+                </Badge>
+              </span>
             </TooltipTrigger>
             <TooltipContent side="top">{tooltip}</TooltipContent>
           </Tooltip>
