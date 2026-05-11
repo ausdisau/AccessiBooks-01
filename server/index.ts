@@ -25,10 +25,11 @@ import { validateEnv } from "./validateEnv";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startNotificationScheduler } from "./notificationTriggers";
-import { setupFullTextSearch, setupEasyEnglishTables, setupAdPlatformTables, ensureReadingLevelColumn, setupWordBankTable, ensureEntitlementSchema, ensureUserActivitySchema } from "./db";
+import { setupFullTextSearch, setupEasyEnglishTables, setupAdPlatformTables, ensureReadingLevelColumn, setupWordBankTable, ensureEntitlementSchema, ensureUserActivitySchema, ensureAutoResponseLogSchema } from "./db";
 import { seedPlans } from "./seed";
 import { startDailySpendResetCron } from "./auctionEngine";
 import { storage } from "./storage";
+import { setAutoResponseStorage, hydrateAutoResponseDedupeFromStorage } from "./agentMailer";
 
 const app = express();
 
@@ -75,6 +76,10 @@ app.use((req, res, next) => {
 
 (async () => {
   validateEnv();
+  // Wire the persistent auto-response dedupe store (Task #133). The cache
+  // hydration itself runs after `ensureAutoResponseLogSchema` below, so the
+  // table is guaranteed to exist before we read from it.
+  setAutoResponseStorage(storage);
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -119,6 +124,9 @@ app.use((req, res, next) => {
     setupWordBankTable().then(available => storage.setWordBankDbAvailable(available)).catch(() => {});
     ensureEntitlementSchema().catch(err => console.warn("[Entitlements] Schema setup failed:", err));
     ensureUserActivitySchema().catch(err => console.warn("[UserActivity] Schema setup failed:", err));
+    ensureAutoResponseLogSchema()
+      .then(() => hydrateAutoResponseDedupeFromStorage())
+      .catch(err => console.warn("[AgentMail] auto_response_log setup failed:", err));
     seedPlans().catch(err => console.warn("[Seed] Plans seed failed:", err));
     startDailySpendResetCron();
     

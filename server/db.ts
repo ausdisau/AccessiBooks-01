@@ -299,6 +299,31 @@ export async function ensureEntitlementSchema(): Promise<void> {
 }
 
 /**
+ * Task #133 — Persistent auto-response dedupe log.
+ * Backs server/agentMailer.ts so the dedupe window survives restarts.
+ * Safe to call on every startup (IF NOT EXISTS).
+ */
+export async function ensureAutoResponseLogSchema(): Promise<void> {
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS auto_response_log (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        recipient text NOT NULL,
+        sender text NOT NULL,
+        dedupe_key text NOT NULL,
+        expires_at timestamp NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS ux_auto_response_log_recipient_sender_key ON auto_response_log (recipient, sender, dedupe_key)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_auto_response_log_expires ON auto_response_log (expires_at)`;
+    console.log("[AgentMail] auto_response_log schema ensured");
+  } catch (error: any) {
+    console.warn("[AgentMail] auto_response_log schema setup warning:", error.message);
+  }
+}
+
+/**
  * Task #67 — User-facing activity tables.
  * Safe to call on every startup (IF NOT EXISTS).
  */
