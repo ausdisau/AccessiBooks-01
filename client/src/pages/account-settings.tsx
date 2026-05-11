@@ -18,18 +18,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { PlanBadge } from "@/components/plan-badge";
 import { PreferencesKernel } from "@/components/preferences-kernel";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { DEFAULT_A11Y_PROFILE } from "@shared/schema";
 import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
 import { OfflineDownloads } from "@/components/offline-downloads";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -45,10 +33,15 @@ import {
   X,
   Wifi,
   Activity,
-  RotateCcw,
+  Smartphone,
+  Users,
+  Zap,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { A11yProfile } from "@shared/schema";
+import { DeviceManagement } from "@/components/device-management";
+import { BillingDashboard } from "@/components/billing-dashboard";
+import { ReferralSection } from "@/components/referral-section";
 
 interface SettingsSummary {
   user: {
@@ -123,10 +116,6 @@ export function AccountSettingsPage() {
   });
 
   const [localPrefs, setLocalPrefs] = useState<Partial<A11yProfile>>({});
-  // Per-field debounce timers. A single shared timer would let rapid edits in
-  // one field keep postponing an unrelated field's pending save (and any
-  // bug in clearTimeout ordering would lose the earlier patch entirely).
-  // Keying timers by field name makes each field's save schedule independent.
   const debounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
@@ -135,8 +124,6 @@ export function AccountSettingsPage() {
     }
   }, [summary?.preferences]);
 
-  // Clear any pending debounce timers on unmount so they can't fire a save
-  // after the component is gone.
   useEffect(() => {
     return () => {
       for (const t of Object.values(debounceTimersRef.current)) {
@@ -151,10 +138,6 @@ export function AccountSettingsPage() {
       document.documentElement.classList.toggle("reduce-distraction", !!localPrefs.reduceDistractionMode);
     }
   }, [localPrefs.reduceDistractionMode]);
-
-  // Low-Bandwidth + Text-Only documentElement classes are applied globally
-  // by usePreferencesKernel so they take effect on app boot, not just when
-  // visiting this settings page.
 
   const saveMutation = useMutation({
     mutationFn: (profile: Partial<A11yProfile>) =>
@@ -176,9 +159,6 @@ export function AccountSettingsPage() {
     },
   });
 
-  // Pending patch accumulates fields between debounced flushes so that
-  // multiple fields whose timers fire in the same tick are sent in a single
-  // PUT, and the deep-merge backend never sees a partial overwrite.
   const pendingPatchRef = useRef<Partial<A11yProfile>>({});
 
   const updatePref = useCallback(
@@ -186,8 +166,6 @@ export function AccountSettingsPage() {
       setLocalPrefs((prev) => ({ ...prev, [key]: value }));
       pendingPatchRef.current = { ...pendingPatchRef.current, [key]: value };
       const fieldKey = key as string;
-      // Reset only this field's own timer — edits to other fields keep their
-      // own schedules and aren't postponed by activity here.
       const existing = debounceTimersRef.current[fieldKey];
       if (existing) clearTimeout(existing);
       debounceTimersRef.current[fieldKey] = setTimeout(() => {
@@ -199,39 +177,6 @@ export function AccountSettingsPage() {
     },
     [saveMutation],
   );
-
-  const resetMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("PUT", "/api/a11y/preferences", { profile: DEFAULT_A11Y_PROFILE }),
-    onMutate: () => {
-      // Cancel debounced patches *before* the reset request goes out so a
-      // pending timer can't fire and PUT a stale field value that would
-      // re-arrive after the reset and silently un-do it.
-      for (const t of Object.values(debounceTimersRef.current)) {
-        clearTimeout(t);
-      }
-      debounceTimersRef.current = {};
-      pendingPatchRef.current = {};
-    },
-    onSuccess: () => {
-      // Update local state immediately so every control re-renders to defaults
-      // without waiting for the next /api/settings/summary fetch.
-      setLocalPrefs(DEFAULT_A11Y_PROFILE);
-      document.documentElement.classList.toggle(
-        "reduce-distraction",
-        !!DEFAULT_A11Y_PROFILE.reduceDistractionMode,
-      );
-      queryClient.invalidateQueries({ queryKey: ["/api/a11y/preferences"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/settings/summary"] });
-      toast({
-        title: "Reset to safe defaults",
-        description: "All accessibility preferences are back to their documented defaults.",
-      });
-    },
-    onError: () => {
-      toast({ title: "Reset failed", variant: "destructive" });
-    },
-  });
 
   const portalMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/billing/create-portal-session"),
@@ -259,693 +204,292 @@ export function AccountSettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-10 py-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Settings2 className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight">Account Settings</h1>
-        <div className="flex-1" />
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="button-reset-defaults"
-              disabled={resetMutation.isPending}
-            >
-              {resetMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RotateCcw className="h-4 w-4 mr-2" />
-              )}
-              Reset to Safe Defaults
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Reset all preferences?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This restores every accessibility, listening, ad, calm-mode, sensory, bandwidth,
-                and notification preference to the documented safe defaults. Your subscription,
-                bookmarks, loans, and library are not affected. This cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel data-testid="button-reset-cancel">Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                data-testid="button-reset-confirm"
-                onClick={() => resetMutation.mutate()}
+    <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="flex flex-col md:flex-row gap-10">
+        {/* Left Navigation Panel */}
+        <aside className="w-full md:w-64 shrink-0">
+          <div className="sticky top-20 space-y-1">
+            <h1 className="text-2xl font-serif font-bold tracking-tight mb-6 px-3">Settings</h1>
+            {[
+              { id: "plan", label: "Your Plan", icon: Crown },
+              { id: "ads", label: "Ad Preferences", icon: Zap },
+              { id: "listening", label: "Listening Defaults", icon: Volume2 },
+              { id: "focus", label: "Focus & Distraction", icon: Eye },
+              { id: "a11y", label: "Accessibility", icon: Accessibility },
+              { id: "devices", label: "Devices", icon: Smartphone },
+              { id: "billing", label: "Billing & History", icon: CreditCard },
+              { id: "referrals", label: "Referrals", icon: Users },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  const el = document.getElementById(`section-${item.id}`);
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
               >
-                Reset to defaults
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-
-      {/* Section 1 — Your Plan */}
-      <section aria-labelledby="section-plan-heading">
-        <h2 id="section-plan-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Crown className="h-5 w-5 text-amber-500" />
-          Your Plan
-          <PlanBadge tier={tier} />
-          {(tier === "plus" || tier === "premium") && (
-            <Badge
-              role="note"
-              className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs"
-            >
-              Ad-free
-            </Badge>
-          )}
-        </h2>
-
-        <div className="rounded-lg border p-4 space-y-4">
-          <ul className="space-y-2">
-            {tierFeatures.map((f, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm">
-                {f.included ? (
-                  <Check className="h-4 w-4 text-green-500 shrink-0" />
-                ) : (
-                  <X className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-                )}
-                <span className={f.included ? "text-foreground" : "text-muted-foreground/60"}>
-                  {f.text}
-                </span>
-              </li>
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </button>
             ))}
-          </ul>
-
-          {summary?.billing.nextBillingDate && (
-            <p className="text-xs text-muted-foreground">
-              Next billing: {formatDate(summary.billing.nextBillingDate)}
-              {summary.billing.estimatedNextAmount != null &&
-                ` — ${formatCents(summary.billing.estimatedNextAmount)}`}
-            </p>
-          )}
-          {summary?.user.subscriptionEndDate && !summary?.billing.nextBillingDate && (
-            <p className="text-xs text-muted-foreground">
-              Access until: {formatDate(summary.user.subscriptionEndDate)}
-            </p>
-          )}
-
-          <div className="flex flex-wrap gap-2 pt-2">
-            {isFree ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-                  onClick={() => setUpgradeOpen(true)}
-                >
-                  Upgrade to Plus
-                </Button>
-                <Button
-                  size="sm"
-                  className="bg-amber-500 hover:bg-amber-600 text-white"
-                  onClick={() => setUpgradeOpen(true)}
-                >
-                  Upgrade to Premium
-                </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending || !summary?.billing.canManagePortal}
-              >
-                {portalMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <CreditCard className="h-4 w-4 mr-2" />
-                )}
-                Manage Subscription
-              </Button>
-            )}
+            
           </div>
-        </div>
-      </section>
+        </aside>
 
-      <Separator />
-
-      {/* Section 2 — Ad Preferences (free only) */}
-      <section aria-labelledby="section-ads-heading">
-        <h2 id="section-ads-heading" className="text-lg font-semibold mb-4">
-          Ad Preferences
-        </h2>
-
-        {isFree ? (
-          <div className="rounded-lg border p-4 space-y-6">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label
-                  htmlFor="suppress-animated"
-                  className="font-medium"
-                  aria-describedby="suppress-animated-desc"
-                >
-                  Prefer static ads over animated or video ads
-                </Label>
-                <Switch
-                  id="suppress-animated"
-                  aria-describedby="suppress-animated-desc"
-                  checked={!!localPrefs.suppressAnimatedAds}
-                  onCheckedChange={(v) => updatePref("suppressAnimatedAds", v)}
-                />
-              </div>
-              <p id="suppress-animated-desc" className="text-xs text-muted-foreground">
-                When enabled, you may see fewer ads overall, but those shown will be static images
-                only.
-              </p>
+        {/* Right Content Panel */}
+        <main className="flex-1 space-y-16">
+          {/* Section 1 — Your Plan */}
+          <section id="section-plan" aria-labelledby="section-plan-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-plan-heading" className="text-xl font-serif font-bold flex items-center gap-2">
+                Your Plan
+                <PlanBadge tier={tier} />
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">Manage your subscription and features.</p>
             </div>
 
-            <div className="space-y-3">
-              <fieldset>
-                <legend className="font-medium text-sm mb-2">Rewarded listening offers</legend>
-                <RadioGroup
-                  value={localPrefs.rewardedAdPreference || "ask"}
-                  onValueChange={(v) =>
-                    updatePref("rewardedAdPreference", v as "always" | "never" | "ask")
-                  }
-                  className="space-y-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem id="rewarded-ask" value="ask" />
-                    <Label htmlFor="rewarded-ask">Ask me each time</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem id="rewarded-always" value="always" />
-                    <Label htmlFor="rewarded-always">Always accept</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem id="rewarded-never" value="never" />
-                    <Label htmlFor="rewarded-never">Never show</Label>
-                  </div>
-                </RadioGroup>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Rewarded ads let you unlock ad-free listening for a session by watching a short
-                  ad.
-                </p>
-              </fieldset>
-            </div>
-
-            <p className="text-xs text-muted-foreground border-t pt-3">
-              These preferences reduce certain ad formats — they don't remove ads entirely. Upgrade
-              to Plus to go fully ad-free.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-lg border p-4">
-            <p role="note" className="text-sm text-muted-foreground">
-              You're listening ad-free. These settings don't apply to your plan.
-            </p>
-          </div>
-        )}
-      </section>
-
-      <Separator />
-
-      {/* Section 3 — Listening Defaults */}
-      <section aria-labelledby="section-listening-heading">
-        <h2 id="section-listening-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Volume2 className="h-5 w-5 text-muted-foreground" />
-          Listening Defaults
-        </h2>
-
-        <div className="rounded-lg border p-4 space-y-5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="playback-speed" className="font-medium">
-              Default playback speed
-            </Label>
-            <Select
-              value={String(localPrefs.playbackSpeed ?? 1)}
-              onValueChange={(v) => updatePref("playbackSpeed", parseFloat(v))}
-            >
-              <SelectTrigger id="playback-speed" className="w-36" aria-label="Default playback speed">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3].map((s) => (
-                  <SelectItem key={s} value={String(s)}>
-                    {s}×
-                  </SelectItem>
+            <div className="rounded-xl border bg-card p-6 space-y-6">
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {tierFeatures.map((f, i) => (
+                  <li key={i} className="flex items-center gap-2 text-sm">
+                    {f.included ? (
+                      <Check className="h-4 w-4 text-primary shrink-0" />
+                    ) : (
+                      <X className="h-4 w-4 text-muted-foreground/30 shrink-0" />
+                    )}
+                    <span className={f.included ? "text-foreground font-medium" : "text-muted-foreground"}>
+                      {f.text}
+                    </span>
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
+              </ul>
 
-          <div className="flex items-center justify-between">
-            <Label htmlFor="skip-forward" className="font-medium">
-              Skip forward duration
-            </Label>
-            <Select
-              value={String(localPrefs.preferredSkipForward ?? 15)}
-              onValueChange={(v) =>
-                updatePref("preferredSkipForward", parseInt(v) as 10 | 15 | 30)
-              }
-            >
-              <SelectTrigger id="skip-forward" className="w-36" aria-label="Skip forward duration in seconds">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10 seconds</SelectItem>
-                <SelectItem value="15">15 seconds</SelectItem>
-                <SelectItem value="30">30 seconds</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label htmlFor="skip-back" className="font-medium">
-              Skip back duration
-            </Label>
-            <Select
-              value={String(localPrefs.preferredSkipBack ?? 15)}
-              onValueChange={(v) =>
-                updatePref("preferredSkipBack", parseInt(v) as 5 | 10 | 15)
-              }
-            >
-              <SelectTrigger id="skip-back" className="w-36" aria-label="Skip back duration in seconds">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 seconds</SelectItem>
-                <SelectItem value="10">10 seconds</SelectItem>
-                <SelectItem value="15">15 seconds</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="auto-advance" className="font-medium" aria-describedby="auto-advance-desc">
-                Automatically advance to next chapter
-              </Label>
+              {summary?.billing.nextBillingDate && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Next billing: <span className="text-foreground font-medium">{formatDate(summary.billing.nextBillingDate)}</span>
+                    {summary.billing.estimatedNextAmount != null &&
+                      ` (${formatCents(summary.billing.estimatedNextAmount)})`}
+                  </p>
+                </div>
+              )}
+              
+              <div className="flex flex-wrap gap-3 pt-2">
+                {isFree ? (
+                  <Button
+                    className="bg-primary hover:bg-primary/90 text-white px-8"
+                    onClick={() => setUpgradeOpen(true)}
+                  >
+                    Explore Premium Plans
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => portalMutation.mutate()}
+                    disabled={portalMutation.isPending || !summary?.billing.canManagePortal}
+                    className="gap-2"
+                  >
+                    {portalMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CreditCard className="h-4 w-4" />
+                    )}
+                    Manage Subscription
+                  </Button>
+                )}
+              </div>
             </div>
-            <Switch
-              id="auto-advance"
-              aria-describedby="auto-advance-desc"
-              checked={localPrefs.autoAdvanceChapters !== false}
-              onCheckedChange={(v) => updatePref("autoAdvanceChapters", v)}
-            />
-          </div>
+          </section>
 
-          <div className="flex items-center justify-between">
-            <Label htmlFor="sleep-timer" className="font-medium">
-              Default sleep timer
-            </Label>
-            <Select
-              value={String(localPrefs.sleepTimerDefault ?? "null")}
-              onValueChange={(v) =>
-                updatePref("sleepTimerDefault", v === "null" ? null : parseInt(v))
-              }
-            >
-              <SelectTrigger id="sleep-timer" className="w-36" aria-label="Default sleep timer">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="null">Off</SelectItem>
-                <SelectItem value="15">15 minutes</SelectItem>
-                <SelectItem value="30">30 minutes</SelectItem>
-                <SelectItem value="45">45 minutes</SelectItem>
-                <SelectItem value="60">60 minutes</SelectItem>
-                <SelectItem value="90">90 minutes</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* Section 4 — Focus & Distraction */}
-      <section aria-labelledby="section-focus-heading">
-        <h2 id="section-focus-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Eye className="h-5 w-5 text-muted-foreground" />
-          Focus & Distraction
-        </h2>
-
-        <div className="rounded-lg border p-4 space-y-5">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="transcript-default"
-                className="font-medium"
-                aria-describedby="transcript-default-desc"
-              >
-                Show transcript panel by default when playing
-              </Label>
-              <Switch
-                id="transcript-default"
-                aria-describedby="transcript-default-desc"
-                checked={!!localPrefs.transcriptOpenByDefault}
-                onCheckedChange={(v) => updatePref("transcriptOpenByDefault", v)}
-              />
+          {/* Section 2 — Ad Preferences */}
+          <section id="section-ads" aria-labelledby="section-ads-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-ads-heading" className="text-xl font-serif font-bold">Ad Preferences</h2>
+              <p className="text-sm text-muted-foreground mt-1">Configure how ads appear during your listening sessions.</p>
             </div>
-            <p id="transcript-default-desc" className="text-xs text-muted-foreground">
-              Opens the transcript automatically when you start a book.
-            </p>
-          </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="reduce-distraction"
-                className="font-medium"
-                aria-describedby="reduce-distraction-desc"
-              >
-                Reduce distraction mode
-              </Label>
-              <Switch
-                id="reduce-distraction"
-                aria-describedby="reduce-distraction-desc"
-                checked={!!localPrefs.reduceDistractionMode}
-                onCheckedChange={(v) => updatePref("reduceDistractionMode", v)}
-              />
-            </div>
-            <p id="reduce-distraction-desc" className="text-xs text-muted-foreground">
-              Hides decorative images and reduces visual noise throughout the app.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* Section 4b — Calm Mode & Notifications (Task #64) */}
-      <section aria-labelledby="section-calm-heading" data-testid="section-calm">
-        <h2 id="section-calm-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Accessibility className="h-5 w-5 text-emerald-600" />
-          Calm Mode &amp; Notifications
-        </h2>
-        <div className="rounded-lg border p-4 space-y-6">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="calm-mode" className="font-medium">Calm Mode</Label>
-              <Switch
-                id="calm-mode"
-                data-testid="switch-calm-mode"
-                checked={!!localPrefs.calmMode}
-                onCheckedChange={(v) => updatePref("calmMode", v)}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Turns off streaks, leaderboards, push notifications, and rewarded-ad nudges. The hub
-              focuses on books and bookmarks.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="streak-paused" className="font-medium">Pause my streak (7 days)</Label>
-              <Switch
-                id="streak-paused"
-                data-testid="switch-streak-paused"
-                checked={!!localPrefs.streakPaused}
-                onCheckedChange={(v) => {
-                  updatePref("streakPaused", v);
-                  if (v) updatePref("streakPausedAt", new Date().toISOString().slice(0, 10));
-                  else updatePref("streakPausedAt", null);
-                }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Take a guilt-free week off — your streak resumes automatically afterward.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="font-medium">Quiet hours</Label>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="quiet-start" className="text-sm">From</Label>
-              <Select
-                value={String(localPrefs.quietHours?.start ?? 21)}
-                onValueChange={(v) => updatePref("quietHours", { start: parseInt(v), end: localPrefs.quietHours?.end ?? 8 })}
-              >
-                <SelectTrigger id="quiet-start" data-testid="select-quiet-start" className="w-24"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <SelectItem key={h} value={String(h)}>{h}:00</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Label htmlFor="quiet-end" className="text-sm">until</Label>
-              <Select
-                value={String(localPrefs.quietHours?.end ?? 8)}
-                onValueChange={(v) => updatePref("quietHours", { start: localPrefs.quietHours?.start ?? 21, end: parseInt(v) })}
-              >
-                <SelectTrigger id="quiet-end" data-testid="select-quiet-end" className="w-24"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <SelectItem key={h} value={String(h)}>{h}:00</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              No push notifications during these hours.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="font-medium">Notification categories</Label>
-            <div className="space-y-2">
-              {([
-                { key: "streak_at_risk", label: "Streak reminders" },
-                { key: "rsvp_reminder", label: "Event reminders" },
-                { key: "friend_digest", label: "Friend activity digest" },
-                { key: "weekly_recap", label: "Weekly recap" },
-                { key: "win_back", label: "Win-back emails" },
-                { key: "recommendation", label: "Recommendations" },
-              ] as const).map((cat) => {
-                const cats = localPrefs.notificationCategories ?? {};
-                const checked = cats[cat.key] !== false;
-                return (
-                  <div key={cat.key} className="flex items-center justify-between">
-                    <Label htmlFor={`notify-${cat.key}`} className="text-sm">{cat.label}</Label>
-                    <Switch
-                      id={`notify-${cat.key}`}
-                      data-testid={`switch-notify-${cat.key}`}
-                      checked={checked}
-                      onCheckedChange={(v) => updatePref("notificationCategories", {
-                        ...cats,
-                        [cat.key]: v,
-                      })}
-                    />
+            {isFree ? (
+              <div className="rounded-xl border bg-card p-6 space-y-8">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="suppress-animated" className="text-base font-medium">Static Ads Only</Label>
+                    <p className="text-sm text-muted-foreground">Prefer static images over animated or video ads.</p>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <Switch
+                    id="suppress-animated"
+                    checked={!!localPrefs.suppressAnimatedAds}
+                    onCheckedChange={(v) => updatePref("suppressAnimatedAds", v)}
+                  />
+                </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="hub-as-home" className="font-medium">Make Hub my home page</Label>
-              <Switch
-                id="hub-as-home"
-                data-testid="switch-hub-as-home"
-                checked={localPrefs.hubAsHome !== false}
-                onCheckedChange={(v) => updatePref("hubAsHome", v)}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              When on, signing in lands on your engagement Hub instead of the library.
-            </p>
-          </div>
+                <Separator />
 
-          {isFree && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="hide-nudges" className="font-medium">Hide upgrade prompts (30 days)</Label>
+                <div className="space-y-4">
+                  <Label className="text-base font-medium">Rewarded Listening</Label>
+                  <p className="text-sm text-muted-foreground">Unlock ad-free sessions by watching a short rewarded ad.</p>
+                  <RadioGroup
+                    value={localPrefs.rewardedAdPreference || "ask"}
+                    onValueChange={(v) => updatePref("rewardedAdPreference", v as any)}
+                    className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+                  >
+                    {["ask", "always", "never"].map((val) => (
+                      <div key={val} className="relative">
+                        <RadioGroupItem value={val} id={`rewarded-${val}`} className="peer sr-only" />
+                        <Label
+                          htmlFor={`rewarded-${val}`}
+                          className="flex flex-col items-center justify-center rounded-lg border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                        >
+                          <span className="capitalize font-semibold">{val}</span>
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-6">
+                <p className="text-sm text-primary font-medium flex items-center gap-2">
+                  <Check className="h-4 w-4" />
+                  You're listening ad-free. These settings don't apply to your plan.
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* Section 3 — Listening Defaults */}
+          <section id="section-listening" aria-labelledby="section-listening-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-listening-heading" className="text-xl font-serif font-bold">Listening Defaults</h2>
+              <p className="text-sm text-muted-foreground mt-1">Your preferred playback settings for all books.</p>
+            </div>
+
+            <div className="rounded-xl border bg-card p-6 space-y-6">
+              {[
+                { id: "playback-speed", label: "Playback Speed", key: "playbackSpeed", options: [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3].map(v => ({ value: String(v), label: `${v}x` })) },
+                { id: "skip-forward", label: "Skip Forward", key: "preferredSkipForward", options: [{ value: "10", label: "10s" }, { value: "15", label: "15s" }, { value: "30", label: "30s" }] },
+                { id: "skip-back", label: "Skip Backward", key: "preferredSkipBack", options: [{ value: "5", label: "5s" }, { value: "10", label: "10s" }, { value: "15", label: "15s" }] },
+              ].map((field) => (
+                <div key={field.id} className="flex items-center justify-between gap-4">
+                  <Label htmlFor={field.id} className="font-medium">{field.label}</Label>
+                  <Select
+                    value={String((localPrefs as any)[field.key] ?? "1")}
+                    onValueChange={(v) => updatePref(field.key as any, field.id.includes("speed") ? parseFloat(v) : parseInt(v))}
+                  >
+                    <SelectTrigger id={field.id} className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {field.options.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+
+              <Separator />
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="auto-advance" className="font-medium">Auto-advance Chapters</Label>
+                  <p className="text-sm text-muted-foreground">Continue to the next chapter automatically.</p>
+                </div>
                 <Switch
-                  id="hide-nudges"
-                  data-testid="switch-hide-nudges"
-                  checked={!!localPrefs.hideUpgradeNudgesUntil && new Date(localPrefs.hideUpgradeNudgesUntil) > new Date()}
-                  onCheckedChange={(v) => {
-                    if (v) {
-                      const until = new Date();
-                      until.setDate(until.getDate() + 30);
-                      updatePref("hideUpgradeNudgesUntil", until.toISOString());
-                    } else {
-                      updatePref("hideUpgradeNudgesUntil", null);
-                    }
-                  }}
+                  id="auto-advance"
+                  checked={localPrefs.autoAdvanceChapters !== false}
+                  onCheckedChange={(v) => updatePref("autoAdvanceChapters", v)}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Won't affect your access — just quiets the upgrade suggestions.
-              </p>
             </div>
-          )}
-        </div>
-      </section>
+          </section>
 
-      <Separator />
-
-      {/* Section 4c — Sensory Regulation Mode (Task #65) */}
-      <section aria-labelledby="section-sensory-heading" data-testid="section-sensory">
-        <h2 id="section-sensory-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Accessibility className="h-5 w-5 text-indigo-600" />
-          Low Sensory Mode
-        </h2>
-        <div className="rounded-lg border p-4 space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="sensory-mode" className="font-medium" aria-describedby="sensory-mode-desc">
-                Low Sensory Mode
-              </Label>
-              <Switch
-                id="sensory-mode"
-                data-testid="switch-sensory-mode"
-                checked={!!localPrefs.sensoryMode}
-                onCheckedChange={(v) => {
-                  updatePref("sensoryMode", v);
-                  // Mark as explicitly chosen so the OS-level auto-enable
-                  // notice does not re-fire on subsequent loads.
-                  updatePref("sensoryModeChosen", true);
-                }}
-              />
+          {/* Section 4 — Focus & Distraction */}
+          <section id="section-focus" aria-labelledby="section-focus-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-focus-heading" className="text-xl font-serif font-bold">Focus & Distraction</h2>
+              <p className="text-sm text-muted-foreground mt-1">Control visual elements to help you concentrate.</p>
             </div>
-            <p id="sensory-mode-desc" className="text-xs text-muted-foreground">
-              A single switch that calms the whole app — softer motion, quieter
-              audio peaks, and a simpler layout. Helpful for sensory sensitivity,
-              vestibular concerns, or when you just want less.
-            </p>
-          </div>
-          <details className="text-xs text-muted-foreground border-t pt-3">
-            <summary className="cursor-pointer font-medium text-foreground">
-              What does this change?
-            </summary>
-            <ul className="mt-2 space-y-1 list-disc pl-5">
-              <li>Animations and transitions are reduced to nearly instant.</li>
-              <li>Decorative images, gradients, and parallax effects are hidden.</li>
-              <li>The audio player applies a gentle peak limiter so loud spikes
-                  (ad cues, chapter intros) are softened.</li>
-              <li>Existing reduced-motion and reduce-distraction settings remain
-                  available below as fine-grained overrides.</li>
-            </ul>
-          </details>
-        </div>
-      </section>
 
-      <Separator />
-
-      {/* Section 4d — Low-Bandwidth & Text-Only (Task #66) */}
-      <section aria-labelledby="section-bandwidth-heading" data-testid="section-bandwidth">
-        <h2 id="section-bandwidth-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Wifi className="h-5 w-5 text-sky-600" />
-          Low-Bandwidth &amp; Text-Only
-        </h2>
-        <div className="rounded-lg border p-4 space-y-5">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="low-bandwidth-mode"
-                className="font-medium"
-                aria-describedby="low-bandwidth-desc"
-              >
-                Low-Bandwidth Mode
-              </Label>
-              <Switch
-                id="low-bandwidth-mode"
-                data-testid="switch-low-bandwidth"
-                checked={!!localPrefs.lowBandwidthMode}
-                onCheckedChange={(v) => updatePref("lowBandwidthMode", v)}
-              />
+            <div className="rounded-xl border bg-card p-6 space-y-6">
+              {[
+                { id: "transcript-default", label: "Show Transcript", desc: "Open transcript panel automatically when playing.", key: "transcriptOpenByDefault" },
+                { id: "reduce-distraction", label: "Reduce Distractions", desc: "Hide decorative images and UI flourishes.", key: "reduceDistractionMode" },
+                { id: "low-bandwidth", label: "Low Bandwidth Mode", desc: "Save data by hiding heavy visual assets.", key: "lowBandwidthMode" },
+              ].map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor={item.id} className="font-medium">{item.label}</Label>
+                    <p className="text-sm text-muted-foreground">{item.desc}</p>
+                  </div>
+                  <Switch
+                    id={item.id}
+                    checked={!!(localPrefs as any)[item.key]}
+                    onCheckedChange={(v) => updatePref(item.key as any, v)}
+                  />
+                </div>
+              ))}
             </div>
-            <p id="low-bandwidth-desc" className="text-xs text-muted-foreground">
-              Forces audio to the lowest-bitrate stream (128 kbps) regardless of your plan,
-              suppresses video and animated ads, and tells the ebook reader to skip background
-              videos. Helpful on slow networks or capped data plans.
-            </p>
-          </div>
+          </section>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="text-only-mode"
-                className="font-medium"
-                aria-describedby="text-only-desc"
-              >
-                Text-Only ebook reading
-              </Label>
-              <Switch
-                id="text-only-mode"
-                data-testid="switch-text-only"
-                checked={!!localPrefs.textOnlyMode}
-                onCheckedChange={(v) => updatePref("textOnlyMode", v)}
-              />
+          {/* Section 5 — Accessibility Profile */}
+          <section id="section-a11y" aria-labelledby="section-a11y-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-a11y-heading" className="text-xl font-serif font-bold">Accessibility</h2>
+              <p className="text-sm text-muted-foreground mt-1">Fine-tune your reading and listening experience.</p>
             </div>
-            <p id="text-only-desc" className="text-xs text-muted-foreground">
-              Hides covers, illustrations, and the Visual Reading background video so only the
-              text remains.
-            </p>
-          </div>
-        </div>
-      </section>
+            <div className="rounded-xl border bg-card p-6">
+              <PreferencesKernel onOpenChange={setPrefsOpen} />
+              <div className="mt-6 pt-6 border-t flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Custom Preferences</p>
+                  <p className="text-sm text-muted-foreground">Adjust fonts, colors, and motion settings.</p>
+                </div>
+                <Button variant="outline" onClick={() => setPrefsOpen(true)}>
+                  Configure
+                </Button>
+              </div>
+            </div>
+          </section>
 
-      <Separator />
+          {/* Section 6 — Devices */}
+          <section id="section-devices" aria-labelledby="section-devices-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-devices-heading" className="text-xl font-serif font-bold">Devices</h2>
+              <p className="text-sm text-muted-foreground mt-1">Manage where you can stream your library.</p>
+            </div>
+            <DeviceManagement />
+          </section>
 
-      {/* Section 4e — Storage & Downloads (Task #66) */}
-      <section aria-labelledby="section-storage-heading" data-testid="section-storage">
-        <h2 id="section-storage-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Wifi className="h-5 w-5 text-muted-foreground" />
-          Storage &amp; Downloads
-        </h2>
-        <div className="rounded-lg border p-4">
-          <OfflineDownloads />
-        </div>
-      </section>
+          {/* Section 7 — Billing */}
+          <section id="section-billing" aria-labelledby="section-billing-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-billing-heading" className="text-xl font-serif font-bold">Billing & History</h2>
+              <p className="text-sm text-muted-foreground mt-1">View your transactions and download invoices.</p>
+            </div>
+            <BillingDashboard />
+          </section>
 
-      <Separator />
-
-      {/* Section 4f — My Activity (Task #67) */}
-      <section aria-labelledby="section-activity-heading" data-testid="section-activity">
-        <h2 id="section-activity-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Activity className="h-5 w-5 text-emerald-600" />
-          My Activity
-        </h2>
-        <div className="rounded-lg border p-4 space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Opt in to record your own listening, transcript, and accessibility-feature use,
-            attach outcome tags (capacity building, independent access, daily living,
-            communication support), and generate a plain-language report you can save, print,
-            or share with a caregiver. Wipe everything in one click.
-          </p>
-          <Button asChild variant="outline" data-testid="link-my-activity">
-            <Link href="/activity">Open My Activity</Link>
-          </Button>
-        </div>
-      </section>
-
-      <Separator />
-
-      {/* Section 5 — Accessibility Preferences */}
-      <section aria-labelledby="section-a11y-heading">
-        <h2 id="section-a11y-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Accessibility className="h-5 w-5 text-muted-foreground" />
-          Accessibility Preferences
-        </h2>
-
-        <div className="rounded-lg border p-4">
-          <p className="text-sm text-muted-foreground mb-4">
-            Manage font size, contrast, captions, motion settings, and more in the full
-            accessibility panel.
-          </p>
-          <Button variant="outline" onClick={() => setPrefsOpen(true)}>
-            Open full accessibility settings
-          </Button>
-        </div>
-      </section>
-
-      <PreferencesKernel open={prefsOpen} onOpenChange={setPrefsOpen} />
+          {/* Section 8 — Referrals */}
+          <section id="section-referrals" aria-labelledby="section-referrals-heading" className="scroll-mt-20 pb-20">
+            <div className="mb-6">
+              <h2 id="section-referrals-heading" className="text-xl font-serif font-bold">Referrals</h2>
+              <p className="text-sm text-muted-foreground mt-1">Share AccessiBooks and earn rewards.</p>
+            </div>
+            <ReferralSection />
+          </section>
+        </main>
+      </div>
 
       <PremiumUpgradeModal
         open={upgradeOpen}
         onOpenChange={setUpgradeOpen}
         book={null}
         onUpgrade={(plan) => {
-          const tier = typeof plan === "object" ? plan.tier : "premium";
-          const period = typeof plan === "object" ? plan.plan : plan;
-          upgradeToTier(tier, period);
+          if (typeof plan === "object" && plan !== null) {
+            upgradeToTier(plan.tier, plan.plan);
+          } else {
+            upgradeToTier("premium", plan ?? "monthly");
+          }
           setUpgradeOpen(false);
         }}
         isUpgrading={isUpgrading}

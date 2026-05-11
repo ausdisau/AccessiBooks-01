@@ -58,11 +58,11 @@ export function RewardedAdOffer({ offer, onAccept, onDismiss }: RewardedAdOfferP
       <article
         role="region"
         aria-labelledby="reward-offer-heading"
-        className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex flex-col gap-3"
+        className="rounded-xl border border-primary/30 bg-card p-4 flex flex-col gap-3 shadow-sm"
         onKeyDown={handleKeyDown}
       >
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 h-9 w-9 rounded-full bg-primary/15 flex items-center justify-center">
+          <div className="flex-shrink-0 h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center">
             <Gift className="h-4 w-4 text-primary" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-0">

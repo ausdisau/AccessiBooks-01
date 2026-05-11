@@ -279,13 +279,13 @@ export function AuthorDashboard() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
-    <Card>
+    <Card className="dark:bg-card">
       <CardContent className="p-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10 text-primary">{icon}</div>
+          <div className="p-2 rounded bg-muted text-foreground">{icon}</div>
           <div>
             <p className="text-xl sm:text-2xl font-bold">{value.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
           </div>
         </div>
       </CardContent>
@@ -303,51 +303,47 @@ function BookListItem({
   onDelete: () => void;
 }) {
   const statusColors: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-    approved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-    rejected: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200 border-yellow-200/20",
+    approved: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200 border-green-200/20",
+    rejected: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200 border-red-200/20",
   };
 
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-start gap-4">
-          <div className="w-16 h-20 rounded bg-muted flex-shrink-0 overflow-hidden">
+    <div className="border border-border bg-card hover:bg-muted/50 transition-colors rounded-lg overflow-hidden">
+      <div className="p-3">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-16 rounded bg-muted flex-shrink-0 overflow-hidden">
             {book.coverImage ? (
               <img src={book.coverImage} alt="" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 {book.contentType === "audiobook" ? (
-                  <FileAudio className="h-6 w-6 text-muted-foreground" />
+                  <FileAudio className="h-5 w-5 text-muted-foreground" />
                 ) : (
-                  <FileText className="h-6 w-6 text-muted-foreground" />
+                  <FileText className="h-5 w-5 text-muted-foreground" />
                 )}
               </div>
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-semibold truncate">{book.title}</h3>
-                <p className="text-sm text-muted-foreground">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-medium text-sm truncate">{book.title}</h3>
+                <p className="text-xs text-muted-foreground truncate">
                   {book.contentType === "audiobook" ? "Audiobook" : "Ebook"}
                   {book.genre && ` · ${book.genre}`}
-                  {book.language && ` · ${book.language}`}
                 </p>
               </div>
-              <Badge className={statusColors[book.status] || ""}>{book.status}</Badge>
+              <Badge variant="outline" className={`text-[10px] px-1.5 h-5 uppercase tracking-wider font-semibold ${statusColors[book.status] || ""}`}>{book.status}</Badge>
             </div>
-            {book.description && (
-              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{book.description}</p>
-            )}
-            <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Headphones className="h-3 w-3" />
-                {(book.totalPlays || 0).toLocaleString()} plays
+                {(book.totalPlays || 0).toLocaleString()}
               </span>
               <span className="flex items-center gap-1">
                 <Eye className="h-3 w-3" />
-                {(book.totalReads || 0).toLocaleString()} reads
+                {(book.totalReads || 0).toLocaleString()}
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
@@ -357,16 +353,16 @@ function BookListItem({
           </div>
           <div className="flex gap-1">
             <PromoteButton bookId={book.id} />
-            <Button variant="ghost" size="icon" onClick={onEdit} aria-label="Edit book">
-              <Edit className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit} aria-label="Edit book">
+              <Edit className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={onDelete} aria-label="Delete book" className="text-destructive hover:text-destructive">
-              <Trash2 className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={onDelete} aria-label="Delete book">
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

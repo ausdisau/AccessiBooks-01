@@ -174,21 +174,15 @@ function getStatusIcon(status: string) {
 }
 
 function getStatusBadge(status: string) {
-  const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    pending: "secondary",
-    approved: "default",
-    removed: "destructive",
-    dismissed: "outline",
-  };
-  const labels: Record<string, string> = {
-    pending: "Pending",
-    approved: "Approved",
-    removed: "Removed",
-    dismissed: "Dismissed",
+  const variants: Record<string, string> = {
+    pending: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
+    approved: "bg-green-500/10 text-green-500 border-green-500/20",
+    removed: "bg-red-500/10 text-red-500 border-red-500/20",
+    dismissed: "bg-gray-500/10 text-gray-500 border-gray-500/20",
   };
   return (
-    <Badge variant={variants[status] || "outline"}>
-      {labels[status] || status}
+    <Badge variant="outline" className={`text-[10px] font-bold uppercase tracking-wider ${variants[status] || ""}`}>
+      {status}
     </Badge>
   );
 }
@@ -321,64 +315,62 @@ function ReportCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-border rounded-lg p-4 space-y-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            {getStatusIcon(report.status)}
-            <span className="font-medium text-sm truncate">
-              {report.contentType}
-            </span>
-            {getStatusBadge(report.status)}
+    <div className="border border-border bg-card hover:bg-muted/30 transition-colors rounded-lg overflow-hidden">
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground">
+                {report.contentType}
+              </span>
+              {getStatusBadge(report.status)}
+            </div>
+            <p className="text-sm font-medium leading-none mb-1">
+              Reported by {report.reporter?.username || report.reporter?.email}
+            </p>
+            <p className="text-xs text-muted-foreground font-medium">{report.reason}</p>
+            <p className="text-[10px] text-muted-foreground mt-2 uppercase tracking-tight">
+              {formatDate(report.createdAt)}
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mb-1">
-            Reported by:{" "}
-            <span className="font-medium">
-              {report.reporter?.username || report.reporter?.email}
-            </span>
-          </p>
-          <p className="text-sm font-medium">{report.reason}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {formatDate(report.createdAt)}
-          </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setExpanded(!expanded)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setExpanded(!expanded)}
-        >
-          <Eye className="h-4 w-4" />
-        </Button>
-      </div>
 
-      {expanded && (
-        <>
-          <Separator />
-          <div className="space-y-3">
-            {report.description && (
+        {expanded && (
+          <div className="pt-3 mt-3 border-t border-border animate-in fade-in slide-in-from-top-1">
+            <div className="grid gap-4 mb-4">
+              {report.description && (
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+                    Description
+                  </p>
+                  <p className="text-sm">{report.description}</p>
+                </div>
+              )}
+              {report.details?.title && (
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+                    Content
+                  </p>
+                  <p className="text-sm font-medium">
+                    {report.details.title}
+                    {report.details.author && <span className="text-muted-foreground font-normal ml-1">by {report.details.author}</span>}
+                  </p>
+                </div>
+              )}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase">
-                  Description
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+                  Content ID
                 </p>
-                <p className="text-sm mt-1">{report.description}</p>
+                <p className="text-xs font-mono bg-muted p-1 rounded inline-block">{report.contentId}</p>
               </div>
-            )}
-            {report.details?.title && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase">
-                  Content
-                </p>
-                <p className="text-sm mt-1">
-                  {report.details.title}
-                  {report.details.author && ` by ${report.details.author}`}
-                </p>
-              </div>
-            )}
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase">
-                Content ID
-              </p>
-              <p className="text-sm font-mono mt-1">{report.contentId}</p>
             </div>
             <ReportActionButtons
               reportId={report.id}
@@ -386,8 +378,8 @@ function ReportCard({
               onActionComplete={onActionComplete}
             />
           </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }

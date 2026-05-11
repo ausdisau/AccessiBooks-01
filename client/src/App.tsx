@@ -179,12 +179,20 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   onToggleSidebar: () => void; 
 }) {
   const { user } = useAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [coachSeed, setCoachSeed] = useState<string | undefined>(undefined);
   const [donateOpen, setDonateOpen] = useState(false);
+
+  // Derive page title from location
+  const getPageTitle = (path: string) => {
+    if (path === "/" || path === "") return "Library";
+    const found = sidebarNavGroups.flatMap(g => g.items).find(i => i.path === path || (path !== "/" && i.path !== "/" && path.startsWith(i.path)));
+    return found ? found.label : "";
+  };
+  const pageTitle = getPageTitle(location);
 
   // Voice intents in MainApp (Task #68) dispatch this event with an
   // optional seeded message. We capture the message into state so the
@@ -215,30 +223,24 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
 
   return (
     <>
-    <header className="bg-card border-b border-border h-16 flex items-center px-4 sm:px-6 sticky top-0 z-30" role="banner">
+    <header className="bg-card border-b border-border h-14 flex items-center px-4 sm:px-6 sticky top-0 z-30" role="banner">
       <div className="flex items-center gap-3 shrink-0">
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={onToggleSidebar}
           aria-label="Toggle navigation menu"
           data-testid="hamburger-menu-btn"
-          className="p-2 flex items-center gap-1.5"
+          className="h-9 w-9"
         >
-          <Menu className="h-6 w-6" />
-          <span className="text-sm font-medium">Menu</span>
+          <Menu className="h-5 w-5" />
         </Button>
-        {/* Library spatial anchor — top-left (mirrors Focus Shell top-left Library button) */}
-        <Link
-          href="/"
-          aria-label="Go to Library"
-          className="shrink-0 flex items-center gap-1.5 rounded-lg px-1 py-0.5 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <AccessiBooksLogo />
-        </Link>
+        {/* Page title in header */}
+        <h1 className="text-sm font-semibold ml-2 hidden sm:block truncate max-w-[200px]">
+          {pageTitle}
+        </h1>
         <Button variant="ghost" size="sm" onClick={() => setMobileSearchOpen(!mobileSearchOpen)} className="p-2 md:hidden flex items-center gap-1" aria-label="Search">
           {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
-          <span className="text-xs font-medium">{mobileSearchOpen ? "Close" : "Search"}</span>
         </Button>
       </div>
 
@@ -410,9 +412,19 @@ function AppSidebar({ mode, onCloseDrawer }: {
 
   const makeFullNav = (onLinkClick?: () => void) => (
     <nav className="flex flex-col h-full overflow-y-auto py-4 px-3" aria-label="Main navigation">
+      <div className="px-3 mb-6">
+        <Link 
+          href="/" 
+          className="flex items-center gap-2 group"
+          onClick={onLinkClick}
+        >
+          <AccessiBooksLogo className="h-8 w-8 group-hover:text-primary transition-colors" showText={false} />
+          <span className="text-lg font-bold tracking-tight">AccessiBooks</span>
+        </Link>
+      </div>
       {sidebarNavGroups.map((group) => (
         <div key={group.label} className="mb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 mb-1">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 px-3 mb-2">
             {group.label}
           </p>
           {group.items.map((item) => (
@@ -420,14 +432,19 @@ function AppSidebar({ mode, onCloseDrawer }: {
               key={item.path}
               href={item.path}
               onClick={onLinkClick}
-              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-medium transition-all relative group ${
                 isActive(item.path)
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
               data-testid={`menu-${item.path.replace("/", "") || "library"}`}
             >
-              {item.icon}
+              {isActive(item.path) && (
+                <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-primary rounded-r-full" />
+              )}
+              <span className={`transition-colors ${isActive(item.path) ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
+                {item.icon}
+              </span>
               <span className="flex-1 truncate">{item.label}</span>
               {item.path === "/settings" && <PlanBadge tier={tier} className="text-[10px] px-1.5 py-0" />}
             </Link>
@@ -439,28 +456,36 @@ function AppSidebar({ mode, onCloseDrawer }: {
 
   const railNav = (
     <nav className="flex flex-col h-full overflow-y-auto py-4 items-center" aria-label="Main navigation">
+      <Link href="/" className="mb-6 group">
+        <AccessiBooksLogo className="h-8 w-8 group-hover:text-primary transition-colors" showText={false} />
+      </Link>
       {sidebarNavGroups.map((group) => (
         <div key={group.label} className="mb-2 w-full flex flex-col items-center">
           {group.items.map((item) => (
             <Link
               key={item.path}
               href={item.path}
-              className={`flex flex-col items-center justify-center w-14 py-1.5 rounded-md transition-colors mb-0.5 gap-0.5 ${
+              className={`flex flex-col items-center justify-center w-14 py-2 rounded-md transition-all relative group mb-1 ${
                 isActive(item.path)
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
               aria-label={item.label}
               aria-current={isActive(item.path) ? "page" : undefined}
               data-testid={`menu-${item.path.replace("/", "") || "library"}`}
             >
-              {item.icon}
-              <span className="text-[9px] font-medium leading-none tracking-tight truncate max-w-[48px] text-center">
+              {isActive(item.path) && (
+                <div className="absolute left-0 top-2 bottom-2 w-1 bg-primary rounded-r-full" />
+              )}
+              <span className={`transition-colors ${isActive(item.path) ? "text-primary" : "text-muted-foreground group-hover:text-foreground"}`}>
+                {item.icon}
+              </span>
+              <span className="text-[9px] font-medium leading-none tracking-tight truncate max-w-[48px] text-center mt-1">
                 {item.label}
               </span>
             </Link>
           ))}
-          <div className="w-8 h-px bg-border my-1.5" />
+          <div className="w-8 h-px bg-sidebar-border my-2" />
         </div>
       ))}
     </nav>
@@ -471,9 +496,11 @@ function AppSidebar({ mode, onCloseDrawer }: {
       {/* Persistent sidebar — visible on md+ only, hidden on mobile */}
       {mode !== "hidden" && (
         <aside
-          className={`hidden md:flex flex-col shrink-0 bg-card border-r border-border h-[calc(100vh-4rem)] sticky top-16 transition-all duration-200 ${
+          className={`hidden md:flex flex-col shrink-0 bg-sidebar-background border-r border-sidebar-border h-[calc(100vh-3.5rem)] sticky top-14 transition-all duration-200 ${
             mode === "full" ? "w-60" : "w-16"
           }`}
+          data-testid="sidebar"
+          role="navigation"
         >
           {mode === "full" ? makeFullNav() : railNav}
         </aside>
@@ -483,11 +510,11 @@ function AppSidebar({ mode, onCloseDrawer }: {
       {mode === "hidden" && (
         <>
           <div
-            className="fixed inset-0 top-16 bg-black/40 z-40"
+            className="fixed inset-0 top-14 bg-black/40 z-40"
             onClick={onCloseDrawer}
             aria-hidden="true"
           />
-          <aside className="fixed left-0 top-16 bottom-0 w-64 bg-card border-r border-border z-50 shadow-xl animate-in slide-in-from-left duration-200">
+          <aside className="fixed left-0 top-14 bottom-0 w-64 bg-sidebar-background border-r border-sidebar-border z-50 shadow-xl animate-in slide-in-from-left duration-200">
             {makeFullNav(onCloseDrawer)}
           </aside>
         </>

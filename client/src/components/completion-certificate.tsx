@@ -92,30 +92,17 @@ function CertificateCard({ userName, bookTitle, bookAuthor, completedAt, bookCov
   return (
     <div
       id="completion-certificate"
-      className="relative bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950 dark:to-yellow-950 rounded-2xl overflow-hidden"
-      style={{ border: "6px solid transparent", backgroundClip: "padding-box" }}
+      className="relative bg-card rounded-2xl overflow-hidden border-4 border-primary/20"
     >
-      <div
-        className="absolute inset-0 rounded-2xl pointer-events-none"
-        style={{
-          background: "linear-gradient(135deg, #f59e0b, #10b981, #3b82f6, #ec4899, #f59e0b) border-box",
-          WebkitMask: "linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0)",
-          WebkitMaskComposite: "destination-out",
-          maskComposite: "exclude",
-          border: "6px solid transparent",
-          borderRadius: "1rem",
-        }}
-      />
-
       <div className="relative p-8 text-center space-y-4">
         <div className="flex justify-center gap-1 mb-2">
           {[...Array(5)].map((_, i) => (
-            <Star key={i} className="h-5 w-5 fill-amber-400 text-amber-400" />
+            <Star key={i} className="h-5 w-5 fill-primary text-primary" />
           ))}
         </div>
 
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.3em] text-amber-700 dark:text-amber-300">
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-primary">
             Certificate of Completion
           </p>
           <p className="text-[11px] text-muted-foreground mt-0.5">AccessiBooks</p>
@@ -126,15 +113,15 @@ function CertificateCard({ userName, bookTitle, bookAuthor, completedAt, bookCov
             <img
               src={bookCover}
               alt=""
-              className="w-16 h-20 object-cover rounded-lg shadow-md"
+              className="w-24 h-32 object-cover rounded-lg shadow-xl"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
           ) : (
-            <div className="w-16 h-20 bg-gradient-to-br from-purple-400 to-blue-500 rounded-lg shadow-md flex items-center justify-center">
+            <div className="w-24 h-32 bg-primary/10 rounded-lg shadow-md flex items-center justify-center">
               {contentType === "audiobook" ? (
-                <Book className="h-8 w-8 text-white" />
+                <Book className="h-10 w-10 text-primary" />
               ) : (
-                <BookOpen className="h-8 w-8 text-white" />
+                <BookOpen className="h-10 w-10 text-primary" />
               )}
             </div>
           )}
@@ -144,14 +131,14 @@ function CertificateCard({ userName, bookTitle, bookAuthor, completedAt, bookCov
           <p className="text-sm text-muted-foreground">This is to certify that</p>
           <p className="text-2xl font-bold text-foreground mt-1 leading-tight">{userName}</p>
           <p className="text-sm text-muted-foreground mt-1">has successfully completed</p>
-          <p className="text-xl font-bold text-primary mt-2 leading-tight">{bookTitle}</p>
+          <h3 className="text-2xl font-serif font-bold text-primary mt-2 leading-tight">{bookTitle}</h3>
           <p className="text-sm text-muted-foreground italic mt-0.5">by {bookAuthor}</p>
         </div>
 
         <div className="flex items-center justify-center gap-2 pt-2">
-          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-300 to-transparent" />
-          <Trophy className="h-5 w-5 text-amber-500" />
-          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-300 to-transparent" />
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+          <Trophy className="h-5 w-5 text-primary" />
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         </div>
 
         <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
@@ -161,7 +148,7 @@ function CertificateCard({ userName, bookTitle, bookAuthor, completedAt, bookCov
 
         <Badge
           variant="secondary"
-          className="text-xs bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700"
+          className="text-xs bg-primary/20 text-primary border border-primary/30 font-bold"
         >
           🏅 Book Finisher
         </Badge>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useBookmarks } from "@/hooks/use-bookmarks";
@@ -43,6 +44,7 @@ import {
   ArrowUpDown,
   Keyboard,
   Music2,
+  X,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/audio-context";
 import { InteractiveTranscript } from "./interactive-transcript";
@@ -639,173 +641,149 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             </div>
           )}
 
-          <div className="flex items-center justify-center gap-4 mb-6">
-            {/* Previous chapter button */}
+          <div className="flex items-center justify-center gap-4 mb-8">
             {hasChapters && (
               <Button
-                size="sm"
                 variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-full"
                 onClick={handlePrevChapter}
                 disabled={!canGoPrev}
-                className="h-11 w-11 rounded-full"
                 aria-label="Previous chapter"
                 data-testid="button-prev-chapter"
               >
-                <SkipBack className="h-5 w-5" aria-hidden="true" />
+                <SkipBack className="h-5 w-5" />
               </Button>
             )}
 
             <Button
-              size="lg"
               variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-full"
               onClick={handleSkipBackward}
-              className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
               aria-label={`Rewind ${skipBackSec} seconds`}
-              aria-disabled={adState.isAdPlaying || adLoading}
-              data-testid="button-skip-backward"
+              data-testid="button-rewind"
             >
-              <RotateCcw className="h-6 w-6" aria-hidden="true" />
-              <span className="absolute -bottom-1 text-[10px] font-medium">{skipBackSec}</span>
+              <RotateCcw className="h-5 w-5" />
             </Button>
-            
+
             <Button
-              size="lg"
+              size="icon"
+              className="h-16 w-16 rounded-full shadow-xl bg-primary hover:scale-105 transition-transform"
               onClick={togglePlayPause}
               disabled={isLoading || isBuffering}
-              aria-label={isPlaying ? "Pause audiobook" : "Play audiobook"}
-              className="h-14 w-14 sm:h-16 sm:w-16 rounded-full shadow-lg"
+              aria-label={isPlaying ? "Pause" : "Play"}
               data-testid="button-play-pause"
             >
               {isLoading || isBuffering ? (
-                <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
+                <Loader2 className="h-8 w-8 animate-spin" />
               ) : isPlaying ? (
-                <Pause className="h-7 w-7" aria-hidden="true" />
+                <Pause className="h-8 w-8 fill-current" />
               ) : (
-                <Play className="h-7 w-7 ml-1" aria-hidden="true" />
-              )}
-            </Button>
-            
-            <Button
-              size="lg"
-              variant="ghost"
-              onClick={handleSkipForward}
-              className="h-11 w-11 sm:h-14 sm:w-14 rounded-full relative"
-              aria-label={`Forward ${skipForwardSec} seconds`}
-              aria-disabled={adState.isAdPlaying || adLoading}
-              data-testid="button-skip-forward"
-              disabled={isUsingSkip}
-            >
-              <RotateCw className="h-6 w-6" aria-hidden="true" />
-              <span className="absolute -bottom-1 text-[10px] font-medium">{skipForwardSec}</span>
-              {!isPremium && skipStatus && !skipStatus.unlimited && skipStatus.remaining < 3 && (
-                <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center">
-                  {skipStatus.remaining}
-                </span>
+                <Play className="h-8 w-8 fill-current ml-1" />
               )}
             </Button>
 
-            {/* Next chapter button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-full"
+              onClick={handleSkipForward}
+              aria-label={`Forward ${skipForwardSec} seconds`}
+              data-testid="button-forward"
+            >
+              <RotateCw className="h-5 w-5" />
+            </Button>
+
             {hasChapters && (
               <Button
-                size="sm"
                 variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-full"
                 onClick={handleNextChapter}
                 disabled={!canGoNext}
-                className="h-11 w-11 rounded-full"
                 aria-label="Next chapter"
                 data-testid="button-next-chapter"
               >
-                <SkipForward className="h-5 w-5" aria-hidden="true" />
+                <SkipForward className="h-5 w-5" />
               </Button>
             )}
           </div>
 
-          <div className="flex items-center justify-between flex-wrap gap-2 sm:gap-3">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              {/* Speed Preset Buttons */}
-              <div className="hidden sm:flex items-center gap-1 bg-muted/50 rounded-full p-1" role="group" aria-label="Playback speed">
-                {[0.75, 1, 1.25, 1.5, 2].map((speed) => {
-                  const isLockedSpeed = !isPremium && !FREE_SPEEDS.includes(speed);
-                  return (
-                    <Button
-                      key={speed}
-                      variant={playbackRate === speed ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => {
-                        if (isLockedSpeed) {
-                          toast({
-                            title: "Premium speed",
-                            description: "Upgrade to Premium for speeds above 1.5x",
-                            variant: "destructive",
-                          });
-                          return;
-                        }
-                        setSpeed(speed);
-                      }}
-                      className={`h-7 px-2.5 rounded-full text-xs font-medium ${
-                        playbackRate === speed ? "shadow-sm" : "hover:bg-muted"
-                      } ${isLockedSpeed ? "opacity-60" : ""}`}
-                      aria-pressed={playbackRate === speed}
-                      data-testid={`button-speed-${speed}x`}
-                    >
-                      {speed}x
-                      {isLockedSpeed && <Crown className="h-3 w-3 ml-0.5 text-yellow-500" />}
-                    </Button>
-                  );
-                })}
-              </div>
-              
-              {/* Speed Dropdown (mobile fallback) */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1 sm:hidden" data-testid="button-speed-selector">
-                    <Gauge className="h-4 w-4" />
+                  <Button variant="ghost" size="sm" className="h-9 px-3 rounded-full bg-secondary/50 hover:bg-secondary">
+                    <Gauge className="h-4 w-4 mr-2" />
                     {playbackRate}x
-                    <ChevronDown className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {SPEED_OPTIONS.map((option) => {
-                    const isLockedSpeed = !isPremium && !FREE_SPEEDS.includes(option.value);
+                <DropdownMenuContent align="center" className="w-40">
+                  {ALL_SPEEDS.map((speed) => {
+                    const isLocked = !isPremium && !FREE_SPEEDS.includes(speed);
                     return (
                       <DropdownMenuItem
-                        key={option.value}
+                        key={speed}
                         onClick={() => {
-                          if (isLockedSpeed) {
-                            toast({
-                              title: "Premium speed",
-                              description: "Upgrade to Premium for speeds above 1.5x",
-                              variant: "destructive",
-                            });
-                            return;
-                          }
-                          setSpeed(option.value);
+                          if (!isLocked) setSpeed(speed);
                         }}
-                        className={`${playbackRate === option.value ? "bg-accent" : ""} ${isLockedSpeed ? "opacity-60" : ""}`}
+                        className={`flex items-center justify-between ${playbackRate === speed ? "bg-accent" : ""} ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+                        aria-label={isLocked ? `${speed}x — Plus/Premium only` : `Set speed to ${speed}x`}
                       >
-                        <span className="flex items-center gap-1">
-                          {option.label}
-                          {isLockedSpeed && (
-                            <>
-                              <Crown className="h-3 w-3 text-yellow-500" />
-                              <span className="text-xs text-yellow-600">(Premium)</span>
-                            </>
-                          )}
-                        </span>
-                        {playbackRate === option.value && " ✓"}
+                        <span>{speed}x</span>
+                        {isLocked && <Crown className="h-3 w-3 text-primary" aria-hidden="true" />}
                       </DropdownMenuItem>
                     );
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>
-              
+
               <SleepTimer />
-              
+            </div>
+
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 rounded-full"
+                onClick={() => setShowChapters(true)}
+                aria-label="Chapters"
+              >
+                <ListMusic className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-9 w-9 rounded-full ${showTranscript ? 'text-primary' : ''}`}
+                onClick={() => {
+                  const willOpen = !showTranscript;
+                  setShowTranscript(willOpen);
+                  if (willOpen) {
+                    fetch("/api/activity/log", {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ eventType: "transcript_opened", bookId: book.id }),
+                    }).catch(() => {});
+                  }
+                }}
+                aria-label={showTranscript ? "Close transcript" : "Open transcript"}
+                aria-pressed={showTranscript}
+                data-testid="button-transcript-toggle"
+              >
+                <Subtitles className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap gap-2 sm:gap-3">
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCarMode(true)}
-                className="gap-1"
+                className="gap-1 rounded-full"
                 aria-label="Enable car mode"
                 data-testid="button-car-mode"
               >
@@ -813,52 +791,11 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                 <span className="hidden sm:inline">Car Mode</span>
               </Button>
               
-              {book.id.startsWith("librivox-") && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowChapters(!showChapters)}
-                  className="gap-1"
-                  aria-label="Show chapters"
-                  data-testid="button-chapters"
-                >
-                  <ListMusic className="h-4 w-4" />
-                  <span className="hidden sm:inline">Chapters</span>
-                </Button>
-              )}
-              <Button
-                variant={showTranscript ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  const next = !showTranscript;
-                  setShowTranscript(next);
-                  if (next) {
-                    // Fire-and-forget; server gates on opt-in and silently no-ops otherwise.
-                    fetch("/api/activity/log", {
-                      method: "POST",
-                      credentials: "include",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        eventType: "transcript_opened",
-                        bookId: book.id,
-                        bookTitle: book.title,
-                      }),
-                    }).catch(() => {});
-                  }
-                }}
-                className="gap-1"
-                aria-label="Toggle transcript"
-                data-testid="button-transcript"
-              >
-                <ChevronRight className="h-4 w-4" />
-                <span className="hidden sm:inline">Transcript</span>
-              </Button>
-
               <Button
                 variant={captionsOn ? "default" : "outline"}
                 size="sm"
                 onClick={handleToggleCaptions}
-                className="gap-1"
+                className="gap-1 rounded-full"
                 aria-label={captionsOn ? "Turn off captions" : "Turn on captions"}
                 aria-pressed={captionsOn}
                 data-testid="button-captions-toggle"
@@ -869,24 +806,25 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
 
               {captionsOn && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={handleToggleCaptionPosition}
-                  className="gap-1"
-                  aria-label={`Move captions ${captionPosition === "above" ? "below" : "above"} controls`}
-                  title={`Captions position: ${captionPosition} — click to move ${captionPosition === "above" ? "below" : "above"}`}
-                  data-testid="button-captions-position"
+                  className="h-9 px-2 rounded-full text-xs gap-1"
+                  aria-label={`Move captions ${captionPosition === "above" ? "below" : "above"} the player`}
+                  data-testid="button-caption-position"
                 >
-                  <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+                  <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="hidden sm:inline">{captionPosition === "above" ? "↓" : "↑"}</span>
                 </Button>
               )}
+
 
               {alignmentAvailable && (
                 <Button
                   variant={followAlong ? "default" : "outline"}
                   size="sm"
                   onClick={handleToggleFollowAlong}
-                  className={`gap-1 ${followAlong ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}`}
+                  className={`gap-1 rounded-full ${followAlong ? "bg-green-600 hover:bg-green-700 text-white border-green-600" : ""}`}
                   aria-label={followAlong ? "Follow Along active — click to disable" : "Enable Follow Along (sync ebook text with audio)"}
                   aria-pressed={followAlong}
                   title={followAlong ? "Follow Along: ON — ebook text highlights as audio plays" : "Follow Along: OFF — enable to sync ebook reader with audio"}
@@ -899,36 +837,68 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             </div>
             
             <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddBookmark}
+                      aria-label={isAtLimit ? `Bookmark limit reached (${maxBookmarks} max for free tier)` : "Bookmark current position"}
+                      className="rounded-full"
+                      disabled={isAtLimit && !showBookmarkInput}
+                      data-testid="button-add-bookmark"
+                    >
+                      <BookmarkIcon className="h-4 w-4 mr-1" aria-hidden="true" />
+                      Bookmark
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {isAtLimit && (
+                  <TooltipContent side="top" className="text-xs max-w-[200px]">
+                    Bookmark limit reached. Upgrade to Plus or Premium for unlimited bookmarks.
+                  </TooltipContent>
+                )}
+              </Tooltip>
+
               {showBookmarkInput && (
-                <input
-                  type="text"
-                  value={bookmarkName}
-                  onChange={(e) => setBookmarkName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleAddBookmark();
-                    } else if (e.key === "Escape") {
-                      setShowBookmarkInput(false);
-                      setBookmarkName("");
-                    }
-                  }}
-                  placeholder="Bookmark name"
-                  className="px-3 py-1.5 border border-border rounded-md text-sm w-40"
-                  autoFocus
-                  data-testid="input-bookmark-name"
-                />
+                <div className="flex items-center gap-1" role="group" aria-label="Name your bookmark">
+                  <Input
+                    value={bookmarkName}
+                    onChange={(e) => setBookmarkName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddBookmark();
+                      if (e.key === "Escape") { setShowBookmarkInput(false); setBookmarkName(""); }
+                    }}
+                    placeholder="Name bookmark…"
+                    className="h-8 w-36 text-sm"
+                    autoFocus
+                    aria-label="Bookmark name"
+                    data-testid="input-bookmark-name"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-8 px-2"
+                    onClick={handleAddBookmark}
+                    aria-label="Save bookmark"
+                    data-testid="button-bookmark-save"
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    onClick={() => { setShowBookmarkInput(false); setBookmarkName(""); }}
+                    aria-label="Cancel bookmark"
+                    data-testid="button-bookmark-cancel"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAddBookmark}
-                aria-label="Bookmark current position"
-                data-testid="button-add-bookmark"
-              >
-                <BookmarkIcon className="h-4 w-4 mr-1" aria-hidden="true" />
-                Bookmark
-                {isAtLimit && <PremiumFeatureBadge className="ml-1" />}
-              </Button>
+
+
               <AddToCollectionButton bookId={book.id} />
               {user && (
                 <Button
@@ -936,6 +906,7 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
                   size="sm"
                   onClick={() => setShowPlaylistDialog(true)}
                   aria-label="Add to playlist"
+                  className="rounded-full"
                   data-testid="button-add-to-playlist"
                 >
                   <ListMusic className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -945,7 +916,6 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
             </div>
           </div>
 
-          {/* Live captions bar — below position */}
           {captionsOn && captionPosition === "below" && (
             <div className="mt-4 pt-3 border-t border-border" data-testid="captions-bar">
               <CaptionsBar

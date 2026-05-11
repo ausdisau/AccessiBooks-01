@@ -157,59 +157,59 @@ export function AdminHealthDashboard() {
       {/* System Overview Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Books */}
-        <Card className="dark:bg-slate-900/50">
+        <Card className="dark:bg-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-primary" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
+              <BookOpen className="h-3.5 w-3.5" />
               Total Books
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{health?.totalBooks || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">in catalog</p>
+            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">in catalog</p>
           </CardContent>
         </Card>
 
         {/* Total Users */}
-        <Card className="dark:bg-slate-900/50">
+        <Card className="dark:bg-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
+              <Users className="h-3.5 w-3.5" />
               Total Users
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{health?.totalUsers || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">registered</p>
+            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">registered</p>
           </CardContent>
         </Card>
 
         {/* Memory Usage */}
-        <Card className="dark:bg-slate-900/50">
+        <Card className="dark:bg-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Database className="h-4 w-4 text-primary" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
+              <Database className="h-3.5 w-3.5" />
               Memory Usage
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-xs text-muted-foreground">
-                  {health?.memoryUsage.heapUsed || 0} MB / {health?.memoryUsage.heapTotal || 0} MB
+              <div className="flex justify-between text-[10px] font-bold uppercase tracking-tight">
+                <span className="text-muted-foreground">
+                  {health?.memoryUsage.heapUsed || 0}MB / {health?.memoryUsage.heapTotal || 0}MB
                 </span>
-                <span className="text-xs font-semibold">{memoryPercent}%</span>
+                <span>{memoryPercent}%</span>
               </div>
-              <Progress value={memoryPercent} className="h-2" />
+              <Progress value={memoryPercent} className="h-1.5" />
             </div>
           </CardContent>
         </Card>
 
         {/* Uptime */}
-        <Card className="dark:bg-slate-900/50">
+        <Card className="dark:bg-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4 text-primary" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
+              <Clock className="h-3.5 w-3.5" />
               Uptime
             </CardTitle>
           </CardHeader>
@@ -217,7 +217,7 @@ export function AdminHealthDashboard() {
             <div className="text-2xl font-bold">
               {health ? formatUptime(health.uptime) : "N/A"}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">server running</p>
+            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">server running</p>
           </CardContent>
         </Card>
       </div>
@@ -231,28 +231,32 @@ export function AdminHealthDashboard() {
           Catalog Seeder Status
         </h3>
 
-        <Card className="dark:bg-slate-900/50">
-          <CardContent className="pt-6">
+        <Card className="dark:bg-card">
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Source</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Titles Seeded</TableHead>
+                  <TableRow className="hover:bg-transparent border-b">
+                    <TableHead className="text-[11px] font-bold uppercase tracking-wider h-10">Source</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase tracking-wider h-10">Status</TableHead>
+                    <TableHead className="text-right text-[11px] font-bold uppercase tracking-wider h-10">Titles Seeded</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {health?.seederStatus.map((seeder) => (
-                    <TableRow key={seeder.source}>
-                      <TableCell className="font-medium">{seeder.source}</TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusColor(seeder.status)}>
-                          {getStatusLabel(seeder.status)}
+                    <TableRow key={seeder.source} className="hover:bg-muted/30">
+                      <TableCell className="font-medium text-xs py-2">{seeder.source}</TableCell>
+                      <TableCell className="py-2">
+                        <Badge variant="outline" className={`text-[10px] h-5 px-1.5 font-bold uppercase tracking-wider ${
+                          seeder.status === 'running' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
+                          seeder.status === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+                          'bg-muted text-muted-foreground'
+                        }`}>
+                          {seeder.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {seeder.totalSeeded}
+                      <TableCell className="text-right font-bold text-xs py-2">
+                        {seeder.totalSeeded.toLocaleString()}
                       </TableCell>
                     </TableRow>
                   ))}

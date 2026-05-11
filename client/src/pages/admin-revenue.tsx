@@ -69,16 +69,16 @@ function StatCard({
     return <Skeleton className="h-28 rounded-xl" />;
   }
   return (
-    <Card>
+    <Card className="dark:bg-card">
       <CardContent className="pt-5">
         <div className="flex items-start gap-3">
-          <div className={`rounded-full bg-muted p-2 shrink-0`}>
-            <Icon className={`h-5 w-5 ${color}`} aria-hidden="true" />
+          <div className={`rounded bg-muted p-2 shrink-0`}>
+            <Icon className={`h-4 w-4 ${color}`} aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
-            <p className="text-2xl font-bold mt-0.5 truncate">{value}</p>
-            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{label}</p>
+            <p className="text-xl font-bold mt-0.5 truncate">{value}</p>
+            {sub && <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-tight truncate">{sub}</p>}
           </div>
         </div>
       </CardContent>
@@ -219,16 +219,16 @@ export default function AdminRevenuePage() {
                   const pct = Math.round((count / total) * 100);
                   return (
                     <div key={tier} className="space-y-1" role="listitem">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className={`flex items-center gap-1.5 font-medium ${textColor}`}>
-                          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest mb-1">
+                        <span className={`flex items-center gap-1.5 ${textColor}`}>
+                          <Icon className="h-3 w-3" aria-hidden="true" />
                           {label}
                         </span>
                         <span className="text-muted-foreground tabular-nums">
                           {count.toLocaleString()} ({pct}%)
                         </span>
                       </div>
-                      <div className="w-full bg-muted rounded-full h-3 overflow-hidden" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label} users: ${pct}%`}>
+                      <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label} users: ${pct}%`}>
                         <div
                           className={`h-full ${color} rounded-full transition-all duration-500`}
                           style={{ width: `${pct}%` }}
@@ -336,35 +336,39 @@ export default function AdminRevenuePage() {
                 <caption className="sr-only">Recent transactions across the platform, showing type, amount, provider, status, and date</caption>
                 <thead>
                   <tr className="border-b border-border">
-                    <th scope="col" className="text-left py-2 pr-4 font-medium text-muted-foreground">Type</th>
-                    <th scope="col" className="text-right py-2 px-4 font-medium text-muted-foreground">Amount</th>
-                    <th scope="col" className="text-center py-2 px-4 font-medium text-muted-foreground hidden sm:table-cell">Provider</th>
-                    <th scope="col" className="text-center py-2 px-4 font-medium text-muted-foreground">Status</th>
-                    <th scope="col" className="text-right py-2 pl-4 font-medium text-muted-foreground hidden md:table-cell">Date</th>
+                    <th scope="col" className="text-left py-2 pr-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground h-10">Type</th>
+                    <th scope="col" className="text-right py-2 px-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground h-10">Amount</th>
+                    <th scope="col" className="text-center py-2 px-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground h-10 hidden sm:table-cell">Provider</th>
+                    <th scope="col" className="text-center py-2 px-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground h-10">Status</th>
+                    <th scope="col" className="text-right py-2 pl-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground h-10 hidden md:table-cell">Date</th>
                   </tr>
                 </thead>
                 <tbody>
                   {revenue.recentTransactions.map((tx) => (
                     <tr key={tx.id} className="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="py-2.5 pr-4">
-                        <span className="font-medium">{tx.description || tx.type}</span>
-                        <span className="block text-xs text-muted-foreground capitalize">{tx.type.replace(/_/g, " ")}</span>
+                      <td className="py-2 pr-4">
+                        <span className="font-bold text-xs">{tx.description || tx.type}</span>
+                        <span className="block text-[10px] text-muted-foreground uppercase tracking-tight">{tx.type.replace(/_/g, " ")}</span>
                       </td>
-                      <td className="py-2.5 px-4 text-right font-mono font-semibold">
+                      <td className="py-2 px-4 text-right font-bold text-xs tabular-nums">
                         {tx.amountCents > 0 ? formatCents(tx.amountCents) : "—"}
                       </td>
-                      <td className="py-2.5 px-4 text-center capitalize hidden sm:table-cell text-muted-foreground">
+                      <td className="py-2 px-4 text-center text-[10px] font-bold uppercase tracking-widest hidden sm:table-cell text-muted-foreground">
                         {tx.provider}
                       </td>
-                      <td className="py-2.5 px-4 text-center">
+                      <td className="py-2 px-4 text-center">
                         <Badge
-                          variant={tx.status === "completed" ? "default" : tx.status === "failed" ? "destructive" : "secondary"}
-                          className="text-xs"
+                          variant="outline"
+                          className={`text-[10px] font-bold uppercase tracking-wider px-1.5 h-5 ${
+                            tx.status === 'completed' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
+                            tx.status === 'failed' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+                            'bg-muted text-muted-foreground'
+                          }`}
                         >
                           {tx.status}
                         </Badge>
                       </td>
-                      <td className="py-2.5 pl-4 text-right text-muted-foreground text-xs hidden md:table-cell">
+                      <td className="py-2 pl-4 text-right text-muted-foreground text-[10px] font-medium uppercase tracking-tight hidden md:table-cell">
                         {formatDate(tx.createdAt)}
                       </td>
                     </tr>

@@ -89,17 +89,17 @@ const AVAILABLE_GENRES = [
 
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, string> = {
-    draft: "bg-gray-500/20 text-gray-400",
-    active: "bg-green-500/20 text-green-400",
-    paused: "bg-yellow-500/20 text-yellow-400",
-    completed: "bg-blue-500/20 text-blue-400",
-    pending: "bg-orange-500/20 text-orange-400",
-    approved: "bg-green-500/20 text-green-400",
-    rejected: "bg-red-500/20 text-red-400",
+    draft: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+    active: "bg-green-500/10 text-green-500 border-green-500/20",
+    paused: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
+    completed: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    pending: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    approved: "bg-green-500/10 text-green-500 border-green-500/20",
+    rejected: "bg-red-500/10 text-red-500 border-red-500/20",
   };
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variants[status] || "bg-gray-500/20 text-gray-400"}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${variants[status] || "bg-gray-500/10 text-gray-500 border-gray-500/20"}`}>
+      {status}
     </span>
   );
 }

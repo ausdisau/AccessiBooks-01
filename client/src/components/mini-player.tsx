@@ -58,7 +58,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
         )}
 
         <div
-          className="h-1.5 bg-secondary cursor-pointer group"
+          className="h-1 bg-secondary cursor-pointer group"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={duration || 100}
@@ -76,7 +76,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
             className="h-full bg-primary transition-all duration-100 relative"
             style={{ width: `${progress}%` }}
           >
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md" />
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-[0_0_10px_rgba(249,115,22,0.5)]" />
           </div>
         </div>
 
@@ -183,7 +183,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
             <Button
               variant="default"
               size="icon"
-              className="h-10 w-10 rounded-full shadow-lg flex-shrink-0"
+              className="h-10 w-10 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)] flex-shrink-0 bg-primary hover:bg-primary/90"
               onClick={togglePlayPause}
               disabled={isLoading || isBuffering}
               aria-label={isPlaying ? "Pause" : "Play"}
@@ -224,10 +224,10 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
                 <img
                   src={currentBook.coverImage}
                   alt={`Cover of ${currentBook.title}`}
-                  className="h-11 w-11 sm:h-14 sm:w-14 rounded-md object-cover flex-shrink-0 shadow-md"
+                  className="h-12 w-12 sm:h-16 sm:w-16 rounded-md object-cover flex-shrink-0 shadow-lg"
                 />
               ) : (
-                <div className="h-11 w-11 sm:h-14 sm:w-14 rounded-md bg-secondary flex items-center justify-center flex-shrink-0">
+                <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-md bg-secondary flex items-center justify-center flex-shrink-0">
                   <ListMusic className="h-6 w-6 text-muted-foreground" />
                 </div>
               )}
@@ -266,7 +266,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
               <Button
                 variant="default"
                 size="icon"
-                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full shadow-lg"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)] bg-primary hover:bg-primary/90"
                 onClick={togglePlayPause}
                 disabled={isLoading || isBuffering}
                 aria-label={isPlaying ? "Pause" : "Play"}

@@ -314,7 +314,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
       onKeyDown={handleKeyDown}
       data-testid="ad-overlay"
     >
-      <Card className="max-w-md w-full bg-gradient-to-b from-card to-card/95 border-primary/20">
+      <Card className="max-w-md w-full bg-card/95 backdrop-blur-md border-primary/20 shadow-2xl">
         <CardContent className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
