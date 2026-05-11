@@ -28,6 +28,21 @@ export type {
   VoiceAnnotation,
 } from "./annotation-types";
 export type * from "./flipbook-types";
+export type {
+  FlipbookBookContent,
+  FlipbookChapter,
+  FlipbookImageMeta,
+  FlipbookLandmark,
+  FlipbookLandmarkType,
+  TranscriptSegment,
+} from "./flipbook-content-types";
+export {
+  demoContentProvider,
+  inMemoryContentProvider,
+} from "./content-provider";
+export type { FlipbookContentProvider } from "./content-provider";
+export { useReadAlong } from "./use-readalong";
+export type { ReadAlongState } from "./use-readalong";
 export * from "./flipbook-typography";
 export * from "./book-search";
 export * from "./tts-service";

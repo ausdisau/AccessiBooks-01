@@ -10,6 +10,7 @@ export function ReadingPage({
   typography,
   highlightMatches,
   contentRef,
+  readAlong,
 }: ReadingPageProps) {
   const [phase, setPhase] = useState<"idle" | "flipping">("idle");
 
@@ -38,12 +39,16 @@ export function ReadingPage({
 
   const segments = buildHighlightSegments(page.content, highlightMatches);
   const matchCount = highlightMatches.length;
+  const readAlongActive =
+    !!readAlong?.enabled && !!readAlong.activeSegmentId;
 
   return (
     <article
       className="relative h-full w-full"
       aria-label={`Page ${page.pageNumber}`}
       data-testid={`flipbook-page-${page.pageNumber}`}
+      data-chapter-id={page.chapterId ?? undefined}
+      data-readalong={readAlong?.enabled ? "on" : undefined}
     >
       <div
         key={page.id}
@@ -55,6 +60,35 @@ export function ReadingPage({
           transformOrigin: flipDirection === "next" ? "left center" : "right center",
         }}
       >
+        {page.chapterTitle && (
+          <p
+            className="text-xs uppercase tracking-wider mb-3"
+            style={{ color: "var(--fb-muted)" }}
+            data-testid="flipbook-page-chapter-title"
+          >
+            {page.chapterTitle}
+          </p>
+        )}
+        {page.image && (
+          <figure className="mb-4">
+            <img
+              src={page.image.src}
+              alt={page.image.alt}
+              width={page.image.width}
+              height={page.image.height}
+              className="rounded max-w-full h-auto mx-auto"
+              data-testid="flipbook-page-image"
+            />
+            {page.image.caption && (
+              <figcaption
+                className="text-xs text-center mt-2"
+                style={{ color: "var(--fb-muted)" }}
+              >
+                {page.image.caption}
+              </figcaption>
+            )}
+          </figure>
+        )}
         <div
           ref={contentRef}
           className="max-w-none whitespace-pre-wrap"
@@ -76,6 +110,11 @@ export function ReadingPage({
             ),
           )}
         </div>
+        {readAlongActive && (
+          <p className="sr-only" data-testid="flipbook-readalong-active">
+            Read-along active.
+          </p>
+        )}
         {matchCount > 0 && (
           <p className="sr-only" data-testid="flipbook-page-match-count">
             {matchCount} search match{matchCount === 1 ? "" : "es"} on this page.
