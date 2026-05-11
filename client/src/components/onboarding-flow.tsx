@@ -114,8 +114,8 @@ const A11Y_ONBOARDING_PROFILES = [
     description: "No streaks, no leaderboards, no upgrade nudges — just listening",
     settings: {
       pauseAnimations: true,
-      // Marker consumed at apply-time to set calmMode + streakPaused on the server profile
-      calmMode: true as any,
+      // Marker only — calmMode + streakPaused are set on the server profile
+      // explicitly when this preset is selected (see handleNext below).
     } as Partial<AccessibilitySettings>,
   },
   {

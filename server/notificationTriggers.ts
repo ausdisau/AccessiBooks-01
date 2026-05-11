@@ -259,6 +259,14 @@ export async function checkEventReminders(): Promise<number> {
 
       const rsvps = await db.select().from(eventRsvps).where(eq(eventRsvps.eventId, event.id));
       for (const r of rsvps) {
+        // Dedupe: only send once per RSVP per window. We store the most-recent
+        // window crossed in reminderSentAt; if it already covers the current
+        // window we skip. 1h window > 1 hour ago means 24h was last sent.
+        if (r.reminderSentAt) {
+          const sinceMs = now.getTime() - new Date(r.reminderSentAt).getTime();
+          if (hitsDay && sinceMs < 23 * 60 * 60 * 1000) continue; // 24h already sent
+          if (hitsHour && sinceMs < 50 * 60 * 1000) continue;     // 1h already sent
+        }
         if (!(await shouldSendForUser(r.userId, "rsvp_reminder"))) continue;
         const payload = getNotificationPayload("rsvp_reminder", {
           title: event.title,
@@ -268,6 +276,10 @@ export async function checkEventReminders(): Promise<number> {
         });
         const result = await sendNotificationToUser(r.userId, payload);
         sent += result.sent;
+        // Persist send-once marker so restarts/reruns don't double-send.
+        await db.update(eventRsvps)
+          .set({ reminderSentAt: now })
+          .where(eq(eventRsvps.id, r.id));
       }
     }
   } catch (err) {
@@ -309,6 +321,56 @@ let reEngageInterval: ReturnType<typeof setInterval> | null = null;
 let eventReminderInterval: ReturnType<typeof setInterval> | null = null;
 let weeklyRecapInterval: ReturnType<typeof setInterval> | null = null;
 let winBackInterval: ReturnType<typeof setInterval> | null = null;
+let friendDigestInterval: ReturnType<typeof setInterval> | null = null;
+
+// Friend-finished digest: batches "people you follow finished books this week"
+// into a single per-day notification at 18:00 local. Skips users who disabled
+// the friend_digest category or are in calmMode/quietHours.
+export async function checkFriendDigest(): Promise<number> {
+  let sent = 0;
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+
+    const followerRows = await db.execute(sql`
+      SELECT uf.follower_id AS follower_id,
+             COUNT(DISTINCT lh.book_id)::int AS books_finished,
+             MAX(b.title) AS sample_title
+      FROM user_follows uf
+      JOIN listening_history lh ON lh.user_id = uf.following_id
+      LEFT JOIN books b ON b.id = lh.book_id
+      WHERE lh.last_played_at >= ${since}
+        AND lh.progress >= 0.95
+      GROUP BY uf.follower_id
+      HAVING COUNT(DISTINCT lh.book_id) >= 1
+    `);
+    const rows = friendDigestRowsAdapter(followerRows) as Array<{
+      follower_id: string; books_finished: number; sample_title: string | null
+    }>;
+
+    for (const r of rows) {
+      if (!(await shouldSendForUser(r.follower_id, "friend_digest"))) continue;
+      const payload = getNotificationPayload("friend_digest", {
+        count: r.books_finished,
+        sampleTitle: r.sample_title ?? "a book",
+        url: "/hub",
+      });
+      const result = await sendNotificationToUser(r.follower_id, payload);
+      sent += result.sent;
+    }
+  } catch (err) {
+    console.error("Friend digest check failed:", err);
+  }
+  return sent;
+}
+
+// Adapter: drizzle's db.execute returns either { rows } or an array shape
+// depending on the driver. Normalize for use above.
+function friendDigestRowsAdapter(result: unknown): unknown[] {
+  if (Array.isArray(result)) return result;
+  const r = result as { rows?: unknown[] } | null | undefined;
+  return r?.rows ?? [];
+}
 
 export function startNotificationScheduler(): void {
   console.log("[Notifications] Starting scheduler...");
@@ -361,6 +423,15 @@ export function startNotificationScheduler(): void {
     }
   }, 60 * 60 * 1000);
 
+  // Friend digest — once a day at 18:00 (batched, never one-per-friend)
+  friendDigestInterval = setInterval(async () => {
+    const hour = new Date().getHours();
+    if (hour === 18) {
+      const sent = await checkFriendDigest();
+      if (sent > 0) console.log(`[Notifications] Sent ${sent} friend digests`);
+    }
+  }, 60 * 60 * 1000);
+
   console.log("[Notifications] Scheduler started");
 }
 
@@ -371,6 +442,8 @@ export function stopNotificationScheduler(): void {
   if (eventReminderInterval) clearInterval(eventReminderInterval);
   if (weeklyRecapInterval) clearInterval(weeklyRecapInterval);
   if (winBackInterval) clearInterval(winBackInterval);
+  if (friendDigestInterval) clearInterval(friendDigestInterval);
+  friendDigestInterval = null;
   streakInterval = null;
   goalInterval = null;
   reEngageInterval = null;
