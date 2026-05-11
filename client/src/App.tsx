@@ -101,6 +101,7 @@ const EventsPage = lazy(() => import('@/pages/events'));
 const AccountSettingsPage = lazy(() => import('@/pages/account-settings').then(m => ({ default: m.AccountSettingsPage })));
 const MyActivityPage = lazy(() => import('@/pages/my-activity'));
 const AdminAnalyticsPage = lazy(() => import('@/pages/admin-analytics'));
+const AdminEntitlementsPage = lazy(() => import('@/pages/admin-entitlements'));
 
 function LoadingSpinner() {
   return (
@@ -164,6 +165,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
       { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
       { path: "/analytics", label: "Analytics", icon: <BarChart3 className="h-5 w-5" /> },
+      { path: "/admin/entitlements", label: "Entitlements", icon: <Shield className="h-5 w-5" /> },
     ],
   },
 ];
@@ -1867,6 +1869,13 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="analytics-panel" role="region" aria-label="Analytics Dashboard" data-testid="panel-analytics">
                       <AdminAnalyticsPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/admin/entitlements">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="admin-entitlements-panel" role="region" aria-label="Tier Entitlements" data-testid="panel-admin-entitlements">
+                      <AdminEntitlementsPage />
                     </div>
                   </Suspense>
                 </Route>

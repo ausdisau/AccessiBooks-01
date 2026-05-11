@@ -18,6 +18,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { PlanBadge } from "@/components/plan-badge";
 import { PreferencesKernel } from "@/components/preferences-kernel";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { DEFAULT_A11Y_PROFILE } from "@shared/schema";
 import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
 import { OfflineDownloads } from "@/components/offline-downloads";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -33,6 +45,7 @@ import {
   X,
   Wifi,
   Activity,
+  RotateCcw,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { A11yProfile } from "@shared/schema";
@@ -168,6 +181,35 @@ export function AccountSettingsPage() {
     [saveMutation],
   );
 
+  const resetMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PUT", "/api/a11y/preferences", { profile: DEFAULT_A11Y_PROFILE }),
+    onSuccess: () => {
+      // Cancel any pending debounced patch so it can't overwrite the reset.
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      pendingPatchRef.current = {};
+      // Update local state immediately so every control re-renders to defaults
+      // without waiting for the next /api/settings/summary fetch.
+      setLocalPrefs(DEFAULT_A11Y_PROFILE);
+      document.documentElement.classList.toggle(
+        "reduce-distraction",
+        !!DEFAULT_A11Y_PROFILE.reduceDistractionMode,
+      );
+      queryClient.invalidateQueries({ queryKey: ["/api/a11y/preferences"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/summary"] });
+      toast({
+        title: "Reset to safe defaults",
+        description: "All accessibility preferences are back to their documented defaults.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Reset failed", variant: "destructive" });
+    },
+  });
+
   const portalMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/billing/create-portal-session"),
     onSuccess: async (res) => {
@@ -195,9 +237,46 @@ export function AccountSettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-10 py-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Settings2 className="h-7 w-7 text-primary" />
         <h1 className="text-2xl font-bold tracking-tight">Account Settings</h1>
+        <div className="flex-1" />
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="button-reset-defaults"
+              disabled={resetMutation.isPending}
+            >
+              {resetMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RotateCcw className="h-4 w-4 mr-2" />
+              )}
+              Reset to Safe Defaults
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reset all preferences?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This restores every accessibility, listening, ad, calm-mode, sensory, bandwidth,
+                and notification preference to the documented safe defaults. Your subscription,
+                bookmarks, loans, and library are not affected. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-reset-cancel">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                data-testid="button-reset-confirm"
+                onClick={() => resetMutation.mutate()}
+              >
+                Reset to defaults
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Section 1 — Your Plan */}

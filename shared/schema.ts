@@ -2506,3 +2506,50 @@ export const insertUserActivityShareSchema = createInsertSchema(userActivityShar
 });
 export type InsertUserActivityShare = z.infer<typeof insertUserActivityShareSchema>;
 export type UserActivityShare = typeof userActivityShares.$inferSelect;
+
+// ============================================================
+// ENTITLEMENT CONFIG (Task #70)
+// Server-stored (featureKey, tier, enabled) grid edited by admins.
+// The entitlement service consults this table first; if a feature
+// is missing, it falls back to the hard-coded mapping in
+// server/entitlements.ts. This lets admins toggle access without
+// a code change or server restart.
+// ============================================================
+export const entitlementConfig = pgTable("entitlement_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  featureKey: text("feature_key").notNull(),
+  tier: text("tier").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("ux_entitlement_config_feature_tier").on(t.featureKey, t.tier),
+]);
+
+export const insertEntitlementConfigSchema = createInsertSchema(entitlementConfig).omit({
+  id: true, updatedAt: true,
+});
+export type InsertEntitlementConfig = z.infer<typeof insertEntitlementConfigSchema>;
+export type EntitlementConfig = typeof entitlementConfig.$inferSelect;
+
+/** Catalogue of admin-configurable feature keys + their default tier mapping.
+ *  Mirrors the hard-coded fallback in server/entitlements.ts so the seeder
+ *  and the admin UI agree on the initial grid. */
+export const ENTITLEMENT_FEATURES = [
+  { key: "advanced_personalization", label: "Advanced personalization", description: "Personalised recommendations, AI-coached suggestions." },
+  { key: "ai_coach_full",           label: "AI Coach (full)",          description: "Unlimited AI accessibility coach conversations." },
+  { key: "ultra_audio_quality",     label: "Ultra audio quality",      description: "320 kbps HD audio streaming." },
+  { key: "multi_device_5plus",      label: "Multi-device (5+)",        description: "Sign in on 5 or more devices simultaneously." },
+  { key: "unlimited_tts",           label: "Unlimited text-to-speech", description: "Convert any ebook page to speech without daily caps." },
+  { key: "offline_downloads",       label: "Offline downloads",        description: "Download titles for offline listening." },
+] as const;
+export type EntitlementFeatureKey = typeof ENTITLEMENT_FEATURES[number]["key"];
+
+/** Default (featureKey × tier) → enabled mapping. Mirrors current code. */
+export const DEFAULT_ENTITLEMENT_MATRIX: Record<EntitlementFeatureKey, Record<SubscriptionTier, boolean>> = {
+  advanced_personalization: { free: false, plus: false, premium: true,  institutional: true,  admin: true },
+  ai_coach_full:            { free: false, plus: false, premium: true,  institutional: true,  admin: true },
+  ultra_audio_quality:      { free: false, plus: false, premium: true,  institutional: true,  admin: true },
+  multi_device_5plus:       { free: false, plus: false, premium: true,  institutional: true,  admin: true },
+  unlimited_tts:            { free: false, plus: false, premium: true,  institutional: true,  admin: true },
+  offline_downloads:        { free: false, plus: false, premium: true,  institutional: true,  admin: true },
+};
