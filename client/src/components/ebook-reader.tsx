@@ -211,24 +211,30 @@ export function EbookReader({ book, onBack }: EbookReaderProps) {
     );
   }
 
-  if (detectedFormat === "pdf") return <PdfViewer book={book} onBack={onBack} />;
-  if (detectedFormat === "epub") return <EpubViewer book={book} onBack={onBack} />;
-  return <TextReaderWithViewToggle book={book} onBack={onBack} />;
+  let classic: JSX.Element;
+  if (detectedFormat === "pdf") classic = <PdfViewer book={book} onBack={onBack} />;
+  else if (detectedFormat === "epub") classic = <EpubViewer book={book} onBack={onBack} />;
+  else classic = <TextReader book={book} onBack={onBack} />;
+  return <ReaderViewToggle book={book} onBack={onBack} classic={classic} />;
 }
 
-function TextReaderWithViewToggle({ book, onBack }: EbookReaderProps) {
+interface ReaderViewToggleProps extends EbookReaderProps {
+  classic: JSX.Element;
+}
+
+function ReaderViewToggle({ book, onBack, classic }: ReaderViewToggleProps) {
   const storageKey = `ebook-view-mode-${book.id}`;
-  const [view, setView] = useState<"text" | "flipbook">(() => {
+  const [view, setView] = useState<"classic" | "flipbook">(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      return saved === "flipbook" ? "flipbook" : "text";
+      return saved === "flipbook" ? "flipbook" : "classic";
     } catch {
-      return "text";
+      return "classic";
     }
   });
 
   const updateView = useCallback(
-    (next: "text" | "flipbook") => {
+    (next: "classic" | "flipbook") => {
       setView(next);
       try {
         localStorage.setItem(storageKey, next);
@@ -247,10 +253,10 @@ function TextReaderWithViewToggle({ book, onBack }: EbookReaderProps) {
         <span className="text-xs text-muted-foreground mr-2">View:</span>
         <Button
           size="sm"
-          variant={view === "text" ? "default" : "outline"}
-          onClick={() => updateView("text")}
-          aria-pressed={view === "text"}
-          data-testid="reader-view-text"
+          variant={view === "classic" ? "default" : "outline"}
+          onClick={() => updateView("classic")}
+          aria-pressed={view === "classic"}
+          data-testid="reader-view-classic"
         >
           Classic
         </Button>
@@ -267,7 +273,7 @@ function TextReaderWithViewToggle({ book, onBack }: EbookReaderProps) {
       {view === "flipbook" ? (
         <FlipbookReader book={book} onBack={onBack} />
       ) : (
-        <TextReader book={book} onBack={onBack} />
+        classic
       )}
     </div>
   );
