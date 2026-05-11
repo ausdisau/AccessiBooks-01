@@ -23,6 +23,7 @@ interface LiveEvent {
   scheduledEndAt: string;
   status: "scheduled" | "live" | "ended" | "canceled";
   replayUrl: string | null;
+  replayPreviewUrl: string | null;
   rsvpCount: number;
   attendedCount: number;
   freeReplayPreviewSeconds: number;
@@ -351,7 +352,7 @@ function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: 
             </Button>
           )}
 
-          {event.status === "ended" && event.replayUrl && (
+          {event.status === "ended" && (event.replayUrl || event.replayPreviewUrl) && (
             <>
               {/* Pre-replay sponsor card — free users only; suppressed server-side for Plus/Premium */}
               {(!user?.subscriptionTier || user.subscriptionTier === "free") && (
@@ -362,7 +363,11 @@ function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: 
                   <AdSlot placementId="event-replay-preroll" />
                 </div>
               )}
-              <ReplaySection access={detail?.replayAccess ?? "none"} replayUrl={event.replayUrl} previewSec={event.freeReplayPreviewSeconds} />
+              <ReplaySection
+                access={detail?.replayAccess ?? "none"}
+                replayUrl={event.replayUrl ?? event.replayPreviewUrl ?? ""}
+                previewSec={event.freeReplayPreviewSeconds}
+              />
             </>
           )}
 
