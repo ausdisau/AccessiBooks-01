@@ -16,6 +16,46 @@ import {
 import { sendEmail } from "./mailer";
 import { eq, sql, lt, and, isNotNull, ne, gte, lte, isNull } from "drizzle-orm";
 import { sendNotificationToUser, getNotificationPayload } from "./pushNotifications";
+import { engagementEvents } from "@shared/schema";
+import { analyticsService } from "./analyticsService";
+
+/**
+ * Record a per-user engagement event AND a tier-anonymised product event so
+ * the admin analytics dashboard can compute notification trigger health
+ * (sent / skipped / suppressed counts and per-category split).
+ */
+async function trackTrigger(
+  userId: string,
+  eventType: string,
+  category: NotificationType,
+  outcome: "sent" | "skipped" | "failed",
+  reason?: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await db.insert(engagementEvents).values({
+      userId,
+      eventType,
+      category,
+      outcome,
+      reason: reason ?? null,
+      metadata: metadata ?? null,
+    });
+  } catch {
+    // Engagement table may not yet be migrated — analytics path must never
+    // disrupt the trigger run.
+  }
+  try {
+    let tier = "unknown";
+    try {
+      const [u] = await db.select({ t: users.subscriptionTier }).from(users).where(eq(users.id, userId)).limit(1);
+      if (u?.t) tier = u.t;
+    } catch { /* best-effort */ }
+    analyticsService.track(`notification_${outcome}`, tier, {
+      eventType, category, reason: reason ?? null, ...(metadata ?? {}),
+    });
+  } catch { /* fire-and-forget */ }
+}
 
 /**
  * Engagement guardrails — respect Calm Mode, per-category opt-outs, quiet hours.
@@ -92,14 +132,18 @@ export async function checkStreakReminders(): Promise<number> {
         .limit(1);
 
       if (!todayLog || todayLog.minutesListened === 0) {
-        if (!(await shouldSendForUser(userId, "streak_at_risk"))) continue;
-        // Welcome-back framing: never shame, always invite
+        if (!(await shouldSendForUser(userId, "streak_at_risk"))) {
+          await trackTrigger(userId, "streak_reminder", "streak_at_risk", "skipped", "guardrail");
+          continue;
+        }
         const payload = getNotificationPayload("streak_at_risk", {
           streak: streak.currentStreak,
           minutes: 5,
         });
         const result = await sendNotificationToUser(userId, payload);
         sent += result.sent;
+        await trackTrigger(userId, "streak_reminder", "streak_at_risk",
+          result.sent > 0 ? "sent" : "failed", undefined, { streak: streak.currentStreak });
       }
     }
   } catch (error) {
@@ -139,12 +183,15 @@ export async function checkGoalNudges(): Promise<number> {
       const remaining = goal.dailyMinutesGoal - listened;
 
       if (remaining > 0 && remaining <= 15 && listened > 0) {
-        if (!(await shouldSendForUser(userId, "goal_nudge"))) continue;
-        const payload = getNotificationPayload("goal_nudge", {
-          remaining,
-        });
+        if (!(await shouldSendForUser(userId, "goal_nudge"))) {
+          await trackTrigger(userId, "goal_nudge", "goal_nudge", "skipped", "guardrail");
+          continue;
+        }
+        const payload = getNotificationPayload("goal_nudge", { remaining });
         const result = await sendNotificationToUser(userId, payload);
         sent += result.sent;
+        await trackTrigger(userId, "goal_nudge", "goal_nudge",
+          result.sent > 0 ? "sent" : "failed", undefined, { remaining });
       }
     }
   } catch (error) {
@@ -160,13 +207,18 @@ export async function sendAchievementNotification(
   achievementId: string,
 ): Promise<void> {
   try {
-    if (!(await shouldSendForUser(userId, "achievement"))) return;
+    if (!(await shouldSendForUser(userId, "achievement"))) {
+      await trackTrigger(userId, "achievement", "achievement", "skipped", "guardrail", { achievementId });
+      return;
+    }
     const payload = getNotificationPayload("achievement", {
       name: achievementName,
       xp: xpReward,
       achievementId,
     });
-    await sendNotificationToUser(userId, payload);
+    const result = await sendNotificationToUser(userId, payload);
+    await trackTrigger(userId, "achievement", "achievement",
+      result.sent > 0 ? "sent" : "failed", undefined, { achievementId, xpReward });
   } catch (error) {
     console.error("Achievement notification failed:", error);
   }
@@ -180,14 +232,19 @@ export async function sendNewContentNotification(
   contentId: string,
 ): Promise<void> {
   try {
-    if (!(await shouldSendForUser(userId, "new_content"))) return;
+    if (!(await shouldSendForUser(userId, "new_content"))) {
+      await trackTrigger(userId, "new_content", "new_content", "skipped", "guardrail", { contentId });
+      return;
+    }
     const payload = getNotificationPayload("new_content", {
       title,
       description,
       url: contentUrl,
       contentId,
     });
-    await sendNotificationToUser(userId, payload);
+    const result = await sendNotificationToUser(userId, payload);
+    await trackTrigger(userId, "new_content", "new_content",
+      result.sent > 0 ? "sent" : "failed", undefined, { contentId });
   } catch (error) {
     console.error("New content notification failed:", error);
   }
@@ -213,10 +270,15 @@ export async function checkReEngagement(): Promise<number> {
       .limit(50);
 
     for (const { userId } of inactiveUsers) {
-      if (!(await shouldSendForUser(userId, "re_engagement"))) continue;
+      if (!(await shouldSendForUser(userId, "re_engagement"))) {
+        await trackTrigger(userId, "re_engagement", "re_engagement", "skipped", "guardrail");
+        continue;
+      }
       const payload = getNotificationPayload("re_engagement");
       const result = await sendNotificationToUser(userId, payload);
       sent += result.sent;
+      await trackTrigger(userId, "re_engagement", "re_engagement",
+        result.sent > 0 ? "sent" : "failed");
     }
   } catch (error) {
     console.error("Re-engagement check failed:", error);
@@ -242,7 +304,10 @@ export async function checkWinBack(): Promise<number> {
       .limit(200);
 
     for (const { userId } of inactive) {
-      if (!(await shouldSendForUser(userId, "win_back"))) continue;
+      if (!(await shouldSendForUser(userId, "win_back"))) {
+        await trackTrigger(userId, "win_back", "win_back", "skipped", "guardrail");
+        continue;
+      }
 
       // Persistent single-send guard: do not send a second win-back to the same
       // user. Spec requires one message per inactivity episode.
@@ -254,6 +319,8 @@ export async function checkWinBack(): Promise<number> {
       const payload = getNotificationPayload("win_back");
       const result = await sendNotificationToUser(userId, payload);
       sent += result.sent;
+      await trackTrigger(userId, "win_back", "win_back",
+        result.sent > 0 ? "sent" : "failed");
 
       // Send accompanying email when configured. Category opt-out is already
       // honored above via shouldSendForUser; quietHours guards push timing only.
@@ -337,7 +404,11 @@ export async function checkEventReminders(): Promise<number> {
           if (hitsDay && sinceMs < 23 * 60 * 60 * 1000) continue; // 24h already sent
           if (hitsHour && sinceMs < 50 * 60 * 1000) continue;     // 1h already sent
         }
-        if (!(await shouldSendForUser(r.userId, "rsvp_reminder"))) continue;
+        if (!(await shouldSendForUser(r.userId, "rsvp_reminder"))) {
+          await trackTrigger(r.userId, "rsvp_reminder", "rsvp_reminder", "skipped", "guardrail",
+            { eventId: event.id, window: hitsHour ? "1h" : "24h" });
+          continue;
+        }
         const payload = getNotificationPayload("rsvp_reminder", {
           title: event.title,
           when: hitsHour ? "in about an hour" : "tomorrow",
@@ -346,6 +417,9 @@ export async function checkEventReminders(): Promise<number> {
         });
         const result = await sendNotificationToUser(r.userId, payload);
         sent += result.sent;
+        await trackTrigger(r.userId, "rsvp_reminder", "rsvp_reminder",
+          result.sent > 0 ? "sent" : "failed", undefined,
+          { eventId: event.id, window: hitsHour ? "1h" : "24h" });
         // Persist send-once marker so restarts/reruns don't double-send.
         await db.update(eventRsvps)
           .set({ reminderSentAt: now })
@@ -377,15 +451,23 @@ export async function checkWeeklyRecap(): Promise<number> {
       .innerJoin(users, eq(users.id, dailyListeningLog.userId))
       .where(and(gte(dailyListeningLog.date, wkAgoStr), sql`${users.email} IS NOT NULL`));
     for (const { userId } of recipients) {
-      if (!(await shouldSendForUser(userId, "weekly_recap"))) continue;
+      if (!(await shouldSendForUser(userId, "weekly_recap"))) {
+        await trackTrigger(userId, "weekly_recap", "weekly_recap", "skipped", "guardrail");
+        continue;
+      }
       const logs = await db.select().from(dailyListeningLog)
         .where(and(eq(dailyListeningLog.userId, userId), gte(dailyListeningLog.date, wkAgoStr)));
       const minutes = logs.reduce((s, l) => s + (l.minutesListened || 0), 0);
       const books = logs.reduce((s, l) => s + (l.booksCompleted || 0), 0);
-      if (minutes < 5) continue; // Don't spam users with empty weeks
+      if (minutes < 5) {
+        await trackTrigger(userId, "weekly_recap", "weekly_recap", "skipped", "empty_week", { minutes });
+        continue;
+      }
       const payload = getNotificationPayload("weekly_recap", { minutes, books });
       const result = await sendNotificationToUser(userId, payload);
       sent += result.sent;
+      await trackTrigger(userId, "weekly_recap", "weekly_recap",
+        result.sent > 0 ? "sent" : "failed", undefined, { minutes, books });
 
       // Accompanying weekly-recap email (category opt-out already enforced).
       try {
@@ -441,7 +523,10 @@ export async function checkFriendDigest(): Promise<number> {
 
     for (const c of candidateRows) {
       const followerId = c.follower_id;
-      if (!(await shouldSendForUser(followerId, "friend_digest"))) continue;
+      if (!(await shouldSendForUser(followerId, "friend_digest"))) {
+        await trackTrigger(followerId, "friend_digest", "friend_digest", "skipped", "guardrail");
+        continue;
+      }
 
       const [pref] = await db.select().from(accessibilityPreferences)
         .where(eq(accessibilityPreferences.userId, followerId)).limit(1);
@@ -475,6 +560,8 @@ export async function checkFriendDigest(): Promise<number> {
       });
       const result = await sendNotificationToUser(followerId, payload);
       sent += result.sent;
+      await trackTrigger(followerId, "friend_digest", "friend_digest",
+        result.sent > 0 ? "sent" : "failed", undefined, { count: newCount });
 
       // Persist marker so the next run only counts completions newer than this.
       const merged: A11yProfile = {
