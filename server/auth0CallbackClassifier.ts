@@ -11,50 +11,71 @@
  *   - err.oauthError.error is the bare error code (no body)
  *   - err.error is the bare error code (some passport-auth0 versions)
  *   - err.code is the bare error code (older versions / wrapped errors)
- *
- * The "unauthorized_client" code specifically means the Auth0 application
- * does not allow the `authorization_code` grant — the same misconfig the
- * boot probe in server/auth0Health.ts catches. Detecting it here lets us
- * (a) flip the cached health flag so subsequent /api/auth/auth0 starts
- * short-circuit immediately, and (b) redirect the user to the friendly
- * /?auth=unavailable page instead of the generic /?auth=failed.
  */
 
 export type Auth0CallbackErrorClassification =
   | { kind: "unauthorized_client"; reason: string }
   | { kind: "other"; code: string | null };
 
-export function classifyAuth0CallbackError(
-  err: unknown,
-): Auth0CallbackErrorClassification {
-  const e = err as any;
-  const oauthErr = e?.oauthError || e;
+interface OAuthErrorBody {
+  error?: unknown;
+  error_description?: unknown;
+}
 
-  // err.oauthError.data may be a raw JSON string from the token endpoint
-  // body, or it may already be parsed. Handle both shapes safely.
-  const data = (() => {
+interface OAuthErrorShape {
+  data?: unknown;
+  error?: unknown;
+  error_description?: unknown;
+}
+
+interface PassportAuth0ErrorShape {
+  oauthError?: OAuthErrorShape;
+  error?: unknown;
+  code?: unknown;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function parseDataField(data: unknown): OAuthErrorBody | null {
+  if (typeof data === "string") {
     try {
-      if (typeof oauthErr?.data === "string") {
-        return JSON.parse(oauthErr.data);
-      }
-      return oauthErr?.data ?? null;
+      const parsed = JSON.parse(data);
+      return isObject(parsed) ? (parsed as OAuthErrorBody) : null;
     } catch {
       return null;
     }
-  })();
+  }
+  return isObject(data) ? (data as OAuthErrorBody) : null;
+}
+
+export function classifyAuth0CallbackError(
+  err: unknown,
+): Auth0CallbackErrorClassification {
+  const errObj: PassportAuth0ErrorShape = isObject(err) ? err : {};
+  const oauthErr: OAuthErrorShape = isObject(errObj.oauthError)
+    ? errObj.oauthError
+    : (errObj as OAuthErrorShape);
+
+  const data = parseDataField(oauthErr.data);
 
   const code: string | null =
-    (typeof data?.error === "string" && data.error) ||
-    (typeof oauthErr?.error === "string" && oauthErr.error) ||
-    (typeof e?.code === "string" && e.code) ||
+    asString(data?.error) ??
+    asString(oauthErr.error) ??
+    asString(errObj.code) ??
     null;
 
   if (code === "unauthorized_client") {
-    const description =
-      (typeof data?.error_description === "string" && data.error_description) ||
-      (typeof oauthErr?.error_description === "string" && oauthErr.error_description) ||
+    const reason =
+      asString(data?.error_description) ??
+      asString(oauthErr.error_description) ??
       "unauthorized_client (authorization_code grant disabled)";
-    return { kind: "unauthorized_client", reason: description };
+    return { kind: "unauthorized_client", reason };
   }
 
   return { kind: "other", code };
