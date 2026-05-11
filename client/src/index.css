@@ -863,3 +863,156 @@ footer,
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ============================================================
+   Flipbook Reader — Stage 2: themes scoped to .flipbook-reader-root
+   These tokens drive the reading surface, toolbar, sidebar, and
+   page footer/border. They are independent of the global
+   light/dark/high-contrast tokens so the reader can present its
+   own theme regardless of the surrounding app shell.
+   ============================================================ */
+
+.flipbook-reader-root {
+  --reader-bg: hsl(0, 0%, 98%);
+  --reader-surface: hsl(0, 0%, 100%);
+  --reader-surface-muted: hsl(210, 20%, 96%);
+  --reader-text: hsl(222, 30%, 12%);
+  --reader-text-muted: hsl(222, 14%, 40%);
+  --reader-border: hsl(214, 24%, 86%);
+  --reader-accent: hsl(18, 95%, 52%);
+  --reader-accent-text: hsl(0, 0%, 100%);
+  --reader-focus: hsl(18, 95%, 52%);
+
+  /* Typography defaults (overridden by useReaderTheme inline style) */
+  --reader-font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --reader-font-size: 18px;
+  --reader-line-height: 1.6;
+  --reader-letter-spacing: 0em;
+  --reader-word-spacing: 0em;
+
+  background-color: var(--reader-bg);
+  color: var(--reader-text);
+}
+
+.flipbook-reader-root[data-reader-theme="sepia"] {
+  --reader-bg: hsl(38, 45%, 92%);
+  --reader-surface: hsl(36, 50%, 95%);
+  --reader-surface-muted: hsl(36, 38%, 88%);
+  --reader-text: hsl(28, 35%, 18%);
+  --reader-text-muted: hsl(28, 22%, 36%);
+  --reader-border: hsl(34, 30%, 72%);
+  --reader-accent: hsl(18, 80%, 42%);
+  --reader-accent-text: hsl(36, 50%, 97%);
+  --reader-focus: hsl(18, 80%, 42%);
+}
+
+.flipbook-reader-root[data-reader-theme="dark"] {
+  --reader-bg: hsl(0, 0%, 9%);
+  --reader-surface: hsl(0, 0%, 13%);
+  --reader-surface-muted: hsl(0, 0%, 17%);
+  --reader-text: hsl(0, 0%, 94%);
+  --reader-text-muted: hsl(0, 0%, 66%);
+  --reader-border: hsl(0, 0%, 24%);
+  --reader-accent: hsl(18, 95%, 60%);
+  --reader-accent-text: hsl(0, 0%, 100%);
+  --reader-focus: hsl(18, 95%, 60%);
+}
+
+.flipbook-reader-root[data-reader-theme="high-contrast"] {
+  --reader-bg: hsl(0, 0%, 100%);
+  --reader-surface: hsl(0, 0%, 100%);
+  --reader-surface-muted: hsl(0, 0%, 92%);
+  --reader-text: hsl(0, 0%, 0%);
+  --reader-text-muted: hsl(0, 0%, 0%);
+  --reader-border: hsl(0, 0%, 0%);
+  --reader-accent: hsl(0, 0%, 0%);
+  --reader-accent-text: hsl(0, 0%, 100%);
+  --reader-focus: hsl(220, 100%, 40%);
+}
+
+/* Apply tokens to the reader's chrome (toolbar, sidebar, page nav,
+   headers) by overriding the shadcn semantic tokens within scope. */
+.flipbook-reader-root,
+.flipbook-reader-root .bg-card,
+.flipbook-reader-root [data-testid="flipbook-settings-panel"],
+.flipbook-reader-root [data-testid="flipbook-toolbar"] {
+  --background: var(--reader-bg);
+  --foreground: var(--reader-text);
+  --card: var(--reader-surface);
+  --card-foreground: var(--reader-text);
+  --popover: var(--reader-surface);
+  --popover-foreground: var(--reader-text);
+  --muted: var(--reader-surface-muted);
+  --muted-foreground: var(--reader-text-muted);
+  --border: var(--reader-border);
+  --input: var(--reader-border);
+  --ring: var(--reader-focus);
+  --primary: var(--reader-accent);
+  --primary-foreground: var(--reader-accent-text);
+  --accent: var(--reader-accent);
+  --accent-foreground: var(--reader-accent-text);
+}
+
+/* The reading page surface itself — uses tokens directly so the page
+   stays themed even if the parent app toggles dark mode. */
+.flipbook-reading-surface {
+  background-color: var(--reader-surface);
+  color: var(--reader-text);
+  border-color: var(--reader-border);
+}
+
+.flipbook-reading-text {
+  color: var(--reader-text);
+}
+
+.flipbook-reading-footer {
+  color: var(--reader-text-muted);
+  border-color: var(--reader-border);
+}
+
+/* Maintain a clearly visible focus ring on every theme — required
+   for keyboard navigation to remain obvious in High Contrast / Dark. */
+.flipbook-reader-root *:focus-visible {
+  outline: 3px solid var(--reader-focus) !important;
+  outline-offset: 2px !important;
+}
+
+.flipbook-reader-root[data-reader-theme="high-contrast"] *:focus-visible {
+  outline-width: 4px !important;
+}
+
+/* Compact control density — applied via data-reader-density on the
+   reader root. Tightens toolbar/page-navigator padding and shrinks the
+   settings sidebar so keyboard-focused users can see more at once. */
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-toolbar"] {
+  padding: 0.375rem 0.5rem;
+  gap: 0.25rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-toolbar"] button {
+  height: 2rem;
+  width: 2rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-navigator"] {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-navigator"] button {
+  height: 2rem;
+  min-width: 2rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-settings-panel"] {
+  width: 18rem;
+}
+
+/* Reduced motion (preset-driven) — short-circuits the page-flip
+   animation regardless of OS preference, so users who pick a
+   "reduced motion" preset get the calm fade. */
+.flipbook-reader-root[data-reader-motion="reduced"] .flipbook-page-flip-next,
+.flipbook-reader-root[data-reader-motion="reduced"] .flipbook-page-flip-prev {
+  animation: none !important;
+  transition: opacity 0.12s linear !important;
+}
