@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
-import { Calendar, MessageSquare, Trophy, BarChart3, Sparkles, BookOpen } from "lucide-react";
+import { Calendar, MessageSquare, Trophy, BarChart3, Sparkles, BookOpen, Heart } from "lucide-react";
+import type { Book } from "@shared/schema";
 import { UpgradeNudge } from "@/components/upgrade-nudge";
 
 const ReferralSection = lazy(() => import('@/components/referral-section').then(m => ({ default: m.ReferralSection })));
@@ -20,11 +21,19 @@ interface HubData {
   plan: { tier: string; paid: boolean };
 }
 
+interface AuthUser { firstName?: string | null; subscriptionTier?: string | null; }
+
 export default function HubPage() {
-  const { user } = useAuth() as any;
+  const { user } = useAuth() as { user: AuthUser | null | undefined };
   const { data, isLoading } = useQuery<HubData>({
     queryKey: ["/api/hub"],
   });
+  const { data: forYou } = useQuery<{ recommendations: Book[] } | Book[]>({
+    queryKey: ["/api/recommendations"],
+  });
+  const forYouBooks: Book[] = Array.isArray(forYou)
+    ? forYou
+    : (forYou?.recommendations ?? []);
 
   if (isLoading) {
     return (
@@ -119,6 +128,47 @@ export default function HubPage() {
           />
         )}
       </div>
+
+      {/* For You rail — personalized recommendations */}
+      {forYouBooks.length > 0 && (
+        <Card data-testid="hub-for-you">
+          <CardHeader className="pb-3 flex-row items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Heart className="h-4 w-4 text-rose-500" aria-hidden="true" /> For you
+            </CardTitle>
+            <Link href="/">
+              <Button variant="ghost" size="sm" data-testid="hub-foryou-all">Browse library</Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {forYouBooks.slice(0, 6).map((b) => (
+                <li key={b.id} data-testid={`hub-foryou-${b.id}`}>
+                  <Link href={`/?book=${encodeURIComponent(b.id)}`}>
+                    <a className="block group focus-visible:ring-2 focus-visible:ring-primary rounded-md">
+                      {b.coverImage ? (
+                        <img
+                          src={b.coverImage}
+                          alt=""
+                          aria-hidden="true"
+                          loading="lazy"
+                          className="aspect-[2/3] w-full rounded-md object-cover bg-muted group-hover:opacity-90 transition"
+                        />
+                      ) : (
+                        <div className="aspect-[2/3] w-full rounded-md bg-muted flex items-center justify-center">
+                          <BookOpen className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+                        </div>
+                      )}
+                      <p className="text-xs font-medium mt-1 line-clamp-2">{b.title}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-1">{b.author}</p>
+                    </a>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Upcoming events */}

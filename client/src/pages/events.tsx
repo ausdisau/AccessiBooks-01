@@ -34,11 +34,31 @@ function formatWhen(iso: string) {
 
 const EVENTS_PAGE_SIZE = 5;
 
+interface AuthUser { id?: string; role?: string; subscriptionTier?: string | null; }
+
 export default function EventsPage() {
-  const { user } = useAuth() as any;
+  const { user } = useAuth() as { user: AuthUser | null | undefined };
+  const isAdmin = user?.role === "admin";
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [upcomingPage, setUpcomingPage] = useState(1);
   const [pastPage, setPastPage] = useState(1);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    title: "", description: "", eventType: "live_listen",
+    scheduledStartAt: "", durationMinutes: 60,
+  });
+  const { toast } = useToast();
+  const createMutation = useMutation({
+    mutationFn: async (payload: typeof newEvent) =>
+      apiRequest("POST", "/api/events", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      setShowCreate(false);
+      setNewEvent({ title: "", description: "", eventType: "live_listen", scheduledStartAt: "", durationMinutes: 60 });
+      toast({ title: "Event scheduled" });
+    },
+    onError: (e: any) => toast({ title: "Could not create event", description: e?.message ?? "Try again.", variant: "destructive" }),
+  });
 
   const { data, isLoading } = useQuery<{ upcoming: LiveEvent[]; past: LiveEvent[] }>({
     queryKey: ["/api/events"],
@@ -60,6 +80,83 @@ export default function EventsPage() {
           Author Q&amp;As, group listening parties, launches, and AMAs. Replays are free for the first 10 minutes.
         </p>
       </header>
+
+      {isAdmin && (
+        <section aria-labelledby="admin-create-heading" className="space-y-3" data-testid="section-admin-event-create">
+          <div className="flex items-center justify-between">
+            <h2 id="admin-create-heading" className="text-lg font-semibold">Admin · schedule an event</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCreate((s) => !s)}
+              aria-expanded={showCreate}
+              data-testid="btn-admin-toggle-create"
+            >
+              {showCreate ? "Cancel" : "New event"}
+            </Button>
+          </div>
+          {showCreate && (
+            <Card className="p-4 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="ev-title" className="text-sm font-medium">Title</label>
+                  <Input id="ev-title" value={newEvent.title}
+                    onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                    data-testid="input-event-title" />
+                </div>
+                <div>
+                  <label htmlFor="ev-type" className="text-sm font-medium">Type</label>
+                  <select id="ev-type" className="w-full border rounded-md h-10 px-2 bg-background"
+                    value={newEvent.eventType}
+                    onChange={(e) => setNewEvent({ ...newEvent, eventType: e.target.value })}
+                    data-testid="select-event-type">
+                    <option value="live_listen">Live listen</option>
+                    <option value="author_qa">Author Q&amp;A</option>
+                    <option value="ama">AMA</option>
+                    <option value="launch">Launch</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label htmlFor="ev-desc" className="text-sm font-medium">Description</label>
+                  <Input id="ev-desc" value={newEvent.description}
+                    onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                    data-testid="input-event-description" />
+                </div>
+                <div>
+                  <label htmlFor="ev-start" className="text-sm font-medium">Starts at</label>
+                  <Input id="ev-start" type="datetime-local" value={newEvent.scheduledStartAt}
+                    onChange={(e) => setNewEvent({ ...newEvent, scheduledStartAt: e.target.value })}
+                    data-testid="input-event-start" />
+                </div>
+                <div>
+                  <label htmlFor="ev-dur" className="text-sm font-medium">Duration (minutes)</label>
+                  <Input id="ev-dur" type="number" min={15} max={240} value={newEvent.durationMinutes}
+                    onChange={(e) => setNewEvent({ ...newEvent, durationMinutes: Number(e.target.value) })}
+                    data-testid="input-event-duration" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => {
+                    if (!newEvent.title || !newEvent.scheduledStartAt) {
+                      toast({ title: "Title and start time are required.", variant: "destructive" });
+                      return;
+                    }
+                    createMutation.mutate({
+                      ...newEvent,
+                      scheduledStartAt: new Date(newEvent.scheduledStartAt).toISOString(),
+                    });
+                  }}
+                  disabled={createMutation.isPending}
+                  data-testid="btn-admin-create-event"
+                >
+                  {createMutation.isPending ? "Saving…" : "Schedule event"}
+                </Button>
+              </div>
+            </Card>
+          )}
+        </section>
+      )}
 
       <section aria-labelledby="upcoming-heading" className="space-y-3">
         <h2 id="upcoming-heading" className="text-lg font-semibold">Upcoming &amp; live</h2>
@@ -109,7 +206,7 @@ export default function EventsPage() {
 }
 
 function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: boolean; onToggle: () => void }) {
-  const { user } = useAuth() as any;
+  const { user } = useAuth() as { user: AuthUser | null | undefined };
   const { toast } = useToast();
 
   const { data: detail } = useQuery<{
@@ -236,7 +333,7 @@ function ReplaySection({ access, replayUrl, previewSec }: { access: "none" | "pr
 }
 
 function EventChat({ eventId }: { eventId: string }) {
-  const { user } = useAuth() as any;
+  const { user } = useAuth() as { user: AuthUser | null | undefined };
   const [text, setText] = useState("");
   const { toast } = useToast();
 

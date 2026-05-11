@@ -53,7 +53,7 @@ interface Reply {
 const PAGE_SIZE = 20;
 
 export default function CommunityPage() {
-  const { user } = useAuth() as any;
+  const { user } = useAuth() as { user: { subscriptionTier?: string | null } | null | undefined };
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -69,7 +69,8 @@ export default function CommunityPage() {
   const topicId = currentTopic?.id;
 
   const { data: threadsData, isLoading: threadsLoading } = useQuery<{
-    threads: Thread[]; page: number; total: number; hasMore: boolean; premiumGated?: boolean;
+    threads: Thread[]; page: number; total: number; hasMore: boolean;
+    premiumGated?: boolean; upgradeReason?: string;
   }>({
     queryKey: ["/api/bulletin/threads", topicId, page],
     queryFn: async () => {

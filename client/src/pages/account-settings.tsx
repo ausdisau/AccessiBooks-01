@@ -592,15 +592,16 @@ export function AccountSettingsPage() {
           <div className="space-y-2">
             <Label className="font-medium">Notification categories</Label>
             <div className="space-y-2">
-              {[
+              {([
                 { key: "streak_at_risk", label: "Streak reminders" },
                 { key: "rsvp_reminder", label: "Event reminders" },
                 { key: "friend_digest", label: "Friend activity digest" },
                 { key: "weekly_recap", label: "Weekly recap" },
                 { key: "win_back", label: "Win-back emails" },
                 { key: "recommendation", label: "Recommendations" },
-              ].map((cat) => {
-                const checked = (localPrefs.notificationCategories ?? {})[cat.key as any] !== false;
+              ] as const).map((cat) => {
+                const cats = localPrefs.notificationCategories ?? {};
+                const checked = cats[cat.key] !== false;
                 return (
                   <div key={cat.key} className="flex items-center justify-between">
                     <Label htmlFor={`notify-${cat.key}`} className="text-sm">{cat.label}</Label>
@@ -609,9 +610,9 @@ export function AccountSettingsPage() {
                       data-testid={`switch-notify-${cat.key}`}
                       checked={checked}
                       onCheckedChange={(v) => updatePref("notificationCategories", {
-                        ...(localPrefs.notificationCategories ?? {}),
+                        ...cats,
                         [cat.key]: v,
-                      } as any)}
+                      })}
                     />
                   </div>
                 );
