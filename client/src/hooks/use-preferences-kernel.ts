@@ -21,6 +21,8 @@ interface A11yProfile {
   darkMode: boolean;
   karaokeFollowAlong: boolean;
   rewardedAdPreference: "always" | "never" | "ask";
+  sensoryMode?: boolean;
+  sensoryModeChosen?: boolean;
 }
 
 interface A11yPreset {
@@ -46,6 +48,8 @@ const DEFAULT_PROFILE: A11yProfile = {
   darkMode: false,
   karaokeFollowAlong: false,
   rewardedAdPreference: "ask",
+  sensoryMode: false,
+  sensoryModeChosen: false,
 };
 
 function profileFromLocalStorage(): A11yProfile {

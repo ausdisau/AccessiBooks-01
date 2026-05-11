@@ -140,16 +140,22 @@ export function AccountSettingsPage() {
     },
   });
 
+  // Pending patch accumulates fields between debounced flushes so that
+  // back-to-back updatePref() calls (e.g. setting two related fields in
+  // the same handler) all reach the server in a single PUT instead of
+  // the last-write-wins behavior the previous implementation had.
+  const pendingPatchRef = useRef<Partial<A11yProfile>>({});
+
   const updatePref = useCallback(
     <K extends keyof A11yProfile>(key: K, value: A11yProfile[K]) => {
-      setLocalPrefs((prev) => {
-        const next = { ...prev, [key]: value };
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-          saveMutation.mutate({ [key]: value });
-        }, 500);
-        return next;
-      });
+      setLocalPrefs((prev) => ({ ...prev, [key]: value }));
+      pendingPatchRef.current = { ...pendingPatchRef.current, [key]: value };
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        const patch = pendingPatchRef.current;
+        pendingPatchRef.current = {};
+        if (Object.keys(patch).length > 0) saveMutation.mutate(patch);
+      }, 500);
     },
     [saveMutation],
   );
@@ -659,6 +665,54 @@ export function AccountSettingsPage() {
               </p>
             </div>
           )}
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Section 4c — Sensory Regulation Mode (Task #65) */}
+      <section aria-labelledby="section-sensory-heading" data-testid="section-sensory">
+        <h2 id="section-sensory-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Accessibility className="h-5 w-5 text-indigo-600" />
+          Low Sensory Mode
+        </h2>
+        <div className="rounded-lg border p-4 space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="sensory-mode" className="font-medium" aria-describedby="sensory-mode-desc">
+                Low Sensory Mode
+              </Label>
+              <Switch
+                id="sensory-mode"
+                data-testid="switch-sensory-mode"
+                checked={!!localPrefs.sensoryMode}
+                onCheckedChange={(v) => {
+                  updatePref("sensoryMode", v);
+                  // Mark as explicitly chosen so the OS-level auto-enable
+                  // notice does not re-fire on subsequent loads.
+                  updatePref("sensoryModeChosen", true);
+                }}
+              />
+            </div>
+            <p id="sensory-mode-desc" className="text-xs text-muted-foreground">
+              A single switch that calms the whole app — softer motion, quieter
+              audio peaks, and a simpler layout. Helpful for sensory sensitivity,
+              vestibular concerns, or when you just want less.
+            </p>
+          </div>
+          <details className="text-xs text-muted-foreground border-t pt-3">
+            <summary className="cursor-pointer font-medium text-foreground">
+              What does this change?
+            </summary>
+            <ul className="mt-2 space-y-1 list-disc pl-5">
+              <li>Animations and transitions are reduced to nearly instant.</li>
+              <li>Decorative images, gradients, and parallax effects are hidden.</li>
+              <li>The audio player applies a gentle peak limiter so loud spikes
+                  (ad cues, chapter intros) are softened.</li>
+              <li>Existing reduced-motion and reduce-distraction settings remain
+                  available below as fine-grained overrides.</li>
+            </ul>
+          </details>
         </div>
       </section>
 

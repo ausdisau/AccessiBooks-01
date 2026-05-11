@@ -144,6 +144,107 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     // Only apply on initial profile load (when currentBook is null) to avoid stomping user changes during playback
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a11yPrefsData?.profile?.playbackSpeed]);
+
+  // ─── Sensory Regulation Mode: Web Audio peak-limiter ─────────────────
+  // When sensoryMode is on, route the <audio> element through a
+  // DynamicsCompressor + soft GainNode to soften loud spikes (ad cues,
+  // chapter intros). When off, disconnect the chain and route the source
+  // straight to destination so non-sensory users hear no change.
+  const sensoryMode = !!a11yPrefsData?.profile?.sensoryMode;
+  const webAudioCtxRef = useRef<AudioContext | null>(null);
+  const webAudioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const webAudioCompressorRef = useRef<DynamicsCompressorNode | null>(null);
+  const webAudioGainRef = useRef<GainNode | null>(null);
+  const webAudioActiveRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (typeof window === "undefined") return;
+    const Ctx: typeof AudioContext | undefined =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return; // Web Audio unsupported — silently skip.
+
+    const enable = () => {
+      try {
+        if (!webAudioCtxRef.current) webAudioCtxRef.current = new Ctx();
+        const ctx = webAudioCtxRef.current;
+        if (!webAudioSourceRef.current) {
+          // createMediaElementSource may only be called once per element.
+          webAudioSourceRef.current = ctx.createMediaElementSource(audio);
+        }
+        const src = webAudioSourceRef.current;
+        if (!webAudioCompressorRef.current) {
+          const comp = ctx.createDynamicsCompressor();
+          // Gentle limiter: catches peaks without obvious pumping.
+          comp.threshold.setValueAtTime(-18, ctx.currentTime);
+          comp.knee.setValueAtTime(12, ctx.currentTime);
+          comp.ratio.setValueAtTime(4, ctx.currentTime);
+          comp.attack.setValueAtTime(0.003, ctx.currentTime);
+          comp.release.setValueAtTime(0.25, ctx.currentTime);
+          webAudioCompressorRef.current = comp;
+        }
+        if (!webAudioGainRef.current) {
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.85, ctx.currentTime);
+          webAudioGainRef.current = g;
+        }
+        // Reset connections then build the limiter chain.
+        try { src.disconnect(); } catch {}
+        src.connect(webAudioCompressorRef.current!);
+        webAudioCompressorRef.current!.disconnect();
+        webAudioCompressorRef.current!.connect(webAudioGainRef.current!);
+        webAudioGainRef.current!.disconnect();
+        webAudioGainRef.current!.connect(ctx.destination);
+        webAudioActiveRef.current = true;
+      } catch (err) {
+        // Don't break playback if Web Audio fails (e.g. CORS on audio src).
+        console.warn("[sensoryMode] Web Audio limiter unavailable:", err);
+      }
+    };
+
+    const disable = () => {
+      const src = webAudioSourceRef.current;
+      const ctx = webAudioCtxRef.current;
+      if (!src || !ctx) return;
+      try {
+        src.disconnect();
+        if (webAudioCompressorRef.current) webAudioCompressorRef.current.disconnect();
+        if (webAudioGainRef.current) webAudioGainRef.current.disconnect();
+        // Bypass: route source directly to destination so the user still
+        // hears audio after toggling off.
+        src.connect(ctx.destination);
+      } catch (err) {
+        console.warn("[sensoryMode] Failed to bypass limiter:", err);
+      }
+      webAudioActiveRef.current = false;
+    };
+
+    if (sensoryMode) {
+      enable();
+    } else if (webAudioActiveRef.current) {
+      disable();
+    }
+  }, [sensoryMode]);
+
+  // Tear down the Web Audio graph on provider unmount so we don't leak
+  // nodes or AudioContext instances across hot-reloads / route changes.
+  useEffect(() => {
+    return () => {
+      try { webAudioSourceRef.current?.disconnect(); } catch {}
+      try { webAudioCompressorRef.current?.disconnect(); } catch {}
+      try { webAudioGainRef.current?.disconnect(); } catch {}
+      const ctx = webAudioCtxRef.current;
+      if (ctx && ctx.state !== "closed") {
+        ctx.close().catch(() => {});
+      }
+      webAudioSourceRef.current = null;
+      webAudioCompressorRef.current = null;
+      webAudioGainRef.current = null;
+      webAudioCtxRef.current = null;
+      webAudioActiveRef.current = false;
+    };
+  }, []);
   const externalChapterEndRef = useRef<(() => void) | null>(null);
   const stallRecoveryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const networkRetryCountRef = useRef(0);
