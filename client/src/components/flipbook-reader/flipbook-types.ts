@@ -85,6 +85,10 @@ export interface AnnotationPanelProps {
   currentPage: number;
   getSelectedText: () => string;
   onAnnounce: (message: string) => void;
+  /** Optional storage adapter — when omitted, falls back to the local
+   *  default. Threaded from FlipbookReader's unified ReaderSessionStorage
+   *  so that swapping persistence to a backend happens in one place. */
+  storage?: import("./annotation-storage").AnnotationStorage;
 }
 
 export interface KeyboardShortcutHelpProps {
