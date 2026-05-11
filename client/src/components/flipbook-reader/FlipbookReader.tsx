@@ -55,13 +55,6 @@ function usePrefersReducedMotion(): boolean {
 
 interface FlipbookReaderInternalProps extends FlipbookReaderProps {
   sessionStorage?: ReaderSessionStorage;
-  /**
-   * Stage 6 — pluggable content source. Defaults to the in-memory demo
-   * provider so existing callers keep working unchanged. A future EPUB
-   * parser, mock API, or audiobook transcript feed can swap in here without
-   * any renderer changes.
-   */
-  contentProvider?: FlipbookContentProvider;
 }
 
 type ContentLoadState =
@@ -85,6 +78,11 @@ export function FlipbookReader({
     status: "loading",
   });
 
+  // Use stable identity fields rather than the full `book` object so a
+  // parent that recreates the object reference (e.g. on every render) does
+  // not trigger redundant reloads / flicker.
+  const bookId = bookKey;
+  const bookTitle = book.title;
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
@@ -105,7 +103,11 @@ export function FlipbookReader({
       cancelled = true;
       controller.abort();
     };
-  }, [book, contentProvider]);
+    // `book` is intentionally omitted — we depend only on its stable identity
+    // fields. The provider is captured at call time and reads any other
+    // metadata it needs from the snapshot it received.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId, bookTitle, contentProvider]);
 
   const pages: FlipbookPage[] =
     contentState.status === "ready" ? contentState.content.pages : [];
