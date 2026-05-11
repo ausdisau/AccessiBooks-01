@@ -179,8 +179,23 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [coachSeed, setCoachSeed] = useState<string | undefined>(undefined);
   const [donateOpen, setDonateOpen] = useState(false);
-  
+
+  // Voice intents in MainApp (Task #68) dispatch this event with an
+  // optional seeded message. We capture the message into state so the
+  // coach panel can auto-send it as soon as it finishes initializing,
+  // avoiding the race where the panel's own listener isn't mounted yet.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (detail?.message) setCoachSeed(detail.message);
+      setCoachOpen(true);
+    };
+    document.addEventListener("accessibooks:open-coach", handler);
+    return () => document.removeEventListener("accessibooks:open-coach", handler);
+  }, []);
+
   const handleLogout = () => {
     window.location.href = "/api/logout";
   };
@@ -335,7 +350,12 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
       </div>
     )}
     <AiChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
-    <AccessibilityCoachPanel isOpen={coachOpen} onClose={() => setCoachOpen(false)} />
+    <AccessibilityCoachPanel
+      isOpen={coachOpen}
+      onClose={() => setCoachOpen(false)}
+      seedMessage={coachSeed}
+      onSeedConsumed={() => setCoachSeed(undefined)}
+    />
 
     <Dialog open={donateOpen} onOpenChange={setDonateOpen}>
       <DialogContent className="sm:max-w-md">
@@ -1472,7 +1492,60 @@ function MainApp() {
       },
       description: "Search for a book by name",
     },
-  ], [isPlaying, togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate]);
+    {
+      patterns: ["explain this", "explain this passage", "what does this mean", "what's happening"],
+      handler: () => {
+        document.dispatchEvent(
+          new CustomEvent("accessibooks:open-coach", {
+            detail: { message: "Explain what I'm currently listening to in simple terms." },
+          }),
+        );
+        toast({
+          title: "Asking the coach",
+          description: "Opening your Accessibility Coach to explain this passage.",
+          duration: 2500,
+        });
+      },
+      description: "Ask the coach to explain the current passage",
+    },
+    {
+      patterns: ["find easier books", "easier books", "find easy books", "show me easier books"],
+      handler: () => {
+        document.dispatchEvent(
+          new CustomEvent("accessibooks:open-coach", {
+            detail: {
+              message:
+                "Find me easier books — short chapters, simple language, or Easy English titles. Audiobooks are great too.",
+            },
+          }),
+        );
+        toast({
+          title: "Looking for easier books",
+          description: "Opening your Accessibility Coach to find easier titles.",
+          duration: 2500,
+        });
+      },
+      description: "Ask the coach for easier books",
+    },
+    {
+      patterns: [
+        "enable low sensory mode",
+        "low sensory mode",
+        "enable sensory mode",
+        "turn on low sensory mode",
+        "turn on sensory mode",
+      ],
+      handler: () => {
+        sensoryMutation.mutate({ sensoryMode: true, sensoryModeChosen: true });
+        toast({
+          title: "Low Sensory Mode is on",
+          description: "Softened motion and audio peaks. Disable any time from Settings.",
+          duration: 3000,
+        });
+      },
+      description: "Turn on Low Sensory Mode",
+    },
+  ], [isPlaying, togglePlayPause, skip, nextChapter, prevChapter, changeSpeed, toggleMute, toggleHighContrast, toggleDarkMode, navigate, sensoryMutation, toast]);
 
   const voiceControl = useVoiceControl({
     commands: voiceCommands,

@@ -212,7 +212,79 @@ function checkAndIncrementGuest(req: Request): { allowed: boolean; remaining: nu
   return { allowed: true, remaining: GUEST_LIMIT - entry.count };
 }
 
+interface SegmentBody {
+  text?: unknown;
+  mode?: unknown;
+  context?: unknown;
+}
+
 export function registerCoachRoutes(app: Express): void {
+  // Inline transcript helper (Task #68): given a single transcript segment
+  // (or short passage) and a mode, return a one-paragraph explanation or a
+  // simplified rewrite. Non-streaming JSON so it's cheap to call from many
+  // per-segment buttons. Guests share the same daily quota as /api/coach.
+  app.post("/api/coach/segment", async (req: Request, res: Response) => {
+    try {
+      const r = req as Request & {
+        isAuthenticated?: () => boolean;
+        user?: { id?: string };
+      };
+      const authed = typeof r.isAuthenticated === "function" && r.isAuthenticated();
+
+      const body = (req.body ?? {}) as SegmentBody;
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      const mode = body.mode === "simplify" ? "simplify" : "explain";
+      const context = typeof body.context === "string" ? body.context.trim().slice(0, 500) : "";
+
+      if (!text) return res.status(400).json({ error: "text is required" });
+      if (text.length > 2000) return res.status(400).json({ error: "text too long" });
+
+      if (!authed) {
+        const { allowed } = checkAndIncrementGuest(req);
+        if (!allowed) {
+          return res.status(403).json({
+            error: "guest_limit",
+            message: "Sign in to keep using the inline coach.",
+          });
+        }
+      }
+
+      if (!hasOpenAI || !openai) {
+        return res.json({
+          mode,
+          content:
+            mode === "simplify"
+              ? "(AI assistant unavailable right now — please try again later.)"
+              : "(AI assistant unavailable right now — please try again later.)",
+        });
+      }
+
+      const system =
+        mode === "simplify"
+          ? "You rewrite short audiobook passages in plain, simple English at roughly a US 5th-grade reading level. Keep the meaning intact. Use short sentences. Reply with only the rewritten passage — no preface, no quotes."
+          : "You explain short audiobook passages in 1-2 short paragraphs. Be warm and concrete. Avoid jargon. If the passage is dialogue, briefly describe what's happening. Reply with only the explanation — no preface.";
+
+      const userPrompt = context
+        ? `Surrounding context:\n${context}\n\nPassage:\n${text}`
+        : text;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userPrompt },
+        ],
+        max_completion_tokens: 400,
+      });
+
+      const content = completion.choices[0]?.message?.content?.trim() ?? "";
+      return res.json({ mode, content });
+    } catch (err) {
+      console.error("[Coach segment] Error:", err);
+      return res.status(500).json({ error: "Coach segment error" });
+    }
+  });
+
   app.post("/api/coach", async (req: Request, res: Response) => {
     try {
       const r = req as Request & {

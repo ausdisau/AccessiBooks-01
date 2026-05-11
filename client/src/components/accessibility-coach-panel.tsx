@@ -177,9 +177,19 @@ function buildGreeting(prefs: A11yPrefs | undefined, isAuthenticated: boolean): 
 interface AccessibilityCoachPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Optional message to auto-send once the panel is open + initialized.
+   *  Used by voice intents like "explain this" / "find easier books". */
+  seedMessage?: string;
+  /** Called after a seedMessage has been consumed so the parent can clear it. */
+  onSeedConsumed?: () => void;
 }
 
-export function AccessibilityCoachPanel({ isOpen, onClose }: AccessibilityCoachPanelProps) {
+export function AccessibilityCoachPanel({
+  isOpen,
+  onClose,
+  seedMessage,
+  onSeedConsumed,
+}: AccessibilityCoachPanelProps) {
   const { toast } = useToast();
   const { isAuthenticated } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -368,6 +378,22 @@ export function AccessibilityCoachPanel({ isOpen, onClose }: AccessibilityCoachP
       abortRef.current = null;
     }
   }, [isStreaming, messages, sessionCount, isAuthenticated, toast]);
+
+  // Auto-send a seeded prompt from voice intents (Task #68). The parent
+  // captures the message synchronously when the open-coach event fires
+  // and passes it down — we wait until the panel is open + initialized
+  // and not already streaming, then send it exactly once.
+  const lastSeedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !initialized || !seedMessage || isStreaming) return;
+    if (lastSeedRef.current === seedMessage) return;
+    lastSeedRef.current = seedMessage;
+    sendMessage(seedMessage);
+    onSeedConsumed?.();
+  }, [isOpen, initialized, seedMessage, isStreaming, sendMessage, onSeedConsumed]);
+  useEffect(() => {
+    if (!isOpen) lastSeedRef.current = null;
+  }, [isOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
