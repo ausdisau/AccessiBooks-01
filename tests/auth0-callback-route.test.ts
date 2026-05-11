@@ -12,11 +12,12 @@
  * passport state or hitting the live Auth0 tenant.
  *
  * Required contract (from Task #140 / #145):
- *   - upstream `unauthorized_client`     → 302 /?auth=unavailable
- *   - any other auth error               → 302 /?auth=failed
- *   - !user (no error, no profile)       → 302 /?auth=failed
- *   - login session write failure        → 302 /?auth=failed
- *   - success                            → 302 /
+ *   - upstream `unauthorized_client`           → 302 /?auth=unavailable
+ *   - other auth error w/ known code           → 302 /?auth=failed&reason=<code>
+ *   - other auth error w/ unknown/no code      → 302 /?auth=failed
+ *   - !user (no error, no profile)             → 302 /?auth=failed&reason=no_profile
+ *   - login session write failure              → 302 /?auth=failed&reason=session_error
+ *   - success                                  → 302 /
  *
  * Run: npx tsx tests/auth0-callback-route.test.ts
  */
@@ -173,7 +174,7 @@ async function run() {
 
   // ── Branch 2: any other auth error → /?auth=failed ────────────────────────
   await test(
-    "callback with invalid_grant error redirects to /?auth=failed (and does NOT flip health flag)",
+    "callback with invalid_grant error redirects to /?auth=failed&reason=invalid_grant (and does NOT flip health flag)",
     async () => {
       let marked = false;
       const app = await bootHandler({
@@ -189,7 +190,7 @@ async function run() {
       try {
         const r = await app.get("/cb");
         assertEq(r.status, 302, "status");
-        assertEq(r.location, "/?auth=failed", "Location");
+        assertEq(r.location, "/?auth=failed&reason=invalid_grant", "Location");
         if (marked) {
           throw new Error(
             "markUnusable must NOT be called for non-unauthorized_client errors",
@@ -202,7 +203,7 @@ async function run() {
   );
 
   await test(
-    "callback with access_denied error redirects to /?auth=failed",
+    "callback with access_denied error redirects to /?auth=failed&reason=access_denied",
     async () => {
       const app = await bootHandler({
         fire: (cb) => cb({ oauthError: { error: "access_denied" } }, null),
@@ -210,7 +211,7 @@ async function run() {
       try {
         const r = await app.get("/cb");
         assertEq(r.status, 302, "status");
-        assertEq(r.location, "/?auth=failed", "Location");
+        assertEq(r.location, "/?auth=failed&reason=access_denied", "Location");
       } finally {
         await app.close();
       }
@@ -218,7 +219,7 @@ async function run() {
   );
 
   await test(
-    "callback with a plain network Error redirects to /?auth=failed",
+    "callback with a plain network Error (no OAuth code) redirects to /?auth=failed (no reason)",
     async () => {
       const app = await bootHandler({
         fire: (cb) => cb(new Error("ECONNRESET"), null),
@@ -233,11 +234,13 @@ async function run() {
     },
   );
 
-  // ── Branch 3: !err but !user → /?auth=failed ──────────────────────────────
   await test(
-    "callback with no error but no user redirects to /?auth=failed",
+    "callback with an unknown OAuth code (not on the whitelist) redirects to /?auth=failed (reason stripped)",
     async () => {
-      const app = await bootHandler({ fire: (cb) => cb(null, false) });
+      const app = await bootHandler({
+        fire: (cb) =>
+          cb({ oauthError: { error: "some_made_up_code" } }, null),
+      });
       try {
         const r = await app.get("/cb");
         assertEq(r.status, 302, "status");
@@ -248,9 +251,24 @@ async function run() {
     },
   );
 
-  // ── Branch 4: login session write failure → /?auth=failed ─────────────────
+  // ── Branch 3: !err but !user → /?auth=failed&reason=no_profile ────────────
   await test(
-    "callback with valid user but req.logIn failure redirects to /?auth=failed",
+    "callback with no error but no user redirects to /?auth=failed&reason=no_profile",
+    async () => {
+      const app = await bootHandler({ fire: (cb) => cb(null, false) });
+      try {
+        const r = await app.get("/cb");
+        assertEq(r.status, 302, "status");
+        assertEq(r.location, "/?auth=failed&reason=no_profile", "Location");
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  // ── Branch 4: login session write failure → /?auth=failed&reason=session_error ──
+  await test(
+    "callback with valid user but req.logIn failure redirects to /?auth=failed&reason=session_error",
     async () => {
       const app = await bootHandler({
         fire: (cb) => cb(null, { id: 42, email: "x@example.com" }),
@@ -260,7 +278,11 @@ async function run() {
       try {
         const r = await app.get("/cb");
         assertEq(r.status, 302, "status");
-        assertEq(r.location, "/?auth=failed", "Location");
+        assertEq(
+          r.location,
+          "/?auth=failed&reason=session_error",
+          "Location",
+        );
       } finally {
         await app.close();
       }

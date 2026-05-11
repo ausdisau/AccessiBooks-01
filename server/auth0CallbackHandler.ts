@@ -5,9 +5,10 @@
  * The handler's contract — pinned by tests/auth0-callback-route.test.ts:
  *   - upstream `unauthorized_client` error → 302 /?auth=unavailable
  *     (and the auth0Health flag is flipped via markUnusable)
- *   - any other auth error             → 302 /?auth=failed
- *   - !user (no error, no profile)    → 302 /?auth=failed
- *   - login session write failure     → 302 /?auth=failed
+ *   - any other auth error with a known code → 302 /?auth=failed&reason=<code>
+ *   - any other auth error with no code      → 302 /?auth=failed
+ *   - !user (no error, no profile)    → 302 /?auth=failed&reason=no_profile
+ *   - login session write failure     → 302 /?auth=failed&reason=session_error
  *   - success                         → 302 /
  */
 
@@ -33,6 +34,31 @@ function getErrorMessage(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Whitelist of OAuth/Auth0 error codes we expose to the client UI.
+ * Anything not on this list is dropped (rendered as a generic failure)
+ * so we don't leak unexpected upstream strings into the URL bar.
+ */
+const KNOWN_REASON_CODES = new Set<string>([
+  "access_denied",
+  "invalid_grant",
+  "invalid_request",
+  "login_required",
+  "consent_required",
+  "interaction_required",
+  "server_error",
+  "temporarily_unavailable",
+  "no_profile",
+  "session_error",
+]);
+
+function failedRedirect(reason: string | null | undefined): string {
+  if (reason && KNOWN_REASON_CODES.has(reason)) {
+    return `/?auth=failed&reason=${encodeURIComponent(reason)}`;
+  }
+  return "/?auth=failed";
+}
+
 function getReqLogIn(req: Request): LogInFn | undefined {
   const candidate = (req as Request & { logIn?: unknown }).logIn;
   return typeof candidate === "function"
@@ -56,19 +82,19 @@ export function makeAuth0CallbackHandler(deps: {
           return res.redirect("/?auth=unavailable");
         }
         warn("[Auth0] Callback error:", classified.code ?? getErrorMessage(err));
-        return res.redirect("/?auth=failed");
+        return res.redirect(failedRedirect(classified.code));
       }
-      if (!user) return res.redirect("/?auth=failed");
+      if (!user) return res.redirect(failedRedirect("no_profile"));
 
       const logIn = getReqLogIn(req);
       if (!logIn) {
         warn("[Auth0] req.logIn missing; cannot establish session");
-        return res.redirect("/?auth=failed");
+        return res.redirect(failedRedirect("session_error"));
       }
       logIn(user, (loginErr) => {
         if (loginErr) {
           warn("[Auth0] Session login failed:", getErrorMessage(loginErr));
-          return res.redirect("/?auth=failed");
+          return res.redirect(failedRedirect("session_error"));
         }
         return res.redirect("/");
       });

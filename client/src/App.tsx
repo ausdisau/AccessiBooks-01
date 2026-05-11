@@ -2213,13 +2213,57 @@ function App() {
     }
     const authStatus = params.get("auth");
     if (authStatus === "failed") {
+      const reason = params.get("reason");
       window.history.replaceState({}, "", window.location.pathname);
+      const messageByReason: Record<string, { title: string; description: string }> = {
+        access_denied: {
+          title: "Sign-in canceled",
+          description: "You canceled the sign-in. No problem — try again whenever you're ready.",
+        },
+        consent_required: {
+          title: "Permission needed",
+          description: "We need your permission to sign you in. Please try again and approve the request.",
+        },
+        login_required: {
+          title: "Please sign in again",
+          description: "Your session with the sign-in provider expired. Please try signing in again.",
+        },
+        interaction_required: {
+          title: "Extra step needed",
+          description: "Your sign-in provider needs an extra step. Please try again in a new window.",
+        },
+        invalid_grant: {
+          title: "Sign-in link expired",
+          description: "Your sign-in attempt expired or was already used. Please try again.",
+        },
+        invalid_request: {
+          title: "Sign-in request was invalid",
+          description: "Something was off with that sign-in request. Please try again.",
+        },
+        server_error: {
+          title: "Sign-in provider error",
+          description: "The sign-in provider had a problem on their end. Please try again in a moment.",
+        },
+        temporarily_unavailable: {
+          title: "Sign-in temporarily unavailable",
+          description: "The sign-in provider is briefly unavailable. Please try again in a minute.",
+        },
+        no_profile: {
+          title: "Sign-in incomplete",
+          description: "We didn't receive your profile from the sign-in provider. Please try again.",
+        },
+        session_error: {
+          title: "Couldn't start your session",
+          description: "We signed you in, but couldn't save your session. Please try again.",
+        },
+      };
+      const fallback = {
+        title: "Sign-in failed",
+        description: "We couldn't sign you in with that account. Please try again or use a different method.",
+      };
+      const msg = (reason && messageByReason[reason]) || fallback;
       setTimeout(() => {
-        toast({
-          title: "Sign-in failed",
-          description: "We couldn't sign you in with that account. Please try again or use a different method.",
-          variant: "destructive",
-        });
+        toast({ ...msg, variant: "destructive" });
       }, 300);
     }
     if (authStatus === "unavailable") {
