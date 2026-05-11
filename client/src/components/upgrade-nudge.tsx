@@ -102,7 +102,15 @@ export function UpgradeNudge({ surface, reason, onUpgrade, capPerSession = true 
             {reason ?? "Ad-free listening, unlimited skips, and HD audio — your pace, no interruptions."}
           </p>
           <div className="flex flex-wrap items-center gap-2 mt-3">
-            <Button size="sm" onClick={onUpgrade} data-testid={`nudge-upgrade-${surface}`}>
+            <Button
+              size="sm"
+              onClick={() => {
+                // Fire-and-forget conversion-attribution event for admin engagement analytics.
+                apiRequest("POST", "/api/nudge/clicked", { surface }).catch(() => {});
+                onUpgrade?.();
+              }}
+              data-testid={`nudge-upgrade-${surface}`}
+            >
               See plans
             </Button>
             <Button

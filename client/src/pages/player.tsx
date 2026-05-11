@@ -3,8 +3,9 @@ import { Book } from "@shared/schema";
 import { AudioPlayer } from "@/components/audio-player";
 import { BookReviews } from "@/components/book-reviews";
 import { ShareButton } from "@/components/share-button";
+import { ClipShareDialog } from "@/components/clip-share-dialog";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, User } from "lucide-react";
+import { ArrowLeft, User, Scissors } from "lucide-react";
 import { AudioAdInterstitial, RewardedAdInterstitial, useAudioAds } from "@/components/audio-ad-interstitial";
 import { useAudioContext } from "@/contexts/AudioContext";
 import { useRewardedAd } from "@/hooks/use-rewarded-ad";
@@ -22,7 +23,8 @@ interface PlayerProps {
 
 export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
   const { booksPlayed, incrementBooksPlayed, onAdComplete } = useAudioAds();
-  const { onTrackEndCallback, onChapterEndCallback } = useAudioContext();
+  const { onTrackEndCallback, onChapterEndCallback, currentTime } = useAudioContext();
+  const [clipOpen, setClipOpen] = useState(false);
   const { tier } = useSubscription();
   const isFree = tier === "free";
   const { offer, isEligible, activeRewards, completeReward, startSession, isCompleting } = useRewardedAd();
@@ -173,7 +175,23 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
             </Button>
           )}
           <ShareButton book={book} variant="button" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setClipOpen(true)}
+            data-testid="btn-open-clip-share"
+          >
+            <Scissors className="h-4 w-4 mr-2" aria-hidden="true" />
+            Share clip
+          </Button>
         </div>
+        <ClipShareDialog
+          open={clipOpen}
+          onOpenChange={setClipOpen}
+          bookId={book.id}
+          bookTitle={book.title}
+          currentTime={currentTime}
+        />
       </div>
 
       {/* Suppress the prompt entirely when preference is "never"; auto-accept ("always")

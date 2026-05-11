@@ -68,6 +68,31 @@ export const AD_PLACEMENT_REGISTRY: Record<string, AdPlacement> = {
     a11y_suppress_if: [],
     format: "rewarded",
   },
+  // Task #64: Engagement & Monetization placements
+  "hub-banner": {
+    id: "hub-banner",
+    type: "display",
+    dimensions: { width: 728, height: 90 },
+    tier_eligible: ["free"],
+    a11y_suppress_if: ["focusMode", "focusShell", "reduceDistractionMode"],
+    format: "display_banner",
+  },
+  "community-thread": {
+    id: "community-thread",
+    type: "display",
+    dimensions: { width: 300, height: 250 },
+    tier_eligible: ["free"],
+    a11y_suppress_if: ["focusMode", "focusShell", "reduceDistractionMode"],
+    format: "display_banner",
+  },
+  "event-replay-preroll": {
+    id: "event-replay-preroll",
+    type: "display",
+    dimensions: { width: 300, height: 250 },
+    tier_eligible: ["free"],
+    a11y_suppress_if: ["focusMode", "focusShell"],
+    format: "display_banner",
+  },
 };
 
 export function getPlacement(placementId: string): AdPlacement | null {
