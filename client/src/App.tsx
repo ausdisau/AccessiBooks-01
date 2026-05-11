@@ -1134,6 +1134,45 @@ function MainApp() {
     document.documentElement.classList.toggle("reduce-distraction", reduce);
   }, [a11yPrefs?.profile?.reduceDistractionMode]);
 
+  // ─── Sensory Regulation Mode (Task #65) ────────────────────────────
+  // Toggles the .sensory-mode class on <html> from server preferences,
+  // and on first load (when the user has not explicitly chosen yet)
+  // mirrors the OS-level prefers-reduced-motion setting with a
+  // dismissible toast notice.
+  const sensoryMode = !!a11yPrefs?.profile?.sensoryMode;
+  useEffect(() => {
+    document.documentElement.classList.toggle("sensory-mode", sensoryMode);
+  }, [sensoryMode]);
+
+  const sensoryAutoToastShown = useRef(false);
+  const { toast: sensoryToast } = useToast();
+  const sensoryMutation = useMutation({
+    mutationFn: (profile: Record<string, unknown>) =>
+      apiRequest("PUT", "/api/a11y/preferences", { profile }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/a11y/preferences"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/summary"] });
+    },
+  });
+  useEffect(() => {
+    if (!a11yPrefs) return;
+    if (sensoryAutoToastShown.current) return;
+    const chosen = !!a11yPrefs.profile?.sensoryModeChosen;
+    if (chosen) return;
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!prefersReduced) return;
+    sensoryAutoToastShown.current = true;
+    // Auto-enable + persist; the user can disable from Settings.
+    sensoryMutation.mutate({ sensoryMode: true, sensoryModeChosen: true });
+    sensoryToast({
+      title: "Low Sensory Mode is on",
+      description:
+        "We softened motion and audio peaks based on your system settings. You can change this in Settings.",
+      duration: 8000,
+    });
+  }, [a11yPrefs, sensoryMutation, sensoryToast]);
+
   const skipForwardSec = Number(a11yPrefs?.profile?.preferredSkipForward ?? 30);
   const skipBackSec = Number(a11yPrefs?.profile?.preferredSkipBack ?? 30);
 

@@ -1634,6 +1634,15 @@ export interface A11yProfile {
   /** ISO timestamp — most-recent friend-digest send. Used to dedupe so a digest
    *  only fires when there are *new* completions since the last successful send. */
   lastFriendDigestSentAt?: string | null;
+  /** @default false — Sensory Regulation Mode: dampens animation, simplifies
+   *  layout (hides decorative imagery, gradients, parallax), and applies a
+   *  Web-Audio peak-limiter to the player. Existing reducedMotion /
+   *  reduceDistractionMode flags remain available as fine-grained overrides. */
+  sensoryMode?: boolean;
+  /** Set to true once the user has acknowledged (or dismissed) the auto-enable
+   *  notice triggered by OS-level prefers-reduced-motion on first load. Prevents
+   *  re-prompting and prevents auto-toggling when the user explicitly chose. */
+  sensoryModeChosen?: boolean;
 }
 
 export const DEFAULT_A11Y_PROFILE: A11yProfile = {
@@ -1670,6 +1679,8 @@ export const DEFAULT_A11Y_PROFILE: A11yProfile = {
   timezone: null,
   lastWinBackSentAt: null,
   lastFriendDigestSentAt: null,
+  sensoryMode: false,
+  sensoryModeChosen: false,
 };
 
 export const bookTranscripts = pgTable("book_transcripts", {

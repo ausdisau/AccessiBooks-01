@@ -314,6 +314,30 @@ async function runTests() {
     }
   });
 
+  // ── Sensory Regulation Mode (Task #65) round-trip ──────────────────────
+  await test("PUT /api/a11y/preferences persists sensoryMode and sensoryModeChosen", async () => {
+    if (!authReady) throw new SkipError();
+    const putRes = await request("/api/a11y/preferences", {
+      method: "PUT",
+      cookie: sessionCookie!,
+      body: { profile: { sensoryMode: true, sensoryModeChosen: true } },
+    });
+    if (putRes.status !== 200) throw new Error(`PUT expected 200, got ${putRes.status}`);
+
+    const getRes = await request("/api/a11y/preferences", { cookie: sessionCookie! });
+    const body = (await getRes.json()) as { profile: Record<string, unknown> };
+    if (body.profile.sensoryMode !== true) {
+      throw new Error(`sensoryMode not persisted; got ${body.profile.sensoryMode}`);
+    }
+    if (body.profile.sensoryModeChosen !== true) {
+      throw new Error(`sensoryModeChosen not persisted; got ${body.profile.sensoryModeChosen}`);
+    }
+    // Deep-merge invariant: previously-set fields must remain.
+    if (body.profile.preferredSkipForward !== 30) {
+      throw new Error(`Deep-merge violated by sensoryMode patch (preferredSkipForward=${body.profile.preferredSkipForward}, expected 30)`);
+    }
+  });
+
   // ── Plus/Premium ad-free fork: tier exposed on /api/settings/summary ─────
   await test("GET /api/settings/summary exposes subscriptionTier so the UI can render the ad-free fork", async () => {
     if (!authReady) throw new SkipError();

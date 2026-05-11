@@ -250,6 +250,25 @@ export function PreferencesKernel({
                 />
               </div>
 
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="kernel-sensory-mode" className="dark:text-gray-300">
+                    Low Sensory Mode
+                  </Label>
+                  <Switch
+                    id="kernel-sensory-mode"
+                    data-testid="kernel-switch-sensory-mode"
+                    checked={!!profile.sensoryMode}
+                    onCheckedChange={(v) =>
+                      updateProfile({ sensoryMode: v, sensoryModeChosen: true })
+                    }
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground dark:text-gray-400">
+                  Softer motion, simpler layout, and a gentler audio peak limiter.
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="dark:text-gray-300">Playback Speed</Label>

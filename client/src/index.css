@@ -415,6 +415,57 @@ p, li, blockquote, .prose {
 }
 
 /* ============================================================
+   Sensory Regulation Mode — single user-facing toggle that
+   dampens animation, hides decorative imagery/gradients, and
+   simplifies non-essential layout. Audio softening is handled
+   in the player via Web Audio (AudioContext.tsx). All rules
+   are scoped to .sensory-mode on <html>.
+   ============================================================ */
+
+.sensory-mode *,
+.sensory-mode *::before,
+.sensory-mode *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+.sensory-mode .animate-pulse,
+.sensory-mode .animate-spin,
+.sensory-mode .animate-bounce,
+.sensory-mode .premium-card-animated,
+.sensory-mode .premium-shimmer-bg {
+  animation: none !important;
+  background-image: none !important;
+}
+
+/* Flatten decorative gradients to a single calm tone */
+.sensory-mode .premium-hero-gradient,
+.sensory-mode .premium-shimmer-bg,
+.sensory-mode [data-decorative-gradient="true"] {
+  background-image: none !important;
+  background: hsl(var(--muted)) !important;
+}
+
+/* Hide purely decorative imagery */
+.sensory-mode [aria-hidden="true"] img,
+.sensory-mode .decorative-image,
+.sensory-mode .hero-banner-image,
+.sensory-mode .book-cover-decoration,
+.sensory-mode [data-decorative="true"] {
+  display: none !important;
+}
+
+/* Disable parallax / sticky decorative effects */
+.sensory-mode [data-parallax="true"],
+.sensory-mode .parallax {
+  transform: none !important;
+  position: static !important;
+  background-attachment: scroll !important;
+}
+
+/* ============================================================
    Cognitive Focus Mode — hides distracting UI elements so the
    user can concentrate on the current book and audio player.
    All rules are scoped to .focus-mode on <html>.
