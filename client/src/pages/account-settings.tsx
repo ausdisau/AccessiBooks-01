@@ -619,6 +619,21 @@ export function AccountSettingsPage() {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="hub-as-home" className="font-medium">Make Hub my home page</Label>
+              <Switch
+                id="hub-as-home"
+                data-testid="switch-hub-as-home"
+                checked={localPrefs.hubAsHome !== false}
+                onCheckedChange={(v) => updatePref("hubAsHome", v)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              When on, signing in lands on your engagement Hub instead of the library.
+            </p>
+          </div>
+
           {isFree && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">

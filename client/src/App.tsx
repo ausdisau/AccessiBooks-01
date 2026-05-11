@@ -1136,6 +1136,18 @@ function MainApp() {
   const skipForwardSec = Number(a11yPrefs?.profile?.preferredSkipForward ?? 30);
   const skipBackSec = Number(a11yPrefs?.profile?.preferredSkipBack ?? 30);
 
+  // Hub-as-home (Task #64): when the user opts in (default for new accounts),
+  // the root path lands on the engagement Hub. Disable via Settings → Calm Mode.
+  useEffect(() => {
+    if (!a11yPrefs) return;
+    const hubAsHome = a11yPrefs.profile?.hubAsHome !== false;
+    const onceKey = "accessibooks-hub-home-redirected";
+    if (hubAsHome && location === "/" && !sessionStorage.getItem(onceKey)) {
+      sessionStorage.setItem(onceKey, "1");
+      navigate("/hub");
+    }
+  }, [a11yPrefs, location, navigate]);
+
   const { currentBook, isPlaying, playBook, togglePlayPause, toggleMute, skip, changeSpeed, nextChapter, prevChapter, onTrackEndCallback, adState, adLoading } = useAudioContext();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focusMode, setFocusModeState] = useState(() => !!localStorageService.getSettings().focusMode);
