@@ -14,7 +14,10 @@ const DEFAULT_FONT_SIZE = 18;
 function bookmarksKey(bookId: string) {
   return `ebook-bookmarks-${bookId}`;
 }
-function settingsKey(bookId: string) {
+function fontSizeKey(bookId: string) {
+  return `ebook-fontsize-${bookId}`;
+}
+function legacySettingsKey(bookId: string) {
   return `ebook-settings-${bookId}`;
 }
 
@@ -56,7 +59,14 @@ function persistBookmarks(bookId: string, bookmarks: Bookmark[]) {
 
 function loadFontSizeFromStorage(bookId: string): number {
   try {
-    const raw = localStorage.getItem(settingsKey(bookId));
+    // Prefer the provider-owned key (cannot be clobbered by component settings writes).
+    const ownRaw = localStorage.getItem(fontSizeKey(bookId));
+    if (ownRaw) {
+      const fs = Number(JSON.parse(ownRaw));
+      if (Number.isFinite(fs) && fs > 0) return fs;
+    }
+    // Fall back to legacy ebook-settings-* one-time so existing users don't lose their value.
+    const raw = localStorage.getItem(legacySettingsKey(bookId));
     if (!raw) return DEFAULT_FONT_SIZE;
     const parsed = JSON.parse(raw);
     const fs = Number(parsed?.fontSize);
@@ -68,9 +78,7 @@ function loadFontSizeFromStorage(bookId: string): number {
 
 function persistFontSize(bookId: string, fontSize: number) {
   try {
-    const raw = localStorage.getItem(settingsKey(bookId));
-    const parsed = raw ? JSON.parse(raw) : {};
-    localStorage.setItem(settingsKey(bookId), JSON.stringify({ ...parsed, fontSize }));
+    localStorage.setItem(fontSizeKey(bookId), JSON.stringify(fontSize));
   } catch {}
 }
 
