@@ -672,6 +672,42 @@ footer,
   }
 }
 
+/* ============================================================
+   Flipbook Focus Mode — scoped to the flipbook reader root via
+   `.flipbook-focus-mode`. Quiets surrounding chrome (toolbar,
+   navigator, header) without removing them, narrows the reading
+   column, and gives the open page a soft glow so the eye lands
+   on the text. The toggle button itself stays at full opacity
+   so it never feels lost.
+   ============================================================ */
+.flipbook-focus-mode .flipbook-chrome {
+  opacity: 0.45;
+  transition: opacity 0.25s ease;
+}
+.flipbook-focus-mode .flipbook-chrome:hover,
+.flipbook-focus-mode .flipbook-chrome:focus-within {
+  opacity: 1;
+}
+.flipbook-focus-mode [data-testid="flipbook-btn-focus-mode"] {
+  opacity: 1 !important;
+}
+.flipbook-focus-mode .flipbook-reading-area {
+  padding: 1rem 0.5rem;
+}
+.flipbook-focus-mode .flipbook-reading-column {
+  max-width: 42rem;
+  margin: 0 auto;
+  box-shadow: 0 0 0 1px var(--fb-border), 0 8px 32px -8px rgba(0, 0, 0, 0.18);
+  border-radius: 0.75rem;
+  transition: box-shadow 0.25s ease, max-width 0.25s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flipbook-focus-mode .flipbook-chrome,
+  .flipbook-focus-mode .flipbook-reading-column {
+    transition: none;
+  }
+}
+
 .dark.high-contrast {
   --background: hsl(0, 0%, 0%);
   --foreground: hsl(0, 0%, 100%);

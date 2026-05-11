@@ -11,6 +11,7 @@ import {
   Pause,
   Play,
   Square,
+  Focus,
 } from "lucide-react";
 import type { ReaderToolbarProps } from "./flipbook-types";
 
@@ -24,11 +25,14 @@ export function ReaderToolbar({
   onToggleSettings,
   onToggleAnnotations,
   onToggleShortcuts,
+  onToggleFocusMode,
+  focusMode,
   settingsOpen,
   annotationsOpen,
   shortcutsOpen,
   settingsButtonRef,
   annotationsButtonRef,
+  searchInputRef,
   ttsSupported,
   ttsState,
   onReadAloud,
@@ -91,6 +95,7 @@ export function ReaderToolbar({
           />
           <Input
             id="flipbook-search"
+            ref={searchInputRef}
             type="search"
             placeholder="Search in book…"
             value={searchQuery}
@@ -176,12 +181,24 @@ export function ReaderToolbar({
           <MessageSquare className="h-4 w-4" aria-hidden="true" />
         </Button>
         <Button
+          variant={focusMode ? "default" : "outline"}
+          size="icon"
+          onClick={onToggleFocusMode}
+          aria-label={focusMode ? "Turn off Focus Mode" : "Turn on Focus Mode"}
+          aria-pressed={focusMode}
+          title="Focus Mode (F)"
+          data-testid="flipbook-btn-focus-mode"
+        >
+          <Focus className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <Button
           variant={shortcutsOpen ? "default" : "outline"}
           size="icon"
           onClick={onToggleShortcuts}
           aria-label="Keyboard shortcuts"
           aria-expanded={shortcutsOpen}
           aria-haspopup="dialog"
+          title="Keyboard shortcuts (?)"
           data-testid="flipbook-btn-shortcuts"
         >
           <Keyboard className="h-4 w-4" aria-hidden="true" />

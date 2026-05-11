@@ -30,11 +30,14 @@ export interface ReaderToolbarProps {
   onToggleSettings: () => void;
   onToggleAnnotations: () => void;
   onToggleShortcuts: () => void;
+  onToggleFocusMode: () => void;
+  focusMode: boolean;
   settingsOpen: boolean;
   annotationsOpen: boolean;
   shortcutsOpen: boolean;
   settingsButtonRef?: React.Ref<HTMLButtonElement>;
   annotationsButtonRef?: React.Ref<HTMLButtonElement>;
+  searchInputRef?: React.Ref<HTMLInputElement>;
   ttsSupported: boolean;
   ttsState: TtsState;
   onReadAloud: () => void;
