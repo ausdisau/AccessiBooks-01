@@ -224,6 +224,8 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
         currentPage={currentPage}
         totalPages={totalPages}
         onJumpTo={(p) => goToPage(p)}
+        onPrev={goPrev}
+        onNext={goNext}
       />
 
       <div className="flex-1 flex min-h-0">

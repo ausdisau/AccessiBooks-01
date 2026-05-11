@@ -1,10 +1,17 @@
 import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { PageNavigatorProps } from "./flipbook-types";
 
-export function PageNavigator({ currentPage, totalPages, onJumpTo }: PageNavigatorProps) {
+export function PageNavigator({
+  currentPage,
+  totalPages,
+  onJumpTo,
+  onPrev,
+  onNext,
+}: PageNavigatorProps) {
   const [jumpValue, setJumpValue] = useState("");
 
   const handleJump = (e: React.FormEvent) => {
@@ -22,6 +29,39 @@ export function PageNavigator({ currentPage, totalPages, onJumpTo }: PageNavigat
       className="flex flex-col gap-3 p-3 border-b border-border bg-muted/40"
       data-testid="flipbook-navigator"
     >
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onPrev}
+          disabled={currentPage <= 1}
+          aria-label="Previous page"
+          data-testid="flipbook-nav-prev"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          Prev
+        </Button>
+        <span
+          className="text-sm font-medium tabular-nums"
+          aria-live="off"
+          data-testid="flipbook-nav-count"
+        >
+          Page {currentPage} of {totalPages}
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onNext}
+          disabled={currentPage >= totalPages}
+          aria-label="Next page"
+          data-testid="flipbook-nav-next"
+        >
+          Next
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
       <form onSubmit={handleJump} className="flex items-center gap-2">
         <label htmlFor="flipbook-jump" className="text-xs font-medium text-muted-foreground">
           Jump to
