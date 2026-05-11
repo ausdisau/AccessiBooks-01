@@ -1643,6 +1643,16 @@ export interface A11yProfile {
    *  notice triggered by OS-level prefers-reduced-motion on first load. Prevents
    *  re-prompting and prevents auto-toggling when the user explicitly chose. */
   sensoryModeChosen?: boolean;
+  /** @default false — Low-Bandwidth Mode (Task #66): forces lowest-bitrate audio
+   *  stream (128 kbps SD) regardless of subscription tier, suppresses video and
+   *  animated ad creatives, and tells the ebook reader to hide decorative
+   *  imagery / disable Visual Reading. Designed for slow networks, capped data
+   *  plans, and low-end devices. */
+  lowBandwidthMode?: boolean;
+  /** @default false — Text-Only ebook reading: hides covers, illustrations, and
+   *  the Visual Reading background video. Independent of lowBandwidthMode so
+   *  users on fast networks can still strip visual chrome from the reader. */
+  textOnlyMode?: boolean;
 }
 
 export const DEFAULT_A11Y_PROFILE: A11yProfile = {
@@ -1681,6 +1691,8 @@ export const DEFAULT_A11Y_PROFILE: A11yProfile = {
   lastFriendDigestSentAt: null,
   sensoryMode: false,
   sensoryModeChosen: false,
+  lowBandwidthMode: false,
+  textOnlyMode: false,
 };
 
 export const bookTranscripts = pgTable("book_transcripts", {

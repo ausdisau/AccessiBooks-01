@@ -23,6 +23,8 @@ interface A11yProfile {
   rewardedAdPreference: "always" | "never" | "ask";
   sensoryMode?: boolean;
   sensoryModeChosen?: boolean;
+  lowBandwidthMode?: boolean;
+  textOnlyMode?: boolean;
 }
 
 interface A11yPreset {
@@ -50,6 +52,8 @@ const DEFAULT_PROFILE: A11yProfile = {
   rewardedAdPreference: "ask",
   sensoryMode: false,
   sensoryModeChosen: false,
+  lowBandwidthMode: false,
+  textOnlyMode: false,
 };
 
 function profileFromLocalStorage(): A11yProfile {

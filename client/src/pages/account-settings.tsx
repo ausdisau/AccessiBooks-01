@@ -19,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { PlanBadge } from "@/components/plan-badge";
 import { PreferencesKernel } from "@/components/preferences-kernel";
 import { PremiumUpgradeModal } from "@/components/premium-upgrade-modal";
+import { OfflineDownloads } from "@/components/offline-downloads";
 import { useSubscription } from "@/hooks/use-subscription";
 import {
   Crown,
@@ -30,6 +31,7 @@ import {
   Loader2,
   Check,
   X,
+  Wifi,
 } from "lucide-react";
 import type { A11yProfile } from "@shared/schema";
 
@@ -119,6 +121,20 @@ export function AccountSettingsPage() {
       document.documentElement.classList.toggle("reduce-distraction", !!localPrefs.reduceDistractionMode);
     }
   }, [localPrefs.reduceDistractionMode]);
+
+  // Low-Bandwidth + Text-Only modes ride on the same documentElement-class
+  // pattern so the global CSS rules in index.css can take effect immediately
+  // without waiting for the next route change.
+  useEffect(() => {
+    if (localPrefs.lowBandwidthMode !== undefined) {
+      document.documentElement.classList.toggle("low-bandwidth-mode", !!localPrefs.lowBandwidthMode);
+    }
+  }, [localPrefs.lowBandwidthMode]);
+  useEffect(() => {
+    if (localPrefs.textOnlyMode !== undefined) {
+      document.documentElement.classList.toggle("text-only-mode", !!localPrefs.textOnlyMode);
+    }
+  }, [localPrefs.textOnlyMode]);
 
   const saveMutation = useMutation({
     mutationFn: (profile: Partial<A11yProfile>) =>
@@ -713,6 +729,75 @@ export function AccountSettingsPage() {
                   available below as fine-grained overrides.</li>
             </ul>
           </details>
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Section 4d — Low-Bandwidth & Text-Only (Task #66) */}
+      <section aria-labelledby="section-bandwidth-heading" data-testid="section-bandwidth">
+        <h2 id="section-bandwidth-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Wifi className="h-5 w-5 text-sky-600" />
+          Low-Bandwidth &amp; Text-Only
+        </h2>
+        <div className="rounded-lg border p-4 space-y-5">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label
+                htmlFor="low-bandwidth-mode"
+                className="font-medium"
+                aria-describedby="low-bandwidth-desc"
+              >
+                Low-Bandwidth Mode
+              </Label>
+              <Switch
+                id="low-bandwidth-mode"
+                data-testid="switch-low-bandwidth"
+                checked={!!localPrefs.lowBandwidthMode}
+                onCheckedChange={(v) => updatePref("lowBandwidthMode", v)}
+              />
+            </div>
+            <p id="low-bandwidth-desc" className="text-xs text-muted-foreground">
+              Forces audio to the lowest-bitrate stream (128 kbps) regardless of your plan,
+              suppresses video and animated ads, and tells the ebook reader to skip background
+              videos. Helpful on slow networks or capped data plans.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label
+                htmlFor="text-only-mode"
+                className="font-medium"
+                aria-describedby="text-only-desc"
+              >
+                Text-Only ebook reading
+              </Label>
+              <Switch
+                id="text-only-mode"
+                data-testid="switch-text-only"
+                checked={!!localPrefs.textOnlyMode}
+                onCheckedChange={(v) => updatePref("textOnlyMode", v)}
+              />
+            </div>
+            <p id="text-only-desc" className="text-xs text-muted-foreground">
+              Hides covers, illustrations, and the Visual Reading background video so only the
+              text remains.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Section 4e — Storage & Downloads (Task #66) */}
+      <section aria-labelledby="section-storage-heading" data-testid="section-storage">
+        <h2 id="section-storage-heading" className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Wifi className="h-5 w-5 text-muted-foreground" />
+          Storage &amp; Downloads
+        </h2>
+        <div className="rounded-lg border p-4">
+          <OfflineDownloads />
         </div>
       </section>
 

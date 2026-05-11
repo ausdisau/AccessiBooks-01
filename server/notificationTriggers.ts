@@ -160,6 +160,7 @@ export async function sendAchievementNotification(
   achievementId: string,
 ): Promise<void> {
   try {
+    if (!(await shouldSendForUser(userId, "achievement"))) return;
     const payload = getNotificationPayload("achievement", {
       name: achievementName,
       xp: xpReward,
@@ -179,6 +180,7 @@ export async function sendNewContentNotification(
   contentId: string,
 ): Promise<void> {
   try {
+    if (!(await shouldSendForUser(userId, "new_content"))) return;
     const payload = getNotificationPayload("new_content", {
       title,
       description,

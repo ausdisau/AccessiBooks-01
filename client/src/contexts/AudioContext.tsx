@@ -475,8 +475,19 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, []);
 
-  // Compute stream quality info from subscription tier
+  // Read low-bandwidth preference up-front so the stream-quality memo can
+  // clamp regardless of subscription tier. Single shared kernel read, reused
+  // by the ad-hooks block below.
+  const { profile: a11yProfile } = usePreferencesKernel();
+  const lowBandwidthMode = !!(a11yProfile as Partial<SharedA11yProfile>).lowBandwidthMode;
+
+  // Compute stream quality info from subscription tier — but Low-Bandwidth
+  // Mode (Task #66) forces SD/128kbps for every tier so users on slow or
+  // metered connections can opt out of higher-bitrate streams entirely.
   const streamQuality = useMemo<StreamQualityInfo>(() => {
+    if (lowBandwidthMode) {
+      return { quality: "low", bitrate: 128, label: "SD · 128 kbps (Low-Bandwidth)", tier: "sd" };
+    }
     if (subscriptionTier === "premium") {
       return { quality: "ultra", bitrate: 320, label: "UHQ · 320 kbps", tier: "uhq" };
     }
@@ -484,7 +495,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       return { quality: "mid", bitrate: 192, label: "HD · 192 kbps", tier: "hd" };
     }
     return { quality: "low", bitrate: 128, label: "SD · 128 kbps", tier: "sd" };
-  }, [subscriptionTier]);
+  }, [subscriptionTier, lowBandwidthMode]);
 
   // Fetch flat transcript segments when book changes — used by the sentence boundary guard in the ad hook
   useEffect(() => {
@@ -512,7 +523,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // a server-side source; until then, the service config acts as the kill-switch layer).
   // Honor user's rewarded-ad preference (always | never | ask) at the audio
   // ad decision surface. "never" suppresses pre/mid-roll entirely.
-  const { profile: a11yProfile } = usePreferencesKernel();
   // Mirror the auto-advance preference into a ref so the chapter-tracking effect
   // can read the latest value without re-subscribing on every preference change.
   // Treat undefined as `true` to preserve the documented default behaviour.
