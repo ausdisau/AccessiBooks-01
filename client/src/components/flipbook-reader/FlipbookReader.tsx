@@ -30,28 +30,13 @@ import {
   type ReaderSessionStorage,
 } from "./session-storage";
 import { useFlipbookShortcuts } from "./use-flipbook-shortcuts";
-
-const DEMO_PARAGRAPHS = [
-  "Welcome to the AccessiBooks flipbook reader. Stage 5 hardens the reader for daily use with full session persistence, comprehensive keyboard shortcuts, and a calm Focus Mode.",
-  "Use the Read Aloud button in the toolbar — or press R — to listen to the current page. Press S to stop. Adjust the voice, speaking rate, pitch, and volume from the settings panel.",
-  "Type at least two characters in the search field to scan every page. Press / to jump straight into the search field. The results list shows match counts per page and the first matching snippet — choose any result to jump there.",
-  "Open the Settings panel with G or Annotations with A. Both panels share their state with the toolbar buttons and announce themselves to screen readers using polite live updates.",
-  "Press F at any time to toggle Focus Mode. Surrounding controls quiet down, the reading column narrows, and the page itself gains a soft glow. Your choice is remembered the next time you open this book.",
-  "Use the previous and next buttons in the toolbar, swipe on touch devices, or press the Left and Right arrow keys to turn pages. Page Up and Page Down work too, and Home or End jump to the first or last page.",
-  "Open the keyboard shortcuts help from the toolbar or by pressing the question-mark key. Every binding is listed there with a clear description.",
-  "When you have asked your operating system to reduce motion, the page-flip animation gracefully degrades to a quick fade so the reader stays comfortable.",
-];
-
-function buildDemoPages(title: string): FlipbookPage[] {
-  return Array.from({ length: 12 }, (_, i) => {
-    const para = DEMO_PARAGRAPHS[i % DEMO_PARAGRAPHS.length];
-    return {
-      id: `demo-${i + 1}`,
-      pageNumber: i + 1,
-      content: `${title} — sample chapter\n\n${para}\n\nThis is page ${i + 1} of the demo content. Real book data and an EPUB-ready architecture arrive in Stage 6.`,
-    };
-  });
-}
+import {
+  demoContentProvider,
+  type FlipbookContentProvider,
+} from "./content-provider";
+import type { FlipbookBookContent } from "./flipbook-content-types";
+import { useReadAlong } from "./use-readalong";
+import { BookOpen, AlertTriangle } from "lucide-react";
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => {
@@ -70,17 +55,61 @@ function usePrefersReducedMotion(): boolean {
 
 interface FlipbookReaderInternalProps extends FlipbookReaderProps {
   sessionStorage?: ReaderSessionStorage;
+  /**
+   * Stage 6 — pluggable content source. Defaults to the in-memory demo
+   * provider so existing callers keep working unchanged. A future EPUB
+   * parser, mock API, or audiobook transcript feed can swap in here without
+   * any renderer changes.
+   */
+  contentProvider?: FlipbookContentProvider;
 }
+
+type ContentLoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; content: FlipbookBookContent };
 
 export function FlipbookReader({
   book,
   onBack,
   sessionStorage = localReaderSessionStorage,
+  contentProvider = demoContentProvider,
 }: FlipbookReaderInternalProps) {
   const reducedMotion = usePrefersReducedMotion();
-  const pages = useMemo(() => buildDemoPages(book.title), [book.title]);
-  const totalPages = pages.length;
   const bookKey = String(book.id);
+
+  // ── Content ingestion (Stage 6) ───────────────────────────────────────────
+  // The renderer never reaches into demo-specific shapes. It always asks the
+  // provider for a typed envelope and surfaces loading / error / empty UI.
+  const [contentState, setContentState] = useState<ContentLoadState>({
+    status: "loading",
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    setContentState({ status: "loading" });
+    contentProvider
+      .load(book, controller.signal)
+      .then((content) => {
+        if (cancelled) return;
+        setContentState({ status: "ready", content });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const message =
+          err instanceof Error ? err.message : "Unable to load this book.";
+        setContentState({ status: "error", message });
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [book, contentProvider]);
+
+  const pages: FlipbookPage[] =
+    contentState.status === "ready" ? contentState.content.pages : [];
+  const totalPages = Math.max(1, pages.length);
 
   // Hydrate the full session synchronously so the initial paint already shows
   // every persisted slice (page, Focus Mode, settings, TTS prefs).
@@ -515,6 +544,74 @@ export function FlipbookReader({
   const themeClass = `flipbook-theme-${settings.theme}`;
   const focusModeClass = focusMode ? "flipbook-focus-mode" : "";
 
+  // Read-along state for the visible page (Stage 6 placeholder; gated off
+  // until a provider attaches real audiobook timing).
+  const readAlong = useReadAlong(
+    contentState.status === "ready" ? contentState.content : null,
+    currentPage,
+  );
+
+  // ── Loading / error / empty UI ───────────────────────────────────────────
+  // Returned after every hook above has run so React's hook order stays
+  // stable across renders.
+  if (contentState.status === "loading") {
+    return (
+      <div
+        className={`${themeClass} flex flex-col h-[calc(100vh-4rem)] min-h-[600px] items-center justify-center`}
+        style={{ background: "var(--fb-bg)", color: "var(--fb-fg)" }}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        data-testid="flipbook-reader-loading"
+      >
+        <BookOpen className="h-10 w-10 animate-pulse mb-3" aria-hidden="true" />
+        <p className="text-sm" style={{ color: "var(--fb-muted)" }}>
+          Loading {book.title}…
+        </p>
+      </div>
+    );
+  }
+
+  if (contentState.status === "error") {
+    return (
+      <div
+        className={`${themeClass} flex flex-col h-[calc(100vh-4rem)] min-h-[600px] items-center justify-center px-6 text-center`}
+        style={{ background: "var(--fb-bg)", color: "var(--fb-fg)" }}
+        role="alert"
+        data-testid="flipbook-reader-error"
+      >
+        <AlertTriangle className="h-10 w-10 mb-3 text-destructive" aria-hidden="true" />
+        <p className="text-sm mb-4">
+          We couldn't load this book: {contentState.message}
+        </p>
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <HomeIcon className="h-4 w-4 mr-1" aria-hidden="true" />
+          Back to library
+        </Button>
+      </div>
+    );
+  }
+
+  if (pages.length === 0) {
+    return (
+      <div
+        className={`${themeClass} flex flex-col h-[calc(100vh-4rem)] min-h-[600px] items-center justify-center px-6 text-center`}
+        style={{ background: "var(--fb-bg)", color: "var(--fb-fg)" }}
+        role="status"
+        data-testid="flipbook-reader-empty"
+      >
+        <BookOpen className="h-10 w-10 mb-3" aria-hidden="true" />
+        <p className="text-sm mb-4" style={{ color: "var(--fb-muted)" }}>
+          This book doesn't have any pages yet.
+        </p>
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <HomeIcon className="h-4 w-4 mr-1" aria-hidden="true" />
+          Back to library
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={rootRef}
@@ -632,6 +729,7 @@ export function FlipbookReader({
                 typography={settings.typography}
                 highlightMatches={currentMatches}
                 contentRef={pageContentRef}
+                readAlong={readAlong}
               />
             )}
           </div>

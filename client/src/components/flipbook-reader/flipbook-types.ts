@@ -8,12 +8,14 @@ import type {
 } from "./flipbook-typography";
 import type { PageMatch } from "./book-search";
 import type { TtsPreferences, TtsState, TtsVoice } from "./tts-service";
+import type { TranscriptSegment } from "./flipbook-content-types";
 
-export interface FlipbookPage {
-  id: string;
-  pageNumber: number;
-  content: string;
-}
+/**
+ * Renderer-facing page shape. Stage 6 moved the canonical definition into
+ * `flipbook-content-types.ts`; this re-export preserves the original
+ * import path used across the reader components.
+ */
+export type { FlipbookPage } from "./flipbook-content-types";
 
 export interface FlipbookReaderProps {
   book: Book;
@@ -70,12 +72,24 @@ export interface PageNavigatorProps {
 }
 
 export interface ReadingPageProps {
-  page: FlipbookPage;
+  page: import("./flipbook-content-types").FlipbookPage;
   flipDirection: "none" | "next" | "prev";
   reducedMotion: boolean;
   typography: FlipbookTypography;
   highlightMatches: PageMatch[];
   contentRef?: React.Ref<HTMLDivElement>;
+  /**
+   * Optional read-along state from `useReadAlong`. When `enabled` is true
+   * and `activeSegmentId` is set, the renderer's read-along slot lights up
+   * the matching segment. Stays inert today because no provider emits
+   * timing yet — the slot is here so audiobook timing data can light up
+   * phrases without a renderer rewrite.
+   */
+  readAlong?: {
+    enabled: boolean;
+    activeSegmentId: string | null;
+    segments: TranscriptSegment[];
+  };
 }
 
 export interface AnnotationPanelProps {
