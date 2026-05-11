@@ -721,6 +721,13 @@ export function registerEngagementRoutes(app: Express) {
         const until = new Date(profile.hideUpgradeNudgesUntil);
         if (until.getTime() > Date.now()) return res.json({ show: false, reason: "muted_30d" });
       }
+      // Task #64 guardrail: at most one upgrade nudge per session, globally
+      // (not per surface). Backed by req.session so multi-tab/multi-surface
+      // requests within the same session collapse to one impression even if
+      // the client cap is bypassed.
+      const sess = (req as any).session as undefined | { __nudgeShown?: boolean };
+      if (sess?.__nudgeShown) return res.json({ show: false, reason: "session_capped" });
+      if (sess) sess.__nudgeShown = true;
       analyticsService.track("upgrade_nudge_shown", user?.subscriptionTier ?? "free", { surface: req.body?.surface });
       res.json({ show: true });
     } catch {
