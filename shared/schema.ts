@@ -1631,6 +1631,9 @@ export interface A11yProfile {
   timezone?: string | null;
   /** ISO timestamp — most-recent win-back send (single-send guard, per Task #64). */
   lastWinBackSentAt?: string | null;
+  /** ISO timestamp — most-recent friend-digest send. Used to dedupe so a digest
+   *  only fires when there are *new* completions since the last successful send. */
+  lastFriendDigestSentAt?: string | null;
 }
 
 export const DEFAULT_A11Y_PROFILE: A11yProfile = {
@@ -1666,6 +1669,7 @@ export const DEFAULT_A11Y_PROFILE: A11yProfile = {
   hubAsHome: true,
   timezone: null,
   lastWinBackSentAt: null,
+  lastFriendDigestSentAt: null,
 };
 
 export const bookTranscripts = pgTable("book_transcripts", {
