@@ -771,10 +771,11 @@ export function registerEngagementRoutes(app: Express) {
 
       res.json({
         days,
-        hubVisits, bulletinThreads: threads, bulletinReplies: replies,
-        eventRsvps: rsvps, eventAttended: attended,
-        shareClipsGenerated: clips,
-        upgradeNudgesShown: nudgesShown, upgradeNudgesClicked: nudgesClicked,
+        hubVisits,
+        threads, replies,
+        rsvps, attended,
+        clips,
+        nudgesShown, nudgesClicked,
         nudgeConversionRate: nudgesShown.total > 0 ? nudgesClicked.total / nudgesShown.total : 0,
       });
     } catch (err: any) {

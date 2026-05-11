@@ -222,7 +222,7 @@ export default function CommunityPage() {
 }
 
 function ThreadCard({ thread, expanded, onToggle }: { thread: Thread; expanded: boolean; onToggle: () => void }) {
-  const { user } = useAuth() as any;
+  const { user } = useAuth() as { user: { id?: string; subscriptionTier?: string | null } | null | undefined };
   const { toast } = useToast();
   const [replyBody, setReplyBody] = useState("");
 

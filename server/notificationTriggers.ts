@@ -7,6 +7,7 @@ import {
   users,
   listeningHistory,
   accessibilityPreferences,
+  DEFAULT_A11Y_PROFILE,
   eventRsvps,
   liveEvents,
   type A11yProfile,
@@ -28,10 +29,20 @@ async function shouldSendForUser(userId: string, category: NotificationType): Pr
     if (profile.calmMode) return false;
     const cats = profile.notificationCategories ?? {};
     if (cats[category] === false) return false;
-    // Quiet hours (server local time approximation; mobile push provider also respects local TZ)
+    // Quiet hours — enforce per-user local time when the user has set a timezone
+    // in their accessibility profile (IANA name); otherwise fall back to server time.
     const quiet = profile.quietHours;
     if (quiet) {
-      const hour = new Date().getHours();
+      const tz = profile.timezone || undefined;
+      let hour: number;
+      try {
+        hour = tz
+          ? Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: tz })
+              .format(new Date()))
+          : new Date().getHours();
+      } catch {
+        hour = new Date().getHours();
+      }
       const { start, end } = quiet;
       const inQuiet = start <= end ? (hour >= start && hour < end) : (hour >= start || hour < end);
       if (inQuiet) return false;
@@ -226,14 +237,52 @@ export async function checkWinBack(): Promise<number> {
 
     for (const { userId } of inactive) {
       if (!(await shouldSendForUser(userId, "win_back"))) continue;
+
+      // Persistent single-send guard: do not send a second win-back to the same
+      // user. Spec requires one message per inactivity episode.
+      const [pref] = await db.select().from(accessibilityPreferences)
+        .where(eq(accessibilityPreferences.userId, userId)).limit(1);
+      const profile = (pref?.profile ?? {}) as A11yProfile;
+      if (profile.lastWinBackSentAt) continue;
+
       const payload = getNotificationPayload("win_back");
       const result = await sendNotificationToUser(userId, payload);
       sent += result.sent;
+
+      // Persist marker so subsequent runs skip this user. The marker is cleared
+      // by the analytics/playback path when the user returns (resetWinBackOnReturn).
+      const merged: A11yProfile = { ...DEFAULT_A11Y_PROFILE, ...profile, lastWinBackSentAt: new Date().toISOString() };
+      if (pref) {
+        await db.update(accessibilityPreferences)
+          .set({ profile: merged, updatedAt: new Date() })
+          .where(eq(accessibilityPreferences.userId, userId));
+      } else {
+        await db.insert(accessibilityPreferences).values({ userId, profile: merged });
+      }
     }
   } catch (err) {
     console.error("Win-back check failed:", err);
   }
   return sent;
+}
+
+/**
+ * Clear the win-back marker so the user is eligible again after the next
+ * 14-day inactivity episode. Call from playback resume paths.
+ */
+export async function resetWinBackOnReturn(userId: string): Promise<void> {
+  try {
+    const [pref] = await db.select().from(accessibilityPreferences)
+      .where(eq(accessibilityPreferences.userId, userId)).limit(1);
+    if (!pref) return;
+    const profile = (pref.profile ?? {}) as A11yProfile;
+    if (!profile.lastWinBackSentAt) return;
+    await db.update(accessibilityPreferences)
+      .set({ profile: { ...profile, lastWinBackSentAt: null }, updatedAt: new Date() })
+      .where(eq(accessibilityPreferences.userId, userId));
+  } catch (err) {
+    console.warn("[Notifications] resetWinBackOnReturn failed:", (err as Error)?.message);
+  }
 }
 
 // RSVP reminder: 1 day + 1 hour before scheduled event

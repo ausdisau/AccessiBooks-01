@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BarChart3, RefreshCw, Users, DollarSign, Headphones, TrendingUp, Accessibility, Info, Calendar as CalendarIcon } from "lucide-react";
+import { BarChart3, RefreshCw, Users, DollarSign, Headphones, TrendingUp, Accessibility, Info, Calendar as CalendarIcon, MessageSquare } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
@@ -343,6 +344,93 @@ function FunnelTab({ from, to }: { from: string; to: string }) {
   );
 }
 
+interface EngagementSummary {
+  hubVisits: { total: number; byTier: Record<string, number> };
+  threads: { total: number; byTier: Record<string, number> };
+  replies: { total: number; byTier: Record<string, number> };
+  rsvps: { total: number; byTier: Record<string, number> };
+  attended: { total: number; byTier: Record<string, number> };
+  clips: { total: number; byTier: Record<string, number> };
+  nudgesShown: { total: number; byTier: Record<string, number> };
+  nudgesClicked: { total: number; byTier: Record<string, number> };
+}
+
+function EngagementTab({ days }: { days: number }) {
+  const { data, isLoading } = useQuery<EngagementSummary>({
+    queryKey: ["/api/admin/analytics/engagement", days],
+    queryFn: async () => {
+      const r = await fetch(`/api/admin/analytics/engagement?days=${days}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to fetch engagement summary");
+      return r.json();
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+  if (!data) return <p className="text-sm text-muted-foreground">No engagement data yet.</p>;
+
+  const rows: Array<{ key: keyof EngagementSummary; label: string }> = [
+    { key: "hubVisits", label: "Hub visits" },
+    { key: "threads", label: "Threads created" },
+    { key: "replies", label: "Replies posted" },
+    { key: "rsvps", label: "Event RSVPs" },
+    { key: "attended", label: "Events attended" },
+    { key: "clips", label: "Share clips created" },
+    { key: "nudgesShown", label: "Upgrade nudges shown" },
+    { key: "nudgesClicked", label: "Upgrade nudges clicked" },
+  ];
+
+  const nudgeCtr = data.nudgesShown.total > 0
+    ? ((data.nudgesClicked.total / data.nudgesShown.total) * 100).toFixed(1)
+    : "0.0";
+
+  return (
+    <div className="space-y-4" data-testid="tab-engagement">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Conversion attribution</CardTitle>
+          <CardDescription>Nudge click-through (proxy for monetization conversion)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-3xl font-bold">{nudgeCtr}<span className="text-sm font-normal text-muted-foreground">% CTR</span></p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {data.nudgesClicked.total.toLocaleString()} clicks / {data.nudgesShown.total.toLocaleString()} shown
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-sm">Engagement breakdown by tier</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Metric</TableHead>
+                <TableHead className="text-right">Free</TableHead>
+                <TableHead className="text-right">Plus</TableHead>
+                <TableHead className="text-right">Premium</TableHead>
+                <TableHead className="text-right font-medium">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(({ key, label }) => {
+                const m = data[key];
+                return (
+                  <TableRow key={key} data-testid={`row-engagement-${key}`}>
+                    <TableCell className="font-medium">{label}</TableCell>
+                    <TableCell className="text-right">{(m.byTier.free ?? 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{(m.byTier.plus ?? 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{(m.byTier.premium ?? 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-medium">{m.total.toLocaleString()}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function AccessibilityTab() {
   const { data, isLoading } = useAccessibilityAnalytics();
 
@@ -574,6 +662,10 @@ export default function AdminAnalyticsPage() {
             <TrendingUp className="h-4 w-4" />
             Funnel
           </TabsTrigger>
+          <TabsTrigger value="engagement" className="gap-1.5" data-testid="tab-trigger-engagement">
+            <MessageSquare className="h-4 w-4" />
+            Engagement
+          </TabsTrigger>
           <TabsTrigger value="accessibility" className="gap-1.5">
             <Accessibility className="h-4 w-4" />
             Accessibility
@@ -594,6 +686,10 @@ export default function AdminAnalyticsPage() {
 
         <TabsContent value="funnel" className="mt-6">
           <FunnelTab from={from} to={to} />
+        </TabsContent>
+
+        <TabsContent value="engagement" className="mt-6">
+          <EngagementTab days={Math.max(1, Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / 86400000))} />
         </TabsContent>
 
         <TabsContent value="accessibility" className="mt-6">

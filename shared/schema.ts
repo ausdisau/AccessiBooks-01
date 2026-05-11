@@ -1627,6 +1627,10 @@ export interface A11yProfile {
   hideUpgradeNudgesUntil?: string | null;
   /** @default true — make /hub the post-login default landing page */
   hubAsHome?: boolean;
+  /** IANA timezone for accurate local-time quiet-hours enforcement (e.g. "America/Los_Angeles"). */
+  timezone?: string | null;
+  /** ISO timestamp — most-recent win-back send (single-send guard, per Task #64). */
+  lastWinBackSentAt?: string | null;
 }
 
 export const DEFAULT_A11Y_PROFILE: A11yProfile = {
@@ -1660,6 +1664,8 @@ export const DEFAULT_A11Y_PROFILE: A11yProfile = {
   streakPausedAt: null,
   hideUpgradeNudgesUntil: null,
   hubAsHome: true,
+  timezone: null,
+  lastWinBackSentAt: null,
 };
 
 export const bookTranscripts = pgTable("book_transcripts", {

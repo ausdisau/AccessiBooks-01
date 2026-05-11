@@ -3080,6 +3080,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (sessionResult.success) {
         analyticsService.track("playback_session_started", tier, { titleId: bookId });
+        // Task #64: clear win-back marker so the user is eligible again after
+        // their next inactivity episode. Fire-and-forget — never block playback.
+        import("./notificationTriggers").then(m => m.resetWinBackOnReturn(userId)).catch(() => {});
       }
 
       res.json({
