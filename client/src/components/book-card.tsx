@@ -120,7 +120,7 @@ export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact =
                 aria-label={`Listen to ${book.title}`}
                 onClick={handleListen}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleListen(e); } }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-primary-foreground text-xs font-bold hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-white"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-primary-foreground text-xs font-bold hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-white brand-glow"
               >
                 <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
                 Listen
@@ -164,7 +164,7 @@ export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact =
 
   return (
     <Card
-      className="overflow-hidden border-none bg-card/40 hover:bg-card/60 transition-all duration-300 group shadow-lg"
+      className="overflow-hidden border border-border/40 bg-card/60 hover:bg-card hover:border-border transition-all duration-300 group shadow-md hover:shadow-xl motion-safe:hover:-translate-y-0.5 motion-reduce:hover:translate-y-0"
       data-testid={`card-book-${book.id}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -184,7 +184,7 @@ export function BookCard({ book, onPlayBook, onListenBook, onReadBook, compact =
             aria-label={`Listen to ${book.title}`}
             onClick={handleListen}
             onFocus={onFocus}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-bold hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-white"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-bold hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-white brand-glow"
           >
             <Play className="h-4 w-4 fill-current" aria-hidden="true" />
             Listen Now
