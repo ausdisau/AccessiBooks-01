@@ -449,23 +449,64 @@ export function registerEngagementRoutes(app: Express) {
     }
   });
 
-  // Server-mediated preview endpoint. We only redirect to the underlying
-  // replay URL once we've validated the event is in `ended` state and a
-  // replay exists. Range-based 10-min enforcement is best-effort at the
-  // media layer (HTML5 `#t=` fragment); this route exists so the URL the
-  // client sees is server-controlled rather than a leaked CDN link.
+  // Server-enforced replay preview proxy. The full replay URL is NEVER
+  // exposed to the client — the server fetches the upstream media itself
+  // and streams only the byte range corresponding to the configured
+  // `freeReplayPreviewSeconds` window (computed from upstream
+  // Content-Length × previewSec / scheduledDurationSec). The response
+  // disables ranged requests so a free client can't ask for later bytes.
   app.get("/api/events/:id/replay/preview", async (req: Request, res: Response) => {
     try {
       const [event] = await db.select().from(liveEvents).where(eq(liveEvents.id, req.params.id)).limit(1);
       if (!event || event.status !== "ended" || !event.replayUrl) {
         return res.status(404).json({ message: "Replay preview unavailable" });
       }
-      const previewSec = event.freeReplayPreviewSeconds ?? 600;
-      const sep = event.replayUrl.includes("#") ? "&" : "#";
-      return res.redirect(302, `${event.replayUrl}${sep}t=0,${previewSec}`);
+      const previewSec = Math.max(30, event.freeReplayPreviewSeconds ?? 600);
+      const scheduledMs =
+        new Date(event.scheduledEndAt).getTime() - new Date(event.scheduledStartAt).getTime();
+      const totalSec = Math.max(previewSec + 1, Math.floor(scheduledMs / 1000) || previewSec * 6);
+
+      const head = await fetch(event.replayUrl, { method: "HEAD" });
+      const totalBytesHeader = head.headers.get("content-length");
+      const upstreamType = head.headers.get("content-type") ?? "audio/mpeg";
+
+      let upstreamRes: globalThis.Response;
+      if (totalBytesHeader) {
+        const totalBytes = parseInt(totalBytesHeader, 10);
+        const fraction = Math.min(1, previewSec / totalSec);
+        const lastByte = Math.max(1024, Math.floor(totalBytes * fraction) - 1);
+        upstreamRes = await fetch(event.replayUrl, { headers: { Range: `bytes=0-${lastByte}` } });
+      } else {
+        // No length advertised — fetch up to a safe cap (~previewSec @ 192kbps).
+        const safeBytes = Math.floor((previewSec * 192_000) / 8);
+        upstreamRes = await fetch(event.replayUrl, { headers: { Range: `bytes=0-${safeBytes - 1}` } });
+      }
+
+      if (!upstreamRes.ok && upstreamRes.status !== 206) {
+        return res.status(502).json({ message: "Preview source unavailable" });
+      }
+
+      // Strip headers that would leak the upstream URL or allow the client to
+      // request later bytes; we serve a sealed preview blob.
+      res.status(200);
+      res.setHeader("Content-Type", upstreamType);
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.setHeader("Accept-Ranges", "none");
+      res.setHeader("X-Replay-Preview", "true");
+
+      if (!upstreamRes.body) return res.end();
+      const reader = upstreamRes.body.getReader();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.byteLength) res.write(Buffer.from(value));
+      }
+      res.end();
     } catch (err: any) {
-      console.error("[Events] preview redirect error:", err?.message);
-      res.status(500).json({ message: "Failed to load preview" });
+      console.error("[Events] preview proxy error:", err?.message);
+      if (!res.headersSent) res.status(500).json({ message: "Failed to load preview" });
+      else { try { res.end(); } catch { /* ignore */ } }
     }
   });
 
