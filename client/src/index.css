@@ -297,6 +297,74 @@
   border-bottom: 1px solid hsl(var(--border));
 }
 
+/* ============================================================
+   Task #100 — Page-level chrome.
+   - .page-hero: token-driven gradient banner used at the top of
+     signed-in pages (library, player, account, monetization,
+     onboarding, operator dashboards) so every surface inherits a
+     consistent Audible/Spotify intro band.
+   - .page-title: editorial heading style (serif, tight tracking)
+     used by page-hero.
+   - .operator-shell: denser, calmer treatment for admin / dashboard
+     surfaces — no decorative gradient, just a token-driven solid
+     background and tighter borders.
+   ============================================================ */
+.page-hero {
+  position: relative;
+  isolation: isolate;
+  border-radius: 1rem;
+  padding: 2rem 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background:
+    radial-gradient(
+      80% 100% at 0% 0%,
+      hsl(var(--primary) / 0.18) 0%,
+      hsl(var(--primary) / 0) 60%
+    ),
+    linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.6) 100%);
+  overflow: hidden;
+}
+
+.page-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      60% 80% at 100% 100%,
+      hsl(var(--accent) / 0.18) 0%,
+      hsl(var(--accent) / 0) 60%
+    );
+  pointer-events: none;
+  z-index: -1;
+}
+
+.page-title {
+  font-family: var(--font-serif, ui-serif, Georgia, serif);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.operator-shell {
+  background: hsl(var(--background));
+}
+
+.operator-shell .page-hero {
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.4) 100%);
+  border-color: hsl(var(--border));
+  padding: 1.5rem;
+}
+
+/* Honor high-contrast across new chrome */
+.high-contrast .page-hero,
+.high-contrast.dark .page-hero,
+.dark.high-contrast .page-hero {
+  background: hsl(var(--card)) !important;
+  border-color: hsl(var(--foreground)) !important;
+}
+
 /* Adaptive Accessibility Styles */
 :root {
   --a11y-font-size: 100%;

@@ -330,14 +330,14 @@ export function CompletionModal({ data, onClose, onSelectBook }: CompletionModal
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Book completion celebration"
     >
       {showConfetti && <Confetti />}
 
-      <div className="relative bg-card rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-card rounded-2xl shadow-2xl border border-border/70 max-w-md w-full max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-muted hover:bg-muted/80 transition-colors"
