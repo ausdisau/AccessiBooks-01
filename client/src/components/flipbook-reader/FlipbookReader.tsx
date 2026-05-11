@@ -537,7 +537,14 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           ttsPrefs={tts.prefs}
           onTtsPrefsChange={tts.setPrefs}
         />
-        <AnnotationPanel open={annotationsOpen} onClose={closeAnnotations} />
+        <AnnotationPanel
+          open={annotationsOpen}
+          onClose={closeAnnotations}
+          bookId={String(book.id)}
+          currentPage={currentPage}
+          getSelectedText={getSelectedTextFromPage}
+          onAnnounce={setLiveMessage}
+        />
       </div>
 
       <KeyboardShortcutHelp open={shortcutsOpen} onOpenChange={setShortcutsOpen} />

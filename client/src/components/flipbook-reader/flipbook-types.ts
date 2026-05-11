@@ -78,6 +78,10 @@ export interface ReadingPageProps {
 export interface AnnotationPanelProps {
   open: boolean;
   onClose: () => void;
+  bookId: string;
+  currentPage: number;
+  getSelectedText: () => string;
+  onAnnounce: (message: string) => void;
 }
 
 export interface KeyboardShortcutHelpProps {

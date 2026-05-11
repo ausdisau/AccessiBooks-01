@@ -8,6 +8,17 @@ export { KeyboardShortcutHelp } from "./KeyboardShortcutHelp";
 export { LiveStatusRegion } from "./LiveStatusRegion";
 export { SearchResultsPanel } from "./SearchResultsPanel";
 export { useTts } from "./use-tts";
+export { useAnnotations } from "./use-annotations";
+export { useVoiceRecorder } from "./use-voice-recorder";
+export { localAnnotationStorage } from "./annotation-storage";
+export type { AnnotationStorage } from "./annotation-storage";
+export type {
+  Annotation,
+  AnnotationKind,
+  BaseAnnotation,
+  TextAnnotation,
+  VoiceAnnotation,
+} from "./annotation-types";
 export type * from "./flipbook-types";
 export * from "./flipbook-typography";
 export * from "./book-search";
