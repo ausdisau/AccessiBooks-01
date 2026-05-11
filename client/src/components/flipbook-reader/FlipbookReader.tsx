@@ -56,10 +56,21 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
   const [annotationsOpen, setAnnotationsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [flipDirection, setFlipDirection] = useState<"none" | "next" | "prev">("none");
-  const [liveMessage, setLiveMessage] = useState("");
+  const [liveMessage, setLiveMessage] = useState(`Page 1 of ${totalPages}`);
 
   const pageRef = useRef<HTMLDivElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const annotationsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    window.setTimeout(() => settingsTriggerRef.current?.focus(), 0);
+  }, []);
+  const closeAnnotations = useCallback(() => {
+    setAnnotationsOpen(false);
+    window.setTimeout(() => annotationsTriggerRef.current?.focus(), 0);
+  }, []);
 
   const goToPage = useCallback(
     (target: number, direction: "next" | "prev" | "none" = "none") => {
@@ -184,6 +195,8 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
         settingsOpen={settingsOpen}
         annotationsOpen={annotationsOpen}
         shortcutsOpen={shortcutsOpen}
+        settingsButtonRef={settingsTriggerRef}
+        annotationsButtonRef={annotationsTriggerRef}
       />
 
       <PageNavigator
@@ -238,8 +251,8 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           </Button>
         </main>
 
-        <ReaderSettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-        <AnnotationPanel open={annotationsOpen} onClose={() => setAnnotationsOpen(false)} />
+        <ReaderSettingsPanel open={settingsOpen} onClose={closeSettings} />
+        <AnnotationPanel open={annotationsOpen} onClose={closeAnnotations} />
       </div>
 
       <KeyboardShortcutHelp open={shortcutsOpen} onOpenChange={setShortcutsOpen} />

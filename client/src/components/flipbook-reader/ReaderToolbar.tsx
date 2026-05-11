@@ -23,6 +23,8 @@ export function ReaderToolbar({
   settingsOpen,
   annotationsOpen,
   shortcutsOpen,
+  settingsButtonRef,
+  annotationsButtonRef,
 }: ReaderToolbarProps) {
   return (
     <div
@@ -85,6 +87,7 @@ export function ReaderToolbar({
 
       <div className="flex items-center gap-1 ml-auto">
         <Button
+          ref={settingsButtonRef}
           variant={settingsOpen ? "default" : "outline"}
           size="icon"
           onClick={onToggleSettings}
@@ -96,6 +99,7 @@ export function ReaderToolbar({
           <Settings className="h-4 w-4" aria-hidden="true" />
         </Button>
         <Button
+          ref={annotationsButtonRef}
           variant={annotationsOpen ? "default" : "outline"}
           size="icon"
           onClick={onToggleAnnotations}
