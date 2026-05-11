@@ -304,7 +304,7 @@ function MembersGetMore() {
   const items = [
     { icon: BookOpen, title: "Select 1 audiobook a month", body: "Bestsellers, new releases, hidden gems — the choice is yours each month." },
     { icon: TrendingUp, title: "Grow your Library", body: "Enjoy your selected titles throughout your membership." },
-    { icon: Headphones, title: "Listen anytime, anywhere", body: "Listen at home, in the car, online or offline, whenever your are." },
+    { icon: Headphones, title: "Listen anytime, anywhere", body: "Listen at home, in the car, online or offline, whenever you are." },
   ];
   return (
     <section className="bg-white">
