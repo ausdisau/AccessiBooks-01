@@ -1653,6 +1653,11 @@ export interface A11yProfile {
    *  the Visual Reading background video. Independent of lowBandwidthMode so
    *  users on fast networks can still strip visual chrome from the reader. */
   textOnlyMode?: boolean;
+  /** @default false — Task #67: opt-in NDIS-friendly user activity tracking.
+   *  When false, user_activity_events writes are skipped server-side. */
+  activityTrackingEnabled?: boolean;
+  /** ISO timestamp — when the user opted in (used in the report header). */
+  activityTrackingEnabledAt?: string | null;
 }
 
 export const DEFAULT_A11Y_PROFILE: A11yProfile = {
@@ -1693,6 +1698,8 @@ export const DEFAULT_A11Y_PROFILE: A11yProfile = {
   sensoryModeChosen: false,
   lowBandwidthMode: false,
   textOnlyMode: false,
+  activityTrackingEnabled: false,
+  activityTrackingEnabledAt: null,
 };
 
 export const bookTranscripts = pgTable("book_transcripts", {
@@ -2418,3 +2425,83 @@ export const insertShareClipSchema = createInsertSchema(shareClips).omit({
 });
 export type InsertShareClip = z.infer<typeof insertShareClipSchema>;
 export type ShareClip = typeof shareClips.$inferSelect;
+
+// ============================================================
+// USER ACTIVITY (Task #67) — opt-in, per-user, NDIS-friendly
+// Separate from anonymised product_events. Only written when
+// the user has explicitly enabled activityTrackingEnabled.
+// ============================================================
+
+export const OUTCOME_TAGS = [
+  "capacity_building",
+  "independent_access",
+  "daily_living",
+  "communication_support",
+] as const;
+export type OutcomeTag = typeof OUTCOME_TAGS[number];
+
+export const OUTCOME_TAG_LABELS: Record<OutcomeTag, string> = {
+  capacity_building: "Capacity building",
+  independent_access: "Independent access",
+  daily_living: "Daily living",
+  communication_support: "Communication support",
+};
+
+export const ACTIVITY_EVENT_TYPES = [
+  "playback_session",
+  "transcript_opened",
+  "accessibility_change",
+  "ebook_session",
+  "bookmark_added",
+] as const;
+export type ActivityEventType = typeof ACTIVITY_EVENT_TYPES[number];
+
+export const ACTIVITY_EVENT_LABELS: Record<ActivityEventType, string> = {
+  playback_session: "Listened to an audiobook",
+  transcript_opened: "Opened a transcript",
+  accessibility_change: "Adjusted accessibility settings",
+  ebook_session: "Read an ebook",
+  bookmark_added: "Added a bookmark",
+};
+
+export const userActivityEvents = pgTable("user_activity_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  bookId: varchar("book_id"),
+  bookTitle: text("book_title"),
+  durationSeconds: integer("duration_seconds"),
+  outcomeTag: varchar("outcome_tag", { length: 40 }),
+  note: text("note"),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+}, (t) => [
+  index("idx_user_activity_user_time").on(t.userId, t.occurredAt),
+  index("idx_user_activity_user_type").on(t.userId, t.eventType),
+  index("idx_user_activity_user_book").on(t.userId, t.bookId),
+]);
+
+export const insertUserActivityEventSchema = createInsertSchema(userActivityEvents).omit({
+  id: true, occurredAt: true,
+});
+export type InsertUserActivityEvent = z.infer<typeof insertUserActivityEventSchema>;
+export type UserActivityEvent = typeof userActivityEvents.$inferSelect;
+
+export const userActivityShares = pgTable("user_activity_shares", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  caregiverLabel: text("caregiver_label").notNull(),
+  shareToken: varchar("share_token", { length: 64 }).notNull().unique(),
+  rangeFrom: timestamp("range_from"),
+  rangeTo: timestamp("range_to"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at"),
+}, (t) => [
+  index("idx_user_activity_shares_user").on(t.userId),
+  index("idx_user_activity_shares_token").on(t.shareToken),
+]);
+
+export const insertUserActivityShareSchema = createInsertSchema(userActivityShares).omit({
+  id: true, shareToken: true, createdAt: true, revokedAt: true,
+});
+export type InsertUserActivityShare = z.infer<typeof insertUserActivityShareSchema>;
+export type UserActivityShare = typeof userActivityShares.$inferSelect;
