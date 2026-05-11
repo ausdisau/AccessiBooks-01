@@ -12,6 +12,7 @@ import {
   type FlipbookPreset,
   type FlipbookTheme,
 } from "./flipbook-typography";
+import { TTS_BOUNDS } from "./tts-service";
 
 const FONT_OPTIONS: FlipbookFontFamily[] = [
   "system-sans",
@@ -40,6 +41,10 @@ export function ReaderSettingsPanel({
   onThemeChange,
   onPresetChange,
   onResetDefaults,
+  ttsSupported,
+  ttsVoices,
+  ttsPrefs,
+  onTtsPrefsChange,
 }: ReaderSettingsPanelProps) {
   if (!open) return null;
   const { typography, theme, activePreset } = settings;
@@ -209,6 +214,85 @@ export function ReaderSettingsPanel({
             onChange={(v) => onTypographyChange({ wordSpacing: round(v, 2) })}
             testid="flipbook-slider-word-spacing"
           />
+        </section>
+
+        <section aria-labelledby="fb-tts-heading" className="space-y-4">
+          <h3
+            id="fb-tts-heading"
+            className="text-xs font-semibold uppercase tracking-wide"
+            style={{ color: "var(--fb-muted)" }}
+          >
+            Read aloud
+          </h3>
+          {!ttsSupported ? (
+            <p className="text-xs" style={{ color: "var(--fb-muted)" }} data-testid="flipbook-tts-unsupported">
+              Text-to-speech isn’t supported in this browser. Try a recent version of Chrome, Edge, Safari, or Firefox.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label
+                  htmlFor="fb-tts-voice"
+                  className="text-sm font-medium block mb-1.5"
+                >
+                  Voice
+                </label>
+                <select
+                  id="fb-tts-voice"
+                  value={ttsPrefs.voiceId ?? ""}
+                  onChange={(e) =>
+                    onTtsPrefsChange({ voiceId: e.target.value === "" ? null : e.target.value })
+                  }
+                  className="w-full rounded-md border px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2"
+                  style={{
+                    background: "var(--fb-page-bg)",
+                    color: "var(--fb-fg)",
+                    borderColor: "var(--fb-border)",
+                  }}
+                  data-testid="flipbook-tts-voice"
+                >
+                  <option value="">System default</option>
+                  {ttsVoices.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}{v.lang ? ` — ${v.lang}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {ttsVoices.length === 0 && (
+                  <p className="text-xs mt-1" style={{ color: "var(--fb-muted)" }}>
+                    No voices found yet. Your browser may load them on first use.
+                  </p>
+                )}
+              </div>
+              <SliderControl
+                id="fb-tts-rate"
+                label="Speaking rate"
+                value={ttsPrefs.rate}
+                display={`${ttsPrefs.rate.toFixed(1)}x`}
+                bounds={TTS_BOUNDS.rate}
+                onChange={(v) => onTtsPrefsChange({ rate: round(v, 1) })}
+                testid="flipbook-tts-rate"
+              />
+              <SliderControl
+                id="fb-tts-pitch"
+                label="Pitch"
+                value={ttsPrefs.pitch}
+                display={ttsPrefs.pitch.toFixed(1)}
+                bounds={TTS_BOUNDS.pitch}
+                onChange={(v) => onTtsPrefsChange({ pitch: round(v, 1) })}
+                testid="flipbook-tts-pitch"
+              />
+              <SliderControl
+                id="fb-tts-volume"
+                label="Volume"
+                value={ttsPrefs.volume}
+                display={`${Math.round(ttsPrefs.volume * 100)}%`}
+                bounds={TTS_BOUNDS.volume}
+                onChange={(v) => onTtsPrefsChange({ volume: round(v, 2) })}
+                testid="flipbook-tts-volume"
+              />
+            </>
+          )}
         </section>
 
         <Button

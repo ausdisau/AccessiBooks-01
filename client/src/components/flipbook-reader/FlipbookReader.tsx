@@ -8,6 +8,10 @@ import { ReadingPage } from "./ReadingPage";
 import { AnnotationPanel } from "./AnnotationPanel";
 import { KeyboardShortcutHelp } from "./KeyboardShortcutHelp";
 import { LiveStatusRegion } from "./LiveStatusRegion";
+import { SearchResultsPanel } from "./SearchResultsPanel";
+import { searchPages, type SearchSummary } from "./book-search";
+import { useTts } from "./use-tts";
+import type { TtsEvent } from "./tts-service";
 import type { FlipbookPage, FlipbookReaderProps } from "./flipbook-types";
 import {
   applyPreset,
@@ -22,7 +26,9 @@ import {
 } from "./flipbook-typography";
 
 const DEMO_PARAGRAPHS = [
-  "Welcome to the AccessiBooks flipbook reader. Stage 2 brings the reading customisation layer: dyslexia-friendly fonts, accessibility presets, and four reading themes.",
+  "Welcome to the AccessiBooks flipbook reader. Stage 3 adds built-in text-to-speech and search inside the book.",
+  "Use the Read Aloud button in the toolbar to listen to the current page, or select any passage first to read just that selection. Adjust the voice, speaking rate, pitch, and volume from the settings panel.",
+  "Type at least two characters in the search field to scan every page. The results list shows match counts per page and the first matching snippet — choose any result to jump there. Matches on the open page are highlighted accessibly in every theme.",
   "Open the Settings panel from the toolbar to choose a preset like Dyslexia Support or Low Vision, switch theme between Light, Sepia, Dark, and High Contrast, or fine-tune typography with the live sliders.",
   "Every change applies instantly across pages and persists for this book the next time you open it.",
   "Use the previous and next buttons in the toolbar, swipe on touch devices, or press the Left and Right arrow keys to turn pages. Page Up and Page Down work too, and Home or End jump to the first or last page.",
@@ -63,12 +69,25 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [annotationsOpen, setAnnotationsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [flipDirection, setFlipDirection] = useState<"none" | "next" | "prev">("none");
   const [liveMessage, setLiveMessage] = useState(`Page 1 of ${totalPages}`);
   const [settings, setSettings] = useState<FlipbookSettings>(() => loadSettings(book.id));
+
+  // Debounce the search query so we don't run a full-book scan on every keystroke.
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedQuery(searchQuery), 200);
+    return () => window.clearTimeout(id);
+  }, [searchQuery]);
+
+  // Open the results panel as soon as the user starts typing.
+  useEffect(() => {
+    if (searchQuery.trim().length >= 2) setSearchOpen(true);
+  }, [searchQuery]);
 
   // Resync settings when the book changes (parent may reuse the component instance).
   useEffect(() => {
@@ -128,6 +147,7 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
   }, [persist]);
 
   const pageRef = useRef<HTMLDivElement>(null);
+  const pageContentRef = useRef<HTMLDivElement | null>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const annotationsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -159,6 +179,118 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
   const goNext = useCallback(() => goToPage(currentPage + 1, "next"), [currentPage, goToPage]);
   const goPrev = useCallback(() => goToPage(currentPage - 1, "prev"), [currentPage, goToPage]);
 
+  // Search summary recomputed only when query or pages change.
+  const searchSummary = useMemo<SearchSummary>(
+    () => searchPages(pages, debouncedQuery),
+    [pages, debouncedQuery],
+  );
+  const isSearching = searchQuery !== debouncedQuery && searchQuery.trim().length >= 2;
+
+  // Announce search outcome (only when results land for a stable query).
+  useEffect(() => {
+    if (isSearching) return;
+    const trimmed = debouncedQuery.trim();
+    if (trimmed.length < 2) return;
+    if (searchSummary.totalMatches === 0) {
+      setLiveMessage(`No matches found for ${trimmed}.`);
+    } else {
+      setLiveMessage(
+        `${searchSummary.totalMatches} match${searchSummary.totalMatches === 1 ? "" : "es"} on ${searchSummary.pages.length} page${searchSummary.pages.length === 1 ? "" : "s"}.`,
+      );
+    }
+  }, [debouncedQuery, isSearching, searchSummary]);
+
+  const currentMatches = useMemo(
+    () =>
+      searchSummary.pages.find((p) => p.pageNumber === currentPage)?.matches ?? [],
+    [searchSummary, currentPage],
+  );
+
+  const handleJumpToSearchResult = useCallback(
+    (page: number) => {
+      goToPage(page);
+      const result = searchSummary.pages.find((p) => p.pageNumber === page);
+      const count = result?.matchCount ?? 0;
+      setLiveMessage(
+        `Jumped to page ${page}, ${count} match${count === 1 ? "" : "es"} on this page.`,
+      );
+    },
+    [goToPage, searchSummary],
+  );
+
+  // ── TTS ────────────────────────────────────────────────────────────────────
+  const tts = useTts();
+
+  // Translate provider events into live-region announcements.
+  useEffect(() => {
+    const ev: TtsEvent | null = tts.lastEvent;
+    if (!ev) return;
+    switch (ev.type) {
+      case "start":
+        setLiveMessage("Read aloud started.");
+        break;
+      case "pause":
+        setLiveMessage("Read aloud paused.");
+        break;
+      case "resume":
+        setLiveMessage("Read aloud resumed.");
+        break;
+      case "end":
+        setLiveMessage("Read aloud finished.");
+        break;
+      case "stop":
+        setLiveMessage("Read aloud stopped.");
+        break;
+      case "error":
+        setLiveMessage(`Read aloud error: ${ev.message}`);
+        break;
+    }
+  }, [tts.lastEvent]);
+
+  const getSelectedTextFromPage = useCallback((): string => {
+    if (typeof window === "undefined") return "";
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return "";
+    const container = pageContentRef.current;
+    if (!container) return "";
+    // Only use the selection if it lives inside the current page content.
+    for (let i = 0; i < sel.rangeCount; i++) {
+      const range = sel.getRangeAt(i);
+      if (
+        container.contains(range.startContainer) &&
+        container.contains(range.endContainer)
+      ) {
+        return sel.toString();
+      }
+    }
+    return "";
+  }, []);
+
+  const handleReadAloud = useCallback(() => {
+    if (!tts.supported) {
+      setLiveMessage("Text-to-speech is not supported in this browser.");
+      return;
+    }
+    const selection = getSelectedTextFromPage().trim();
+    const pageText = pages[currentPage - 1]?.content ?? "";
+    const target = selection.length > 0 ? selection : pageText;
+    if (!target.trim()) {
+      setLiveMessage("There is no text to read on this page.");
+      return;
+    }
+    tts.speak(target);
+  }, [tts, getSelectedTextFromPage, pages, currentPage]);
+
+  // Cancel speech whenever the page changes — reading aloud always
+  // refers to the page that was visible when the user pressed the button.
+  useEffect(() => {
+    if (tts.state === "speaking" || tts.state === "paused") {
+      tts.stop();
+    }
+    // We intentionally only react to currentPage changes here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -189,6 +321,11 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           closeAnnotations();
           return;
         }
+        if (searchOpen) {
+          e.preventDefault();
+          setSearchOpen(false);
+          return;
+        }
       }
       switch (e.key) {
         case "ArrowRight":
@@ -215,7 +352,18 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [goNext, goPrev, goToPage, totalPages, settingsOpen, annotationsOpen, shortcutsOpen, closeSettings, closeAnnotations]);
+  }, [
+    goNext,
+    goPrev,
+    goToPage,
+    totalPages,
+    settingsOpen,
+    annotationsOpen,
+    shortcutsOpen,
+    searchOpen,
+    closeSettings,
+    closeAnnotations,
+  ]);
 
   // Focus the reading page after a flip so screen reader users land on new content
   useEffect(() => {
@@ -298,7 +446,24 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
         shortcutsOpen={shortcutsOpen}
         settingsButtonRef={settingsTriggerRef}
         annotationsButtonRef={annotationsTriggerRef}
+        ttsSupported={tts.supported}
+        ttsState={tts.state}
+        onReadAloud={handleReadAloud}
+        onPauseTts={tts.pause}
+        onResumeTts={tts.resume}
+        onStopTts={tts.stop}
       />
+
+      {searchOpen && (
+        <SearchResultsPanel
+          summary={searchSummary}
+          query={searchQuery}
+          currentPage={currentPage}
+          isSearching={isSearching}
+          onJumpToPage={handleJumpToSearchResult}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
 
       <PageNavigator
         currentPage={currentPage}
@@ -339,6 +504,8 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
                 flipDirection={flipDirection}
                 reducedMotion={reducedMotion}
                 typography={settings.typography}
+                highlightMatches={currentMatches}
+                contentRef={pageContentRef}
               />
             )}
           </div>
@@ -365,6 +532,10 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           onThemeChange={handleThemeChange}
           onPresetChange={handlePresetChange}
           onResetDefaults={handleResetDefaults}
+          ttsSupported={tts.supported}
+          ttsVoices={tts.voices}
+          ttsPrefs={tts.prefs}
+          onTtsPrefsChange={tts.setPrefs}
         />
         <AnnotationPanel open={annotationsOpen} onClose={closeAnnotations} />
       </div>
