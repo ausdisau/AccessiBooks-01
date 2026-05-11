@@ -2243,6 +2243,28 @@ export type ListeningSession = typeof listeningSessions.$inferSelect;
 // Centralized community bulletin board, live events, hub aggregation
 // ============================================================
 
+// Per-user engagement events (opt-in, dedupe-keyed) — used by notification
+// triggers to record sent/skipped attempts so the scheduler can avoid
+// duplicate sends and the analytics layer can compute trigger health.
+// Distinct from anonymised `productEvents`: this row carries userId.
+export const engagementEvents = pgTable("engagement_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 80 }).notNull(),
+  category: varchar("category", { length: 60 }),
+  outcome: varchar("outcome", { length: 40 }).notNull().default("sent"),
+  reason: varchar("reason", { length: 60 }),
+  metadata: jsonb("metadata"),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+}, (t) => [
+  index("idx_engagement_events_user_time").on(t.userId, t.occurredAt),
+  index("idx_engagement_events_type_time").on(t.eventType, t.occurredAt),
+]);
+
+export const insertEngagementEventSchema = createInsertSchema(engagementEvents).omit({ id: true, occurredAt: true });
+export type InsertEngagementEvent = z.infer<typeof insertEngagementEventSchema>;
+export type EngagementEvent = typeof engagementEvents.$inferSelect;
+
 // Curated bulletin topics (operator-managed list, not user-created)
 export const bulletinTopics = pgTable("bulletin_topics", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
