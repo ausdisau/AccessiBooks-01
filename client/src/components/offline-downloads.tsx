@@ -20,6 +20,7 @@ export function OfflineDownloads() {
     progressMap,
     storageUsed,
     storageEstimate,
+    markPlayed,
   } = useOfflineDownloads();
 
   const storagePercent = storageEstimate > 0 ? Math.round((storageUsed / storageEstimate) * 100) : 0;
@@ -163,6 +164,25 @@ export function OfflineDownloads() {
                       size="sm"
                       className="h-8 w-8 p-0"
                       aria-label={`Play ${book.title}`}
+                      data-testid={`offline-play-${book.bookId}`}
+                      onClick={() => {
+                        // Stamp lastPlayedAt + start playback. Playback is
+                        // delegated to the global audio player by dispatching
+                        // a custom event the AudioContext consumer can wire
+                        // into; recording the play timestamp is required by
+                        // the Storage panel "last played" column.
+                        void markPlayed(book.bookId);
+                        try {
+                          const url = URL.createObjectURL(book.audioBlob);
+                          window.dispatchEvent(
+                            new CustomEvent("offline:play", {
+                              detail: { bookId: book.bookId, url, title: book.title },
+                            }),
+                          );
+                        } catch {
+                          // ignore — dispatch is best-effort
+                        }
+                      }}
                     >
                       <Play className="h-4 w-4" />
                     </Button>
