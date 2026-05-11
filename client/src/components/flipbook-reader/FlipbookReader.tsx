@@ -24,16 +24,23 @@ import {
   type FlipbookTheme,
   type FlipbookTypography,
 } from "./flipbook-typography";
+import {
+  loadReaderSessionSync,
+  localReaderSessionStorage,
+  type ReaderSession,
+  type ReaderSessionStorage,
+} from "./session-storage";
+import { useFlipbookShortcuts } from "./use-flipbook-shortcuts";
 
 const DEMO_PARAGRAPHS = [
-  "Welcome to the AccessiBooks flipbook reader. Stage 3 adds built-in text-to-speech and search inside the book.",
-  "Use the Read Aloud button in the toolbar to listen to the current page, or select any passage first to read just that selection. Adjust the voice, speaking rate, pitch, and volume from the settings panel.",
-  "Type at least two characters in the search field to scan every page. The results list shows match counts per page and the first matching snippet — choose any result to jump there. Matches on the open page are highlighted accessibly in every theme.",
-  "Open the Settings panel from the toolbar to choose a preset like Dyslexia Support or Low Vision, switch theme between Light, Sepia, Dark, and High Contrast, or fine-tune typography with the live sliders.",
-  "Every change applies instantly across pages and persists for this book the next time you open it.",
+  "Welcome to the AccessiBooks flipbook reader. Stage 5 hardens the reader for daily use with full session persistence, comprehensive keyboard shortcuts, and a calm Focus Mode.",
+  "Use the Read Aloud button in the toolbar — or press R — to listen to the current page. Press S to stop. Adjust the voice, speaking rate, pitch, and volume from the settings panel.",
+  "Type at least two characters in the search field to scan every page. Press / to jump straight into the search field. The results list shows match counts per page and the first matching snippet — choose any result to jump there.",
+  "Open the Settings panel with G or Annotations with A. Both panels share their state with the toolbar buttons and announce themselves to screen readers using polite live updates.",
+  "Press F at any time to toggle Focus Mode. Surrounding controls quiet down, the reading column narrows, and the page itself gains a soft glow. Your choice is remembered the next time you open this book.",
   "Use the previous and next buttons in the toolbar, swipe on touch devices, or press the Left and Right arrow keys to turn pages. Page Up and Page Down work too, and Home or End jump to the first or last page.",
-  "Settings, annotations, and the keyboard shortcut help are all available from the toolbar. They open and close with proper focus and screen reader support.",
-  "When you have set the operating system to reduce motion, the page-flip animation gracefully degrades to a quick fade so the reader stays comfortable.",
+  "Open the keyboard shortcuts help from the toolbar or by pressing the question-mark key. Every binding is listed there with a clear description.",
+  "When you have asked your operating system to reduce motion, the page-flip animation gracefully degrades to a quick fade so the reader stays comfortable.",
 ];
 
 function buildDemoPages(title: string): FlipbookPage[] {
@@ -62,12 +69,32 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
+interface FlipbookReaderInternalProps extends FlipbookReaderProps {
+  sessionStorage?: ReaderSessionStorage;
+}
+
+export function FlipbookReader({
+  book,
+  onBack,
+  sessionStorage = localReaderSessionStorage,
+}: FlipbookReaderInternalProps) {
   const reducedMotion = usePrefersReducedMotion();
   const pages = useMemo(() => buildDemoPages(book.title), [book.title]);
   const totalPages = pages.length;
+  const bookKey = String(book.id);
 
-  const [currentPage, setCurrentPage] = useState(1);
+  // Hydrate from local session synchronously so the initial paint already
+  // shows the persisted page and Focus Mode state.
+  const initialSession = useMemo<ReaderSession>(() => {
+    const s = loadReaderSessionSync(bookKey);
+    return {
+      currentPage: Math.min(Math.max(s.currentPage, 1), totalPages),
+      focusMode: s.focusMode,
+    };
+  }, [bookKey, totalPages]);
+
+  const [currentPage, setCurrentPage] = useState(initialSession.currentPage);
+  const [focusMode, setFocusMode] = useState(initialSession.focusMode);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -75,8 +102,60 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
   const [annotationsOpen, setAnnotationsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [flipDirection, setFlipDirection] = useState<"none" | "next" | "prev">("none");
-  const [liveMessage, setLiveMessage] = useState(`Page 1 of ${totalPages}`);
-  const [settings, setSettings] = useState<FlipbookSettings>(() => loadSettings(book.id));
+  const [liveMessage, setLiveMessage] = useState(`Page ${initialSession.currentPage} of ${totalPages}`);
+  const [settings, setSettings] = useState<FlipbookSettings>(() => loadSettings(bookKey));
+
+  // Dedupe consecutive identical announcements so screen readers stay calm.
+  const lastMessageRef = useRef(liveMessage);
+  const announce = useCallback((message: string) => {
+    if (lastMessageRef.current === message) return;
+    lastMessageRef.current = message;
+    setLiveMessage(message);
+  }, []);
+
+  // Track which book's session has finished hydrating. Persistence is gated
+  // on this so that a `bookKey` change cannot save the previous book's state
+  // into the new book's slot before the async load resolves.
+  const hydratedKeyRef = useRef<string>(bookKey);
+
+  // When the parent switches books on a reused component instance, sync-load
+  // the new book's session immediately so the first paint shows the right
+  // page and Focus Mode — and persistence stays gated until async load lands.
+  const prevBookKeyRef = useRef<string>(bookKey);
+  useEffect(() => {
+    if (prevBookKeyRef.current === bookKey) return;
+    prevBookKeyRef.current = bookKey;
+    hydratedKeyRef.current = ""; // gate persistence until async load below
+    const s = loadReaderSessionSync(bookKey);
+    const safePage = Math.min(Math.max(s.currentPage, 1), totalPages);
+    setCurrentPage(safePage);
+    setFocusMode(s.focusMode);
+    lastMessageRef.current = "";
+    setLiveMessage(`Page ${safePage} of ${totalPages}`);
+  }, [bookKey, totalPages]);
+
+  // ── Async load (for swappable backend storage) ────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    void sessionStorage.load(bookKey).then((s) => {
+      if (cancelled) return;
+      const safePage = Math.min(Math.max(s.currentPage, 1), totalPages);
+      setCurrentPage((prev) => (prev === safePage ? prev : safePage));
+      setFocusMode(s.focusMode);
+      hydratedKeyRef.current = bookKey;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookKey, sessionStorage, totalPages]);
+
+  // Persist session whenever the relevant slices change — but only after
+  // hydration for the current book has completed, so a stale state snapshot
+  // cannot clobber the freshly loaded session of a different book.
+  useEffect(() => {
+    if (hydratedKeyRef.current !== bookKey) return;
+    void sessionStorage.save(bookKey, { currentPage, focusMode });
+  }, [bookKey, currentPage, focusMode, sessionStorage]);
 
   // Debounce the search query so we don't run a full-book scan on every keystroke.
   useEffect(() => {
@@ -91,15 +170,15 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
 
   // Resync settings when the book changes (parent may reuse the component instance).
   useEffect(() => {
-    setSettings(loadSettings(book.id));
-  }, [book.id]);
+    setSettings(loadSettings(bookKey));
+  }, [bookKey]);
 
   const persist = useCallback(
     (next: FlipbookSettings) => {
-      saveSettings(book.id, next);
+      saveSettings(bookKey, next);
       return next;
     },
-    [book.id],
+    [bookKey],
   );
 
   const handleTypographyChange = useCallback(
@@ -146,11 +225,15 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
     setSettings(() => persist({ ...DEFAULT_SETTINGS }));
   }, [persist]);
 
+  const rootRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const pageContentRef = useRef<HTMLDivElement | null>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const annotationsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Element to restore focus to after a page flip if it was inside the page area.
+  const focusBeforeFlipRef = useRef<HTMLElement | null>(null);
 
   const closeSettings = useCallback(() => {
     setSettingsOpen(false);
@@ -166,18 +249,24 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
       const clamped = Math.max(1, Math.min(totalPages, target));
       setCurrentPage((prev) => {
         if (clamped === prev) return prev;
+        // Capture focus before the flip so we can restore sensibly.
+        if (typeof document !== "undefined") {
+          focusBeforeFlipRef.current = document.activeElement as HTMLElement | null;
+        }
         const dir =
           direction !== "none" ? direction : clamped > prev ? "next" : "prev";
         setFlipDirection(dir);
-        setLiveMessage(`Page ${clamped} of ${totalPages}`);
+        announce(`Page ${clamped} of ${totalPages}`);
         return clamped;
       });
     },
-    [totalPages],
+    [totalPages, announce],
   );
 
   const goNext = useCallback(() => goToPage(currentPage + 1, "next"), [currentPage, goToPage]);
   const goPrev = useCallback(() => goToPage(currentPage - 1, "prev"), [currentPage, goToPage]);
+  const goFirst = useCallback(() => goToPage(1, "prev"), [goToPage]);
+  const goLast = useCallback(() => goToPage(totalPages, "next"), [goToPage, totalPages]);
 
   // Search summary recomputed only when query or pages change.
   const searchSummary = useMemo<SearchSummary>(
@@ -192,13 +281,13 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
     const trimmed = debouncedQuery.trim();
     if (trimmed.length < 2) return;
     if (searchSummary.totalMatches === 0) {
-      setLiveMessage(`No matches found for ${trimmed}.`);
+      announce(`No matches found for ${trimmed}.`);
     } else {
-      setLiveMessage(
+      announce(
         `${searchSummary.totalMatches} match${searchSummary.totalMatches === 1 ? "" : "es"} on ${searchSummary.pages.length} page${searchSummary.pages.length === 1 ? "" : "s"}.`,
       );
     }
-  }, [debouncedQuery, isSearching, searchSummary]);
+  }, [debouncedQuery, isSearching, searchSummary, announce]);
 
   const currentMatches = useMemo(
     () =>
@@ -211,41 +300,41 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
       goToPage(page);
       const result = searchSummary.pages.find((p) => p.pageNumber === page);
       const count = result?.matchCount ?? 0;
-      setLiveMessage(
+      announce(
         `Jumped to page ${page}, ${count} match${count === 1 ? "" : "es"} on this page.`,
       );
     },
-    [goToPage, searchSummary],
+    [goToPage, searchSummary, announce],
   );
 
   // ── TTS ────────────────────────────────────────────────────────────────────
   const tts = useTts();
 
-  // Translate provider events into live-region announcements.
+  // Translate provider events into live-region announcements (deduped).
   useEffect(() => {
     const ev: TtsEvent | null = tts.lastEvent;
     if (!ev) return;
     switch (ev.type) {
       case "start":
-        setLiveMessage("Read aloud started.");
+        announce("Read aloud started.");
         break;
       case "pause":
-        setLiveMessage("Read aloud paused.");
+        announce("Read aloud paused.");
         break;
       case "resume":
-        setLiveMessage("Read aloud resumed.");
+        announce("Read aloud resumed.");
         break;
       case "end":
-        setLiveMessage("Read aloud finished.");
+        announce("Read aloud finished.");
         break;
       case "stop":
-        setLiveMessage("Read aloud stopped.");
+        announce("Read aloud stopped.");
         break;
       case "error":
-        setLiveMessage(`Read aloud error: ${ev.message}`);
+        announce(`Read aloud error: ${ev.message}`);
         break;
     }
-  }, [tts.lastEvent]);
+  }, [tts.lastEvent, announce]);
 
   const getSelectedTextFromPage = useCallback((): string => {
     if (typeof window === "undefined") return "";
@@ -253,7 +342,6 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return "";
     const container = pageContentRef.current;
     if (!container) return "";
-    // Only use the selection if it lives inside the current page content.
     for (let i = 0; i < sel.rangeCount; i++) {
       const range = sel.getRangeAt(i);
       if (
@@ -268,18 +356,18 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
 
   const handleReadAloud = useCallback(() => {
     if (!tts.supported) {
-      setLiveMessage("Text-to-speech is not supported in this browser.");
+      announce("Text-to-speech is not supported in this browser.");
       return;
     }
     const selection = getSelectedTextFromPage().trim();
     const pageText = pages[currentPage - 1]?.content ?? "";
     const target = selection.length > 0 ? selection : pageText;
     if (!target.trim()) {
-      setLiveMessage("There is no text to read on this page.");
+      announce("There is no text to read on this page.");
       return;
     }
     tts.speak(target);
-  }, [tts, getSelectedTextFromPage, pages, currentPage]);
+  }, [tts, getSelectedTextFromPage, pages, currentPage, announce]);
 
   // Cancel speech whenever the page changes — reading aloud always
   // refers to the page that was visible when the user pressed the button.
@@ -287,94 +375,125 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
     if (tts.state === "speaking" || tts.state === "paused") {
       tts.stop();
     }
-    // We intentionally only react to currentPage changes here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (
-          tag === "INPUT" ||
-          tag === "TEXTAREA" ||
-          tag === "SELECT" ||
-          target.isContentEditable ||
-          target.closest('[role="slider"]') ||
-          target.closest("[data-flipbook-panel]")
-        ) {
-          // Still allow Esc handling to reach panel-close logic below.
-          if (e.key !== "Escape") return;
-        }
-      }
-      if (shortcutsOpen) return;
-      if (e.key === "Escape") {
-        if (settingsOpen) {
-          e.preventDefault();
-          closeSettings();
-          return;
-        }
-        if (annotationsOpen) {
-          e.preventDefault();
-          closeAnnotations();
-          return;
-        }
-        if (searchOpen) {
-          e.preventDefault();
-          setSearchOpen(false);
-          return;
-        }
-      }
-      switch (e.key) {
-        case "ArrowRight":
-        case "PageDown":
-          e.preventDefault();
-          goNext();
-          break;
-        case "ArrowLeft":
-        case "PageUp":
-          e.preventDefault();
-          goPrev();
-          break;
-        case "Home":
-          e.preventDefault();
-          goToPage(1, "prev");
-          break;
-        case "End":
-          e.preventDefault();
-          goToPage(totalPages, "next");
-          break;
-        default:
-          break;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [
-    goNext,
-    goPrev,
-    goToPage,
-    totalPages,
-    settingsOpen,
-    annotationsOpen,
-    shortcutsOpen,
-    searchOpen,
-    closeSettings,
-    closeAnnotations,
-  ]);
+  // ── Focus Mode ────────────────────────────────────────────────────────────
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((prev) => {
+      const next = !prev;
+      announce(next ? "Focus Mode on." : "Focus Mode off.");
+      return next;
+    });
+  }, [announce]);
 
-  // Focus the reading page after a flip so screen reader users land on new content
+  // ── Keyboard shortcuts (centralised) ──────────────────────────────────────
+  const focusSearch = useCallback(() => {
+    const el = searchInputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select?.();
+  }, []);
+
+  const openSettingsToggle = useCallback(() => {
+    setSettingsOpen((v) => {
+      const next = !v;
+      // After the new state lands, move focus appropriately.
+      window.setTimeout(() => {
+        if (next) {
+          // Focus the panel's first heading/close button via its role; falling
+          // back to the trigger keeps Esc-recovery sensible.
+          const panel = document.getElementById("flipbook-settings-panel");
+          const focusable = panel?.querySelector<HTMLElement>(
+            "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+          );
+          focusable?.focus();
+        } else {
+          settingsTriggerRef.current?.focus();
+        }
+      }, 0);
+      return next;
+    });
+  }, []);
+
+  const openAnnotationsToggle = useCallback(() => {
+    setAnnotationsOpen((v) => {
+      const next = !v;
+      window.setTimeout(() => {
+        if (next) {
+          const panel = document.getElementById("flipbook-annotations-panel");
+          const focusable = panel?.querySelector<HTMLElement>(
+            "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+          );
+          focusable?.focus();
+        } else {
+          annotationsTriggerRef.current?.focus();
+        }
+      }, 0);
+      return next;
+    });
+  }, []);
+
+  const closeTopmost = useCallback((): boolean => {
+    if (shortcutsOpen) {
+      setShortcutsOpen(false);
+      return true;
+    }
+    if (settingsOpen) {
+      closeSettings();
+      return true;
+    }
+    if (annotationsOpen) {
+      closeAnnotations();
+      return true;
+    }
+    if (searchOpen) {
+      setSearchOpen(false);
+      return true;
+    }
+    return false;
+  }, [shortcutsOpen, settingsOpen, annotationsOpen, searchOpen, closeSettings, closeAnnotations]);
+
+  const isHelpOpen = useCallback(() => shortcutsOpen, [shortcutsOpen]);
+
+  useFlipbookShortcuts(
+    {
+      goNext,
+      goPrev,
+      goFirst,
+      goLast,
+      readAloud: handleReadAloud,
+      stopTts: tts.stop,
+      openSettings: openSettingsToggle,
+      openAnnotations: openAnnotationsToggle,
+      focusSearch,
+      toggleHelp: () => setShortcutsOpen((v) => !v),
+      toggleFocusMode,
+      closeTopmost,
+      isHelpOpen,
+    },
+    rootRef,
+  );
+
+  // Focus the reading page after a flip so screen reader users land on new content.
   useEffect(() => {
     if (flipDirection === "none") return;
     const focusDelay = reducedMotion ? 60 : 200;
     const resetDelay = reducedMotion ? 220 : 420;
+    const previous = focusBeforeFlipRef.current;
     const focusId = window.setTimeout(() => {
-      pageRef.current?.focus();
+      // Only steal focus if the previous focus was inside the page area
+      // (or there was no specific focus target). Don't yank focus away from
+      // the toolbar/search/panels where the user is actively interacting.
+      const pageEl = pageRef.current;
+      const previousInPage = previous && pageEl ? pageEl.contains(previous) : true;
+      if (!previous || previousInPage || previous === document.body) {
+        pageRef.current?.focus();
+      }
     }, focusDelay);
     const resetId = window.setTimeout(() => {
       setFlipDirection("none");
+      focusBeforeFlipRef.current = null;
     }, resetDelay);
     return () => {
       window.clearTimeout(focusId);
@@ -401,16 +520,21 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
 
   const currentPageData = pages[currentPage - 1];
   const themeClass = `flipbook-theme-${settings.theme}`;
+  const focusModeClass = focusMode ? "flipbook-focus-mode" : "";
 
   return (
     <div
-      className={`${themeClass} flex flex-col h-[calc(100vh-4rem)] min-h-[600px]`}
+      ref={rootRef}
+      className={`${themeClass} ${focusModeClass} flex flex-col h-[calc(100vh-4rem)] min-h-[600px]`}
       style={{ background: "var(--fb-bg)", color: "var(--fb-fg)" }}
       data-testid="flipbook-reader"
       data-theme={settings.theme}
+      data-focus-mode={focusMode ? "on" : "off"}
     >
       <header
-        className="flex items-center justify-between px-3 py-2 border-b"
+        role="banner"
+        aria-label="Flipbook header"
+        className="flipbook-chrome flex items-center justify-between px-3 py-2 border-b"
         style={{ background: "var(--fb-surface)", borderColor: "var(--fb-border)" }}
       >
         <Button
@@ -438,14 +562,17 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
         onNext={goNext}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onToggleSettings={() => setSettingsOpen((v) => !v)}
-        onToggleAnnotations={() => setAnnotationsOpen((v) => !v)}
+        onToggleSettings={openSettingsToggle}
+        onToggleAnnotations={openAnnotationsToggle}
         onToggleShortcuts={() => setShortcutsOpen(true)}
+        onToggleFocusMode={toggleFocusMode}
+        focusMode={focusMode}
         settingsOpen={settingsOpen}
         annotationsOpen={annotationsOpen}
         shortcutsOpen={shortcutsOpen}
         settingsButtonRef={settingsTriggerRef}
         annotationsButtonRef={annotationsTriggerRef}
+        searchInputRef={searchInputRef}
         ttsSupported={tts.supported}
         ttsState={tts.state}
         onReadAloud={handleReadAloud}
@@ -465,17 +592,21 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
         />
       )}
 
-      <PageNavigator
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onJumpTo={(p) => goToPage(p)}
-        onPrev={goPrev}
-        onNext={goNext}
-      />
+      <div className="flipbook-chrome">
+        <PageNavigator
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onJumpTo={(p) => goToPage(p)}
+          onPrev={goPrev}
+          onNext={goNext}
+        />
+      </div>
 
       <div className="flex-1 flex min-h-0">
         <main
-          className="flex-1 relative flex items-stretch justify-center p-4 sm:p-6"
+          role="main"
+          aria-label="Reading area"
+          className="flipbook-reading-area flex-1 relative flex items-stretch justify-center p-4 sm:p-6"
           style={{ background: "var(--fb-bg)" }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -495,7 +626,9 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
           <div
             ref={pageRef}
             tabIndex={-1}
-            className="w-full max-w-3xl outline-none"
+            role="document"
+            aria-label={`Page ${currentPage} of ${totalPages}`}
+            className="flipbook-reading-column w-full max-w-3xl outline-none"
             data-testid="flipbook-page-container"
           >
             {currentPageData && (
@@ -540,10 +673,10 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
         <AnnotationPanel
           open={annotationsOpen}
           onClose={closeAnnotations}
-          bookId={String(book.id)}
+          bookId={bookKey}
           currentPage={currentPage}
           getSelectedText={getSelectedTextFromPage}
-          onAnnounce={setLiveMessage}
+          onAnnounce={announce}
         />
       </div>
 
