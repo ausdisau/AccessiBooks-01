@@ -13,7 +13,7 @@ export function ReadingPage({ page, flipDirection, reducedMotion }: ReadingPageP
 
   const animationClass = (() => {
     if (phase !== "flipping") return "opacity-100";
-    if (reducedMotion) return "opacity-0";
+    if (reducedMotion) return "flipbook-page-fade";
     return flipDirection === "next"
       ? "flipbook-page-flip-next"
       : "flipbook-page-flip-prev";

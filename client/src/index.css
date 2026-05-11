@@ -730,3 +730,17 @@ footer,
   animation: flipbook-flip-prev 360ms ease-in-out;
   will-change: transform, opacity;
 }
+
+/* Reduced-motion fallback: a minimal but visible cross-fade (≈200ms).
+   Uses !important + class specificity to win over the global
+   prefers-reduced-motion clamp so the page change still has a calm,
+   perceptible cue rather than a jarring instant swap. */
+@keyframes flipbook-page-fade {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+.flipbook-page-fade {
+  animation: flipbook-page-fade 200ms ease-in-out !important;
+  will-change: opacity;
+}
