@@ -335,11 +335,19 @@ function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: 
           <p className="text-sm whitespace-pre-wrap">{event.description}</p>
 
           {isLive && (
-            <Link href="/party">
-              <Button data-testid={`event-join-${event.id}`}>
-                <PlayCircle className="h-4 w-4 mr-1" aria-hidden="true" /> Join the room
-              </Button>
-            </Link>
+            <Button
+              data-testid={`event-join-${event.id}`}
+              onClick={async () => {
+                // Record attendance (idempotent server-side) before navigating into the live room.
+                try {
+                  await apiRequest("POST", `/api/events/${event.id}/attend`, {});
+                  queryClient.invalidateQueries({ queryKey: ["/api/events", event.id, "detail"] });
+                } catch { /* non-blocking */ }
+                window.location.href = "/party";
+              }}
+            >
+              <PlayCircle className="h-4 w-4 mr-1" aria-hidden="true" /> Join the room
+            </Button>
           )}
 
           {event.status === "ended" && event.replayUrl && (

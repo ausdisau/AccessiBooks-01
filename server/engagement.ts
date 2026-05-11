@@ -109,8 +109,8 @@ const clipInputSchema = z.object({
   endSec: z.number().int().min(1),
   quote: z.string().max(500).optional(),
   hideAttribution: z.boolean().optional(),
-}).refine((d) => d.endSec > d.startSec && (d.endSec - d.startSec) <= 60 && (d.endSec - d.startSec) >= 5, {
-  message: "Clip must be 5–60 seconds long",
+}).refine((d) => d.endSec > d.startSec && (d.endSec - d.startSec) <= 60 && (d.endSec - d.startSec) >= 15, {
+  message: "Clip must be 15–60 seconds long",
 });
 
 export function registerEngagementRoutes(app: Express) {
