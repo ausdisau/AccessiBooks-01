@@ -253,7 +253,7 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
         localStorageService.saveSettings(merged);
         // Build the server-side a11y patch. For Calm Mode, also set streakPaused
         // so streak counters do not advance for at least 7 days.
-        const serverPatch: any = { ...profile.settings };
+        const serverPatch: Record<string, unknown> = { ...profile.settings };
         if (selectedA11yProfile === "calm-mode") {
           serverPatch.calmMode = true;
           serverPatch.streakPaused = true;

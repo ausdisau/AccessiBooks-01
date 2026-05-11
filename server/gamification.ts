@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { accessibilityPreferences } from "@shared/schema";
+import { accessibilityPreferences, type A11yProfile } from "@shared/schema";
 import {
   userStreaks, userXp, userAchievements, dailyListeningLog,
   userGoals, readingChallenges, userChallengeProgress, users,
@@ -139,7 +139,7 @@ export async function recordListeningActivity(
   try {
     const [pref] = await db.select().from(accessibilityPreferences)
       .where(eq(accessibilityPreferences.userId, userId)).limit(1);
-    const profile: any = pref?.profile ?? {};
+    const profile = (pref?.profile ?? {}) as Partial<A11yProfile>;
     if (profile.streakPaused === true) {
       const pausedAt = profile.streakPausedAt ? new Date(profile.streakPausedAt) : null;
       if (!pausedAt || (Date.now() - pausedAt.getTime()) < 7 * 24 * 60 * 60 * 1000) {
