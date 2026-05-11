@@ -233,6 +233,16 @@ function ReaderViewToggle({ book, onBack, classic }: ReaderViewToggleProps) {
     }
   });
 
+  // Resync persisted view if the parent reuses this component for a new book.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      setView(saved === "flipbook" ? "flipbook" : "classic");
+    } catch {
+      setView("classic");
+    }
+  }, [storageKey]);
+
   const updateView = useCallback(
     (next: "classic" | "flipbook") => {
       setView(next);
