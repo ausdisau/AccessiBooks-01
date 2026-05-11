@@ -68,6 +68,7 @@ function mapRowToBook(row: any): Book {
     freeTierAvailable: row.free_tier_available ?? row.freeTierAvailable ?? true,
     adSupported: row.ad_supported ?? row.adSupported ?? true,
     transcriptAvailable: row.transcript_available ?? row.transcriptAvailable ?? false,
+    narrationType: row.narration_type ?? row.narrationType ?? null,
     pageCount: row.page_count ?? row.pageCount ?? null,
     searchVector: row.search_vector || row.searchVector || null,
     readingLevel: row.reading_level ?? row.readingLevel ?? computeReadingLevel(row.description, row.genre),

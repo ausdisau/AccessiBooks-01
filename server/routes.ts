@@ -627,14 +627,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/books/search - Search books (with optional SoundCloud/Google Play augmentation)
   app.get("/api/books/search", async (req, res) => {
     try {
-      const { q, includeSoundCloud, includeGooglePlay } = req.query;
-      
+      const {
+        q,
+        includeSoundCloud,
+        includeGooglePlay,
+        genre,
+        contentType,
+        language,
+        narrationType,
+        chapterLength,
+        transcriptAvailable,
+      } = req.query;
+
       if (!q || typeof q !== "string") {
         return res.status(400).json({ message: "Search query is required" });
       }
 
       const books = await storage.searchBooks(q);
       let augmented: any[] = [...books];
+
+      // Task #69: post-filter the search result set by accessibility facets.
+      // We filter in the route (not the storage layer) so external-API
+      // results combined inside searchBooks are also covered.
+      const wantNarration =
+        typeof narrationType === "string" && (narrationType === "human" || narrationType === "ai")
+          ? narrationType
+          : null;
+      const wantChapter =
+        typeof chapterLength === "string" &&
+        (chapterLength === "short" || chapterLength === "medium" || chapterLength === "long")
+          ? chapterLength
+          : null;
+      const wantTranscript = transcriptAvailable === "true";
+      const wantGenre = typeof genre === "string" && genre ? genre.toLowerCase() : null;
+      const wantContentType = typeof contentType === "string" && contentType ? contentType : null;
+      const wantLanguage = typeof language === "string" && language ? language.toLowerCase() : null;
+
+      const classifyChapter = (durationSec: number, ct: string | null | undefined) => {
+        if (ct !== "audiobook") return null;
+        if (!durationSec || durationSec <= 0) return null;
+        const hours = durationSec / 3600;
+        if (hours < 5) return "short";
+        if (hours <= 15) return "medium";
+        return "long";
+      };
+
+      const applyFacets = (list: any[]) =>
+        list.filter((b: any) => {
+          if (wantContentType && b.contentType !== wantContentType) return false;
+          if (wantGenre && (b.genre || "").toLowerCase() !== wantGenre) return false;
+          if (wantLanguage && (b.language || "english").toLowerCase() !== wantLanguage) return false;
+          if (wantTranscript && !b.transcriptAvailable) return false;
+          if (wantNarration && b.narrationType !== wantNarration) return false;
+          if (wantChapter) {
+            const cls = classifyChapter(b.duration ?? 0, b.contentType);
+            if (cls !== wantChapter) return false;
+          }
+          return true;
+        });
 
       if (includeSoundCloud === "true" && isSoundCloudEnabled()) {
         try {
@@ -679,7 +729,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch {}
       }
 
-      res.json(augmented);
+      // Apply facet filters once after all augmentation so external
+      // provider results (SoundCloud / Google Play) are also constrained.
+      res.json(applyFacets(augmented));
     } catch (error) {
       res.status(500).json({ message: "Failed to search books" });
     }
