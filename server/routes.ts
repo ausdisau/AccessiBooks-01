@@ -21,6 +21,7 @@ import { logAdImpression } from "./adImpressionLogger";
 import { registerSelfServeAdRoutes } from "./selfServeAds";
 import { registerAdRewardRoutes } from "./adRewardRoutes";
 import { registerBillingRoutes, recordTransaction, updateTransactionStatus } from "./billing";
+import { registerLimitNotificationRoutes } from "./limitNotifications";
 import { registerAccessibilityKernelRoutes } from "./accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "./transcripts";
 import { registerMoatScaffoldRoutes, ensureMoatMigrations } from "./moatScaffold";
@@ -216,6 +217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Centralized billing platform (transactions, invoices, billing portal)
   registerBillingRoutes(app);
+  registerLimitNotificationRoutes(app);
 
   // Revenue expansion routes (voice packs, annotations, gifts, enterprise, sponsorships)
   registerRevenueRoutes(app);
