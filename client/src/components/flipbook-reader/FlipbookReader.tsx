@@ -148,10 +148,18 @@ export function FlipbookReader({ book, onBack }: FlipbookReaderProps) {
   // Focus the reading page after a flip so screen reader users land on new content
   useEffect(() => {
     if (flipDirection === "none") return;
-    const id = window.setTimeout(() => {
+    const focusDelay = reducedMotion ? 60 : 200;
+    const resetDelay = reducedMotion ? 220 : 420;
+    const focusId = window.setTimeout(() => {
       pageRef.current?.focus();
-    }, reducedMotion ? 60 : 200);
-    return () => window.clearTimeout(id);
+    }, focusDelay);
+    const resetId = window.setTimeout(() => {
+      setFlipDirection("none");
+    }, resetDelay);
+    return () => {
+      window.clearTimeout(focusId);
+      window.clearTimeout(resetId);
+    };
   }, [currentPage, flipDirection, reducedMotion]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
