@@ -343,7 +343,8 @@ function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: 
                   await apiRequest("POST", `/api/events/${event.id}/attend`, {});
                   queryClient.invalidateQueries({ queryKey: ["/api/events", event.id, "detail"] });
                 } catch { /* non-blocking */ }
-                window.location.href = "/party";
+                // Pass event context so /party can scope its room/sync to this live event.
+                window.location.href = `/party?event=${encodeURIComponent(event.id)}`;
               }}
             >
               <PlayCircle className="h-4 w-4 mr-1" aria-hidden="true" /> Join the room

@@ -35,6 +35,15 @@ interface Participant {
 interface ListeningPartyProps {
   book?: Book | null;
   onBack: () => void;
+  /** Optional event id when this listening session is scoped to a live event (Task #64). */
+  eventId?: string | null;
+}
+
+interface EventContext {
+  id: string;
+  title: string;
+  bookId: string | null;
+  scheduledStartAt: string;
 }
 
 interface TierLimits {
@@ -44,7 +53,7 @@ interface TierLimits {
   coHost: boolean;
 }
 
-export function ListeningParty({ book, onBack }: ListeningPartyProps) {
+export function ListeningParty({ book, onBack, eventId }: ListeningPartyProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const { tier: subscriptionTier, isPaid, upgradeToTier, isUpgrading } = useSubscription();
@@ -56,6 +65,27 @@ export function ListeningParty({ book, onBack }: ListeningPartyProps) {
   const { data: tierLimits } = useQuery<TierLimits>({
     queryKey: ["/api/listening-party/tier-limits"],
   });
+
+  // Event-scoped session handoff (Task #64): when /party?event=:id is opened from
+  // events.tsx Join, fetch the event context so we can prefill the room name and
+  // surface the live-event banner — this is the explicit linkage the architect
+  // review requested between events and listeningParty.
+  const { data: eventCtx } = useQuery<{ event: EventContext }>({
+    queryKey: ["/api/events", eventId, "detail"],
+    queryFn: async () => {
+      const r = await fetch(`/api/events/${eventId}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load event context");
+      return r.json();
+    },
+    enabled: !!eventId,
+    staleTime: 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (eventCtx?.event && !roomName) {
+      setRoomName(`Live: ${eventCtx.event.title}`);
+    }
+  }, [eventCtx?.event, roomName]);
 
   const handleRoomCreated = (room: ListeningRoom) => {
     setRoomId(room.id);
@@ -96,6 +126,20 @@ export function ListeningParty({ book, onBack }: ListeningPartyProps) {
           <p className="text-muted-foreground text-sm">Listen together with friends in real-time</p>
         </div>
       </div>
+
+      {eventCtx?.event && (
+        <Card data-testid="event-context-banner" className="border-primary/30 bg-primary/5">
+          <CardContent className="pt-4 pb-4 flex items-center gap-3">
+            <Radio className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">Joining live event: {eventCtx.event.title}</p>
+              <p className="text-xs text-muted-foreground">
+                Your listening room will be linked to this event for synced playback.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-3xl">
         <Card>
