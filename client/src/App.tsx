@@ -1270,6 +1270,14 @@ function MainApp() {
       const { limitType } = (e as CustomEvent).detail as { limitType: "skip" | "device" | "loan" };
       if (!isPremium) {
         triggerUpgradeModal(limitType, null);
+        // Fire-and-forget triggered upgrade email; server enforces 24h dedup,
+        // free-tier-only, and silently no-ops on missing email/SMTP.
+        fetch("/api/notifications/limit-hit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ limitType }),
+        }).catch(() => { /* non-blocking */ });
       }
     };
     document.addEventListener("accessibooks:limit-reached", handler);
