@@ -23,18 +23,53 @@ export interface UseTtsResult {
   stop: () => void;
 }
 
-export function useTts(): UseTtsResult {
+export interface UseTtsOptions {
+  /** Optional initial prefs — when provided, overrides the legacy
+   *  module-level localStorage load. Lets a parent component own
+   *  persistence (e.g. via the unified ReaderSessionStorage adapter). */
+  initialPrefs?: TtsPreferences;
+  /** Called after the user changes prefs. When provided, replaces the
+   *  legacy module-level localStorage save so the parent can route
+   *  persistence through its own adapter. */
+  onPrefsChange?: (prefs: TtsPreferences) => void;
+}
+
+export function useTts(options: UseTtsOptions = {}): UseTtsResult {
+  const { initialPrefs, onPrefsChange } = options;
+  const onPrefsChangeRef = useRef(onPrefsChange);
+  onPrefsChangeRef.current = onPrefsChange;
   const provider = useMemo(() => getTtsProvider(), []);
   const supported = provider.isSupported();
 
   const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [state, setState] = useState<TtsState>(provider.getState());
   const [lastEvent, setLastEvent] = useState<TtsEvent | null>(null);
-  const [prefs, setPrefsState] = useState<TtsPreferences>(() =>
-    typeof window === "undefined" ? { ...DEFAULT_TTS_PREFS } : loadTtsPreferences(),
-  );
+  const [prefs, setPrefsState] = useState<TtsPreferences>(() => {
+    if (initialPrefs) return { ...initialPrefs };
+    return typeof window === "undefined" ? { ...DEFAULT_TTS_PREFS } : loadTtsPreferences();
+  });
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
+
+  // Keep internal prefs in sync with parent-provided `initialPrefs` (e.g.
+  // when the parent owns persistence via the unified ReaderSessionStorage
+  // adapter and rehydrates after a book switch or async load). Without this,
+  // a subsequent partial pref edit would merge against stale internal state
+  // and drop the freshly hydrated fields.
+  useEffect(() => {
+    if (!initialPrefs) return;
+    const a = prefsRef.current;
+    const b = initialPrefs;
+    if (
+      a.voiceId === b.voiceId &&
+      a.rate === b.rate &&
+      a.pitch === b.pitch &&
+      a.volume === b.volume
+    ) {
+      return;
+    }
+    setPrefsState({ ...b });
+  }, [initialPrefs]);
 
   // Subscribe to provider events.
   useEffect(() => {
@@ -82,7 +117,11 @@ export function useTts(): UseTtsResult {
   const setPrefs = useCallback((patch: Partial<TtsPreferences>) => {
     setPrefsState((prev) => {
       const next = { ...prev, ...patch };
-      saveTtsPreferences(next);
+      // If the parent is owning persistence (unified session adapter), defer
+      // to its callback. Otherwise fall back to the legacy module-level save
+      // so standalone uses of the hook keep their persistence behaviour.
+      if (onPrefsChangeRef.current) onPrefsChangeRef.current(next);
+      else saveTtsPreferences(next);
       return next;
     });
   }, []);
