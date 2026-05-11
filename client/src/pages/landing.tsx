@@ -132,9 +132,11 @@ export function BrandLandingPage({
     const description =
       "AccessiBooks is an accessibility-first audiobook and ebook platform from Australian Disability Ltd. Listen, read, and learn with built-in supports for vision, cognitive, and motor needs.";
 
-    // Track which meta tags we created so we can remove them on unmount and
-    // not pollute later pages with stale landing-page metadata.
+    // Track which meta tags we created (so we can remove them on unmount)
+    // and snapshot prior content of pre-existing tags (so we can restore
+    // them, rather than leaking landing-page copy into other pages).
     const created: HTMLMetaElement[] = [];
+    const restored: { el: HTMLMetaElement; previous: string }[] = [];
     const setOrCreate = (
       name: string,
       content: string,
@@ -147,6 +149,8 @@ export function BrandLandingPage({
         el.setAttribute(attr, name);
         document.head.appendChild(el);
         created.push(el);
+      } else {
+        restored.push({ el, previous: el.getAttribute("content") ?? "" });
       }
       el.setAttribute("content", content);
     };
@@ -164,6 +168,7 @@ export function BrandLandingPage({
     return () => {
       document.title = previousTitle;
       for (const el of created) el.remove();
+      for (const { el, previous } of restored) el.setAttribute("content", previous);
     };
   }, []);
 
