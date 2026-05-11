@@ -237,7 +237,7 @@ function EasyReadShelf({ onSelectBook }: { onSelectBook: (book: Book) => void })
   if (!isLoading && books.length === 0) return null;
 
   return (
-    <div className="rounded-2xl border border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50/60 to-teal-50/60 dark:from-green-950/20 dark:to-teal-950/20 p-5 space-y-4">
+    <div id="easy-read-shelf" className="rounded-2xl border border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50/60 to-teal-50/60 dark:from-green-950/20 dark:to-teal-950/20 p-5 space-y-4" tabIndex={-1} aria-label="Easy Read Catalog">
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-xl bg-green-100 dark:bg-green-900">
           <BookHeart className="h-5 w-5 text-green-600 dark:text-green-400" aria-hidden="true" />

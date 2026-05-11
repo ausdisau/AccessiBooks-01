@@ -382,17 +382,23 @@ export function AccessibilityCoachPanel({
   // Auto-send a seeded prompt from voice intents (Task #68). The parent
   // captures the message synchronously when the open-coach event fires
   // and passes it down — we wait until the panel is open + initialized
-  // and not already streaming, then send it exactly once.
-  const lastSeedRef = useRef<string | null>(null);
+  // and not already streaming, then send it. We notify the parent via
+  // onSeedConsumed so it can clear seedMessage; that lets the same
+  // command fire again later (e.g. "explain this" said twice in a row).
+  const seedHandledRef = useRef<boolean>(false);
   useEffect(() => {
-    if (!isOpen || !initialized || !seedMessage || isStreaming) return;
-    if (lastSeedRef.current === seedMessage) return;
-    lastSeedRef.current = seedMessage;
+    // Reset the guard whenever the seed clears so the next seed can fire.
+    if (!seedMessage) {
+      seedHandledRef.current = false;
+      return;
+    }
+    if (!isOpen || !initialized || isStreaming || seedHandledRef.current) return;
+    seedHandledRef.current = true;
     sendMessage(seedMessage);
     onSeedConsumed?.();
   }, [isOpen, initialized, seedMessage, isStreaming, sendMessage, onSeedConsumed]);
   useEffect(() => {
-    if (!isOpen) lastSeedRef.current = null;
+    if (!isOpen) seedHandledRef.current = false;
   }, [isOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

@@ -1511,21 +1511,33 @@ function MainApp() {
     {
       patterns: ["find easier books", "easier books", "find easy books", "show me easier books"],
       handler: () => {
-        document.dispatchEvent(
-          new CustomEvent("accessibooks:open-coach", {
-            detail: {
-              message:
-                "Find me easier books — short chapters, simple language, or Easy English titles. Audiobooks are great too.",
-            },
-          }),
-        );
+        // Navigate to the library and surface the Easy Read shelf, which is
+        // backed by /api/books/easy-read (reading levels 1 & 2). We use a
+        // hash + a short delayed scroll so the shelf has time to mount.
+        navigate("/");
+        const focusShelf = () => {
+          const el = document.getElementById("easy-read-shelf");
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+            (el as HTMLElement).focus({ preventScroll: true });
+            return true;
+          }
+          return false;
+        };
+        if (!focusShelf()) {
+          let attempts = 0;
+          const interval = window.setInterval(() => {
+            attempts += 1;
+            if (focusShelf() || attempts > 20) window.clearInterval(interval);
+          }, 150);
+        }
         toast({
-          title: "Looking for easier books",
-          description: "Opening your Accessibility Coach to find easier titles.",
+          title: "Showing easier books",
+          description: "Jumped to the Easy Read catalog — reading levels 1 & 2.",
           duration: 2500,
         });
       },
-      description: "Ask the coach for easier books",
+      description: "Show easier books from the Easy Read catalog",
     },
     {
       patterns: [
