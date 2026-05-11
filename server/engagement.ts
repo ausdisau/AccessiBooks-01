@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
 import { z } from "zod";
-import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray, isNull } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
   bulletinTopics, bulletinThreads, bulletinReplies, bulletinReactions,
@@ -195,8 +195,9 @@ export function registerEngagementRoutes(app: Express) {
         }
       }
 
+      // Suppress moderator-hidden replies from public reads (Task #64 review note).
       const replies = await db.select().from(bulletinReplies)
-        .where(eq(bulletinReplies.threadId, thread.id))
+        .where(and(eq(bulletinReplies.threadId, thread.id), isNull(bulletinReplies.hiddenAt)))
         .orderBy(bulletinReplies.createdAt);
       res.json({ thread, replies });
     } catch (err: any) {
