@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useSubscription } from "@/hooks/use-subscription";
 import { Lock, MessageSquare, Heart, ChevronLeft, ChevronRight, Plus, Flag } from "lucide-react";
 import { Link } from "wouter";
 import { AdSlot } from "@/components/AdSlot";
@@ -55,6 +56,8 @@ const PAGE_SIZE = 20;
 
 export default function CommunityPage() {
   const { user } = useAuth() as { user: { subscriptionTier?: string | null } | null | undefined };
+  const { tier } = useSubscription();
+  const isPaid = tier === "plus" || tier === "premium" || tier === "institutional";
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -193,7 +196,7 @@ export default function CommunityPage() {
               ];
               // Sponsored bulletin slot: one labeled placement after the 3rd thread.
               // Suppressed in accessibility/disability-themed topics per ad rules.
-              if (idx === 2 && currentTopic && !currentTopic.isAccessibilityCategory) {
+              if (!isPaid && idx === 2 && currentTopic && !currentTopic.isAccessibilityCategory) {
                 items.push(
                   <li key={`sponsored-${t.id}`} aria-label="Sponsored thread" data-testid="bulletin-sponsored-slot">
                     <div className="rounded-md border-2 border-dashed border-muted-foreground/30 p-2">
