@@ -16,21 +16,19 @@ interface UpgradeNudgeProps {
   capPerSession?: boolean;
 }
 
-const SESSION_KEY = "ab_nudge_dismissed";
+// Task #64 guardrail: at most one upgrade nudge per browser session — total,
+// not per surface. Once any nudge has been shown OR dismissed, suppress every
+// subsequent UpgradeNudge for the rest of the session regardless of surface.
+const SESSION_SHOWN_KEY = "ab_nudge_shown_global";
 
-function getDismissedThisSession(): Record<string, number> {
+function nudgeAlreadyShownThisSession(): boolean {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+    return sessionStorage.getItem(SESSION_SHOWN_KEY) === "1";
+  } catch { return false; }
 }
 
-function markDismissedThisSession(surface: string) {
-  try {
-    const map = getDismissedThisSession();
-    map[surface] = (map[surface] ?? 0) + 1;
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(map));
-  } catch { /* ignore */ }
+function markNudgeShownThisSession() {
+  try { sessionStorage.setItem(SESSION_SHOWN_KEY, "1"); } catch { /* ignore */ }
 }
 
 export function UpgradeNudge({ surface, reason, onUpgrade, capPerSession = true }: UpgradeNudgeProps) {
@@ -62,7 +60,7 @@ export function UpgradeNudge({ surface, reason, onUpgrade, capPerSession = true 
     },
     onSuccess: (_, mute30d) => {
       setHidden(true);
-      markDismissedThisSession(surface);
+      markNudgeShownThisSession();
       if (mute30d) {
         toast({ title: "Got it — we'll hide upgrade prompts for 30 days.", duration: 3000 });
       }
@@ -70,11 +68,16 @@ export function UpgradeNudge({ surface, reason, onUpgrade, capPerSession = true 
   });
 
   useEffect(() => {
-    if (capPerSession) {
-      const dismissed = getDismissedThisSession();
-      if ((dismissed[surface] ?? 0) >= 1) setHidden(true);
+    if (capPerSession && nudgeAlreadyShownThisSession()) setHidden(true);
+  }, [capPerSession]);
+
+  // Mark the global session impression the first time a nudge actually renders so
+  // any other UpgradeNudge mounted later (different surface) is suppressed.
+  useEffect(() => {
+    if (!hidden && decision?.show && capPerSession && !nudgeAlreadyShownThisSession()) {
+      markNudgeShownThisSession();
     }
-  }, [surface, capPerSession]);
+  }, [hidden, decision?.show, capPerSession]);
 
   if (hidden || !decision?.show) return null;
 
