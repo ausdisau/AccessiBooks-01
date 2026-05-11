@@ -802,7 +802,9 @@ export type PodcastEpisode = typeof podcastEpisodes.$inferSelect;
 
 export const NOTIFICATION_TYPES = [
   "streak_reminder", "goal_nudge", "new_content", "achievement",
-  "recommendation", "re_engagement", "author_update", "system"
+  "recommendation", "re_engagement", "author_update", "system",
+  // Engagement & monetization (task #64)
+  "rsvp_reminder", "friend_digest", "win_back", "weekly_recap", "streak_at_risk"
 ] as const;
 export type NotificationType = typeof NOTIFICATION_TYPES[number];
 
@@ -1611,6 +1613,20 @@ export interface A11yProfile {
   autoAdvanceChapters: boolean;
   /** @default null — default sleep timer in minutes, null = disabled */
   sleepTimerDefault: number | null;
+  /** @default false — Calm Mode disables streaks, leaderboards, push, rewarded-ad nudges */
+  calmMode?: boolean;
+  /** Per-category notification toggles. Missing keys default to true. */
+  notificationCategories?: Partial<Record<NotificationType, boolean>>;
+  /** @default { start: 21, end: 8 } — local-time hours when push is suppressed */
+  quietHours?: { start: number; end: number } | null;
+  /** @default false — pause streak counter for 7 days when user signals a break */
+  streakPaused?: boolean;
+  /** Streak pause start date (ISO yyyy-mm-dd) — auto-resumes after 7 days */
+  streakPausedAt?: string | null;
+  /** ISO date — hide all upgrade nudges until this date */
+  hideUpgradeNudgesUntil?: string | null;
+  /** @default true — make /hub the post-login default landing page */
+  hubAsHome?: boolean;
 }
 
 export const DEFAULT_A11Y_PROFILE: A11yProfile = {
@@ -1637,6 +1653,13 @@ export const DEFAULT_A11Y_PROFILE: A11yProfile = {
   preferredSkipBack: 15,
   autoAdvanceChapters: true,
   sleepTimerDefault: null,
+  calmMode: false,
+  notificationCategories: {},
+  quietHours: { start: 21, end: 8 },
+  streakPaused: false,
+  streakPausedAt: null,
+  hideUpgradeNudgesUntil: null,
+  hubAsHome: true,
 };
 
 export const bookTranscripts = pgTable("book_transcripts", {
@@ -2124,6 +2147,16 @@ export const PRODUCT_EVENT_TYPES = [
   "rewarded_ad_offered",
   "playback_session_started",
   "playback_session_ended",
+  // Engagement & monetization (task #64)
+  "hub_visit",
+  "bulletin_thread_created",
+  "bulletin_reply_created",
+  "event_rsvp",
+  "event_attended",
+  "share_clip_generated",
+  "upgrade_nudge_shown",
+  "upgrade_nudge_dismissed",
+  "upgrade_nudge_clicked",
 ] as const;
 export type ProductEventType = typeof PRODUCT_EVENT_TYPES[number];
 
@@ -2162,3 +2195,192 @@ export const insertListeningSessionSchema = createInsertSchema(listeningSessions
 export type InsertListeningSession = z.infer<typeof insertListeningSessionSchema>;
 export type ListeningSession = typeof listeningSessions.$inferSelect;
 
+
+// ============================================================
+// ENGAGEMENT & MONETIZATION SYSTEM (Task #64)
+// Centralized community bulletin board, live events, hub aggregation
+// ============================================================
+
+// Curated bulletin topics (operator-managed list, not user-created)
+export const bulletinTopics = pgTable("bulletin_topics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug", { length: 80 }).notNull().unique(),
+  name: varchar("name", { length: 120 }).notNull(),
+  description: text("description"),
+  iconEmoji: varchar("icon_emoji", { length: 10 }),
+  premiumOnlyPost: boolean("premium_only_post").notNull().default(false),
+  premiumOnlyView: boolean("premium_only_view").notNull().default(false),
+  isAccessibilityCategory: boolean("is_accessibility_category").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_bulletin_topics_active").on(t.isActive, t.sortOrder),
+]);
+
+export const insertBulletinTopicSchema = createInsertSchema(bulletinTopics).omit({ id: true, createdAt: true });
+export type InsertBulletinTopic = z.infer<typeof insertBulletinTopicSchema>;
+export type BulletinTopic = typeof bulletinTopics.$inferSelect;
+
+// Threads — operator announcements OR user-posted threads inside a topic
+export const bulletinThreads = pgTable("bulletin_threads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  topicId: varchar("topic_id").notNull().references(() => bulletinTopics.id, { onDelete: "cascade" }),
+  authorUserId: varchar("author_user_id").references(() => users.id, { onDelete: "set null" }),
+  authorDisplayName: varchar("author_display_name", { length: 120 }).notNull().default("AccessiBooks"),
+  kind: varchar("kind", { length: 20 }).notNull().default("discussion"), // announcement | discussion
+  title: varchar("title", { length: 240 }).notNull(),
+  body: text("body").notNull(),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  isLocked: boolean("is_locked").notNull().default(false),
+  replyCount: integer("reply_count").notNull().default(0),
+  reactionCount: integer("reaction_count").notNull().default(0),
+  lastActivityAt: timestamp("last_activity_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_bulletin_threads_topic_pinned").on(t.topicId, t.isPinned, t.lastActivityAt),
+  index("idx_bulletin_threads_recent").on(t.lastActivityAt),
+]);
+
+export const insertBulletinThreadSchema = createInsertSchema(bulletinThreads).omit({
+  id: true, replyCount: true, reactionCount: true, lastActivityAt: true, createdAt: true,
+});
+export type InsertBulletinThread = z.infer<typeof insertBulletinThreadSchema>;
+export type BulletinThread = typeof bulletinThreads.$inferSelect;
+
+// Replies (single level of nesting; parentId optional for threaded responses)
+export const bulletinReplies = pgTable("bulletin_replies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  threadId: varchar("thread_id").notNull().references(() => bulletinThreads.id, { onDelete: "cascade" }),
+  parentReplyId: varchar("parent_reply_id"),
+  authorUserId: varchar("author_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  authorDisplayName: varchar("author_display_name", { length: 120 }).notNull(),
+  body: text("body").notNull(),
+  reactionCount: integer("reaction_count").notNull().default(0),
+  hiddenAt: timestamp("hidden_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_bulletin_replies_thread").on(t.threadId, t.createdAt),
+]);
+
+export const insertBulletinReplySchema = createInsertSchema(bulletinReplies).omit({
+  id: true, reactionCount: true, hiddenAt: true, createdAt: true,
+});
+export type InsertBulletinReply = z.infer<typeof insertBulletinReplySchema>;
+export type BulletinReply = typeof bulletinReplies.$inferSelect;
+
+// Reactions on threads or replies (one row per user+target+emoji)
+export const bulletinReactions = pgTable("bulletin_reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetType: varchar("target_type", { length: 16 }).notNull(), // thread | reply
+  targetId: varchar("target_id").notNull(),
+  emoji: varchar("emoji", { length: 16 }).notNull().default("👍"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_bulletin_reactions_target").on(t.targetType, t.targetId),
+  index("idx_bulletin_reactions_user").on(t.userId),
+]);
+
+export const insertBulletinReactionSchema = createInsertSchema(bulletinReactions).omit({ id: true, createdAt: true });
+export type InsertBulletinReaction = z.infer<typeof insertBulletinReactionSchema>;
+export type BulletinReaction = typeof bulletinReactions.$inferSelect;
+
+// Live events (author Q&A, group_listen, launch party, AMA)
+export const LIVE_EVENT_TYPES = ["author_qa", "group_listen", "launch_party", "community_ama"] as const;
+export type LiveEventType = typeof LIVE_EVENT_TYPES[number];
+
+export const liveEvents = pgTable("live_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: varchar("event_type", { length: 32 }).notNull(),
+  title: varchar("title", { length: 240 }).notNull(),
+  description: text("description").notNull(),
+  hostUserId: varchar("host_user_id").references(() => users.id, { onDelete: "set null" }),
+  hostDisplayName: varchar("host_display_name", { length: 120 }).notNull().default("AccessiBooks"),
+  bookId: varchar("book_id"),
+  bookTitle: varchar("book_title", { length: 240 }),
+  scheduledStartAt: timestamp("scheduled_start_at").notNull(),
+  scheduledEndAt: timestamp("scheduled_end_at").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("scheduled"), // scheduled | live | ended | canceled
+  listeningRoomId: varchar("listening_room_id"),
+  replayUrl: text("replay_url"),
+  rsvpCount: integer("rsvp_count").notNull().default(0),
+  attendedCount: integer("attended_count").notNull().default(0),
+  freeReplayPreviewSeconds: integer("free_replay_preview_seconds").notNull().default(600),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_live_events_status_start").on(t.status, t.scheduledStartAt),
+  index("idx_live_events_start").on(t.scheduledStartAt),
+]);
+
+export const insertLiveEventSchema = createInsertSchema(liveEvents).omit({
+  id: true, rsvpCount: true, attendedCount: true, createdAt: true,
+}).extend({
+  scheduledStartAt: z.coerce.date(),
+  scheduledEndAt: z.coerce.date(),
+});
+export type InsertLiveEvent = z.infer<typeof insertLiveEventSchema>;
+export type LiveEvent = typeof liveEvents.$inferSelect;
+
+// Per-user RSVP record
+export const eventRsvps = pgTable("event_rsvps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id").notNull().references(() => liveEvents.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  attendedAt: timestamp("attended_at"),
+  reminderSentAt: timestamp("reminder_sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_event_rsvps_event").on(t.eventId),
+  index("idx_event_rsvps_user").on(t.userId),
+  uniqueIndex("uq_event_rsvps_event_user").on(t.eventId, t.userId),
+]);
+
+export const insertEventRsvpSchema = createInsertSchema(eventRsvps).omit({
+  id: true, attendedAt: true, reminderSentAt: true, createdAt: true,
+});
+export type InsertEventRsvp = z.infer<typeof insertEventRsvpSchema>;
+export type EventRsvp = typeof eventRsvps.$inferSelect;
+
+// Per-event chat messages (slow-mode + caption-friendly)
+export const eventChatMessages = pgTable("event_chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventId: varchar("event_id").notNull().references(() => liveEvents.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  displayName: varchar("display_name", { length: 120 }).notNull(),
+  body: text("body").notNull(),
+  hiddenAt: timestamp("hidden_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_event_chat_event").on(t.eventId, t.createdAt),
+]);
+
+export const insertEventChatMessageSchema = createInsertSchema(eventChatMessages).omit({
+  id: true, hiddenAt: true, createdAt: true,
+});
+export type InsertEventChatMessage = z.infer<typeof insertEventChatMessageSchema>;
+export type EventChatMessage = typeof eventChatMessages.$inferSelect;
+
+// Share-clip records (15-60s player segments shared externally)
+export const shareClips = pgTable("share_clips", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookId: varchar("book_id").notNull(),
+  bookTitle: varchar("book_title", { length: 240 }).notNull(),
+  startSec: integer("start_sec").notNull(),
+  endSec: integer("end_sec").notNull(),
+  quote: text("quote"),
+  shareToken: varchar("share_token", { length: 32 }).notNull().unique(),
+  hideAttribution: boolean("hide_attribution").notNull().default(false),
+  viewCount: integer("view_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("idx_share_clips_user").on(t.userId),
+  index("idx_share_clips_token").on(t.shareToken),
+]);
+
+export const insertShareClipSchema = createInsertSchema(shareClips).omit({
+  id: true, viewCount: true, createdAt: true,
+});
+export type InsertShareClip = z.infer<typeof insertShareClipSchema>;
+export type ShareClip = typeof shareClips.$inferSelect;
