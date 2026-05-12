@@ -1,22 +1,14 @@
-import { useColorScheme } from "react-native";
-
 import colors from "@/constants/colors";
 
 /**
- * Returns the design tokens for the current color scheme.
+ * Returns the AccessiBooks design tokens.
  *
- * The returned object contains all color tokens for the active palette
- * plus scheme-independent values like `radius`.
- *
- * Falls back to the light palette when no dark key is defined in
- * constants/colors.ts (the scaffold ships light-only by default).
- * When a sibling web artifact's dark tokens are synced into a `dark`
- * key, this hook will automatically switch palettes based on the
- * device's appearance setting.
+ * Mirrors the web app's baseline behaviour: light mode is the default
+ * everywhere. Dark tokens are still defined in constants/colors.ts (and
+ * exact-matched to the web `.dark` block) for future opt-in, but we do
+ * not currently follow the device's appearance setting — the mobile
+ * companion ships light-first to match the web baseline at parity.
  */
 export function useColors() {
-  const scheme = useColorScheme();
-  const hasDark = (colors as { dark?: typeof colors.light }).dark;
-  const palette = scheme === "dark" && hasDark ? hasDark : colors.light;
-  return { ...palette, radius: colors.radius };
+  return { ...colors.light, radius: colors.radius };
 }

@@ -57,6 +57,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@expo-google-fonts/atkinson-hyperlegible": "^0.4.1",
     "expo-audio": "~1.1.1"
   }
 }
