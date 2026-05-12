@@ -18,7 +18,7 @@ import { db } from "./db";
 import { adCampaigns, adCreatives, adImpressions } from "@workspace/db";
 import { eq, desc, and, sql, gte, lte, or } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
-import { ObjectStorageService } from "./replit_integrations/object_storage";
+import { ObjectStorageService, canAccessObject, ObjectPermission } from "./replit_integrations/object_storage";
 
 const objectStorageService = new ObjectStorageService();
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/webm", "audio/ogg", "audio/mp4", "audio/x-m4a"];
@@ -219,6 +219,12 @@ export function registerSelfServeAdRoutes(app: any) {
 
   router.post("/upload-url", isAuthenticated, async (req: Request, res: Response) => {
     try {
+      const user = req.user as any;
+      const userId: string | undefined = user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
       const { fileName, contentType, fileSize } = req.body;
 
       if (!fileName || !contentType) {
@@ -233,27 +239,66 @@ export function registerSelfServeAdRoutes(app: any) {
         return res.status(400).json({ error: "File too large. Maximum 20MB." });
       }
 
-      const uploadUrl = await objectStorageService.getObjectEntityUploadURL();
+      const uploadUrl = await objectStorageService.getObjectEntityUploadURL(userId);
 
       res.json({
         uploadUrl,
       });
     } catch (err) {
-      console.error("[SelfServeAds] Upload URL error:", err);
+      req.log?.error({ err }, "[SelfServeAds] Upload URL error");
       res.status(500).json({ error: "Failed to generate upload URL" });
     }
   });
 
-  router.get("/audio/*path", async (req: Request, res: Response) => {
+  // Serve ad audio creatives. Authentication is required; the path must resolve
+  // to an owner-scoped upload (uploads/u_<b64>/...) so arbitrary private objects
+  // cannot be reached through this route.
+  router.get("/audio/*path", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const objectPath = "/objects/" + req.params[0];
+      const rawSubpath: string = req.params[0] ?? "";
+
+      // Restrict to owner-scoped upload paths only. This prevents this route
+      // from being used to access arbitrary private objects (e.g. covers/).
+      if (!rawSubpath.startsWith("uploads/u_")) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const objectPath = "/objects/" + rawSubpath;
+      const requesterId: string | undefined = (req.user as any)?.id;
+
+      // Verify the requester owns this upload (path-encoded owner check).
+      const ownerFromPath = objectStorageService.getUploadOwnerFromObjectPath(objectPath);
+
+      if (ownerFromPath === null) {
+        // Owner could not be decoded from the path (malformed or legacy format).
+        // Deny by default — all uploads via this route must use the
+        // owner-scoped `uploads/u_<b64>/<uuid>` format.
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      if (ownerFromPath !== requesterId) {
+        // Non-owner: check ACL before serving (e.g. shared/approved creative).
+        const file = await objectStorageService.getObjectEntityFile(objectPath);
+        const allowed = await canAccessObject({
+          userId: requesterId,
+          objectFile: file,
+          requestedPermission: ObjectPermission.READ,
+        });
+        if (!allowed) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        await objectStorageService.downloadObject(file, res, 86400);
+        return;
+      }
+
+      // Requester is the owner.
       const file = await objectStorageService.getObjectEntityFile(objectPath);
       await objectStorageService.downloadObject(file, res, 86400);
     } catch (err: any) {
       if (err?.name === "ObjectNotFoundError") {
         return res.status(404).json({ error: "Audio not found" });
       }
-      console.error("[SelfServeAds] Audio serve error:", err);
+      req.log?.error({ err }, "[SelfServeAds] Audio serve error");
       res.status(500).json({ error: "Failed to serve audio" });
     }
   });

@@ -132,35 +132,25 @@ export class ObjectStorageService {
 
   // Gets the upload URL for an object entity.
   //
-  // SECURITY: Pass `ownerUserId` so the upload path encodes the owner
-  // (`uploads/<userId>/<uuid>`). The read path uses this to enforce ownership
-  // without requiring a separate ACL write after the client PUTs the file.
-  // Calling without ownerUserId is only allowed in non-production environments
-  // (legacy/test path); production requires it.
-  async getObjectEntityUploadURL(ownerUserId?: string): Promise<string> {
-    const privateObjectDir = this.getPrivateObjectDir();
-    if (!privateObjectDir) {
-      throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
-      );
+  // SECURITY: `ownerUserId` is required. The upload path encodes the owner as
+  // `uploads/u_<base64url(userId)>/<uuid>` so ownership is verifiable at read
+  // time from the path alone, without requiring a separate ACL write after the
+  // client PUTs the file. Callers must authenticate the user before calling
+  // this method and pass their verified user ID.
+  async getObjectEntityUploadURL(ownerUserId: string): Promise<string> {
+    if (!ownerUserId) {
+      throw new Error("getObjectEntityUploadURL requires a non-empty ownerUserId");
     }
 
-    if (!ownerUserId && process.env.NODE_ENV === "production") {
-      throw new Error(
-        "getObjectEntityUploadURL requires ownerUserId in production"
-      );
-    }
+    const privateObjectDir = this.getPrivateObjectDir();
 
     const objectId = randomUUID();
     // Encode ownerUserId losslessly with base64url so IDs containing characters
     // outside the path-safe set (e.g. Auth0-format `auth0|abc`, OIDC subjects
     // with `:`) round-trip exactly. We prefix with `u_` so the segment is
     // unambiguously an encoded owner (vs. legacy `uploads/<uuid>` paths).
-    const safeOwner = ownerUserId
-      ? "u_" + Buffer.from(ownerUserId, "utf8").toString("base64url")
-      : null;
-    const subpath = safeOwner ? `uploads/${safeOwner}/${objectId}` : `uploads/${objectId}`;
+    const safeOwner = "u_" + Buffer.from(ownerUserId, "utf8").toString("base64url");
+    const subpath = `uploads/${safeOwner}/${objectId}`;
     const fullPath = `${privateObjectDir}/${subpath}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
@@ -350,7 +340,7 @@ async function signObjectURL({
     );
   }
 
-  const { signed_url: signedURL } = await response.json();
-  return signedURL;
+  const body = (await response.json()) as { signed_url: string };
+  return body.signed_url;
 }
 
