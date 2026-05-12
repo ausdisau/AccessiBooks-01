@@ -131,7 +131,13 @@ export class ObjectStorageService {
   }
 
   // Gets the upload URL for an object entity.
-  async getObjectEntityUploadURL(): Promise<string> {
+  //
+  // SECURITY: Pass `ownerUserId` so the upload path encodes the owner
+  // (`uploads/<userId>/<uuid>`). The read path uses this to enforce ownership
+  // without requiring a separate ACL write after the client PUTs the file.
+  // Calling without ownerUserId is only allowed in non-production environments
+  // (legacy/test path); production requires it.
+  async getObjectEntityUploadURL(ownerUserId?: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -140,8 +146,22 @@ export class ObjectStorageService {
       );
     }
 
+    if (!ownerUserId && process.env.NODE_ENV === "production") {
+      throw new Error(
+        "getObjectEntityUploadURL requires ownerUserId in production"
+      );
+    }
+
     const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    // Sanitize ownerUserId to prevent path traversal / segment injection.
+    const safeOwner = ownerUserId
+      ? ownerUserId.replace(/[^a-zA-Z0-9_-]/g, "")
+      : null;
+    if (ownerUserId && !safeOwner) {
+      throw new Error("Invalid ownerUserId");
+    }
+    const subpath = safeOwner ? `uploads/${safeOwner}/${objectId}` : `uploads/${objectId}`;
+    const fullPath = `${privateObjectDir}/${subpath}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
@@ -152,6 +172,28 @@ export class ObjectStorageService {
       method: "PUT",
       ttlSec: 900,
     });
+  }
+
+  // Parses the owner userId out of an upload object path of the form
+  // `/objects/uploads/<userId>/<uuid>` (path-encoded ownership).
+  // Returns null for legacy paths (`/objects/uploads/<uuid>`) or non-upload
+  // paths.
+  getUploadOwnerFromObjectPath(objectPath: string): string | null {
+    if (!objectPath.startsWith("/objects/uploads/")) {
+      return null;
+    }
+    const rest = objectPath.slice("/objects/uploads/".length);
+    const parts = rest.split("/").filter(Boolean);
+    // New-format path: <userId>/<uuid> (or deeper). Legacy: <uuid>.
+    if (parts.length < 2) {
+      return null;
+    }
+    const candidate = parts[0];
+    // Must look like a sanitized id (alphanumeric/_/-).
+    if (!/^[a-zA-Z0-9_-]+$/.test(candidate)) {
+      return null;
+    }
+    return candidate;
   }
 
   // Gets the object entity file from the object path.

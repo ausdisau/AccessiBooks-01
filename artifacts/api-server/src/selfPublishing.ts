@@ -126,7 +126,7 @@ export function registerSelfPublishingRoutes(app: Express) {
         return res.status(400).json({ message: "Invalid upload type. Use: audio, ebook, or cover" });
       }
 
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL(userId);
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
       res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
