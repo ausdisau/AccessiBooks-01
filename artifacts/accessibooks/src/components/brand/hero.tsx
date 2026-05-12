@@ -7,9 +7,10 @@ interface HeroProps {
   actions?: ReactNode;
   art?: ReactNode;
   className?: string;
+  headlineClassName?: string;
 }
 
-export function Hero({ eyebrow, headline, body, actions, art, className = "" }: HeroProps) {
+export function Hero({ eyebrow, headline, body, actions, art, className = "", headlineClassName }: HeroProps) {
   return (
     <div
       className={`grid gap-10 md:gap-14 md:grid-cols-12 items-center ${className}`}
@@ -24,7 +25,10 @@ export function Hero({ eyebrow, headline, body, actions, art, className = "" }: 
           </p>
         )}
         <h1
-          className="brand-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold leading-[1.05]"
+          className={
+            headlineClassName ??
+            "brand-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold leading-[1.05]"
+          }
           style={{ color: "var(--brand-navy)" }}
         >
           {headline}

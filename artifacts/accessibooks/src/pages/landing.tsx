@@ -7,6 +7,7 @@ import {
   Keyboard,
   Eye,
   Brain,
+  Type,
   Volume2,
   Heart,
   Users,
@@ -186,12 +187,14 @@ export function BrandLandingPage({
 
       <main id="main-content" className="flex-1" data-testid="brand-landing-main">
         {/* HERO */}
-        <Section spacing="xl" tone="cream" ariaLabel="AccessiBooks introduction">
+        <Section spacing="lg" tone="cream" ariaLabel="AccessiBooks introduction" className="!pt-10 sm:!pt-14">
           <Hero
             eyebrow="From Australian Disability Ltd"
+            headlineClassName="brand-display text-3xl sm:text-4xl md:text-[2.5rem] lg:text-5xl xl:text-[3.25rem] font-semibold leading-[1.08] tracking-tight"
             headline={
               <>
-                Audiobooks &amp; ebooks,{" "}
+                Audiobooks &amp; ebooks,
+                <br />
                 <span style={{ color: "var(--brand-orange-deep)" }}>designed for every reader</span>.
               </>
             }
@@ -226,35 +229,74 @@ export function BrandLandingPage({
               </>
             }
             art={
-              <div
-                className="relative rounded-3xl overflow-hidden border-2"
-                style={{
-                  borderColor: "var(--brand-line)",
-                  backgroundColor: "var(--brand-cream-deep)",
-                }}
-              >
-                <img
-                  src={brandArt}
-                  alt=""
-                  className="block w-full h-auto"
-                  loading="eager"
-                  decoding="async"
-                />
+              <div className="relative">
+                <div
+                  className="relative rounded-3xl overflow-hidden border-2"
+                  style={{
+                    borderColor: "var(--brand-line)",
+                    backgroundColor: "var(--brand-cream-deep)",
+                  }}
+                >
+                  <img
+                    src={brandArt}
+                    alt=""
+                    className="block w-full h-auto"
+                    loading="eager"
+                    decoding="async"
+                  />
+                </div>
+
+                {/* Floating product preview: a "Now playing" card hinting at the
+                    real listening + accessibility-controls UI, so first-time
+                    visitors can see what AccessiBooks actually looks like. */}
+                <div
+                  aria-hidden="true"
+                  className="hidden sm:block absolute -bottom-6 -left-6 md:-left-10 w-[78%] max-w-xs rounded-2xl border-2 shadow-xl p-4"
+                  style={{
+                    backgroundColor: "var(--brand-cream)",
+                    borderColor: "var(--brand-line)",
+                    color: "var(--brand-ink)",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "var(--brand-navy)", color: "var(--brand-cream)" }}
+                    >
+                      <Headphones className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs uppercase tracking-wider font-semibold" style={{ color: "var(--brand-orange-deep)" }}>
+                        Now playing
+                      </div>
+                      <div className="text-sm font-semibold truncate">Pride and Prejudice</div>
+                      <div className="text-xs truncate" style={{ color: "var(--brand-ink-soft)" }}>
+                        Ch. 3 · 12:04 / 28:30
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    className="mt-3 h-1.5 rounded-full overflow-hidden"
+                    style={{ backgroundColor: "var(--brand-cream-deep)" }}
+                  >
+                    <div className="h-full w-2/5 rounded-full" style={{ backgroundColor: "var(--brand-orange-deep)" }} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs" style={{ color: "var(--brand-ink-soft)" }}>
+                    <span className="inline-flex items-center gap-1.5"><Type className="h-3.5 w-3.5" /> Dyslexia font</span>
+                    <span className="inline-flex items-center gap-1.5"><Eye className="h-3.5 w-3.5" /> High contrast</span>
+                  </div>
+                </div>
               </div>
             }
           />
 
           <div
-            className="mt-14 sm:mt-20 grid grid-cols-2 sm:grid-cols-4 gap-y-8 gap-x-6 border-t pt-10"
+            className="mt-16 sm:mt-24 grid grid-cols-1 sm:grid-cols-3 gap-y-8 gap-x-6 border-t pt-10"
             style={{ borderColor: "var(--brand-line)" }}
             aria-label="Platform highlights"
           >
             <Stat value={`${formatNumber(totalBooks)}+`} label="Titles in library" />
-            <Stat value="WCAG 2.2 AA" label="Designed to meet" />
-            <Stat
-              value={totalListeners > 0 ? `${formatNumber(totalListeners)}+` : "Free"}
-              label={totalListeners > 0 ? "Active listeners" : "To get started"}
-            />
+            <Stat value="WCAG 2.2 AA" label="Built to conform" />
             <Stat
               value={totalMinutes > 0 ? `${formatNumber(totalMinutes)}+` : "100%"}
               label={totalMinutes > 0 ? "Minutes listened" : "Keyboard navigable"}

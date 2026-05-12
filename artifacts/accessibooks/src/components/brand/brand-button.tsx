@@ -38,7 +38,7 @@ export const BrandButton = forwardRef<HTMLButtonElement, BrandButtonProps>(
         ref={ref}
         {...props}
         className={[
-          "inline-flex items-center justify-center gap-2 rounded-full font-semibold tracking-tight",
+          "inline-flex items-center justify-center gap-2 rounded-full font-semibold tracking-tight whitespace-nowrap",
           "transition-all duration-200 ease-out",
           "focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-cream)]",
           "disabled:opacity-50 disabled:pointer-events-none",
