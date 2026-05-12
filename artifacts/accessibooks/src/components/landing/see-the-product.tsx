@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type KeyboardEvent } from "react";
+import { useId, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 import {
   Type,
   Contrast,
@@ -83,7 +83,7 @@ export function SeeTheProductSection({
       fontSize: `${fontSize}px`,
       lineHeight,
       letterSpacing: mode === "dyslexia" ? "0.04em" : "normal",
-    } as React.CSSProperties;
+    } as CSSProperties;
 
     if (contrast === "high") {
       return {
