@@ -6,9 +6,9 @@ interface StatProps {
 
 export function Stat({ value, label, className = "" }: StatProps) {
   return (
-    <div className={className}>
+    <div className={`min-w-0 ${className}`}>
       <div
-        className="brand-display text-4xl sm:text-5xl font-bold leading-none"
+        className="brand-display text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight break-words"
         style={{ color: "var(--brand-orange-deep)" }}
       >
         {value}
