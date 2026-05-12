@@ -671,6 +671,21 @@ export const isAuthenticatedOrM2M = async (
  */
 type Tier = "free" | "plus" | "premium";
 
+/**
+ * Middleware: requires the authenticated user to have the "admin" role.
+ * Must be composed after isAuthenticated (or isLocalAuthenticated).
+ * Returns 403 if the user is authenticated but not an admin.
+ */
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.isAuthenticated() || !req.user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  return next();
+};
+
 export const requireTier = (allowedTiers: Tier[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.isAuthenticated() || !req.user) {
