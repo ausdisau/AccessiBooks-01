@@ -51,6 +51,7 @@ overrides:
   yaml: ^2.8.3
   brace-expansion: ^2.0.3
   postcss: ^8.5.8
+  '@tootallnate/once': ^3.0.1
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32': '-'
