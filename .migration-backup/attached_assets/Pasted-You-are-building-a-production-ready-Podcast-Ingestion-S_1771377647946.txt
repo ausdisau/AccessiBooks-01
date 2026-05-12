@@ -1,0 +1,78 @@
+You are building a production-ready “Podcast Ingestion Service” for the AccessiBooks platform.
+
+Goal:
+- Ingest podcast metadata and episodes from RSS feeds (starting with ABC Podcasts feeds, but should support any standard podcast RSS).
+- Normalize and store the feed + episodes in a database.
+- Expose a REST API for AccessiBooks (Next.js/TypeScript frontend) to query podcasts and episodes.
+- Include accessibility-first metadata fields and a clean ingestion pipeline.
+
+Tech constraints:
+- Must run in Replit.
+- Use Node.js + TypeScript.
+- Use Express (or Fastify) for the API.
+- Use SQLite by default (via Prisma) so it runs easily in Replit.
+- Design should allow swapping to Postgres later with minimal changes.
+
+Core features:
+1) RSS Feed Ingestion
+- Endpoint: POST /ingest
+- Body: { "feedUrl": "https://...rss" }
+- Validate URL.
+- Fetch RSS with proper user-agent header.
+- Parse RSS (support common tags: title, link, description, language, image/itunes:image, author, categories).
+- Parse episodes (guid, title, pubDate, description/itunes:summary, duration, enclosure url/type/length).
+- Normalize HTML in descriptions to safe plain text + preserve original HTML field.
+
+2) Idempotency + Updates
+- If feed already exists, update metadata and upsert episodes.
+- Identify episodes by GUID first; fallback to enclosure URL if GUID missing.
+- Store lastFetchedAt and etag/last-modified headers if available; use conditional requests to reduce bandwidth.
+
+3) Database Schema (Prisma)
+Tables:
+- PodcastFeed: id, feedUrl (unique), title, description, imageUrl, author, language, websiteUrl, categories (json), lastFetchedAt, createdAt, updatedAt
+- PodcastEpisode: id, feedId (FK), guid (nullable), title, descriptionText, descriptionHtml, pubDate, durationSeconds (nullable), audioUrl, audioType, audioLengthBytes (nullable), explicit (nullable), createdAt, updatedAt
+Indexes:
+- Unique constraint on (feedId, guid) when guid present; also unique on (feedId, audioUrl)
+
+4) REST API
+- GET /feeds?q=&limit=&offset=  -> list feeds with search
+- GET /feeds/:id              -> feed details
+- GET /feeds/:id/episodes?limit=&offset= -> episodes list newest first
+- GET /episodes/:id           -> episode details
+- POST /ingest                -> ingest feed
+- POST /ingest/batch          -> ingest multiple feed URLs
+
+5) Accessibility-first fields
+- Include “transcriptUrl” (nullable) and “transcriptStatus” enum (none | available | pending | generated) on episodes.
+- Do NOT generate transcripts yet, but store fields to support future pipeline.
+- Include a “contentWarnings” JSON field for future tagging (e.g., flashing audio stings, loud sections, etc.), nullable.
+
+6) Security + Reliability
+- Add basic rate limiting (simple in-memory ok).
+- Validate inputs.
+- Handle fetch failures gracefully (timeouts, invalid RSS, 4xx/5xx).
+- Return useful error responses with { error: { code, message } }.
+- Add structured logging with request id.
+
+7) Project structure
+- src/server.ts (bootstrap)
+- src/routes/*
+- src/services/ingest.ts
+- src/services/rss.ts
+- src/db/prisma.ts
+- prisma/schema.prisma
+- .env with DATABASE_URL="file:./dev.db"
+
+8) Dev experience
+- Provide package.json scripts: dev, build, start, prisma:generate, prisma:migrate
+- Include README with:
+  - setup steps in Replit
+  - how to run migrations
+  - example curl commands
+
+Deliverables:
+- All code files created.
+- Prisma schema and first migration.
+- Working server running on Replit webview.
+- Example RSS feed URLs in README (not hardcoded in code).

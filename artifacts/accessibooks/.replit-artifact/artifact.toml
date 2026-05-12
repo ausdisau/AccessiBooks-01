@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "AccessiBooks"
+version = "1.0.0"
+id = "artifacts/accessibooks"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25245
+
+[services.development]
+run = "pnpm --filter @workspace/accessibooks run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/accessibooks", "run", "build" ]
+publicDir = "artifacts/accessibooks/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25245"
+BASE_PATH = "/"

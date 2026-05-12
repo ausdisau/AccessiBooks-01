@@ -1,0 +1,103 @@
+modules = ["nodejs-20", "web", "postgresql-16", "python-3.11"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
+run = ["node", "dist/index.js"]
+publicDir = "dist/public"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 23636
+externalPort = 3001
+
+[env]
+PORT = "5000"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "account-settings-test"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "account-settings-e2e"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "google-oauth-test"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[[workflows.workflow]]
+name = "account-settings-test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "TEST_BASE_URL=http://localhost:5000 SERVER_WAIT_MS=30000 npx tsx tests/account-settings.test.ts"
+
+[[workflows.workflow]]
+name = "account-settings-e2e"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash -c 'for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:5000/api/auth/providers && break || sleep 1; done; TEST_BASE_URL=http://localhost:5000 npx playwright test tests/account-settings.e2e.spec.ts --reporter=list'"
+
+[[workflows.workflow]]
+name = "google-oauth-test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "TEST_BASE_URL=http://localhost:5000 SERVER_WAIT_MS=30000 npx tsx tests/google-oauth.test.ts && npx tsx tests/auth0-callback-classifier.test.ts && npx tsx tests/auth0-callback-route.test.ts && npx tsx tests/auth0-callback-success-flow.test.ts && npx tsx tests/auth0-logout-flow.test.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[agent]
+integrations = ["javascript_mem_db:1.0.0", "javascript_auth_all_persistance:1.0.0", "spotify:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_stripe:1.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_object_storage:2.0.0", "agentmail:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BJWdQQ8a8kG2M3_9fo6ngx3I9eiPEbTwShBynd1q7xt04SuBSZT-OWwuPQ-LHSeCJIYloJwaOTR28B3RbhBZoyw"
+VAPID_PRIVATE_KEY = "RhX-A0WBHL6FIyDGorPdEwy_uEF291kDkSFGgxR_sCQ"
+VITE_VAPID_PUBLIC_KEY = "BJWdQQ8a8kG2M3_9fo6ngx3I9eiPEbTwShBynd1q7xt04SuBSZT-OWwuPQ-LHSeCJIYloJwaOTR28B3RbhBZoyw"
+CUSTOM_DATABASE_URL = "postgresql://neondb_owner:npg_PdZIj65TWkVt@ep-rough-bread-a7hy2uut-pooler.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+APP_URL = "https://accessibooks2.vercel.app"
+AUTH0_AUDIENCE = "https://api.accessibooks.com"
+
+[userenv.production]
+NODE_ENV = "production"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 90000
