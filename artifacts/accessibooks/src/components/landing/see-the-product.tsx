@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type KeyboardEvent } from "react";
 import {
   Type,
   Contrast,
@@ -44,6 +44,29 @@ export function SeeTheProductSection({
   const [contrast, setContrast] = useState<ContrastMode>("normal");
   const [speed, setSpeed] = useState(1);
   const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(42);
+
+  const totalSec = 28 * 60 + 30;
+  const elapsedSec = Math.round((progress / 100) * totalSec);
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  function handleRadioKey<T extends string | number>(
+    e: KeyboardEvent<HTMLButtonElement>,
+    options: readonly T[],
+    current: T,
+    setValue: (v: never) => void,
+  ) {
+    const idx = options.indexOf(current);
+    if (idx < 0) return;
+    let next = idx;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % options.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (idx - 1 + options.length) % options.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = options.length - 1;
+    else return;
+    e.preventDefault();
+    (setValue as (v: T) => void)(options[next]);
+  }
 
   const fontSizeId = useId();
   const lineHeightId = useId();
@@ -153,30 +176,36 @@ export function SeeTheProductSection({
                   role="radiogroup"
                   aria-label="Reading mode"
                 >
-                  {([
-                    { id: "standard", label: "Standard" },
-                    { id: "dyslexia", label: "Dyslexia" },
-                    { id: "easy", label: "Easy English" },
-                  ] as const).map((opt) => {
-                    const active = mode === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => setMode(opt.id)}
-                        className="px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
-                        style={{
-                          backgroundColor: active ? "var(--brand-navy)" : "transparent",
-                          color: active ? "var(--brand-cream)" : "var(--brand-ink)",
-                        }}
-                        data-testid={`demo-mode-${opt.id}`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
+                  {(() => {
+                    const opts = [
+                      { id: "standard" as const, label: "Standard" },
+                      { id: "dyslexia" as const, label: "Dyslexia" },
+                      { id: "easy" as const, label: "Easy English" },
+                    ];
+                    const ids = opts.map((o) => o.id);
+                    return opts.map((opt) => {
+                      const active = mode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          tabIndex={active ? 0 : -1}
+                          onClick={() => setMode(opt.id)}
+                          onKeyDown={(e) => handleRadioKey(e, ids, mode, setMode)}
+                          className="px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+                          style={{
+                            backgroundColor: active ? "var(--brand-navy)" : "transparent",
+                            color: active ? "var(--brand-cream)" : "var(--brand-ink)",
+                          }}
+                          data-testid={`demo-mode-${opt.id}`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    });
+                  })()}
                 </div>
               </fieldset>
 
@@ -259,30 +288,36 @@ export function SeeTheProductSection({
                   role="radiogroup"
                   aria-label="Contrast"
                 >
-                  {([
-                    { id: "normal", label: "Normal" },
-                    { id: "high", label: "High" },
-                    { id: "sepia", label: "Sepia" },
-                  ] as const).map((opt) => {
-                    const active = contrast === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => setContrast(opt.id)}
-                        className="px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
-                        style={{
-                          backgroundColor: active ? "var(--brand-navy)" : "transparent",
-                          color: active ? "var(--brand-cream)" : "var(--brand-ink)",
-                        }}
-                        data-testid={`demo-contrast-${opt.id}`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
+                  {(() => {
+                    const opts = [
+                      { id: "normal" as const, label: "Normal" },
+                      { id: "high" as const, label: "High" },
+                      { id: "sepia" as const, label: "Sepia" },
+                    ];
+                    const ids = opts.map((o) => o.id);
+                    return opts.map((opt) => {
+                      const active = contrast === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          tabIndex={active ? 0 : -1}
+                          onClick={() => setContrast(opt.id)}
+                          onKeyDown={(e) => handleRadioKey(e, ids, contrast, setContrast)}
+                          className="px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+                          style={{
+                            backgroundColor: active ? "var(--brand-navy)" : "transparent",
+                            color: active ? "var(--brand-cream)" : "var(--brand-ink)",
+                          }}
+                          data-testid={`demo-contrast-${opt.id}`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    });
+                  })()}
                 </div>
               </fieldset>
 
@@ -351,7 +386,7 @@ export function SeeTheProductSection({
                     className="text-xs truncate"
                     style={{ color: "color-mix(in srgb, var(--brand-cream) 70%, transparent)" }}
                   >
-                    Narrated by Karen Savage · 12:04 / 28:30
+                    Narrated by Karen Savage · {fmt(elapsedSec)} / {fmt(totalSec)}
                   </div>
                 </div>
               </div>
@@ -363,11 +398,11 @@ export function SeeTheProductSection({
                 aria-label="Playback progress"
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-valuenow={42}
+                aria-valuenow={progress}
               >
                 <div
-                  className="h-full rounded-full"
-                  style={{ width: "42%", backgroundColor: "var(--brand-orange)" }}
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${progress}%`, backgroundColor: "var(--brand-orange)" }}
                 />
               </div>
 
@@ -375,7 +410,7 @@ export function SeeTheProductSection({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => {}}
+                    onClick={() => setProgress((p) => Math.max(0, p - 5))}
                     className="h-10 w-10 rounded-full inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
                     style={{ backgroundColor: "color-mix(in srgb, var(--brand-cream) 14%, transparent)" }}
                     aria-label="Skip back 30 seconds"
@@ -396,7 +431,7 @@ export function SeeTheProductSection({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {}}
+                    onClick={() => setProgress((p) => Math.min(100, p + 5))}
                     className="h-10 w-10 rounded-full inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
                     style={{ backgroundColor: "color-mix(in srgb, var(--brand-cream) 14%, transparent)" }}
                     aria-label="Skip forward 30 seconds"
@@ -408,28 +443,32 @@ export function SeeTheProductSection({
 
                 <fieldset className="flex items-center gap-1">
                   <legend className="sr-only">Playback speed</legend>
-                  {SPEEDS.map((s) => {
-                    const active = speed === s;
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => setSpeed(s)}
-                        className="px-2.5 py-1 rounded-md text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
-                        style={{
-                          backgroundColor: active
-                            ? "var(--brand-orange)"
-                            : "color-mix(in srgb, var(--brand-cream) 14%, transparent)",
-                          color: active ? "var(--brand-navy-strong)" : "var(--brand-cream)",
-                        }}
-                        data-testid={`demo-speed-${s}`}
-                      >
-                        {s}x
-                      </button>
-                    );
-                  })}
+                  <div role="radiogroup" aria-label="Playback speed" className="flex items-center gap-1">
+                    {SPEEDS.map((s) => {
+                      const active = speed === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          tabIndex={active ? 0 : -1}
+                          onClick={() => setSpeed(s)}
+                          onKeyDown={(e) => handleRadioKey(e, SPEEDS, speed, setSpeed)}
+                          className="px-2.5 py-1 rounded-md text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+                          style={{
+                            backgroundColor: active
+                              ? "var(--brand-orange)"
+                              : "color-mix(in srgb, var(--brand-cream) 14%, transparent)",
+                            color: active ? "var(--brand-navy-strong)" : "var(--brand-cream)",
+                          }}
+                          data-testid={`demo-speed-${s}`}
+                        >
+                          {s}x
+                        </button>
+                      );
+                    })}
+                  </div>
                 </fieldset>
               </div>
             </div>
