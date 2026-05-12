@@ -1,0 +1,105 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "sans-serif",
+      "count": 17
+    },
+    {
+      "family": "Arial",
+      "count": 10
+    },
+    {
+      "family": "Helvetica",
+      "count": 10
+    },
+    {
+      "family": "HelveticaNeue",
+      "count": 7
+    },
+    {
+      "family": "Helvetica Neue",
+      "count": 7
+    },
+    {
+      "family": "helvetica",
+      "count": 7
+    },
+    {
+      "family": "Times New Roman",
+      "count": 3
+    }
+  ],
+  "colors": {
+    "primary": "#AFC3D1",
+    "accent": "#0000EE",
+    "background": "#FFFFFF",
+    "textPrimary": "#000000",
+    "link": "#0000EE"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Arial",
+      "heading": "Arial"
+    },
+    "fontStacks": {
+      "body": [
+        "Arial",
+        "Helvetica",
+        "sans-serif"
+      ],
+      "heading": [
+        "Arial",
+        "Helvetica",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "Arial",
+        "Helvetica",
+        "sans-serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "10px",
+      "h2": "10px",
+      "body": "10px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "8px"
+  },
+  "components": {},
+  "images": {
+    "logo": "https://static.wixstatic.com/media/1a0a5c_f6ce8542df7141d5b3ee236adcf4d80a~mv2.png/v1/fill/w_169,h_105,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/1a0a5c_f6ce8542df7141d5b3ee236adcf4d80a~mv2.png",
+    "favicon": "https://static.wixstatic.com/media/1a0a5c_dc23fc4e85a441b480a8e0342109db1b%7Emv2.png/v1/fill/w_192%2Ch_192%2Clg_1%2Cusm_0.66_1.00_0.01/1a0a5c_dc23fc4e85a441b480a8e0342109db1b%7Emv2.png",
+    "ogImage": "https://static.wixstatic.com/media/1a0a5c_f6ce8542df7141d5b3ee236adcf4d80a~mv2.png/v1/fill/w_1202,h_746,al_c/1a0a5c_f6ce8542df7141d5b3ee236adcf4d80a~mv2.png"
+  },
+  "__framework_hints": [
+    "Wix.com Website Builder",
+    "bootstrap"
+  ],
+  "__llm_logo_reasoning": {
+    "selectedIndex": 0,
+    "reasoning": "Strong indicators: variant bonus (+8), header logo linking to homepage, header location, visible, top-left position, highest logo on page, reasonable size. Score: 120 (clear winner by 60 points)",
+    "confidence": 0.9
+  },
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "secondary": {
+      "index": -1,
+      "text": "N/A",
+      "reasoning": "LLM failed"
+    },
+    "confidence": 0
+  },
+  "confidence": {
+    "buttons": 0,
+    "colors": 0,
+    "overall": 0
+  }
+}
