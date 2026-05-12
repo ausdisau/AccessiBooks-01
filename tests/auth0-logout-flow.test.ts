@@ -493,6 +493,18 @@ async function run() {
               `Set-Cookie headers were: ${JSON.stringify(out.setCookie ?? [])}`,
           );
         }
+
+        // Acceptance criterion: /api/auth/me with the ORIGINAL cookie must
+        // still 401 after the destroy-error path. (Passport's req.logout
+        // regenerates the session before our explicit destroy, so the
+        // original SID is already gone from the store regardless of the
+        // simulated outage on the second destroy.)
+        const after = await app.get("/api/auth/me", cookie);
+        assertEq(
+          after.status,
+          401,
+          "/api/auth/me with original cookie after destroy-error logout",
+        );
       } finally {
         await app.close();
       }
@@ -544,6 +556,13 @@ async function run() {
               `Set-Cookie headers were: ${JSON.stringify(out.setCookie ?? [])}`,
           );
         }
+
+        const after = await app.get("/api/auth/me", cookie);
+        assertEq(
+          after.status,
+          401,
+          "/api/auth/me with original cookie after destroy-error POST logout",
+        );
       } finally {
         await app.close();
       }
