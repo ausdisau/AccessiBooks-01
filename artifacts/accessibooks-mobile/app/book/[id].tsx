@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { rememberRecent } from "@/app/(tabs)/library";
 import {
   apiBase,
@@ -91,6 +92,7 @@ function pickCta(
 export default function BookDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const r = useResponsive();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const book = useQuery({
@@ -209,42 +211,86 @@ export default function BookDetailScreen() {
             style={StyleSheet.absoluteFill}
           />
           <View style={{ height: insets.top + 12 }} />
-          <View style={styles.heroContent}>
+          <View
+            style={[
+              styles.heroContent,
+              r.isTablet && {
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 32,
+                maxWidth: 960,
+                alignSelf: "center",
+                width: "100%",
+                paddingHorizontal: 32,
+              },
+            ]}
+          >
             <BookCover
               uri={b.coverUrl ?? null}
               title={b.title}
-              width={170}
-              height={255}
+              width={r.isLargeTablet ? 240 : r.isTablet ? 200 : 170}
+              height={r.isLargeTablet ? 360 : r.isTablet ? 300 : 255}
               rounded={12}
             />
-            <Text
-              style={[styles.heroTitle, { color: "#ffffff" }]}
-              accessibilityRole="header"
+            <View
+              style={[
+                r.isTablet ? { flex: 1, alignItems: "flex-start" } : { alignItems: "center" },
+              ]}
             >
-              {b.title}
-            </Text>
-            {b.author ? (
-              <Text style={[styles.heroAuthor, { color: colors.brandCream }]}>
-                by {b.author}
+              <Text
+                style={[
+                  styles.heroTitle,
+                  { color: "#ffffff" },
+                  r.isTablet && { textAlign: "left", fontSize: 32, lineHeight: 36 },
+                ]}
+                accessibilityRole="header"
+              >
+                {b.title}
               </Text>
-            ) : null}
-            <View style={styles.metaRow}>
-              {b.contentType ? (
-                <Chip color={colors.brandOrange}>{b.contentType}</Chip>
+              {b.author ? (
+                <Text
+                  style={[
+                    styles.heroAuthor,
+                    { color: colors.brandCream },
+                    r.isTablet && { fontSize: 16 },
+                  ]}
+                >
+                  by {b.author}
+                </Text>
               ) : null}
-              {b.duration ? (
-                <Chip color={colors.brandCream}>
-                  {formatDuration(b.duration)}
-                </Chip>
-              ) : null}
-              {b.source ? (
-                <Chip color={colors.brandCream}>{b.source}</Chip>
-              ) : null}
+              <View
+                style={[
+                  styles.metaRow,
+                  r.isTablet && { justifyContent: "flex-start" },
+                ]}
+              >
+                {b.contentType ? (
+                  <Chip color={colors.brandOrange}>{b.contentType}</Chip>
+                ) : null}
+                {b.duration ? (
+                  <Chip color={colors.brandCream}>
+                    {formatDuration(b.duration)}
+                  </Chip>
+                ) : null}
+                {b.source ? (
+                  <Chip color={colors.brandCream}>{b.source}</Chip>
+                ) : null}
+              </View>
             </View>
           </View>
         </View>
 
-        <View style={styles.body}>
+        <View
+          style={[
+            styles.body,
+            { paddingHorizontal: r.pagePadding },
+            r.isTablet && {
+              maxWidth: 960,
+              alignSelf: "center",
+              width: "100%",
+            },
+          ]}
+        >
           <Pressable
             onPress={onCta}
             style={({ pressed }) => [
@@ -429,7 +475,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   body: {
-    paddingHorizontal: 16,
     paddingTop: 20,
   },
   playButton: {
