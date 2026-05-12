@@ -222,7 +222,7 @@ export function registerBillingRoutes(app: any) {
     try {
       const session = await stripe.billingPortal.sessions.create({
         customer: dbUser.stripeCustomerId,
-        return_url: `${req.headers.origin || "http://localhost:5000"}`,
+        return_url: `${req.headers.origin || "http://localhost:8080"}`,
       });
       res.json({ url: session.url });
     } catch (err) {
