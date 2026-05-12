@@ -29,6 +29,7 @@ import {
   BrandButton,
   BrandWordmark,
 } from "@/components/brand";
+import { SeeTheProductSection } from "@/components/landing/see-the-product";
 
 import brandArt from "@assets/AccessiBooksV3_1776746168818.png";
 
@@ -396,6 +397,12 @@ export function BrandLandingPage({
             ))}
           </div>
         </Section>
+
+        {/* SEE THE PRODUCT — interactive demo */}
+        <SeeTheProductSection
+          onOpenRegister={onOpenRegister}
+          onBrowseAsGuest={onBrowseAsGuest}
+        />
 
         {/* ACCESSIBILITY COMMITMENTS */}
         <Section
