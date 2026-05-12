@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import {
@@ -14,7 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
-import { apiBase } from "@/lib/api";
+import { apiBase, fetchMe } from "@/lib/api";
 
 type Row = {
   icon: keyof typeof Feather.glyphMap;
@@ -56,9 +57,21 @@ const ROWS: Row[] = [
   },
 ];
 
+const TIER_LABELS: Record<string, string> = {
+  free: "Free plan",
+  plus: "Plus plan",
+  premium: "Premium plan",
+};
+
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchMe,
+    staleTime: 60_000,
+  });
+
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 100 : 100;
 
@@ -74,6 +87,11 @@ export default function SettingsScreen() {
       Linking.openURL(url);
     }
   };
+
+  const tier = me.data?.subscriptionTier ?? "free";
+  const tierLabel = TIER_LABELS[tier] ?? "Free plan";
+  const displayName =
+    me.data?.firstName?.trim() || me.data?.email || "Guest reader";
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -93,11 +111,18 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        <View
-          style={[
+        <Pressable
+          onPress={() => open(me.data ? "/account-settings" : "/login")}
+          style={({ pressed }) => [
             styles.brandCard,
-            { backgroundColor: colors.brandCream },
+            { backgroundColor: colors.brandCream, opacity: pressed ? 0.85 : 1 },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={
+            me.data
+              ? `Signed in as ${displayName}, ${tierLabel}. Open account settings.`
+              : "Sign in on the web"
+          }
         >
           <Image
             source={require("../../assets/images/logo.png")}
@@ -105,17 +130,25 @@ export default function SettingsScreen() {
             accessibilityLabel="AccessiBooks logo"
           />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.brandTitle, { color: colors.brandInk }]}>
-              AccessiBooks
+            <Text
+              numberOfLines={1}
+              style={[styles.brandTitle, { color: colors.brandInk }]}
+            >
+              {me.data ? displayName : "Sign in to AccessiBooks"}
             </Text>
             <Text
+              numberOfLines={1}
               style={[styles.brandSub, { color: colors.brandInkSoft }]}
-              numberOfLines={2}
             >
-              Accessible audiobooks and ebooks for every reader.
+              {me.data ? tierLabel : "Open the web app to sign in"}
             </Text>
           </View>
-        </View>
+          <Feather
+            name="external-link"
+            size={20}
+            color={colors.brandInkSoft}
+          />
+        </Pressable>
 
         <View style={styles.list}>
           {ROWS.map((row) => (
