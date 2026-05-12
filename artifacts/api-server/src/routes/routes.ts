@@ -5,7 +5,7 @@ import { db } from "../db";
 import { z } from "zod";
 import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns, accessibilityPreferences } from "@workspace/db";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
-import { setupMultiAuth, isAuthenticated, requireTier } from "../multiAuth";
+import { setupMultiAuth, isAuthenticated, requireAdmin, requireTier } from "../multiAuth";
 import { registerMagicLinkRoutes } from "../auth";
 import { setupAuth0Routes, isAuth0Configured } from "../auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "../spotifyClient";
@@ -625,20 +625,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // PATCH /api/admin/books/:id - Admin: update book metadata and/or override reading level
-  app.patch("/api/admin/books/:id", isAuthenticated, async (req: any, res) => {
-    const userId = req.user?.id || req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ message: "Authentication required" });
-
-    try {
-      const userRows = await db.execute(sql`SELECT role FROM users WHERE id = ${userId}`);
-      const userArr: any[] = (userRows as any).rows ?? [];
-      if (userArr[0]?.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-    } catch {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
+  app.patch("/api/admin/books/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
       const { id } = req.params;
       const { readingLevel, description, genre, title, author, narrator, coverImage, audioUrl, contentUrl, isPremium } = req.body;
@@ -5136,8 +5123,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Catalog Seeder API endpoints
-  app.get("/api/admin/seed/status", async (_req, res) => {
+  // Catalog Seeder API endpoints — admin only
+  app.get("/api/admin/seed/status", isAuthenticated, requireAdmin, async (_req, res) => {
     try {
       const status = getSeederStatus();
       const counts = await getSeededBookCount();
@@ -5148,7 +5135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/seed/start", async (req, res) => {
+  app.post("/api/admin/seed/start", isAuthenticated, requireAdmin, async (req, res) => {
     try {
       const sources = req.body.sources || ["librivox", "gutenberg"];
       const result = await startSeeding(sources);
@@ -5159,7 +5146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/seed/stop", (req, res) => {
+  app.post("/api/admin/seed/stop", isAuthenticated, requireAdmin, (req, res) => {
     try {
       const result = stopSeeding(req.body.source);
       res.json(result);
@@ -5168,7 +5155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/seed/reset", (req, res) => {
+  app.post("/api/admin/seed/reset", isAuthenticated, requireAdmin, (req, res) => {
     try {
       const result = resetSeeder(req.body.source);
       res.json(result);
@@ -5178,7 +5165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Trigger the expanded 1M-book seed run for Open Library + Internet Archive
-  app.post("/api/admin/seed/expand", async (req, res) => {
+  app.post("/api/admin/seed/expand", isAuthenticated, requireAdmin, async (req, res) => {
     try {
       const result = await resetAndRestartExpandedSources();
       res.json(result);
@@ -5187,7 +5174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/seed/metrics", (_req, res) => {
+  app.get("/api/admin/seed/metrics", isAuthenticated, requireAdmin, (_req, res) => {
     try {
       const metrics = getSeederMetrics();
       res.json(metrics);
@@ -5823,7 +5810,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Moderation Routes
-  app.get("/api/admin/reports", isAuthenticated, async (req: any, res) => {
+  app.get("/api/admin/reports", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
       const userId = req.user?.id || req.user?.claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -5844,7 +5831,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/reports/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/admin/reports/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
       const userId = req.user?.id || req.user?.claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -5873,7 +5860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Health Dashboard
-  app.get("/api/admin/health", async (_req, res) => {
+  app.get("/api/admin/health", isAuthenticated, requireAdmin, async (_req, res) => {
     try {
       // Get total books count
       const bookCount = await db.select({ count: count() }).from(books);
@@ -5920,7 +5907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Churn Risk Dashboard
-  app.get("/api/admin/churn-risk", async (_req, res) => {
+  app.get("/api/admin/churn-risk", isAuthenticated, requireAdmin, async (_req, res) => {
     try {
       // Get all users first
       const allUsers = await db.select({ id: users.id, firstName: users.firstName }).from(users);

@@ -17,10 +17,68 @@ import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual, createHmac } from "crypto";
 import { promisify } from "util";
+import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
 import { User as SelectUser } from "@workspace/db";
 import { sendEmail, isEmailConfigured } from "./mailer";
 import { sendViaResend, isResendConfigured } from "./resendMailer";
+
+// Per-IP limiters — coarse shield against distributed attacks
+const loginIpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `ip:${req.ip ?? "unknown"}`,
+  message: { message: "Too many login attempts. Please try again later." },
+  skipSuccessfulRequests: true,
+});
+
+const registerIpRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `ip:${req.ip ?? "unknown"}`,
+  message: { message: "Too many registration attempts. Please try again later." },
+});
+
+const magicLinkIpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `ip:${req.ip ?? "unknown"}`,
+  message: { message: "Too many magic link requests. Please try again later." },
+});
+
+// Per-identifier limiters — targeted lockout against credential stuffing / email flooding
+// Uses username/email from the request body so a single account cannot be
+// hammered even from many distributed IPs.
+const loginIdentifierRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const id = (req.body?.username ?? req.body?.email ?? "").toString().toLowerCase().trim();
+    return `id:login:${id || "unknown"}`;
+  },
+  message: { message: "Too many login attempts for this account. Please try again later." },
+  skipSuccessfulRequests: true,
+});
+
+const magicLinkIdentifierRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = (req.body?.email ?? "").toString().toLowerCase().trim();
+    return `id:magic:${email || "unknown"}`;
+  },
+  message: { message: "Too many magic link requests for this address. Please try again later." },
+});
 
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -193,7 +251,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/register", async (req, res, next) => {
+  app.post("/api/register", registerIpRateLimiter, async (req, res, next) => {
     try {
       console.log('Registration attempt received');
       
@@ -234,7 +292,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  app.post("/api/login", (req, res, next) => {
+  app.post("/api/login", loginIpRateLimiter, loginIdentifierRateLimiter, (req, res, next) => {
     console.log('Login attempt received');
     
     passport.authenticate("local", (err: any, user: SelectUser, info: any) => {
@@ -302,15 +360,26 @@ export function setupAuth(app: Express) {
  */
 export function registerMagicLinkRoutes(app: Express) {
   // Magic link: request
-  app.post("/api/auth/magic-link/request", async (req, res) => {
+  app.post("/api/auth/magic-link/request", magicLinkIpRateLimiter, magicLinkIdentifierRateLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email || typeof email !== "string") {
       return res.status(400).json({ message: "Email is required" });
     }
     const token = createMagicToken(email);
-    // Respect X-Forwarded-Proto so the link works correctly behind Replit's HTTPS proxy
-    const proto = (req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
-    const baseUrl = `${proto}://${req.get("host")}`;
+    // Always derive the base URL from the trusted APP_URL env var, never from
+    // request headers (Host / X-Forwarded-Proto). Trusting those headers would
+    // let an attacker poison the emailed link to point at an attacker-controlled
+    // domain and steal the one-time token (host-header injection → account takeover).
+    const configuredAppUrl = process.env.APP_URL?.replace(/\/$/, "");
+    if (!configuredAppUrl && process.env.NODE_ENV === "production") {
+      console.error("[MagicLink] APP_URL is not set in production — cannot build safe magic-link URL");
+      return res.status(503).json({ message: "Server misconfiguration. Contact support." });
+    }
+    // In development, fall back to the request origin only when APP_URL is absent.
+    const baseUrl = configuredAppUrl ?? (() => {
+      const proto = (req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
+      return `${proto}://${req.get("host")}`;
+    })();
     const link = `${baseUrl}/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
     // Always log for dev visibility — email is always masked; full link only in development
     const atIdx = email.indexOf("@");

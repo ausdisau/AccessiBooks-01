@@ -17,6 +17,7 @@ import memoize from "memoizee";
 import bcrypt from "bcryptjs";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
+import rateLimit from "express-rate-limit";
 import type { Express, Request, RequestHandler, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { users } from "@workspace/db";
@@ -28,6 +29,53 @@ import {
   makeAuth0LogoutGetHandler,
   makeAuth0LogoutPostHandler,
 } from "./auth0LogoutHandlers";
+
+// Per-IP limiters — coarse shield against distributed attacks
+const authLoginIpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `ip:${req.ip ?? "unknown"}`,
+  message: { message: "Too many login attempts. Please try again later." },
+  skipSuccessfulRequests: true,
+});
+
+const authRegisterIpRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `ip:${req.ip ?? "unknown"}`,
+  message: { message: "Too many registration attempts. Please try again later." },
+});
+
+// Per-identifier limiters — targeted lockout so a single account cannot be
+// hammered even from many distributed IPs.
+const authLoginIdentifierRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const id = (req.body?.email ?? req.body?.username ?? "").toString().toLowerCase().trim();
+    return `id:login:${id || "unknown"}`;
+  },
+  message: { message: "Too many login attempts for this account. Please try again later." },
+  skipSuccessfulRequests: true,
+});
+
+const authRegisterIdentifierRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = (req.body?.email ?? "").toString().toLowerCase().trim();
+    return `id:register:${email || "unknown"}`;
+  },
+  message: { message: "Too many registration attempts for this address. Please try again later." },
+});
 
 // Local strategy (username/password)
 passport.use(
@@ -376,7 +424,7 @@ export function setupMultiAuth(app: Express) {
   app.post("/api/auth/logout", makeAuth0LogoutPostHandler(logoutOpts));
   
   // Local registration
-  app.post("/api/auth/register", async (req: Request, res: Response) => {
+  app.post("/api/auth/register", authRegisterIpRateLimiter, authRegisterIdentifierRateLimiter, async (req: Request, res: Response) => {
     try {
       const { email, password, firstName, lastName, role, companyName, website } = req.body;
 
@@ -441,7 +489,7 @@ export function setupMultiAuth(app: Express) {
   });
 
   // Local login
-  app.post("/api/auth/login", (req: Request, res: Response, next: NextFunction) => {
+  app.post("/api/auth/login", authLoginIpRateLimiter, authLoginIdentifierRateLimiter, (req: Request, res: Response, next: NextFunction) => {
     passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
         return res.status(500).json({ message: "Authentication error" });
@@ -670,6 +718,21 @@ export const isAuthenticatedOrM2M = async (
  * Example: app.post("/api/ai/foo", requireTier(["plus", "premium"]), handler)
  */
 type Tier = "free" | "plus" | "premium";
+
+/**
+ * Middleware: requires the authenticated user to have the "admin" role.
+ * Must be composed after isAuthenticated (or isLocalAuthenticated).
+ * Returns 403 if the user is authenticated but not an admin.
+ */
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.isAuthenticated() || !req.user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  return next();
+};
 
 export const requireTier = (allowedTiers: Tier[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
