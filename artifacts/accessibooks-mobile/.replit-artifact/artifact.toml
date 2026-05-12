@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/accessibooks-mobile/"
+title = "AccessiBooks Mobile"
+version = "1.0.0"
+id = "artifacts/accessibooks-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/accessibooks-mobile/" ]
+localPort = 20679
+
+[services.development]
+run = "pnpm --filter @workspace/accessibooks-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/accessibooks-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/accessibooks-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "20679"
+BASE_PATH = "/accessibooks-mobile/"
