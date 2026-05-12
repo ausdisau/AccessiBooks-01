@@ -1,4 +1,12 @@
-import { useId, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
+import {
+  useId,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type KeyboardEvent,
+  type SetStateAction,
+} from "react";
 import {
   Type,
   Contrast,
@@ -54,7 +62,7 @@ export function SeeTheProductSection({
     e: KeyboardEvent<HTMLButtonElement>,
     options: readonly T[],
     current: T,
-    setValue: (v: never) => void,
+    setValue: Dispatch<SetStateAction<T>>,
   ) {
     const idx = options.indexOf(current);
     if (idx < 0) return;
@@ -65,7 +73,10 @@ export function SeeTheProductSection({
     else if (e.key === "End") next = options.length - 1;
     else return;
     e.preventDefault();
-    (setValue as (v: T) => void)(options[next]);
+    setValue(options[next]);
+    const parent = e.currentTarget.parentElement;
+    const target = parent?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next];
+    target?.focus();
   }
 
   const fontSizeId = useId();
