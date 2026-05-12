@@ -131,8 +131,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     const allowedOrigins = [
-      'http://localhost:5000', // Dev server
-      'https://localhost:5000',
+      'http://localhost:8080', // Dev server
+      'https://localhost:8080',
       process.env.ALLOWED_ORIGIN // Production domain
     ].filter(Boolean);
     
@@ -383,7 +383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch canonical page text server-side (prevents cache poisoning)
-      const baseUrl = `http://localhost:${process.env.PORT || 5000}`;
+      const baseUrl = `http://localhost:${process.env.PORT || 8080}`;
       const canonicalText = await fetchCanonicalPageText(bookId, chapterNumber, baseUrl);
       if (!canonicalText) {
         return res.status(404).json({ message: "Page content not found or book has no text content" });
@@ -1810,7 +1810,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch the real ebook text content via the existing ebook content proxy
-      const baseUrl = `http://localhost:${process.env.PORT || 5000}`;
+      const baseUrl = `http://localhost:${process.env.PORT || 8080}`;
       let fullText = "";
       let isSampleContent = false;
       try {
@@ -2192,7 +2192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid tier. Choose 'plus' or 'premium'" });
       }
 
-      const originUrl = req.headers.origin || "http://localhost:5000";
+      const originUrl = req.headers.origin || "http://localhost:8080";
 
       if (subscriptionService) {
         const { url, customerId } = await subscriptionService.createCheckoutSession({
@@ -2275,8 +2275,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             quantity: 1,
           },
         ],
-        success_url: `${req.headers.origin || "http://localhost:5000"}?purchase=success&bookId=${bookId}`,
-        cancel_url: `${req.headers.origin || "http://localhost:5000"}?purchase=cancelled`,
+        success_url: `${req.headers.origin || "http://localhost:8080"}?purchase=success&bookId=${bookId}`,
+        cancel_url: `${req.headers.origin || "http://localhost:8080"}?purchase=cancelled`,
         metadata: {
           userId: user.id,
           bookId,
@@ -2416,8 +2416,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             quantity: 1,
           },
         ],
-        success_url: `${req.headers.origin || "http://localhost:5000"}?donation=success`,
-        cancel_url: `${req.headers.origin || "http://localhost:5000"}?donation=cancelled`,
+        success_url: `${req.headers.origin || "http://localhost:8080"}?donation=success`,
+        cancel_url: `${req.headers.origin || "http://localhost:8080"}?donation=cancelled`,
         metadata: {
           type: "donation",
           userId: req.user?.claims?.sub || req.user?.id || "anonymous",
@@ -5296,8 +5296,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               quantity: 1,
             }],
             metadata: { giftCode: code, userId, type, optionKey },
-            success_url: `${req.headers.origin || "http://localhost:5000"}/billing?gift=success&code=${code}`,
-            cancel_url: `${req.headers.origin || "http://localhost:5000"}/billing?gift=cancelled`,
+            success_url: `${req.headers.origin || "http://localhost:8080"}/billing?gift=success&code=${code}`,
+            cancel_url: `${req.headers.origin || "http://localhost:8080"}/billing?gift=cancelled`,
           });
           stripeSessionUrl = session.url;
         } catch (stripeErr) {

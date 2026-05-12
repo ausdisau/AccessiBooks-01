@@ -102,7 +102,7 @@ async function getA11yProfile(req: Request): Promise<Record<string, boolean | un
     if (!user?.id) return {};
 
     const response = await fetch(
-      `http://localhost:${process.env.PORT || 5000}/api/a11y/preferences`,
+      `http://localhost:${process.env.PORT || 8080}/api/a11y/preferences`,
       {
         headers: {
           Cookie: req.headers.cookie || "",
