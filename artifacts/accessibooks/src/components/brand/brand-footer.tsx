@@ -52,7 +52,7 @@ export function BrandFooter({ columns = defaultColumns }: BrandFooterProps) {
         color: "var(--brand-cream)",
       }}
     >
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 py-14 sm:py-16">
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 py-14 sm:py-16 border-t-[#d7dfea] border-r-[#d7dfea] border-b-[#d7dfea] border-l-[#d7dfea] bg-[#f1e7da]">
         <div className="grid gap-10 md:grid-cols-12">
           <div className="md:col-span-5">
             <BrandWordmark size="lg" showTagline tagline="Audiobooks & ebooks for everyone" />
