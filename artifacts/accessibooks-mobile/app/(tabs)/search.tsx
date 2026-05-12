@@ -16,11 +16,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { fetchBooks } from "@/lib/api";
 
 export default function SearchScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const r = useResponsive();
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
 
@@ -40,8 +42,14 @@ export default function SearchScreen() {
           styles.header,
           {
             paddingTop: insets.top + webTopInset + 12,
+            paddingHorizontal: r.pagePadding,
             backgroundColor: colors.background,
             borderBottomColor: colors.border,
+          },
+          r.isTablet && {
+            maxWidth: 1100,
+            alignSelf: "center",
+            width: "100%",
           },
         ]}
       >
@@ -103,12 +111,21 @@ export default function SearchScreen() {
         </View>
       ) : (
         <FlatList
+          key={`grid-${r.gridColumns}`}
           data={search.data?.data ?? []}
           keyExtractor={(b) => b.id}
+          numColumns={r.gridColumns}
+          {...(r.gridColumns > 1
+            ? { columnWrapperStyle: { gap: 16, paddingHorizontal: r.pagePadding } }
+            : {})}
           contentContainerStyle={{
-            paddingHorizontal: 16,
+            paddingHorizontal: r.gridColumns > 1 ? 0 : r.pagePadding,
             paddingTop: 12,
             paddingBottom: insets.bottom + webBottomInset,
+            gap: r.gridColumns > 1 ? 20 : 0,
+            ...(r.isTablet
+              ? { maxWidth: 1100, alignSelf: "center", width: "100%" }
+              : {}),
           }}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -119,49 +136,92 @@ export default function SearchScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() =>
-                router.push(`/book/${encodeURIComponent(item.id)}`)
-              }
-              style={({ pressed }) => [
-                styles.row,
-                { opacity: pressed ? 0.7 : 1, borderBottomColor: colors.border },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${item.title}${
-                item.author ? ` by ${item.author}` : ""
-              }`}
-            >
-              <BookCover
-                uri={item.coverUrl ?? null}
-                title={item.title}
-                width={56}
-                height={84}
-              />
-              <View style={{ flex: 1 }}>
+          renderItem={({ item }) =>
+            r.gridColumns > 1 ? (
+              <Pressable
+                onPress={() =>
+                  router.push(`/book/${encodeURIComponent(item.id)}`)
+                }
+                style={({ pressed }) => [
+                  styles.gridItem,
+                  { flex: 1 / r.gridColumns, opacity: pressed ? 0.7 : 1 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.title}${
+                  item.author ? ` by ${item.author}` : ""
+                }`}
+              >
+                <BookCover
+                  uri={item.coverUrl ?? null}
+                  title={item.title}
+                  width={r.isLargeTablet ? 180 : 150}
+                  height={r.isLargeTablet ? 270 : 225}
+                />
                 <Text
                   numberOfLines={2}
-                  style={[styles.rowTitle, { color: colors.foreground }]}
+                  style={[
+                    styles.gridTitle,
+                    { color: colors.foreground },
+                  ]}
                 >
                   {item.title}
                 </Text>
                 {item.author ? (
                   <Text
                     numberOfLines={1}
-                    style={[styles.rowAuthor, { color: colors.mutedForeground }]}
+                    style={[
+                      styles.gridAuthor,
+                      { color: colors.mutedForeground },
+                    ]}
                   >
                     {item.author}
                   </Text>
                 ) : null}
-              </View>
-              <Feather
-                name="chevron-right"
-                size={20}
-                color={colors.mutedForeground}
-              />
-            </Pressable>
-          )}
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() =>
+                  router.push(`/book/${encodeURIComponent(item.id)}`)
+                }
+                style={({ pressed }) => [
+                  styles.row,
+                  { opacity: pressed ? 0.7 : 1, borderBottomColor: colors.border },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.title}${
+                  item.author ? ` by ${item.author}` : ""
+                }`}
+              >
+                <BookCover
+                  uri={item.coverUrl ?? null}
+                  title={item.title}
+                  width={56}
+                  height={84}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    numberOfLines={2}
+                    style={[styles.rowTitle, { color: colors.foreground }]}
+                  >
+                    {item.title}
+                  </Text>
+                  {item.author ? (
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.rowAuthor, { color: colors.mutedForeground }]}
+                    >
+                      {item.author}
+                    </Text>
+                  ) : null}
+                </View>
+                <Feather
+                  name="chevron-right"
+                  size={20}
+                  color={colors.mutedForeground}
+                />
+              </Pressable>
+            )
+          }
         />
       )}
     </View>
@@ -171,7 +231,6 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
-    paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -217,6 +276,20 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   rowAuthor: {
+    marginTop: 2,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  gridItem: {
+    alignItems: "flex-start",
+  },
+  gridTitle: {
+    marginTop: 10,
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    lineHeight: 19,
+  },
+  gridAuthor: {
     marginTop: 2,
     fontSize: 13,
     fontFamily: "Inter_400Regular",

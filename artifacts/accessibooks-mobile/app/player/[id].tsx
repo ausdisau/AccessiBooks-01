@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { fetchBook, fetchSettingsSummary, formatDuration } from "@/lib/api";
 
 const DEFAULT_SKIP = 30;
@@ -26,6 +27,7 @@ const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
 export default function PlayerScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const r = useResponsive();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const book = useQuery({
@@ -177,21 +179,29 @@ export default function PlayerScreen() {
 
   return (
     <View
-      style={[
-        styles.root,
-        {
-          backgroundColor: colors.brandCream,
-          paddingBottom: Math.max(insets.bottom + 16, 32),
-        },
-      ]}
+      style={{ flex: 1, backgroundColor: colors.brandCream }}
       accessibilityLabel={`Now playing ${b.title}`}
     >
+      <View
+        style={[
+          styles.root,
+          {
+            backgroundColor: colors.brandCream,
+            paddingBottom: Math.max(insets.bottom + 16, 32),
+          },
+          r.isTablet && {
+            maxWidth: r.contentMaxWidth,
+            alignSelf: "center",
+            width: "100%",
+          },
+        ]}
+      >
       <View style={styles.coverWrap}>
         <BookCover
           uri={b.coverUrl ?? null}
           title={b.title}
-          width={240}
-          height={360}
+          width={r.isLargeTablet ? 320 : r.isTablet ? 280 : 240}
+          height={r.isLargeTablet ? 480 : r.isTablet ? 420 : 360}
           rounded={16}
         />
       </View>
@@ -344,6 +354,7 @@ export default function PlayerScreen() {
             {speed.toFixed(2).replace(/\.?0+$/, "")}x
           </Text>
         </Pressable>
+      </View>
       </View>
     </View>
   );

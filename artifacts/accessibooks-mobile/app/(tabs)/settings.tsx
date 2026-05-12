@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { apiBase, fetchMe } from "@/lib/api";
 
 type Row = {
@@ -66,6 +67,7 @@ const TIER_LABELS: Record<string, string> = {
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const r = useResponsive();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: fetchMe,
@@ -99,6 +101,13 @@ export default function SettingsScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + webTopInset + 12,
           paddingBottom: insets.bottom + webBottomInset,
+          ...(r.isTablet
+            ? {
+                maxWidth: r.contentMaxWidth,
+                alignSelf: "center",
+                width: "100%",
+              }
+            : {}),
         }}
         showsVerticalScrollIndicator={false}
       >

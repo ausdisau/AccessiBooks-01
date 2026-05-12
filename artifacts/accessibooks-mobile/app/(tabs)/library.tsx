@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -18,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { fetchActiveLoans, type Book } from "@/lib/api";
 
 const RECENT_KEY = "accessibooks:recent";
@@ -45,6 +47,7 @@ type Row = {
 export default function LibraryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const r = useResponsive();
   const [recent, setRecent] = useState<Book[]>([]);
 
   const loans = useQuery({
@@ -111,7 +114,11 @@ export default function LibraryScreen() {
       onPress={() => router.push(`/book/${encodeURIComponent(item.id)}`)}
       style={({ pressed }) => [
         styles.row,
-        { opacity: pressed ? 0.7 : 1, borderBottomColor: colors.border },
+        {
+          opacity: pressed ? 0.7 : 1,
+          borderBottomColor: colors.border,
+          paddingHorizontal: r.pagePadding,
+        },
       ]}
       accessibilityRole="button"
       accessibilityLabel={`Open ${item.title}`}
@@ -212,6 +219,136 @@ export default function LibraryScreen() {
             </View>
           }
         />
+      </View>
+    );
+  }
+
+  const tabletGrid = r.gridColumns > 1;
+
+  const renderGridSection = (section: typeof sections[number]) => {
+    const cols = r.gridColumns;
+    const rows: Row[][] = [];
+    for (let i = 0; i < section.data.length; i += cols) {
+      rows.push(section.data.slice(i, i + cols));
+    }
+    return (
+      <View key={section.key} style={{ marginBottom: 24 }}>
+        <View
+          style={[
+            styles.sectionHeader,
+            {
+              backgroundColor: colors.background,
+              paddingHorizontal: r.pagePadding,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            {section.title}
+          </Text>
+          <Text style={[styles.sectionSub, { color: colors.mutedForeground }]}>
+            {section.subtitle}
+          </Text>
+          {section.key === "loans" && section.data.length === 0 ? (
+            <Text
+              style={[styles.emptySection, { color: colors.mutedForeground }]}
+            >
+              No active loans yet.
+            </Text>
+          ) : null}
+        </View>
+        {rows.map((rowItems, rIdx) => (
+          <View
+            key={rIdx}
+            style={{
+              flexDirection: "row",
+              gap: 16,
+              paddingHorizontal: r.pagePadding,
+              marginTop: 16,
+            }}
+          >
+            {rowItems.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() =>
+                  router.push(`/book/${encodeURIComponent(item.id)}`)
+                }
+                style={({ pressed }) => [
+                  { flex: 1 / cols, opacity: pressed ? 0.7 : 1 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.title}`}
+              >
+                <BookCover
+                  uri={item.coverUrl ?? null}
+                  title={item.title}
+                  width={r.isLargeTablet ? 180 : 150}
+                  height={r.isLargeTablet ? 270 : 225}
+                />
+                <Text
+                  numberOfLines={2}
+                  style={[
+                    styles.gridTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {item.title}
+                </Text>
+                {item.author ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.gridAuthor,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {item.author}
+                  </Text>
+                ) : null}
+              </Pressable>
+            ))}
+            {Array.from({ length: cols - rowItems.length }).map((_, idx) => (
+              <View key={`spacer-${idx}`} style={{ flex: 1 / cols }} />
+            ))}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  if (tabletGrid) {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background }]}>
+        <ScrollView
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + webBottomInset,
+            maxWidth: 1100,
+            alignSelf: "center",
+            width: "100%",
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={loans.isFetching}
+              onRefresh={() => loans.refetch()}
+              tintColor={colors.primary}
+            />
+          }
+        >
+          <View
+            style={{
+              paddingTop: insets.top + webTopInset + 12,
+              paddingHorizontal: r.pagePadding,
+              paddingBottom: 12,
+            }}
+          >
+            <Text
+              style={[styles.title, { color: colors.foreground }]}
+              accessibilityRole="header"
+            >
+              Your Library
+            </Text>
+          </View>
+          {sections.map((s) => renderGridSection(s))}
+        </ScrollView>
       </View>
     );
   }
@@ -340,8 +477,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingVertical: 12,
-    paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  gridTitle: {
+    marginTop: 10,
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    lineHeight: 19,
+  },
+  gridAuthor: {
+    marginTop: 2,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
   },
   rowTitle: {
     fontSize: 15,

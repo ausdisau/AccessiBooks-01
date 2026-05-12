@@ -19,6 +19,10 @@ type Props = {
   books: Book[];
   loading?: boolean;
   itemWidth?: number;
+  /** Horizontal padding for header + list edge. Defaults to 16/12. */
+  containerPadding?: number;
+  /** Max width for the section on wide screens (tablets). */
+  maxWidth?: number;
 };
 
 export function BookCarousel({
@@ -27,13 +31,20 @@ export function BookCarousel({
   books,
   loading,
   itemWidth = 132,
+  containerPadding,
+  maxWidth,
 }: Props) {
   const colors = useColors();
   const itemHeight = Math.round(itemWidth * 1.5);
+  const headerPad = containerPadding ?? 16;
+  const listPad = containerPadding ?? 12;
+  const sectionStyle = maxWidth
+    ? [styles.section, { maxWidth, alignSelf: "center" as const, width: "100%" as const }]
+    : styles.section;
 
   return (
-    <View style={styles.section}>
-      <View style={styles.header}>
+    <View style={sectionStyle}>
+      <View style={[styles.header, { paddingHorizontal: headerPad }]}>
         <Text
           style={[styles.title, { color: colors.foreground }]}
           accessibilityRole="header"
@@ -63,7 +74,7 @@ export function BookCarousel({
           showsHorizontalScrollIndicator={false}
           data={books}
           keyExtractor={(b) => b.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingHorizontal: listPad }]}
           renderItem={({ item }) => (
             <Pressable
               onPress={() => router.push(`/book/${encodeURIComponent(item.id)}`)}
@@ -109,7 +120,6 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   header: {
-    paddingHorizontal: 16,
     marginBottom: 12,
   },
   title: {
@@ -123,7 +133,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
   },
   list: {
-    paddingHorizontal: 12,
     gap: 12,
   },
   item: {

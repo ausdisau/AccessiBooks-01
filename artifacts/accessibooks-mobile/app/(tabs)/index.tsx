@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BookCarousel } from "@/components/BookCarousel";
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
+import { useResponsive } from "@/hooks/useResponsive";
 import {
   type Book,
   fetchBooks,
@@ -29,6 +30,7 @@ const RECENT_KEY = "accessibooks:recent";
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const r = useResponsive();
   const [continueListening, setContinueListening] = useState<Book[]>([]);
 
   const loadRecent = useCallback(async () => {
@@ -82,20 +84,36 @@ export default function HomeScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerRow}>
+        <View
+          style={[
+            styles.headerRow,
+            { paddingHorizontal: r.pagePadding },
+            r.isTablet && { maxWidth: 960, alignSelf: "center", width: "100%" },
+          ]}
+        >
           <Image
             source={require("../../assets/images/logo.png")}
-            style={styles.logo}
+            style={r.isTablet ? styles.logoLg : styles.logo}
             accessibilityLabel="AccessiBooks logo"
           />
           <View style={{ flex: 1 }}>
             <Text
-              style={[styles.brandWord, { color: colors.brandInk }]}
+              style={[
+                styles.brandWord,
+                r.isTablet && { fontSize: 28 },
+                { color: colors.brandInk },
+              ]}
               accessibilityRole="header"
             >
               AccessiBooks
             </Text>
-            <Text style={[styles.brandTag, { color: colors.mutedForeground }]}>
+            <Text
+              style={[
+                styles.brandTag,
+                r.isTablet && { fontSize: 14 },
+                { color: colors.mutedForeground },
+              ]}
+            >
               Audiobooks & ebooks for everyone
             </Text>
           </View>
@@ -131,8 +149,16 @@ export default function HomeScreen() {
                 style={({ pressed }) => [
                   styles.featuredCard,
                   {
+                    marginHorizontal: r.pagePadding,
                     backgroundColor: colors.brandNavyStrong,
                     opacity: pressed ? 0.85 : 1,
+                  },
+                  r.isTablet && {
+                    maxWidth: 960,
+                    alignSelf: "center",
+                    width: "100%",
+                    marginHorizontal: 0,
+                    padding: 24,
                   },
                 ]}
                 accessibilityRole="button"
@@ -141,8 +167,8 @@ export default function HomeScreen() {
                 <BookCover
                   uri={featured.data.coverUrl ?? null}
                   title={featured.data.title}
-                  width={100}
-                  height={150}
+                  width={r.isTablet ? 140 : 100}
+                  height={r.isTablet ? 210 : 150}
                 />
                 <View style={styles.featuredText}>
                   <Text
@@ -177,6 +203,9 @@ export default function HomeScreen() {
                 subtitle="Pick up where you left off"
                 books={continueListening}
                 loading={false}
+                itemWidth={r.carouselItemWidth}
+                containerPadding={r.pagePadding}
+                maxWidth={r.isTablet ? 1100 : undefined}
               />
             ) : null}
             <BookCarousel
@@ -184,12 +213,18 @@ export default function HomeScreen() {
               subtitle="Fresh in the catalog"
               books={newReleases.data?.data ?? []}
               loading={newReleases.isLoading}
+              itemWidth={r.carouselItemWidth}
+              containerPadding={r.pagePadding}
+              maxWidth={r.isTablet ? 1100 : undefined}
             />
             <BookCarousel
               title="Recommended"
               subtitle="Picked for accessible listening"
               books={recommended.data ?? []}
               loading={recommended.isLoading}
+              itemWidth={r.carouselItemWidth}
+              containerPadding={r.pagePadding}
+              maxWidth={r.isTablet ? 1100 : undefined}
             />
           </>
         )}
@@ -205,7 +240,6 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
     marginBottom: 24,
     gap: 12,
   },
@@ -213,6 +247,11 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 10,
+  },
+  logoLg: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
   },
   brandWord: {
     fontSize: 22,
@@ -226,7 +265,6 @@ const styles = StyleSheet.create({
   },
   featuredCard: {
     flexDirection: "row",
-    marginHorizontal: 16,
     marginBottom: 28,
     padding: 16,
     borderRadius: 16,
