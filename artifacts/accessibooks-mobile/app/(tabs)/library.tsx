@@ -1,12 +1,15 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "expo-router";
-import { router } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
+import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
+  RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -15,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
-import type { Book } from "@/lib/api";
+import { fetchActiveLoans, type Book } from "@/lib/api";
 
 const RECENT_KEY = "accessibooks:recent";
 
@@ -32,12 +35,25 @@ export async function rememberRecent(book: Book) {
   } catch {}
 }
 
+type Row = {
+  id: string;
+  title: string;
+  author?: string | null;
+  coverUrl?: string | null;
+};
+
 export default function LibraryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [recent, setRecent] = useState<Book[]>([]);
 
-  const load = useCallback(async () => {
+  const loans = useQuery({
+    queryKey: ["loans-active"],
+    queryFn: fetchActiveLoans,
+    staleTime: 60_000,
+  });
+
+  const loadRecent = useCallback(async () => {
     try {
       const raw = await AsyncStorage.getItem(RECENT_KEY);
       setRecent(raw ? JSON.parse(raw) : []);
@@ -48,97 +64,223 @@ export default function LibraryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      loadRecent();
+      loans.refetch();
+    }, [loadRecent, loans]),
   );
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 100 : 100;
 
+  const loanRows: Row[] =
+    loans.data?.loans.map((l) => ({
+      id: l.bookId,
+      title: l.bookTitle,
+      author: l.bookAuthor,
+      coverUrl: l.bookCover,
+    })) ?? [];
+
+  const recentRows: Row[] = recent.map((b) => ({
+    id: b.id,
+    title: b.title,
+    author: b.author,
+    coverUrl: b.coverUrl,
+  }));
+
+  const sections = [
+    {
+      key: "loans",
+      title: "Active loans",
+      subtitle: loans.data
+        ? `${loans.data.loans.length} of ${loans.data.limits.maxLoans} on ${loans.data.limits.tier} plan`
+        : "Sign in on the web to borrow titles",
+      data: loanRows,
+      authed: !!loans.data,
+    },
+    {
+      key: "recent",
+      title: "Recently opened",
+      subtitle: "On this device",
+      data: recentRows,
+      authed: true,
+    },
+  ].filter((s) => s.data.length > 0 || s.key === "loans");
+
+  const renderRow = ({ item }: { item: Row }) => (
+    <Pressable
+      onPress={() => router.push(`/book/${encodeURIComponent(item.id)}`)}
+      style={({ pressed }) => [
+        styles.row,
+        { opacity: pressed ? 0.7 : 1, borderBottomColor: colors.border },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${item.title}`}
+    >
+      <BookCover
+        uri={item.coverUrl ?? null}
+        title={item.title}
+        width={56}
+        height={84}
+      />
+      <View style={{ flex: 1 }}>
+        <Text
+          numberOfLines={2}
+          style={[styles.rowTitle, { color: colors.foreground }]}
+        >
+          {item.title}
+        </Text>
+        {item.author ? (
+          <Text
+            numberOfLines={1}
+            style={[styles.rowAuthor, { color: colors.mutedForeground }]}
+          >
+            {item.author}
+          </Text>
+        ) : null}
+      </View>
+      <Feather
+        name="chevron-right"
+        size={20}
+        color={colors.mutedForeground}
+      />
+    </Pressable>
+  );
+
+  if (loans.isLoading && recentRows.length === 0) {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background }]}>
+        <View
+          style={{
+            paddingTop: insets.top + webTopInset + 12,
+            paddingHorizontal: 16,
+            paddingBottom: 12,
+          }}
+        >
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            Your Library
+          </Text>
+        </View>
+        <ActivityIndicator
+          color={colors.primary}
+          style={{ marginTop: 60 }}
+        />
+      </View>
+    );
+  }
+
+  if (sections.every((s) => s.data.length === 0)) {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background }]}>
+        <View
+          style={{
+            paddingTop: insets.top + webTopInset + 12,
+            paddingHorizontal: 16,
+            paddingBottom: 12,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            Your Library
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            Loans, listening rooms, and recently opened
+          </Text>
+        </View>
+        <FlatList
+          data={[]}
+          renderItem={() => null}
+          keyExtractor={() => "_"}
+          contentContainerStyle={{ paddingBottom: insets.bottom + webBottomInset }}
+          refreshControl={
+            <RefreshControl
+              refreshing={loans.isFetching}
+              onRefresh={() => loans.refetch()}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Feather name="book-open" size={48} color={colors.brandLine} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                No books yet
+              </Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                Open a book from Home or Search and it'll show up here. Sign
+                in on the web to see your active loans.
+              </Text>
+            </View>
+          }
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View
-        style={{
-          paddingTop: insets.top + webTopInset + 12,
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: colors.border,
-        }}
-      >
-        <Text
-          style={[styles.title, { color: colors.foreground }]}
-          accessibilityRole="header"
-        >
-          Your Library
-        </Text>
-        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          Recently opened on this device
-        </Text>
-      </View>
-
-      <FlatList
-        data={recent}
-        keyExtractor={(b) => b.id}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item, idx) => `${item.id}-${idx}`}
         contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
           paddingBottom: insets.bottom + webBottomInset,
         }}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Feather name="book-open" size={48} color={colors.brandLine} />
+        ListHeaderComponent={
+          <View
+            style={{
+              paddingTop: insets.top + webTopInset + 12,
+              paddingHorizontal: 16,
+              paddingBottom: 12,
+            }}
+          >
             <Text
-              style={[styles.emptyTitle, { color: colors.foreground }]}
+              style={[styles.title, { color: colors.foreground }]}
+              accessibilityRole="header"
             >
-              No books yet
-            </Text>
-            <Text
-              style={[styles.emptyText, { color: colors.mutedForeground }]}
-            >
-              Open a book from Home or Search and it'll show up here.
+              Your Library
             </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => router.push(`/book/${encodeURIComponent(item.id)}`)}
-            style={({ pressed }) => [
-              styles.row,
-              { opacity: pressed ? 0.7 : 1, borderBottomColor: colors.border },
+        refreshControl={
+          <RefreshControl
+            refreshing={loans.isFetching}
+            onRefresh={() => loans.refetch()}
+            tintColor={colors.primary}
+          />
+        }
+        renderSectionHeader={({ section }) => (
+          <View
+            style={[
+              styles.sectionHeader,
+              { backgroundColor: colors.background },
             ]}
-            accessibilityRole="button"
-            accessibilityLabel={`Reopen ${item.title}`}
           >
-            <BookCover
-              uri={item.coverUrl ?? null}
-              title={item.title}
-              width={56}
-              height={84}
-            />
-            <View style={{ flex: 1 }}>
+            <Text
+              style={[styles.sectionTitle, { color: colors.foreground }]}
+            >
+              {section.title}
+            </Text>
+            <Text
+              style={[styles.sectionSub, { color: colors.mutedForeground }]}
+            >
+              {section.subtitle}
+            </Text>
+            {section.key === "loans" && section.data.length === 0 ? (
               <Text
-                numberOfLines={2}
-                style={[styles.rowTitle, { color: colors.foreground }]}
+                style={[
+                  styles.emptySection,
+                  { color: colors.mutedForeground },
+                ]}
               >
-                {item.title}
+                No active loans yet.
               </Text>
-              {item.author ? (
-                <Text
-                  numberOfLines={1}
-                  style={[styles.rowAuthor, { color: colors.mutedForeground }]}
-                >
-                  {item.author}
-                </Text>
-              ) : null}
-            </View>
-            <Feather
-              name="chevron-right"
-              size={20}
-              color={colors.mutedForeground}
-            />
-          </Pressable>
+            ) : null}
+          </View>
         )}
+        renderItem={({ item, section }) =>
+          section.data.length > 0 ? renderRow({ item }) : null
+        }
+        stickySectionHeadersEnabled={false}
+        SectionSeparatorComponent={() => <View style={{ height: 8 }} />}
       />
     </View>
   );
@@ -155,6 +297,26 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     fontFamily: "Inter_400Regular",
+  },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 6,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: "Fraunces_700Bold",
+    letterSpacing: -0.3,
+  },
+  sectionSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+  },
+  emptySection: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
   },
   empty: {
     paddingTop: 80,
@@ -178,6 +340,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rowTitle: {

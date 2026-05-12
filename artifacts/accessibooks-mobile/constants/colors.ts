@@ -1,52 +1,56 @@
 /**
- * AccessiBooks brand tokens — synced from artifacts/accessibooks/src/index.css.
- * HSL values from :root and .dark blocks, converted to hex for React Native.
+ * AccessiBooks brand tokens — exact hex conversions of the HSL values
+ * declared in `artifacts/accessibooks/src/index.css`. Keep in sync with
+ * the web `:root` and `.dark` blocks (and the brand-surface overrides).
  */
 
 const colors = {
   light: {
-    text: "#0a0e1a",
-    tint: "#f87421",
+    // Semantic tokens (mirror :root in index.css)
+    text: "#020817",
+    tint: "#f95610",
 
-    background: "#f7f9fc",
-    foreground: "#0a0e1a",
+    background: "#f8fafc",
+    foreground: "#020817",
 
     card: "#ffffff",
-    cardForeground: "#0a0e1a",
+    cardForeground: "#020817",
 
-    primary: "#f87421",
+    primary: "#f95610",
     primaryForeground: "#ffffff",
 
-    secondary: "#e8edf3",
-    secondaryForeground: "#0a0e1a",
+    secondary: "#eaf0f6",
+    secondaryForeground: "#020817",
 
-    muted: "#e8edf3",
-    mutedForeground: "#62707f",
+    muted: "#eaf0f6",
+    mutedForeground: "#5e6d82",
 
-    accent: "#f87421",
+    accent: "#f95610",
     accentForeground: "#ffffff",
 
     destructive: "#ef4444",
     destructiveForeground: "#ffffff",
 
-    border: "#dbe1ea",
-    input: "#dbe1ea",
+    border: "#d7dfea",
+    input: "#d7dfea",
 
-    brandCream: "#fbf3e4",
-    brandCreamDeep: "#f4e6cc",
-    brandInk: "#0d2240",
-    brandInkSoft: "#3a4f6a",
-    brandNavy: "#13335c",
-    brandNavyStrong: "#0a2549",
-    brandOrange: "#ff7a2b",
-    brandOrangeDeep: "#e85a17",
-    brandMuted: "#b8a98c",
-    brandLine: "#d6c9ad",
+    // Brand foundation (mirror --brand-* tokens in index.css)
+    brandCream: "#f9f4eb",
+    brandCreamDeep: "#f1e7da",
+    brandInk: "#0d213b",
+    brandInkSoft: "#364963",
+    brandNavy: "#14335c",
+    brandNavyStrong: "#0c2545",
+    brandOrange: "#ff6929",
+    brandOrangeDeep: "#e6410f",
+    brandMuted: "#c6b59f",
+    brandLine: "#d7cdc1",
   },
 
   dark: {
+    // Semantic tokens (mirror .dark in index.css — Spotify-grade neutrals)
     text: "#f2f2f2",
-    tint: "#ff7a2b",
+    tint: "#fa6b2e",
 
     background: "#171717",
     foreground: "#f2f2f2",
@@ -54,7 +58,7 @@ const colors = {
     card: "#212121",
     cardForeground: "#f2f2f2",
 
-    primary: "#f87421",
+    primary: "#fa6b2e",
     primaryForeground: "#ffffff",
 
     secondary: "#303030",
@@ -63,23 +67,24 @@ const colors = {
     muted: "#303030",
     mutedForeground: "#9e9e9e",
 
-    accent: "#f87421",
+    accent: "#fa6b2e",
     accentForeground: "#ffffff",
 
     destructive: "#ef4444",
     destructiveForeground: "#ffffff",
 
-    border: "#2e2e2e",
-    input: "#2e2e2e",
+    border: "#333333",
+    input: "#333333",
 
+    // Brand foundation in dark surface (mirror .dark .brand-surface)
     brandCream: "#171717",
     brandCreamDeep: "#1f1f1f",
-    brandInk: "#ebe7df",
-    brandInkSoft: "#bcb6aa",
-    brandNavy: "#ff8a4a",
-    brandNavyStrong: "#ffae7d",
-    brandOrange: "#ff8c3d",
-    brandOrangeDeep: "#f07028",
+    brandInk: "#efebe7",
+    brandInkSoft: "#bfb9b0",
+    brandNavy: "#fb8451",
+    brandNavyStrong: "#fca783",
+    brandOrange: "#ff773d",
+    brandOrangeDeep: "#f9521f",
     brandMuted: "#737373",
     brandLine: "#333333",
   },

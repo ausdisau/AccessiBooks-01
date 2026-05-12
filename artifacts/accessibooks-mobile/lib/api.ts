@@ -21,6 +21,42 @@ export type BooksPage = {
   total?: number;
 };
 
+export type Me = {
+  id: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  subscriptionTier?: string | null;
+};
+
+export type SettingsSummary = {
+  user: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    subscriptionTier: string;
+    subscriptionEndDate: string | null;
+  };
+  preferences: Record<string, unknown> & {
+    skipForwardSeconds?: number;
+    skipBackwardSeconds?: number;
+  };
+};
+
+export type ActiveLoan = {
+  id: string;
+  bookId: string;
+  expiresAt: string;
+  bookTitle: string;
+  bookAuthor: string | null;
+  bookCover: string | null;
+};
+
+export type ActiveLoansResponse = {
+  loans: ActiveLoan[];
+  limits: { tier: string; maxLoans: number };
+};
+
 const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN;
 
 export function apiBase(): string {
@@ -33,9 +69,10 @@ export function bookCover(book: Book): string | null {
   return null;
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function getJson<T>(path: string, withCreds = false): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, {
     headers: { Accept: "application/json" },
+    credentials: withCreds ? "include" : "omit",
   });
   if (!res.ok) throw new Error(`Request failed: ${res.status} ${path}`);
   return (await res.json()) as T;
@@ -72,6 +109,35 @@ export async function fetchEasyRead(): Promise<BooksPage> {
 
 export async function fetchBook(id: string): Promise<Book> {
   return getJson<Book>(`/api/books/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Authenticated endpoints. These return 401 when the user is not signed in
+ * — callers should treat a thrown error as "not signed in" and fall back
+ * to the guest UX (sign-in CTA, AsyncStorage recents, etc.).
+ */
+export async function fetchMe(): Promise<Me | null> {
+  try {
+    return await getJson<Me>("/api/auth/me", true);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchSettingsSummary(): Promise<SettingsSummary | null> {
+  try {
+    return await getJson<SettingsSummary>("/api/settings/summary", true);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchActiveLoans(): Promise<ActiveLoansResponse | null> {
+  try {
+    return await getJson<ActiveLoansResponse>("/api/loans/active", true);
+  } catch {
+    return null;
+  }
 }
 
 export function formatDuration(seconds?: number | null): string {

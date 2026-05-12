@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -15,28 +16,48 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
-import { fetchBook, formatDuration } from "@/lib/api";
+import { fetchBook, fetchSettingsSummary, formatDuration } from "@/lib/api";
 
-const SKIP_BACK = 30;
-const SKIP_FORWARD = 30;
+const DEFAULT_SKIP = 30;
 const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
 
 export default function PlayerScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
+
   const book = useQuery({
     queryKey: ["book", id],
     queryFn: () => fetchBook(id!),
     enabled: !!id,
   });
 
-  const [playing, setPlaying] = useState(false);
-  const [position, setPosition] = useState(0);
+  // Pull preferred skip seconds from /api/settings/summary when the user is
+  // signed in. Falls back silently to DEFAULT_SKIP for guests.
+  const settings = useQuery({
+    queryKey: ["settings-summary"],
+    queryFn: fetchSettingsSummary,
+    staleTime: 5 * 60_000,
+  });
+
+  const skipBackSecs =
+    Number(settings.data?.preferences?.skipBackwardSeconds) || DEFAULT_SKIP;
+  const skipFwdSecs =
+    Number(settings.data?.preferences?.skipForwardSeconds) || DEFAULT_SKIP;
+
+  const audioUrl = book.data?.audioUrl ?? null;
+  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null);
+  const status = useAudioPlayerStatus(player);
+
   const [speedIdx, setSpeedIdx] = useState(1);
 
-  const total = book.data?.duration ?? 0;
-  const speed = SPEEDS[speedIdx];
+  useEffect(() => {
+    return () => {
+      try {
+        player.pause();
+      } catch {}
+    };
+  }, [player]);
 
   const haptic = () => {
     if (Platform.OS !== "web") {
@@ -44,21 +65,36 @@ export default function PlayerScreen() {
     }
   };
 
+  const total = status?.duration ?? book.data?.duration ?? 0;
+  const position = status?.currentTime ?? 0;
+  const playing = !!status?.playing;
+  const speed = SPEEDS[speedIdx];
+
   const togglePlay = () => {
+    if (!audioUrl) return;
     haptic();
-    setPlaying((p) => !p);
+    if (playing) player.pause();
+    else player.play();
   };
   const skipBack = () => {
+    if (!audioUrl) return;
     haptic();
-    setPosition((p) => Math.max(0, p - SKIP_BACK));
+    player.seekTo(Math.max(0, position - skipBackSecs));
   };
   const skipForward = () => {
+    if (!audioUrl) return;
     haptic();
-    setPosition((p) => (total > 0 ? Math.min(total, p + SKIP_FORWARD) : p + SKIP_FORWARD));
+    const target =
+      total > 0 ? Math.min(total, position + skipFwdSecs) : position + skipFwdSecs;
+    player.seekTo(target);
   };
   const cycleSpeed = () => {
     haptic();
-    setSpeedIdx((i) => (i + 1) % SPEEDS.length);
+    const next = (speedIdx + 1) % SPEEDS.length;
+    setSpeedIdx(next);
+    try {
+      player.setPlaybackRate(SPEEDS[next]);
+    } catch {}
   };
 
   if (book.isError) {
@@ -92,6 +128,7 @@ export default function PlayerScreen() {
 
   const b = book.data;
   const progress = total > 0 ? Math.min(1, position / total) : 0;
+  const audioDisabled = !audioUrl;
 
   return (
     <View
@@ -127,6 +164,13 @@ export default function PlayerScreen() {
             {b.author}
           </Text>
         ) : null}
+        {audioDisabled ? (
+          <Text
+            style={[styles.audioNotice, { color: colors.brandInkSoft }]}
+          >
+            No audio available for this title.
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.scrubberBlock}>
@@ -158,24 +202,29 @@ export default function PlayerScreen() {
       <View style={styles.controls}>
         <Pressable
           onPress={skipBack}
-          style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.6 : 1 }]}
+          disabled={audioDisabled}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            { opacity: audioDisabled ? 0.35 : pressed ? 0.6 : 1 },
+          ]}
           accessibilityRole="button"
-          accessibilityLabel={`Skip back ${SKIP_BACK} seconds`}
+          accessibilityLabel={`Skip back ${skipBackSecs} seconds`}
           hitSlop={12}
         >
           <Feather name="rotate-ccw" size={32} color={colors.brandInk} />
           <Text style={[styles.skipNum, { color: colors.brandInk }]}>
-            {SKIP_BACK}
+            {skipBackSecs}
           </Text>
         </Pressable>
 
         <Pressable
           onPress={togglePlay}
+          disabled={audioDisabled}
           style={({ pressed }) => [
             styles.playBtn,
             {
               backgroundColor: colors.brandOrange,
-              opacity: pressed ? 0.85 : 1,
+              opacity: audioDisabled ? 0.35 : pressed ? 0.85 : 1,
             },
           ]}
           accessibilityRole="button"
@@ -190,14 +239,18 @@ export default function PlayerScreen() {
 
         <Pressable
           onPress={skipForward}
-          style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.6 : 1 }]}
+          disabled={audioDisabled}
+          style={({ pressed }) => [
+            styles.iconBtn,
+            { opacity: audioDisabled ? 0.35 : pressed ? 0.6 : 1 },
+          ]}
           accessibilityRole="button"
-          accessibilityLabel={`Skip forward ${SKIP_FORWARD} seconds`}
+          accessibilityLabel={`Skip forward ${skipFwdSecs} seconds`}
           hitSlop={12}
         >
           <Feather name="rotate-cw" size={32} color={colors.brandInk} />
           <Text style={[styles.skipNum, { color: colors.brandInk }]}>
-            {SKIP_FORWARD}
+            {skipFwdSecs}
           </Text>
         </Pressable>
       </View>
@@ -277,6 +330,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 14,
     fontFamily: "Inter_500Medium",
+  },
+  audioNotice: {
+    marginTop: 10,
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    fontStyle: "italic",
   },
   scrubberBlock: {
     width: "100%",
