@@ -5,10 +5,11 @@ import { podcastFeeds, podcastEpisodes } from "@workspace/db";
 import { z } from "zod";
 import { fetchAndParseRSS } from "./rss";
 import { randomUUID } from "crypto";
+import { isAuthenticated } from "./multiAuth";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_MAX = 5;
 
 function rateLimiter(req: Request, res: Response, next: NextFunction) {
   const ip = req.ip || req.socket.remoteAddress || "unknown";
@@ -165,7 +166,7 @@ export function registerPodcastRoutes(app: Express) {
   app.use("/api/ingest", requestId);
   app.use("/api/ingest", rateLimiter);
 
-  app.post("/api/ingest", async (req: any, res) => {
+  app.post("/api/ingest", isAuthenticated, async (req: any, res) => {
     const reqId = req.requestId || "?";
     try {
       const parsed = ingestBodySchema.safeParse(req.body);
@@ -187,7 +188,7 @@ export function registerPodcastRoutes(app: Express) {
     }
   });
 
-  app.post("/api/ingest/batch", async (req: any, res) => {
+  app.post("/api/ingest/batch", isAuthenticated, async (req: any, res) => {
     const reqId = req.requestId || "?";
     try {
       const parsed = batchIngestSchema.safeParse(req.body);
