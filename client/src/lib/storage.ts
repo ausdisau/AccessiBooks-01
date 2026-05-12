@@ -207,7 +207,7 @@ export const localStorageService = {
     const defaultSettings: AccessibilitySettings = {
       highContrast: false,
       dyslexiaFont: false,
-      darkMode: true,
+      darkMode: false,
       fontSize: 100,
       letterSpacing: 0,
       lineHeight: 100,
