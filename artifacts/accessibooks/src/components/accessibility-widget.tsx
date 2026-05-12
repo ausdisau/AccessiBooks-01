@@ -363,13 +363,15 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
       {!focusShellActive && (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 50, height: '40px', width: '40px', borderRadius: '50%', fontSize: '16px' }}
-          className="shadow-md opacity-70 hover:opacity-100 transition-opacity bg-primary text-primary-foreground flex items-center justify-center border-0 cursor-pointer"
-          aria-label="Open accessibility menu"
+          style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 50, borderRadius: '9999px', fontSize: '14px' }}
+          className="shadow-lg hover:shadow-xl transition-shadow bg-primary text-primary-foreground inline-flex items-center gap-2 pl-3 pr-4 py-2.5 border-0 cursor-pointer font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+          aria-label="Open accessibility settings"
           aria-expanded={isOpen}
+          title="Accessibility settings"
           data-testid="accessibility-widget-toggle"
         >
-          <Accessibility style={{ height: '20px', width: '20px' }} />
+          <Accessibility style={{ height: '20px', width: '20px' }} aria-hidden="true" />
+          <span>Accessibility</span>
         </button>
       )}
 
