@@ -2380,6 +2380,10 @@ function App() {
         <AudioProvider>
           <EbookProvider>
           <AudioAdManager />
+          {/* Render the AccessibilityWidget early in DOM order so its
+              floating toggle is one of the very first focusable controls
+              (visual position is unaffected — the button is position:fixed). */}
+          <AccessibilityWidget />
           <Switch>
             <Route path="/demo-slot">
               <Suspense fallback={<div className="min-h-screen bg-[#0a0f1e]" />}>
@@ -2422,7 +2426,6 @@ function App() {
               )}
             </Route>
           </Switch>
-          <AccessibilityWidget />
           <ColourOverlayRenderer />
           <SwitchAccessScanner />
           <FocusModeExitButton />
