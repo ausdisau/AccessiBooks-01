@@ -2,9 +2,12 @@ import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import React, { useEffect } from "react";
 import {
   ActivityIndicator,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,7 +19,74 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
 import { rememberRecent } from "@/app/(tabs)/library";
-import { fetchBook, formatDuration } from "@/lib/api";
+import {
+  apiBase,
+  fetchActiveLoans,
+  fetchBook,
+  fetchMe,
+  formatDuration,
+} from "@/lib/api";
+
+type Cta = {
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+  kind: "play" | "borrow" | "purchase" | "open";
+  hint: string;
+};
+
+/**
+ * Pick the primary CTA for a book based on the user's tier and active
+ * loans. Mirrors the web app's listener-side logic:
+ *   - Audiobook + (active loan OR Plus/Premium tier)  → Play
+ *   - Audiobook + Free tier with no loan              → Borrow
+ *   - Ebook only (no audioUrl) on any tier            → Open book
+ *   - Anything paid/locked the user can't access      → Purchase
+ */
+function pickCta(
+  isAudiobook: boolean,
+  hasActiveLoan: boolean,
+  tier: string,
+): Cta {
+  if (!isAudiobook) {
+    return {
+      label: "Open book",
+      icon: "book-open",
+      kind: "open",
+      hint: "Open in the web reader",
+    };
+  }
+  if (hasActiveLoan) {
+    return {
+      label: "Play audiobook",
+      icon: "play",
+      kind: "play",
+      hint: "Stream from your active loan",
+    };
+  }
+  if (tier === "plus" || tier === "premium") {
+    return {
+      label: "Play audiobook",
+      icon: "play",
+      kind: "play",
+      hint: `Included in your ${tier} plan`,
+    };
+  }
+  // Free tier without a loan: nudge them to borrow first; if the title
+  // isn't loanable on Free, the borrow flow on the web will offer purchase.
+  return tier === "free"
+    ? {
+        label: "Borrow to listen",
+        icon: "bookmark",
+        kind: "borrow",
+        hint: "Free with your library card",
+      }
+    : {
+        label: "Purchase",
+        icon: "shopping-bag",
+        kind: "purchase",
+        hint: "Buy this title",
+      };
+}
 
 export default function BookDetailScreen() {
   const colors = useColors();
@@ -29,9 +99,33 @@ export default function BookDetailScreen() {
     enabled: !!id,
   });
 
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchMe,
+    staleTime: 60_000,
+  });
+  const loans = useQuery({
+    queryKey: ["loans-active"],
+    queryFn: fetchActiveLoans,
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
     if (book.data) rememberRecent(book.data);
   }, [book.data]);
+
+  const openWeb = async (path: string) => {
+    const url = `${apiBase()}${path}`;
+    if (Platform.OS === "web") {
+      Linking.openURL(url);
+      return;
+    }
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      Linking.openURL(url);
+    }
+  };
 
   if (book.isError) {
     return (
@@ -87,7 +181,21 @@ export default function BookDetailScreen() {
   const b = book.data;
   const isAudiobook =
     !b.contentType || b.contentType === "audiobook" || !!b.audioUrl;
-  const actionLabel = isAudiobook ? "Play audiobook" : "Open book";
+  const tier = me.data?.subscriptionTier ?? "free";
+  const hasActiveLoan = !!loans.data?.loans.some((l) => l.bookId === b.id);
+  const cta = pickCta(isAudiobook, hasActiveLoan, tier);
+
+  const onCta = () => {
+    if (cta.kind === "play") {
+      router.push(`/player/${encodeURIComponent(b.id)}`);
+    } else if (cta.kind === "borrow") {
+      openWeb(`/book/${encodeURIComponent(b.id)}?action=borrow`);
+    } else if (cta.kind === "purchase") {
+      openWeb(`/book/${encodeURIComponent(b.id)}?action=purchase`);
+    } else {
+      openWeb(`/book/${encodeURIComponent(b.id)}`);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -138,7 +246,7 @@ export default function BookDetailScreen() {
 
         <View style={styles.body}>
           <Pressable
-            onPress={() => router.push(`/player/${encodeURIComponent(b.id)}`)}
+            onPress={onCta}
             style={({ pressed }) => [
               styles.playButton,
               {
@@ -147,19 +255,25 @@ export default function BookDetailScreen() {
               },
             ]}
             accessibilityRole="button"
-            accessibilityLabel={actionLabel}
+            accessibilityLabel={cta.label}
+            accessibilityHint={cta.hint}
           >
             <Feather
-              name={isAudiobook ? "play" : "book-open"}
+              name={cta.icon}
               size={20}
               color={colors.primaryForeground}
             />
             <Text
               style={[styles.playLabel, { color: colors.primaryForeground }]}
             >
-              {actionLabel}
+              {cta.label}
             </Text>
           </Pressable>
+          <Text
+            style={[styles.ctaHint, { color: colors.mutedForeground }]}
+          >
+            {cta.hint}
+          </Text>
 
           {b.description ? (
             <View style={styles.section}>
@@ -330,6 +444,12 @@ const styles = StyleSheet.create({
   playLabel: {
     fontSize: 16,
     fontFamily: "Inter_700Bold",
+  },
+  ctaHint: {
+    marginTop: 8,
+    textAlign: "center",
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
   },
   section: {
     marginTop: 28,

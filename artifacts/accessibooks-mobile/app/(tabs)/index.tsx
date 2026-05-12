@@ -1,6 +1,7 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
-import React from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -17,44 +18,57 @@ import { BookCarousel } from "@/components/BookCarousel";
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
 import {
+  type Book,
   fetchBooks,
-  fetchEasyRead,
   fetchFeatured,
   fetchTrending,
 } from "@/lib/api";
 
+const RECENT_KEY = "accessibooks:recent";
+
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const [continueListening, setContinueListening] = useState<Book[]>([]);
+
+  const loadRecent = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(RECENT_KEY);
+      const list: Book[] = raw ? JSON.parse(raw) : [];
+      setContinueListening(list.slice(0, 12));
+    } catch {
+      setContinueListening([]);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRecent();
+    }, [loadRecent]),
+  );
 
   const featured = useQuery({
     queryKey: ["featured"],
     queryFn: fetchFeatured,
   });
-  const trending = useQuery({
-    queryKey: ["trending"],
-    queryFn: fetchTrending,
-  });
-  const easyRead = useQuery({
-    queryKey: ["easy-read"],
-    queryFn: fetchEasyRead,
-  });
+  // "New releases" — most recently added titles in the catalog.
   const newReleases = useQuery({
     queryKey: ["books", "new"],
     queryFn: () => fetchBooks({ limit: 24 }),
   });
+  // "Recommended" — trending titles (the API doesn't expose a dedicated
+  // recommender for guests; trending is the closest equivalent the web app
+  // surfaces on Home as well).
+  const recommended = useQuery({
+    queryKey: ["recommended"],
+    queryFn: fetchTrending,
+  });
 
   const isAnyError =
-    featured.isError &&
-    trending.isError &&
-    newReleases.isError &&
-    easyRead.isError;
+    featured.isError && recommended.isError && newReleases.isError;
 
   const isLoading =
-    featured.isLoading &&
-    trending.isLoading &&
-    newReleases.isLoading &&
-    easyRead.isLoading;
+    featured.isLoading && recommended.isLoading && newReleases.isLoading;
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 100 : 100;
@@ -157,23 +171,25 @@ export default function HomeScreen() {
               </Pressable>
             ) : null}
 
+            {continueListening.length > 0 ? (
+              <BookCarousel
+                title="Continue Listening"
+                subtitle="Pick up where you left off"
+                books={continueListening}
+                loading={false}
+              />
+            ) : null}
             <BookCarousel
-              title="Trending now"
-              subtitle="What listeners are loving"
-              books={trending.data ?? []}
-              loading={trending.isLoading}
-            />
-            <BookCarousel
-              title="New releases"
+              title="New Releases"
               subtitle="Fresh in the catalog"
               books={newReleases.data?.data ?? []}
               loading={newReleases.isLoading}
             />
             <BookCarousel
-              title="Easy Read"
-              subtitle="Accessible reading levels for everyone"
-              books={easyRead.data?.data ?? []}
-              loading={easyRead.isLoading}
+              title="Recommended"
+              subtitle="Picked for accessible listening"
+              books={recommended.data ?? []}
+              loading={recommended.isLoading}
             />
           </>
         )}
