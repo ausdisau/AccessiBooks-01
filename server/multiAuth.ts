@@ -356,10 +356,21 @@ export function setupMultiAuth(app: Express) {
   // - GET /api/logout returns a 302 redirect (browser navigation)
   // - POST /api/auth/logout returns JSON with the redirect URL so SPA dashboards
   //   can navigate manually after their fetch resolves
+  // Cookie options here MUST mirror the session middleware's cookie config
+  // above (httpOnly/secure/sameSite). Browsers only honor clearCookie when
+  // the attributes line up, so a mismatch would silently leave the cookie
+  // in place after a session.destroy failure (Task #150).
   const logoutOpts = {
     auth0Domain: process.env.AUTH0_DOMAIN,
     auth0ClientId: process.env.AUTH0_CLIENT_ID,
     appUrl: APP_URL,
+    sessionCookieName: "connect.sid",
+    sessionCookieOptions: {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "lax" as const,
+      path: "/",
+    },
   };
   app.get("/api/logout", makeAuth0LogoutGetHandler(logoutOpts));
   app.post("/api/auth/logout", makeAuth0LogoutPostHandler(logoutOpts));

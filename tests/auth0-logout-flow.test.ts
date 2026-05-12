@@ -33,12 +33,22 @@
  *       → no Auth0 redirect (we cannot build the URL safely)
  *   - APP_URL not set
  *       → returnTo falls back to the request's protocol://host
+ *   - Auth0 user, GET /api/logout, session.destroy errors (Task #150)
+ *       → still 302s to the Auth0 /v2/logout URL
+ *       → Set-Cookie clears connect.sid (so the browser drops it even
+ *         though the session row may still exist in the store)
+ *       → /api/auth/me with the post-logout cookie still returns 401
+ *         (this assertion only proves the destroy CB fired; the cookie
+ *         clearing is the user-visible fix)
+ *   - Auth0 user, POST /api/auth/logout, session.destroy errors (Task #150)
+ *       → still 200 JSON with logoutUrl set
+ *       → Set-Cookie clears connect.sid
  *
  * Run: npx tsx tests/auth0-logout-flow.test.ts
  */
 
 import express, { type Request, type Response } from "express";
-import session from "express-session";
+import session, { MemoryStore } from "express-session";
 import passport from "passport";
 import http from "http";
 import {
@@ -79,7 +89,25 @@ type FakeUser = {
  * user via req.logIn), the real GET /api/logout + POST /api/auth/logout
  * handlers, and a /api/auth/me mirror of server/multiAuth.ts.
  */
-async function bootApp(opts: Auth0LogoutOptions) {
+/**
+ * Detect whether a Set-Cookie header line is clearing the named cookie.
+ * Browsers treat a Set-Cookie with Expires in the past or Max-Age=0 as a
+ * deletion. express's res.clearCookie sets Expires=Thu, 01 Jan 1970...
+ */
+function isCookieCleared(setCookieLine: string, name: string): boolean {
+  const re = new RegExp(`^${name}=`, "i");
+  if (!re.test(setCookieLine)) return false;
+  const lower = setCookieLine.toLowerCase();
+  if (lower.includes("max-age=0")) return true;
+  // Match "expires=thu, 01 jan 1970" or any 1970 epoch date.
+  if (/expires=[^;]*1970/.test(lower)) return true;
+  return false;
+}
+
+async function bootApp(
+  opts: Auth0LogoutOptions,
+  extra: { failSessionDestroy?: boolean } = {},
+) {
   // Fresh passport per app for hermeticity.
   const localPassport = new (passport as any).Passport();
   const userStore = new Map<string, FakeUser>();
@@ -90,11 +118,52 @@ async function bootApp(opts: Auth0LogoutOptions) {
 
   const app = express();
   app.use(express.json());
+
+  // For the destroy-error path (Task #150) we install a store whose
+  // `destroy()` method errors. We CAN'T wrap req.session.destroy from
+  // middleware because passport's req.logout (and req.logIn) regenerate
+  // the session, producing a fresh session instance whose `destroy` is
+  // the unpatched prototype method. Patching at the store level
+  // survives regeneration.
+  //
+  // We arm the failure with a flag toggled AFTER /test-login completes
+  // — login itself calls store.destroy via req.session.regenerate, and
+  // we need that to succeed so the test can obtain a valid cookie.
+  const store = new MemoryStore();
+  // sabotage.skip is decremented on each destroy after arming; once it
+  // hits 0, subsequent destroys error. We need this two-phase setup
+  // because passport 0.6+ req.logout calls req.session.regenerate,
+  // which itself invokes store.destroy(oldSid). That regenerate-driven
+  // destroy MUST succeed (otherwise req.logout returns an error and the
+  // handler short-circuits to 500 before our explicit
+  // req.session.destroy ever runs). We start `skip` at 1 so the
+  // regenerate-time destroy passes through and the next destroy — the
+  // one our production handler issues — is the one that errors.
+  const sabotage = { armed: false, skip: 0 };
+  if (extra.failSessionDestroy) {
+    const origDestroy = store.destroy.bind(store);
+    store.destroy = ((sid: string, cb?: (err?: unknown) => void) => {
+      if (sabotage.armed) {
+        if (sabotage.skip > 0) {
+          sabotage.skip -= 1;
+          return origDestroy(sid, cb);
+        }
+        // Simulate a true store outage: leave the row in place AND
+        // surface the error. Without the cookie-clearing fix, the
+        // browser would walk away with a still-valid cookie pointing
+        // at a still-valid server-side session.
+        return cb?.(new Error("simulated session-store outage"));
+      }
+      return origDestroy(sid, cb);
+    }) as typeof store.destroy;
+  }
+
   app.use(
     session({
       secret: "test-secret-not-for-production",
       resave: false,
       saveUninitialized: false,
+      store,
       cookie: { httpOnly: true, sameSite: "lax", secure: false },
     }),
   );
@@ -147,6 +216,15 @@ async function bootApp(opts: Auth0LogoutOptions) {
   return {
     base,
     login,
+    /**
+     * Arm the store so the NEXT destroy issued by our handler
+     * (req.session.destroy) errors. The regenerate-time destroy that
+     * passport's req.logout runs is allowed to pass through first.
+     */
+    armDestroyFailure() {
+      sabotage.armed = true;
+      sabotage.skip = 1;
+    },
     async get(path: string, cookie?: string) {
       const res = await fetch(`${base}${path}`, {
         redirect: "manual",
@@ -365,6 +443,110 @@ async function run() {
         "https://tenant.us.auth0.com/v2/logout?client_id=test-client-id&returnTo=https%3A%2F%2Ffallback.example.com",
         "buildAuth0LogoutUrl with null APP_URL",
       );
+    },
+  );
+
+  // ── 7. session.destroy errors during GET /api/logout (Task #150) ────────
+  await test(
+    "GET /api/logout clears connect.sid even when session.destroy errors",
+    async () => {
+      const app = await bootApp(
+        {
+          ...AUTH0_OPTS,
+          sessionCookieName: "connect.sid",
+          sessionCookieOptions: {
+            httpOnly: true,
+            sameSite: "lax",
+            secure: false,
+            path: "/",
+          },
+          errorLog: () => {},
+        },
+        { failSessionDestroy: true },
+      );
+      try {
+        const cookie = await app.login({
+          id: "auth0|frank",
+          email: "frank@example.com",
+          authProvider: "auth0",
+        });
+        const before = await app.get("/api/auth/me", cookie);
+        assertEq(before.status, 200, "/api/auth/me before logout");
+        app.armDestroyFailure();
+
+        const out = await app.get("/api/logout", cookie);
+        assertEq(out.status, 302, "GET /api/logout status");
+        assertEq(
+          out.location,
+          EXPECTED_AUTH0_LOGOUT_URL,
+          "GET /api/logout redirect target on destroy-error path",
+        );
+
+        const cleared = (out.setCookie ?? []).find((c) =>
+          isCookieCleared(c, "connect.sid"),
+        );
+        if (!cleared) {
+          throw new Error(
+            "Task #150 regression: GET /api/logout did not clear connect.sid " +
+              "after session.destroy errored. The browser would walk away with " +
+              "a still-valid cookie pointing at a still-valid server-side session. " +
+              `Set-Cookie headers were: ${JSON.stringify(out.setCookie ?? [])}`,
+          );
+        }
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  // ── 8. session.destroy errors during POST /api/auth/logout (Task #150) ──
+  await test(
+    "POST /api/auth/logout clears connect.sid even when session.destroy errors",
+    async () => {
+      const app = await bootApp(
+        {
+          ...AUTH0_OPTS,
+          sessionCookieName: "connect.sid",
+          sessionCookieOptions: {
+            httpOnly: true,
+            sameSite: "lax",
+            secure: false,
+            path: "/",
+          },
+          errorLog: () => {},
+        },
+        { failSessionDestroy: true },
+      );
+      try {
+        const cookie = await app.login({
+          id: "auth0|grace",
+          email: "grace@example.com",
+          authProvider: "auth0",
+        });
+        app.armDestroyFailure();
+        const out = await app.post("/api/auth/logout", cookie);
+        assertEq(out.status, 200, "POST /api/auth/logout status");
+        const body = (await out.json()) as Record<string, unknown>;
+        assertEq(body.message, "Logged out", "POST logout message");
+        assertEq(
+          body.logoutUrl,
+          EXPECTED_AUTH0_LOGOUT_URL,
+          "POST logout logoutUrl on destroy-error path",
+        );
+
+        const cleared = (out.setCookie ?? []).find((c) =>
+          isCookieCleared(c, "connect.sid"),
+        );
+        if (!cleared) {
+          throw new Error(
+            "Task #150 regression: POST /api/auth/logout did not clear " +
+              "connect.sid after session.destroy errored. " +
+              `Set-Cookie headers were: ${JSON.stringify(out.setCookie ?? [])}`,
+          );
+        }
+      } finally {
+        await app.close();
+      }
     },
   );
 
