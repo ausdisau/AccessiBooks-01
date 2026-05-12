@@ -421,7 +421,7 @@ export function SeeTheProductSection({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setProgress((p) => Math.max(0, p - 5))}
+                    onClick={() => setProgress((p) => Math.max(0, p - (30 / totalSec) * 100))}
                     className="h-10 w-10 rounded-full inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
                     style={{ backgroundColor: "color-mix(in srgb, var(--brand-cream) 14%, transparent)" }}
                     aria-label="Skip back 30 seconds"
@@ -442,7 +442,7 @@ export function SeeTheProductSection({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setProgress((p) => Math.min(100, p + 5))}
+                    onClick={() => setProgress((p) => Math.min(100, p + (30 / totalSec) * 100))}
                     className="h-10 w-10 rounded-full inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
                     style={{ backgroundColor: "color-mix(in srgb, var(--brand-cream) 14%, transparent)" }}
                     aria-label="Skip forward 30 seconds"
