@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  type GestureResponderEvent,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -50,6 +52,48 @@ export default function PlayerScreen() {
   const status = useAudioPlayerStatus(player);
 
   const [speedIdx, setSpeedIdx] = useState(1);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [scrubPos, setScrubPos] = useState<number | null>(null);
+  const wasPlayingRef = useRef(false);
+
+  const seekFromX = (x: number) => {
+    if (!audioUrl || trackWidth <= 0 || (status?.duration ?? 0) <= 0) return 0;
+    const ratio = Math.max(0, Math.min(1, x / trackWidth));
+    return ratio * (status?.duration ?? 0);
+  };
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !!audioUrl,
+        onMoveShouldSetPanResponder: () => !!audioUrl,
+        onPanResponderGrant: (e: GestureResponderEvent) => {
+          if (!audioUrl) return;
+          haptic();
+          wasPlayingRef.current = !!status?.playing;
+          if (wasPlayingRef.current) player.pause();
+          const x = e.nativeEvent.locationX;
+          setScrubPos(seekFromX(x));
+        },
+        onPanResponderMove: (e: GestureResponderEvent) => {
+          if (!audioUrl) return;
+          const x = e.nativeEvent.locationX;
+          setScrubPos(seekFromX(x));
+        },
+        onPanResponderRelease: () => {
+          if (!audioUrl) return;
+          if (scrubPos !== null) player.seekTo(scrubPos);
+          setScrubPos(null);
+          if (wasPlayingRef.current) player.play();
+        },
+        onPanResponderTerminate: () => {
+          setScrubPos(null);
+          if (wasPlayingRef.current) player.play();
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [audioUrl, trackWidth, status?.duration, status?.playing, scrubPos],
+  );
 
   useEffect(() => {
     return () => {
@@ -66,7 +110,8 @@ export default function PlayerScreen() {
   };
 
   const total = status?.duration ?? book.data?.duration ?? 0;
-  const position = status?.currentTime ?? 0;
+  const livePosition = status?.currentTime ?? 0;
+  const position = scrubPos !== null ? scrubPos : livePosition;
   const playing = !!status?.playing;
   const speed = SPEEDS[speedIdx];
 
@@ -175,19 +220,49 @@ export default function PlayerScreen() {
 
       <View style={styles.scrubberBlock}>
         <View
-          style={[styles.track, { backgroundColor: colors.brandLine }]}
-          accessibilityRole="progressbar"
-          accessibilityLabel={`Progress ${Math.round(progress * 100)} percent`}
+          {...panResponder.panHandlers}
+          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+          style={styles.scrubHit}
+          accessibilityRole="adjustable"
+          accessibilityLabel="Audio scrubber"
+          accessibilityValue={{
+            min: 0,
+            max: Math.max(1, Math.round(total)),
+            now: Math.round(position),
+            text: `${formatTime(position)} of ${total > 0 ? formatDuration(total) : "unknown"}`,
+          }}
+          accessibilityActions={[
+            { name: "increment", label: "Skip forward" },
+            { name: "decrement", label: "Skip back" },
+          ]}
+          onAccessibilityAction={(e) => {
+            if (e.nativeEvent.actionName === "increment") skipForward();
+            if (e.nativeEvent.actionName === "decrement") skipBack();
+          }}
         >
-          <View
-            style={[
-              styles.fill,
-              {
-                width: `${progress * 100}%`,
-                backgroundColor: colors.brandOrange,
-              },
-            ]}
-          />
+          <View style={[styles.track, { backgroundColor: colors.brandLine }]}>
+            <View
+              style={[
+                styles.fill,
+                {
+                  width: `${progress * 100}%`,
+                  backgroundColor: colors.brandOrange,
+                },
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.thumb,
+                {
+                  left: `${progress * 100}%`,
+                  backgroundColor: colors.brandOrange,
+                  borderColor: colors.brandCream,
+                  opacity: audioDisabled ? 0.4 : 1,
+                },
+              ]}
+            />
+          </View>
         </View>
         <View style={styles.timeRow}>
           <Text style={[styles.time, { color: colors.brandInkSoft }]}>
@@ -340,13 +415,27 @@ const styles = StyleSheet.create({
   scrubberBlock: {
     width: "100%",
   },
+  scrubHit: {
+    width: "100%",
+    paddingVertical: 16,
+    justifyContent: "center",
+  },
   track: {
-    height: 4,
-    borderRadius: 2,
-    overflow: "hidden",
+    height: 6,
+    borderRadius: 3,
+    justifyContent: "center",
   },
   fill: {
     height: "100%",
+    borderRadius: 3,
+  },
+  thumb: {
+    position: "absolute",
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    marginLeft: -9,
+    borderWidth: 2,
   },
   timeRow: {
     marginTop: 8,
