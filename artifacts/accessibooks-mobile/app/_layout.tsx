@@ -1,4 +1,8 @@
 import {
+  AtkinsonHyperlegible_400Regular,
+  AtkinsonHyperlegible_700Bold,
+} from "@expo-google-fonts/atkinson-hyperlegible";
+import {
   Fraunces_600SemiBold,
   Fraunces_700Bold,
 } from "@expo-google-fonts/fraunces";
@@ -54,6 +58,8 @@ export default function RootLayout() {
     Inter_700Bold,
     Fraunces_600SemiBold,
     Fraunces_700Bold,
+    AtkinsonHyperlegible_400Regular,
+    AtkinsonHyperlegible_700Bold,
   });
 
   useEffect(() => {
