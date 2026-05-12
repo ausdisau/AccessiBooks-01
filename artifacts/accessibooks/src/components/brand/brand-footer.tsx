@@ -1,4 +1,5 @@
 import { BrandWordmark } from "./brand-wordmark";
+import adLogo from "@assets/Original_on_Transparent_1778563296837.png";
 
 interface FooterLink {
   label: string;
@@ -55,6 +56,28 @@ export function BrandFooter({ columns = defaultColumns }: BrandFooterProps) {
         <div className="grid gap-10 md:grid-cols-12">
           <div className="md:col-span-5">
             <BrandWordmark size="lg" showTagline tagline="Audiobooks & ebooks for everyone" />
+            <a
+              href="https://australiandisability.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 inline-flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+              aria-label="Australian Disability Ltd — opens in a new tab"
+            >
+              <img
+                src={adLogo}
+                alt=""
+                className="h-12 w-auto bg-white rounded-md p-1.5"
+              />
+              <span
+                className="text-xs uppercase tracking-[0.18em] font-semibold"
+                style={{ color: "color-mix(in srgb, var(--brand-cream) 80%, transparent)" }}
+              >
+                A project of
+                <span className="block normal-case tracking-normal text-sm mt-0.5" style={{ color: "var(--brand-cream)" }}>
+                  Australian Disability Ltd
+                </span>
+              </span>
+            </a>
             <p
               className="mt-6 text-base leading-relaxed max-w-md"
               style={{ color: "color-mix(in srgb, var(--brand-cream) 80%, transparent)" }}
