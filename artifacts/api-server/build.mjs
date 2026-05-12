@@ -101,7 +101,6 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
       "@replit/connectors-sdk",
-      "coinbase-commerce-node",
       "@tensorflow/tfjs",
       "@tensorflow/tfjs-node",
       "iron-session",
