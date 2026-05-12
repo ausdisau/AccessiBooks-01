@@ -292,7 +292,7 @@ export function BrandLandingPage({
           />
 
           <div
-            className="mt-16 sm:mt-24 grid grid-cols-1 sm:grid-cols-3 gap-y-8 gap-x-6 border-t pt-10"
+            className="mt-16 sm:mt-24 grid grid-cols-1 md:grid-cols-3 gap-y-8 gap-x-8 border-t pt-10"
             style={{ borderColor: "var(--brand-line)" }}
             aria-label="Platform highlights"
           >
