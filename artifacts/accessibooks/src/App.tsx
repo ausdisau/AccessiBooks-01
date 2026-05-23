@@ -715,6 +715,17 @@ function LoginModal({
                   Continue with Auth0
                 </Button>
               )}
+
+              <Button
+                variant="outline"
+                size="lg"
+                className="w-full h-12 text-base font-medium border-2 hover:bg-orange-50 dark:hover:bg-orange-950 transition-colors"
+                onClick={() => (window.location.href = "/api/replit-auth/login")}
+                data-testid="button-replit-auth"
+              >
+                <Zap className="mr-3 h-5 w-5 text-[#F26207]" />
+                Continue with Replit
+              </Button>
             </div>
           )}
           
