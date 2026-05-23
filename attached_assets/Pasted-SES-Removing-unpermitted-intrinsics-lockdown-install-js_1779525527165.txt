@@ -1,0 +1,22 @@
+SES Removing unpermitted intrinsics lockdown-install.js:1:203656
+  Removing intrinsics.%MapPrototype%.getOrInsert lockdown-install.js:1:203656
+  Removing intrinsics.%MapPrototype%.getOrInsertComputed lockdown-install.js:1:203656
+  Removing intrinsics.%WeakMapPrototype%.getOrInsert lockdown-install.js:1:203656
+  Removing intrinsics.%WeakMapPrototype%.getOrInsertComputed lockdown-install.js:1:203656
+  Removing intrinsics.%DatePrototype%.toTemporalInstant lockdown-install.js:1:203656
+Cookie “__cf_bm” will soon be rejected because it is foreign and does not have the “Partitioned“ attribute. replit-dev-banner.js
+[vite] connecting... client:733:9
+[vite] connected. client:827:12
+Error restoring session : Transport request timed out
+    i https://c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev/:1
+    <anonymous> https://c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev/:1
+    request https://c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev/:1
+    o https://c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev/:1
+Caused by: undefined
+c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev:1:201799
+“c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev” has been classified as a bounce tracker. If it does not receive user activation within the next 3,600 seconds it will have its state purged.
+Download the React DevTools for a better development experience: https://react.dev/link/react-devtools react-dom_client.js:17987:54
+The resource from “https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/web-font/opendyslexic.css” was blocked due to MIME type (“text/plain”) mismatch (X-Content-Type-Options: nosniff). c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev
+Error in parsing value for ‘-webkit-text-size-adjust’.  Declaration dropped. c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev:140:29
+Unknown property ‘-moz-osx-font-smoothing’.  Declaration dropped. c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev:446:27
+Unknown property ‘-moz-column-gap’.  Declaration dropped. c063eb77-57ec-409c-b03a-9d104c8cc59a-00-1gou6l7vbmw6l.janeway.replit.dev:2346:19
