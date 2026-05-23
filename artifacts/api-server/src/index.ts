@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import { logger } from "./lib/logger";
 import { registerRoutes } from "./routes/routes";
 import healthRouter from "./routes/health";
+import authRouter from "./routes/auth";
 import { startNotificationScheduler } from "./notificationTriggers";
 import {
   setupFullTextSearch,
@@ -53,6 +54,12 @@ if (Number.isNaN(port) || port <= 0) {
 
   // Health check — must be reachable before session/auth middleware
   app.use("/api", healthRouter);
+
+  // Replit Auth routes (login/callback/logout/user + mobile token-exchange).
+  // Mounted at /api/replit-auth to coexist with the existing Passport-based
+  // /api/auth/* and /api/login, /api/logout routes (registered later in
+  // registerRoutes -> setupMultiAuth).
+  app.use("/api/replit-auth", authRouter);
 
   // Register all legacy routes — this wires auth, sessions, WebSocket, etc.
   // and returns the HTTP server.
