@@ -210,7 +210,11 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   }, []);
 
   const handleLogout = () => {
-    window.location.href = "/api/logout";
+    // /api/replit-auth/logout tears down the Replit session AND calls
+    // req.logout() to end the Passport session, then redirects through
+    // the OIDC end-session URL. This is the single unified logout entry
+    // point regardless of how the user originally signed in.
+    window.location.href = "/api/replit-auth/logout";
   };
 
   useEffect(() => {
