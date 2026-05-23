@@ -3414,6 +3414,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/ads/placement-metrics — per-placement impression breakdown for the
+  // last 30 days. Surfaces real fill / completion / impression counts for each
+  // of the new in-content placements (audio post-roll, ebook interstitial,
+  // ebook end-of-chapter, ebook banner) so dashboards can show live data
+  // instead of static inventory descriptions. Fail-soft: returns [] on error.
+  app.get("/api/ads/placement-metrics", isAuthenticated, async (_req: any, res) => {
+    try {
+      const { db } = await import("../db");
+      const { sql } = await import("drizzle-orm");
+      const result: any = await db.execute(sql`
+        SELECT
+          ad_type AS "adType",
+          COUNT(*)::int AS "impressions",
+          SUM(CASE WHEN completed THEN 1 ELSE 0 END)::int AS "completions",
+          SUM(CASE WHEN skipped THEN 1 ELSE 0 END)::int AS "skips",
+          SUM(CASE WHEN provider <> 'house' THEN 1 ELSE 0 END)::int AS "paidImpressions"
+        FROM ad_event_logs
+        WHERE served_at > now() - interval '30 days'
+        GROUP BY ad_type
+        ORDER BY impressions DESC
+      `);
+      const rows = Array.isArray(result) ? result : (result?.rows ?? []);
+      const placements = rows.map((r: any) => {
+        const impressions = Number(r.impressions ?? 0);
+        const completions = Number(r.completions ?? 0);
+        const paid = Number(r.paidImpressions ?? 0);
+        return {
+          adType: String(r.adType ?? "unknown"),
+          impressions,
+          completions,
+          skips: Number(r.skips ?? 0),
+          completionRate: impressions > 0 ? completions / impressions : 0,
+          fillRate: impressions > 0 ? paid / impressions : 0,
+          paidImpressions: paid,
+        };
+      });
+      res.json({ placements, windowDays: 30 });
+    } catch (error) {
+      console.warn("[placement-metrics] query failed, returning empty:", error);
+      res.json({ placements: [], windowDays: 30 });
+    }
+  });
+
   // ============ REVIEWS AND SOCIAL ENDPOINTS ============
 
   // GET /api/books/:bookId/reviews - Get reviews for a book

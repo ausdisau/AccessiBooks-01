@@ -3,6 +3,8 @@ import { Document, Page, pdfjs } from "react-pdf";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { EbookInterstitialAd, canShowEbookInterstitial } from "./EbookInterstitialAd";
+import { EbookEndOfChapterCard } from "./EbookEndOfChapterCard";
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -27,9 +29,81 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const [showInterstitial, setShowInterstitial] = useState(false);
+  const [showEndOfSection, setShowEndOfSection] = useState(false);
+  // Chapter-boundary page numbers resolved from the PDF outline (TOC).
+  // - "loading" while we attempt to load the outline
+  // - "none" when the PDF has no outline: chapter-based ads are suppressed
+  // - Set<number> of 1-indexed page numbers where chapters begin
+  const [pdfChapterPages, setPdfChapterPages] = useState<Set<number> | "loading" | "none">("loading");
   const completionFiredRef = useRef(false);
+  const prevPageRef = useRef(1);
 
   const pdfUrl = `/api/ebook/${book.id}/content`;
+
+  // Load the PDF outline once per book. We resolve each outline entry's
+  // destination to a 1-indexed page number, then use that set as the
+  // authoritative source of chapter boundaries for ad triggering.
+  useEffect(() => {
+    let cancelled = false;
+    setPdfChapterPages("loading");
+    const task = pdfjs.getDocument(pdfUrl);
+    task.promise
+      .then(async (doc) => {
+        try {
+          const outline = await doc.getOutline();
+          if (!outline || outline.length === 0) {
+            if (!cancelled) setPdfChapterPages("none");
+            return;
+          }
+          const boundaries = new Set<number>();
+          for (const item of outline) {
+            try {
+              let dest = item.dest;
+              if (typeof dest === "string") {
+                dest = await doc.getDestination(dest);
+              }
+              if (Array.isArray(dest) && dest[0]) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const pageIndex = await doc.getPageIndex(dest[0] as any);
+                boundaries.add(pageIndex + 1);
+              }
+            } catch {
+              // skip malformed outline entries
+            }
+          }
+          if (!cancelled) setPdfChapterPages(boundaries.size > 0 ? boundaries : "none");
+        } catch {
+          if (!cancelled) setPdfChapterPages("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPdfChapterPages("none");
+      });
+    return () => {
+      cancelled = true;
+      try { task.destroy(); } catch { /* noop */ }
+    };
+  }, [pdfUrl]);
+
+  useEffect(() => {
+    // Only fire chapter-based ads at real chapter boundaries from the PDF outline.
+    // If no outline is available, suppress entirely — only the in-reader banner
+    // (rendered by ReaderViewToggle) remains for free-tier users.
+    if (
+      currentPage > prevPageRef.current &&
+      !isLoading &&
+      pdfChapterPages instanceof Set &&
+      pdfChapterPages.has(currentPage)
+    ) {
+      if (!showInterstitial && canShowEbookInterstitial()) {
+        setShowInterstitial(true);
+      } else if (!showEndOfSection && !showInterstitial) {
+        setShowEndOfSection(true);
+      }
+    }
+    prevPageRef.current = currentPage;
+  }, [currentPage, isLoading, showInterstitial, showEndOfSection, pdfChapterPages]);
 
   useEffect(() => {
     completionFiredRef.current = false;
@@ -213,6 +287,20 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
           </Button>
         </nav>
       </main>
+
+      {showEndOfSection && !showInterstitial && (
+        <EbookEndOfChapterCard
+          onContinue={() => setShowEndOfSection(false)}
+          onUpgrade={() => { setShowEndOfSection(false); window.location.href = "/subscribe"; }}
+        />
+      )}
+
+      {showInterstitial && (
+        <EbookInterstitialAd
+          onDismiss={() => setShowInterstitial(false)}
+          onUpgrade={() => { setShowInterstitial(false); window.location.href = "/subscribe"; }}
+        />
+      )}
     </div>
   );
 }

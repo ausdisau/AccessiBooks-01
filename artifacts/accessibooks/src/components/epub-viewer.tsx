@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ePub from "epubjs";
 import { Book } from "@shared/schema";
+import { EbookInterstitialAd, canShowEbookInterstitial } from "./EbookInterstitialAd";
+import { EbookEndOfChapterCard } from "./EbookEndOfChapterCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -68,6 +70,9 @@ const defaultSettings: ReadingSettings = {
   fontFamily: "serif",
 };
 
+/** Show interstitial every EPUB_INTERSTITIAL_EVERY_N chapters (at chapter boundaries). */
+const EPUB_INTERSTITIAL_EVERY_N = 3;
+
 export function EpubViewer({ book, onBack }: EpubViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +80,11 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
   const [toc, setToc] = useState<NavItem[]>([]);
   const [currentLocation, setCurrentLocation] = useState<string>("");
   const [progress, setProgress] = useState(0);
+  const [showInterstitial, setShowInterstitial] = useState(false);
+  const [showEndOfChapter, setShowEndOfChapter] = useState(false);
   const completionFiredRef = useRef(false);
+  // Counts how many TOC chapter navigations the user has triggered this session.
+  const chapNavCountRef = useRef(0);
   
   const viewerRef = useRef<HTMLDivElement>(null);
   const epubRef = useRef<EpubBook | null>(null);
@@ -128,12 +137,41 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
         if (location.start?.cfi) {
           setCurrentLocation(location.start.cfi);
           localStorage.setItem(`epub-location-${book.id}`, location.start.cfi);
+
+          // Detect organic chapter transitions (user pages through book without TOC nav).
+          // epubjs CFIs encode the spine-item index: epubcfi(/6/N[id]!/...).
+          // When the spine index changes, the reader crossed a chapter boundary.
+          const cfi = location.start.cfi;
+          const spineMatch = cfi.match(/epubcfi\(\/6\/(\d+)(?:\[[^\]]+\])?!/);
+          const spineItem = spineMatch ? spineMatch[1] : null;
+          if (
+            spineItem &&
+            prevSpineItemRef.current !== null &&
+            spineItem !== prevSpineItemRef.current &&
+            !suppressChapterTransitionRef.current &&
+            !showInterstitial &&
+            !showEndOfChapter
+          ) {
+            chapNavCountRef.current += 1;
+            if (chapNavCountRef.current % EPUB_INTERSTITIAL_EVERY_N === 0 && canShowEbookInterstitial()) {
+              setShowInterstitial(true);
+            } else {
+              setShowEndOfChapter(true);
+            }
+          }
+          if (spineItem) {
+            prevSpineItemRef.current = spineItem;
+          }
         }
         if (location.start?.percentage !== undefined) {
           const pct = Math.round(location.start.percentage * 100);
           setProgress(pct);
-          // Fire completion event when user reaches the end of the epub (99%+ or atEnd flag)
-          if (!completionFiredRef.current && (pct >= 99 || location.atEnd)) {
+
+          // Fire completion event when user reaches the end of the epub (99%+ or atEnd flag).
+          // epubjs exposes `atEnd` at runtime but it is not declared in @types/epubjs;
+          // we use a narrow cast rather than `any` to avoid a blanket type bypass.
+          const epubLocation = location as { atEnd?: boolean };
+          if (!completionFiredRef.current && (pct >= 99 || epubLocation.atEnd)) {
             completionFiredRef.current = true;
             document.dispatchEvent(
               new CustomEvent("accessibooks:book-completed", {
@@ -188,8 +226,44 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
     renditionRef.current?.prev();
   };
 
+  const pendingChapterRef = useRef<string | null>(null);
+  // Used to suppress the chapter-transition ad gate for the one relocated event
+  // that fires immediately after a TOC-nav (to avoid double-triggering).
+  const suppressChapterTransitionRef = useRef(false);
+  // Tracks the spine-item number from the last relocated CFI so organic chapter
+  // transitions (next-page navigation through the book) can be detected.
+  const prevSpineItemRef = useRef<string | null>(null);
+
   const goToChapter = (href: string) => {
     renditionRef.current?.display(href);
+  };
+
+  const requestChapterNav = (href: string) => {
+    pendingChapterRef.current = href;
+    chapNavCountRef.current += 1;
+    // Every EPUB_INTERSTITIAL_EVERY_N chapter navigations, show a full-page interstitial
+    // (at this chapter boundary) instead of the smaller end-of-chapter card.
+    if (
+      chapNavCountRef.current % EPUB_INTERSTITIAL_EVERY_N === 0 &&
+      canShowEbookInterstitial() &&
+      !showInterstitial
+    ) {
+      setShowInterstitial(true);
+    } else {
+      setShowEndOfChapter(true);
+    }
+  };
+
+  const confirmChapterNav = () => {
+    setShowEndOfChapter(false);
+    if (pendingChapterRef.current) {
+      // Suppress the next relocated event so organic-progression detection
+      // doesn't double-trigger an ad for the same chapter navigation.
+      suppressChapterTransitionRef.current = true;
+      setTimeout(() => { suppressChapterTransitionRef.current = false; }, 1500);
+      renditionRef.current?.display(pendingChapterRef.current);
+      pendingChapterRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -253,7 +327,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
                   {toc.map((item, index) => (
                     <button
                       key={index}
-                      onClick={() => goToChapter(item.href)}
+                      onClick={() => requestChapterNav(item.href)}
                       className="block w-full text-left px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
                     >
                       {item.label}
@@ -403,6 +477,31 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
           </div>
         </div>
       </footer>
+
+      {showEndOfChapter && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 pb-8 px-4">
+          <div className="w-full max-w-2xl">
+            <EbookEndOfChapterCard
+              onContinue={confirmChapterNav}
+              onUpgrade={() => { setShowEndOfChapter(false); window.location.href = "/subscribe"; }}
+            />
+          </div>
+        </div>
+      )}
+
+      {showInterstitial && (
+        <EbookInterstitialAd
+          onDismiss={() => {
+            setShowInterstitial(false);
+            // If the interstitial was shown at a chapter boundary, complete the navigation now.
+            if (pendingChapterRef.current) {
+              renditionRef.current?.display(pendingChapterRef.current);
+              pendingChapterRef.current = null;
+            }
+          }}
+          onUpgrade={() => { setShowInterstitial(false); window.location.href = "/subscribe"; }}
+        />
+      )}
     </div>
   );
 }

@@ -112,10 +112,68 @@ async function fetchFromVastProvider(
   }
 }
 
+/**
+ * Attempt to fetch a display creative from DISPLAY_TAG_URL (env-driven).
+ * Expects the endpoint to return JSON: { id, title, description?, imageUrl?, clickThrough? }
+ */
+async function fetchDisplayAd(): Promise<AdProviderResponse | null> {
+  const displayTagUrl = process.env.DISPLAY_TAG_URL;
+  if (!displayTagUrl) {
+    console.warn("[ProgrammaticAdProvider] DISPLAY_TAG_URL is not configured — display waterfall will skip programmatic leg");
+    return null;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(displayTagUrl, {
+      signal: controller.signal,
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "AccessiBooks/1.0",
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+
+    const data = await response.json() as {
+      id?: string;
+      title?: string;
+      description?: string;
+      imageUrl?: string;
+      clickThrough?: string;
+    };
+
+    if (!data.id || !data.title) return null;
+
+    return {
+      id: data.id,
+      provider: "programmatic-display",
+      title: data.title,
+      description: data.description,
+      imageUrl: data.imageUrl,
+      clickThrough: data.clickThrough,
+      duration: 0,
+      tracking: {
+        impression: [], start: [], firstQuartile: [], midpoint: [],
+        thirdQuartile: [], complete: [], skip: [], mute: [], unmute: [],
+        pause: [], resume: [], error: [], clickTracking: [],
+      },
+      isProgrammatic: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export class ProgrammaticAdProvider implements IAdProvider {
   readonly name = "programmatic";
 
   async requestAd(context: AdRequestContext): Promise<AdProviderResponse | null> {
+    if (context.adType === "display") return fetchDisplayAd();
     const providers = getVastProviders();
     if (providers.length === 0) return null;
 

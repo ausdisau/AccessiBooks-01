@@ -412,6 +412,71 @@ export async function selectSelfServeAd(
   return null;
 }
 
+/**
+ * Select a self-serve display creative: finds active campaigns whose creatives
+ * have a companion image (companionImageUrl). Returns null if none found.
+ * Used by SelfServeAdProvider for the display waterfall leg.
+ */
+export async function selectSelfServeDisplayAd(
+  contentGenre?: string,
+): Promise<{
+  campaignId: string;
+  creativeId: string;
+  title: string;
+  advertiser: string;
+  imageUrl: string;
+  clickThrough?: string;
+} | null> {
+  const now = new Date();
+
+  const eligibleCampaigns = await db.select().from(adCampaigns)
+    .where(and(
+      eq(adCampaigns.status, "active"),
+      sql`${adCampaigns.spentCents} < ${adCampaigns.budgetCents}`,
+      or(
+        sql`${adCampaigns.startDate} IS NULL`,
+        lte(adCampaigns.startDate, now),
+      ),
+      or(
+        sql`${adCampaigns.endDate} IS NULL`,
+        gte(adCampaigns.endDate, now),
+      ),
+    ))
+    .orderBy(desc(adCampaigns.cpmBidCents));
+
+  for (const campaign of eligibleCampaigns) {
+    if (contentGenre && campaign.targetGenres && campaign.targetGenres.length > 0) {
+      const genreMatch = campaign.targetGenres.some(g =>
+        g.toLowerCase() === contentGenre.toLowerCase()
+      );
+      if (!genreMatch) continue;
+    }
+
+    const creatives = await db.select().from(adCreatives)
+      .where(and(
+        eq(adCreatives.campaignId, campaign.id),
+        eq(adCreatives.status, "approved"),
+        sql`${adCreatives.companionImageUrl} IS NOT NULL`,
+      ));
+
+    if (creatives.length === 0) continue;
+
+    const creative = creatives[Math.floor(Math.random() * creatives.length)]!;
+    if (!creative.companionImageUrl) continue;
+
+    return {
+      campaignId: campaign.id,
+      creativeId: creative.id,
+      title: creative.name,
+      advertiser: campaign.name,
+      imageUrl: creative.companionImageUrl,
+      clickThrough: creative.clickThroughUrl || undefined,
+    };
+  }
+
+  return null;
+}
+
 export async function recordImpression(
   campaignId: string,
   creativeId: string,

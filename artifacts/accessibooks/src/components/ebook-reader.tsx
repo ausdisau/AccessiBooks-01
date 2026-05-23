@@ -47,6 +47,9 @@ import {
   Volume2,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/audio-context";
+import { EbookInterstitialAd, canShowEbookInterstitial } from "./EbookInterstitialAd";
+import { EbookReadingBanner } from "./EbookReadingBanner";
+import { EbookEndOfChapterCard } from "./EbookEndOfChapterCard";
 import { useKaraokeAlignment } from "@/hooks/use-karaoke-alignment";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 import {
@@ -254,7 +257,7 @@ function ReaderViewToggle({ book, onBack, classic }: ReaderViewToggleProps) {
   );
 
   return (
-    <div className="relative">
+    <div className="relative flex flex-col">
       <div
         role="group"
         aria-label="Reader view"
@@ -285,6 +288,9 @@ function ReaderViewToggle({ book, onBack, classic }: ReaderViewToggleProps) {
       ) : (
         classic
       )}
+      {/* Persistent reading banner — shared across all reader variants (Free tier only).
+          EbookReadingBanner self-suppresses for paid tiers and a11y modes. */}
+      <EbookReadingBanner onUpgrade={() => { window.location.href = "/subscribe"; }} />
     </div>
   );
 }
@@ -561,6 +567,10 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [showChapterPreview, setShowChapterPreview] = useState(false);
   const [chapterPreviewText, setChapterPreviewText] = useState<string | null>(null);
   const [chapterPreviewTitle, setChapterPreviewTitle] = useState<string | null>(null);
+
+  // Ebook in-content ad state (Free tier only)
+  const [showEbookInterstitial, setShowEbookInterstitial] = useState(false);
+  const [showEbookEndOfChapter, setShowEbookEndOfChapter] = useState(false);
   const [showChapterSignSummary, setShowChapterSignSummary] = useState(false);
   const [chapterSignClip, setChapterSignClip] = useState<{ youtubeId: string; title: string } | null | undefined>(undefined);
   const prevPageRef = useRef<number>(1);
@@ -583,6 +593,11 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   });
 
   const chapterBoundaryPageRef = useRef<number | null>(null);
+  // True only when generateToc found real chapter/part/section headings in the
+  // text. When false, tocEntries may still be populated with synthetic
+  // "Section N" interval entries for navigation UI, but ad triggers must NOT
+  // treat those as real chapter boundaries.
+  const hasRealTocRef = useRef<boolean>(false);
 
   interface ReaderPictureCheckinData {
     question: string;
@@ -831,6 +846,11 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       }
     }
 
+    // Track whether the TOC came from real chapter headings. Synthetic
+    // interval-based "Section N" entries are still useful for navigation but
+    // must not be used as ad-trigger boundaries.
+    hasRealTocRef.current = entries.length > 0;
+
     if (entries.length === 0) {
       const interval = Math.max(1, Math.floor(numPages / 10));
       for (let p = 1; p <= numPages; p += interval) {
@@ -926,11 +946,20 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     if (currentPage === 1) return;
     if (!pageContent) return;
 
-    const isChapterBoundary = tocEntries.length > 0
-      ? tocEntries.some(e => e.page === currentPage && e.page !== prev)
-      : currentPage > prev && (currentPage - 1) % 15 === 0;
+    // Only fire chapter-based ads at real chapter boundaries (detected from
+    // the text via chapter-heading patterns). When TOC is synthetic or absent,
+    // suppress interstitial / end-of-chapter ads entirely — the in-reader
+    // banner (rendered elsewhere) remains for Free-tier users.
+    const isChapterBoundary = hasRealTocRef.current
+      && tocEntries.some(e => e.page === currentPage && e.page !== prev);
 
     if (isChapterBoundary) {
+      // Show end-of-chapter card at the previous chapter's last page
+      setShowEbookEndOfChapter(true);
+      // Show interstitial if frequency cap allows
+      if (canShowEbookInterstitial()) {
+        setShowEbookInterstitial(true);
+      }
       chapterBoundaryPageRef.current = currentPage;
       const tocEntry = tocEntries.find(e => e.page === currentPage);
       setChapterPreviewTitle(tocEntry?.title ?? null);
@@ -2109,6 +2138,14 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           </div>
         )}
 
+        {/* End-of-chapter ad card (Free tier, resets when interstitial shows or on new chapter) */}
+        {showEbookEndOfChapter && !showEbookInterstitial && (
+          <EbookEndOfChapterCard
+            onContinue={() => setShowEbookEndOfChapter(false)}
+            onUpgrade={() => { setShowEbookEndOfChapter(false); window.location.href = "/subscribe"; }}
+          />
+        )}
+
         {/* Sign language chapter summary — only shown when a curated clip is available for this book */}
         {chapterBoundaryPageRef.current === currentPage &&
           a11ySettings.showSignAtChapterEnd &&
@@ -2241,6 +2278,14 @@ function TextReader({ book, onBack }: EbookReaderProps) {
       )}
 
       </main>
+
+      {/* Full-page interstitial overlay (Free tier, shown at chapter boundaries) */}
+      {showEbookInterstitial && (
+        <EbookInterstitialAd
+          onDismiss={() => setShowEbookInterstitial(false)}
+          onUpgrade={() => { setShowEbookInterstitial(false); window.location.href = "/subscribe"; }}
+        />
+      )}
 
       <style>{`
         @keyframes slideInLeft {

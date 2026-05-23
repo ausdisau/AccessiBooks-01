@@ -9,7 +9,7 @@ import type {
 export interface AudioAdState {
   isAdPlaying: boolean;
   currentAd: AdResponse | null;
-  adType: "pre-roll" | "mid-roll" | null;
+  adType: "pre-roll" | "mid-roll" | "post-roll" | null;
 }
 
 export type StreamQualityTier = SharedStreamQualityTier;

@@ -7,7 +7,12 @@
 import type { VASTTrackingEvents } from "./vastParser";
 
 export interface AdRequestContext {
-  adType: "preroll" | "midroll";
+  // post-roll is a first-class audio placement (book has ended). Providers
+  // that don't natively distinguish it from pre-roll/mid-roll may treat it
+  // as another audio request, but mediation/analytics/impression logging
+  // preserve the distinction so dashboards and frequency caps report
+  // post-roll as its own placement.
+  adType: "preroll" | "midroll" | "postroll" | "display";
   contentGenre?: string;
   userId?: string;
   placementId?: string;
@@ -23,6 +28,8 @@ export interface AdProviderResponse {
   mimeType?: string;
   duration: number;
   skipOffset?: number;
+  imageUrl?: string;
+  clickThrough?: string;
   companion?: {
     imageUrl: string;
     clickThrough?: string;
