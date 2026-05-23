@@ -13,8 +13,11 @@ interface AuthState {
 
 // Replit Auth routes are mounted under /api/replit-auth to coexist with the
 // existing Passport-based /api/auth/* routes used by local / Auth0 /
-// magic-link login.
+// magic-link login. Login/logout still hit the Replit Auth router, but the
+// user lookup uses the unified /api/auth/user endpoint, which returns the
+// current user regardless of which provider signed them in.
 const AUTH_BASE = "/api/replit-auth";
+const UNIFIED_USER_URL = "/api/auth/user";
 
 export function useAuth(): AuthState {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -23,14 +26,19 @@ export function useAuth(): AuthState {
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`${AUTH_BASE}/user`, { credentials: "include" })
-      .then((res) => {
+    fetch(UNIFIED_USER_URL, { credentials: "include" })
+      .then(async (res) => {
+        // Unified endpoint responds 401 when nobody is signed in. Treat
+        // that as "no user" rather than an error.
+        if (res.status === 401) return null;
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<{ user: AuthUser | null }>;
+        // Unified endpoint returns the full user row directly (not wrapped
+        // in { user }). Cast to AuthUser — the shape is a superset.
+        return (await res.json()) as AuthUser;
       })
       .then((data) => {
         if (!cancelled) {
-          setUser(data.user ?? null);
+          setUser(data ?? null);
           setIsLoading(false);
         }
       })

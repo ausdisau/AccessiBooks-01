@@ -495,26 +495,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auth user endpoint (Passport.js authentication)
+  // Unified auth user endpoint — returns the current user regardless of
+  // which auth system signed them in (Passport.js: local/Auth0/Google/
+  // Facebook/Microsoft/magic-link, or Replit Auth via OIDC).
+  //
+  // Passport stores the full DB user row on req.user. Replit Auth's
+  // authMiddleware only attaches the narrow AuthUser shape and sets a
+  // `replitAuthValidated` flag; in that case we re-fetch the full user
+  // row from the DB so the response shape is identical across providers.
   app.get('/api/auth/user', async (req: any, res) => {
     try {
-      if (!req.isAuthenticated() || !req.user) {
+      const replitValidated = req.replitAuthValidated === true;
+      const passportAuthed =
+        typeof req.isAuthenticated === "function" && req.isAuthenticated();
+
+      let userRow: any = null;
+
+      if (passportAuthed && req.user && req.user.id && !replitValidated) {
+        // Passport session — req.user is already the full DB row.
+        userRow = req.user;
+      } else if (replitValidated && req.user?.id) {
+        // Replit Auth session — req.user is the narrow AuthUser shape.
+        // Re-fetch the full DB row so the response matches the Passport
+        // shape (subscription tier, role, stripe IDs, etc.).
+        userRow = await storage.getUser(req.user.id);
+        if (!userRow) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+      } else {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      
-      // Passport.js stores user object in session
-      if (req.user.id) {
-        const { passwordHash, ...userWithoutPassword } = req.user;
-        try {
-          const { getActiveRewards } = await import("../adRewards");
-          const activeRewards = await getActiveRewards(req.user.id);
-          return res.json({ ...userWithoutPassword, activeRewards });
-        } catch {
-          return res.json(userWithoutPassword);
-        }
+
+      const { passwordHash, ...userWithoutPassword } = userRow;
+      try {
+        const { getActiveRewards } = await import("../adRewards");
+        const activeRewards = await getActiveRewards(userRow.id);
+        return res.json({ ...userWithoutPassword, activeRewards });
+      } catch {
+        return res.json(userWithoutPassword);
       }
-      
-      return res.status(401).json({ message: "Unauthorized - invalid session" });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
