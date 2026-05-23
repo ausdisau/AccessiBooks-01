@@ -3,7 +3,7 @@ import { Book, Progress, Chapter, type A11yProfile as SharedA11yProfile } from "
 import { localStorageService } from "@/lib/storage";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
-import { audioAdService } from "@/services/audio-ad-service";
+import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 import { useQuery } from "@tanstack/react-query";
 import { usePlaybackAdHooks } from "@/hooks/use-playback-ad-hooks";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
@@ -32,10 +32,16 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
   const onTrackEndCallback = useRef<(() => void) | null>(null);
   const onChapterEndCallback = useRef<(() => void) | null>(null);
+  // Kept current so the static handleEnded closure can always call the latest version.
+  const onBookEndRef = useRef<(() => Promise<{ type: "show-ad"; ad: AdResponse } | null>) | null>(null);
   const autoAdvanceChaptersRef = useRef<boolean>(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [currentChapterIndex, setCurrentChapterIndex] = useState(-1);
   const lastChapterIndex = useRef(-1);
+
+  // Tracks total chapter count so handleEnded (static closure) can detect final chapter.
+  // Updated synchronously via a separate effect whenever chapters state changes.
+  const totalChaptersRef = useRef(0);
 
   const [adState, setAdState] = useState<AudioAdState>({
     isAdPlaying: false,
@@ -294,8 +300,33 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const handleEnded = () => {
       setIsPlaying(false);
       setIsBuffering(false);
-      if (onTrackEndCallback.current) {
-        onTrackEndCallback.current();
+      // HOOK: book ended — attempt post-roll ONLY on final chapter completion.
+      // - totalChaptersRef.current === 0: chapters not yet loaded → treat as final track.
+      // - lastChapterIndex.current === -1: no time-based chapters (single stream) → always final.
+      // - Otherwise: only fire when current index equals the last chapter index.
+      const onLastChapter =
+        totalChaptersRef.current === 0 ||
+        lastChapterIndex.current === -1 ||
+        lastChapterIndex.current >= totalChaptersRef.current - 1;
+      const doPostRoll = onLastChapter ? onBookEndRef.current : null;
+      if (doPostRoll) {
+        doPostRoll().then((result) => {
+          if (result?.type === "show-ad") {
+            audioAdService.playAdChime();
+            setAdState({ isAdPlaying: true, currentAd: result.ad, adType: "post-roll" });
+          }
+          if (onTrackEndCallback.current) {
+            onTrackEndCallback.current();
+          }
+        }).catch(() => {
+          if (onTrackEndCallback.current) {
+            onTrackEndCallback.current();
+          }
+        });
+      } else {
+        if (onTrackEndCallback.current) {
+          onTrackEndCallback.current();
+        }
       }
     };
     const handleError = (e: Event) => {
@@ -470,9 +501,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     tier: subscriptionTier,
     currentTime,
     transcriptSegments,
-    adFlagsEnabled: audioAdService.featureFlags,
+    adFlagsEnabled: { ...audioAdService.featureFlags, postRoll: true },
     rewardedAdPreference: a11yProfile.rewardedAdPreference ?? "ask",
   });
+  // Keep ref in sync so static handleEnded closure can always call latest version.
+  onBookEndRef.current = adHooks.onBookEnd;
 
   // Fetch chapters when book changes
   useEffect(() => {
@@ -481,17 +514,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         .then(res => res.json())
         .then((fetchedChapters: Chapter[]) => {
           setChapters(fetchedChapters);
+          totalChaptersRef.current = fetchedChapters.length;
           setCurrentChapterIndex(fetchedChapters.length > 0 ? 0 : -1);
           lastChapterIndex.current = -1;
         })
         .catch(err => {
           console.error("Failed to fetch chapters:", err);
           setChapters([]);
+          totalChaptersRef.current = 0;
           setCurrentChapterIndex(-1);
           lastChapterIndex.current = -1;
         });
     } else {
       setChapters([]);
+      totalChaptersRef.current = 0;
       setCurrentChapterIndex(-1);
       lastChapterIndex.current = -1;
     }
@@ -747,7 +783,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setAdState({ isAdPlaying: false, currentAd: null, adType: null });
 
     if (ad && adType) {
-      audioAdService.recordImpression(ad.id, adType, !skipped, skipped, ad.isProgrammatic ? ad.provider : "house");
+      const impressionType: "pre-roll" | "mid-roll" | "post-roll" =
+        adType === "mid-roll" ? "mid-roll" : adType === "post-roll" ? "post-roll" : "pre-roll";
+      audioAdService.recordImpression(ad.id, impressionType, !skipped, skipped, ad.isProgrammatic ? ad.provider : "house");
     }
 
     // HOOK: ad-resolved — impression recorded, deferred playback resumed
@@ -762,6 +800,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         audio.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     }
+    // post-roll: no playback to resume — book has ended
   }, [adState, startPlaybackForBook, adHooks]);
 
   const onAdUpgrade = useCallback(() => {
@@ -770,7 +809,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setAdState({ isAdPlaying: false, currentAd: null, adType: null });
 
     if (ad && adType) {
-      audioAdService.recordImpression(ad.id, adType, false, true, ad.isProgrammatic ? ad.provider : "house");
+      const impressionType: "pre-roll" | "mid-roll" | "post-roll" =
+        adType === "mid-roll" ? "mid-roll" : adType === "post-roll" ? "post-roll" : "pre-roll";
+      audioAdService.recordImpression(ad.id, impressionType, false, true, ad.isProgrammatic ? ad.provider : "house");
     }
 
     pendingBookRef.current = null;

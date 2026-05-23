@@ -76,7 +76,7 @@ function CompanionAdBanner({ companion, onClick }: CompanionAdBannerProps) {
 
 interface AudioAdOverlayProps {
   ad: AdResponse;
-  adType: "pre-roll" | "mid-roll";
+  adType: "pre-roll" | "mid-roll" | "post-roll";
   onComplete: (skipped: boolean) => void;
   onUpgrade: () => void;
 }
@@ -177,7 +177,7 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
       }
       audioAdService.recordImpression(
         ad.id,
-        adType,
+        adType === "mid-roll" ? "mid-roll" : adType === "post-roll" ? "post-roll" : "pre-roll",
         false,
         false,
         isProgrammatic ? (ad.isProgrammatic ? ad.provider : "house") : "house"
@@ -189,6 +189,13 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
         const currentTime = audioRef.current.currentTime;
         const duration = audioRef.current.duration || totalDuration;
         setElapsed(currentTime);
+
+        // SR-aware ducking: lower ad audio volume when a screen reader / TTS engine
+        // is actively speaking so the two audio streams don't clash. Restore when silent.
+        if (!isMuted) {
+          const srSpeaking = typeof window !== "undefined" && window.speechSynthesis?.speaking === true;
+          audioRef.current.volume = srSpeaking ? 0.15 : 1.0;
+        }
 
         if (!startFiredRef.current && currentTime > 0 && ad.isProgrammatic) {
           startFiredRef.current = true;
@@ -433,6 +440,16 @@ export function AudioAdOverlay({ ad, adType, onComplete, onUpgrade }: AudioAdOve
 
           <p className="text-xs text-center text-muted-foreground">
             Premium members enjoy ad-free listening
+          </p>
+
+          <p className="text-xs text-center text-muted-foreground">
+            <button
+              onClick={handleUpgrade}
+              className="underline hover:text-foreground transition-colors"
+              aria-label="Why am I seeing this ad? Upgrade to remove ads"
+            >
+              Why am I seeing this? Upgrade to remove ads.
+            </button>
           </p>
         </CardContent>
       </Card>

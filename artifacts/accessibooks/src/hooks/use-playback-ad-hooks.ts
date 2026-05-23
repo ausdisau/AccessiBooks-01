@@ -24,7 +24,7 @@ interface UsePlaybackAdHooksOptions {
   tier: "free" | "plus" | "premium" | "institutional";
   currentTime: number;
   transcriptSegments: TranscriptSegment[] | null;
-  adFlagsEnabled?: { preRoll: boolean; midRoll: boolean };
+  adFlagsEnabled?: { preRoll: boolean; midRoll: boolean; postRoll: boolean };
   /**
    * User's rewarded-ad preference. The pre/mid-roll ads in the playback
    * pipeline grant the `ad_light_listening` reward, so they ARE the rewarded
@@ -40,13 +40,15 @@ const AD_REQUEST_TIMEOUT_MS = 3000;
 
 /** Fetch a single ad with a 3-second hard timeout. Returns null on 204/error/timeout. */
 async function fetchAdWithTimeout(
-  placement: "audio-preroll" | "audio-midroll",
+  placement: "audio-preroll" | "audio-midroll" | "audio-postroll",
 ): Promise<AdResponse | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), AD_REQUEST_TIMEOUT_MS);
 
   try {
-    const type = placement === "audio-preroll" ? "preroll" : "midroll";
+    const type = placement === "audio-midroll" ? "midroll"
+      : placement === "audio-postroll" ? "postroll"
+      : "preroll";
     const res = await fetch(`/api/ads/request?type=${type}&placement=${placement}`, {
       credentials: "include",
       signal: controller.signal,
@@ -91,7 +93,7 @@ export function usePlaybackAdHooks({
   tier,
   currentTime,
   transcriptSegments,
-  adFlagsEnabled = { preRoll: true, midRoll: true },
+  adFlagsEnabled = { preRoll: true, midRoll: true, postRoll: true },
   rewardedAdPreference = "ask",
 }: UsePlaybackAdHooksOptions) {
   const [adDecision, setAdDecision] = useState<AdDecisionState>({
@@ -134,6 +136,37 @@ export function usePlaybackAdHooks({
     },
     [tier, adFlagsEnabled.midRoll, rewardedAdPreference],
   );
+
+  const isPostRollEligible = useCallback((): boolean => {
+    if (rewardedAdPreference === "never") return false;
+    if (tier !== "free") return false;
+    if (!adFlagsEnabled.postRoll) return false;
+    if (rewardActiveRef.current) return false;
+    return true;
+  }, [tier, adFlagsEnabled.postRoll, rewardedAdPreference]);
+
+  /**
+   * HOOK: book ended — post-roll eligibility checked here.
+   * Returns the ad payload directly when a post-roll should be shown,
+   * or null when the book should just be finished silently.
+   */
+  const onBookEnd = useCallback(async (): Promise<
+    null | { type: "show-ad"; ad: AdResponse }
+  > => {
+    if (!isPostRollEligible()) return null;
+
+    setAdDecision({ pending: true, type: null });
+
+    const ad = await fetchAdWithTimeout("audio-postroll");
+
+    if (!ad) {
+      setAdDecision({ pending: false, type: null });
+      return null;
+    }
+
+    setAdDecision({ pending: false, type: null });
+    return { type: "show-ad", ad };
+  }, [isPostRollEligible]);
 
   /**
    * HOOK: pre-roll served — ad overlay shown, book playback deferred.
@@ -213,8 +246,10 @@ export function usePlaybackAdHooks({
   return {
     isPreRollEligible,
     isMidRollEligible,
+    isPostRollEligible,
     onPlayBookCalled,
     onChapterBoundary,
+    onBookEnd,
     onAdResolved,
     adDecision,
     rewardActive,

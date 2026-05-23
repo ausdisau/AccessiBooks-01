@@ -107,6 +107,26 @@ export default function AdvertiserDashboard() {
     queryKey: ["/api/ad/display-ads"],
   });
 
+  // Live per-placement metrics for the new in-content placements (last 30 days).
+  // Wires real impressions/fill/completion onto the targeting inventory cards
+  // so advertisers see actual reach instead of static descriptions.
+  const { data: placementMetrics } = useQuery<{
+    placements: Array<{
+      adType: string;
+      impressions: number;
+      completions: number;
+      skips: number;
+      completionRate: number;
+      fillRate: number;
+      paidImpressions: number;
+    }>;
+    windowDays: number;
+  }>({
+    queryKey: ["/api/ads/placement-metrics"],
+    refetchInterval: 60000,
+    staleTime: 50000,
+  });
+
   const { data: wallet } = useQuery<AdvertiserWallet>({
     queryKey: ["/api/ad/wallet"],
   });
@@ -710,6 +730,82 @@ export default function AdvertiserDashboard() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Targeting Inventory */}
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-1">Targeting Inventory</h2>
+            <p className="text-xs text-white/30 mb-4">Available placements you can reach across the AccessiBooks platform. All placements target Free-tier readers only.</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {[
+                {
+                  id: "audio-postroll",
+                  label: "Audio Post-Roll",
+                  desc: "Plays after an audiobook finishes. High-attention moment — listener is in a reflective state.",
+                  badge: "Audio",
+                  reach: "~100% of Free listeners",
+                },
+                {
+                  id: "ebook-interstitial",
+                  label: "Ebook Interstitial",
+                  desc: "Full-screen ad between chapters, 3-second minimum display. Strong brand recall.",
+                  badge: "Display",
+                  reach: "Chapter boundaries",
+                },
+                {
+                  id: "ebook-banner",
+                  label: "Reading Banner",
+                  desc: "Persistent bottom sticky banner shown while reading. Low-friction, always visible.",
+                  badge: "Display",
+                  reach: "Entire reading session",
+                },
+                {
+                  id: "ebook-end-of-chapter",
+                  label: "End-of-Chapter Card",
+                  desc: "Inline sponsored card at chapter completion, alongside the Continue button.",
+                  badge: "Display",
+                  reach: "Chapter completions",
+                },
+              ].map(({ id, label, desc, badge, reach }) => {
+                const metric = placementMetrics?.placements.find((p) =>
+                  p.adType === id ||
+                  p.adType.replace(/-/g, "") === id.replace(/-/g, "") ||
+                  (id === "audio-postroll" && (p.adType === "post-roll" || p.adType === "postroll"))
+                );
+                return (
+                <Card key={id} className="bg-white/5 border-white/10">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="font-medium text-sm">{label}</span>
+                      <Badge className={`text-[9px] whitespace-nowrap ${badge === "Audio" ? "bg-blue-600/20 text-blue-300 border-blue-500/30" : "bg-violet-600/20 text-violet-300 border-violet-500/30"}`}>{badge}</Badge>
+                    </div>
+                    <p className="text-xs text-white/40 mb-2">{desc}</p>
+                    <div className="flex items-center gap-1.5">
+                      <Eye className="h-3 w-3 text-white/20" />
+                      <span className="text-[10px] text-white/30">{reach}</span>
+                    </div>
+                    {metric && (
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] border-t border-white/5 pt-2">
+                        <div>
+                          <div className="text-white/40">30-day Impr.</div>
+                          <div className="text-white font-medium">{metric.impressions.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-white/40">Fill Rate</div>
+                          <div className="text-white font-medium">{(metric.fillRate * 100).toFixed(0)}%</div>
+                        </div>
+                        <div>
+                          <div className="text-white/40">Completion</div>
+                          <div className="text-white font-medium">{(metric.completionRate * 100).toFixed(0)}%</div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-2 text-[10px] text-white/20 font-mono">{id}</div>
+                  </CardContent>
+                </Card>
+                );
+              })}
+            </div>
           </div>
 
           {/* Ads */}

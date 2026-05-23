@@ -68,7 +68,7 @@ const DEFAULT_CONFIG: AdConfig = {
 interface AdImpression {
   adId: string;
   timestamp: number;
-  type: "pre-roll" | "mid-roll";
+  type: "pre-roll" | "mid-roll" | "post-roll";
   completed: boolean;
   skipped: boolean;
   provider: string;
@@ -262,7 +262,7 @@ export class AudioAdService {
     this.firedQuartiles.clear();
   }
 
-  recordImpression(adId: string, type: "pre-roll" | "mid-roll", completed: boolean, skipped: boolean, provider: string = "house") {
+  recordImpression(adId: string, type: "pre-roll" | "mid-roll" | "post-roll", completed: boolean, skipped: boolean, provider: string = "house") {
     const now = Date.now();
     const impression: AdImpression = {
       adId,
@@ -275,9 +275,10 @@ export class AudioAdService {
 
     if (type === "pre-roll") {
       this.state.lastPreRollTime = now;
-    } else {
+    } else if (type === "mid-roll") {
       this.state.lastMidRollTime = now;
     }
+    // post-roll: book has ended — no cooldown state to update
 
     this.state.totalImpressions++;
     this.state.impressions.push(impression);

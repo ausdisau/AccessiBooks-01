@@ -36,10 +36,58 @@ const HOUSE_ADS: Array<{ id: string; title: string; description: string; duratio
   },
 ];
 
+const HOUSE_DISPLAY_ADS: Array<{ id: string; title: string; description: string; imageUrl?: string; clickThrough?: string }> = [
+  {
+    id: "house-display-premium-1",
+    title: "Go Ad-Free — Upgrade to Premium",
+    description: "Enjoy uninterrupted reading and listening. Unlimited books, no ads.",
+    clickThrough: "/subscribe",
+  },
+  {
+    id: "house-display-feature-1",
+    title: "Discover 3,000+ Free Audiobooks",
+    description: "LibriVox, Project Gutenberg, Internet Archive — all in one place.",
+    clickThrough: "/library",
+  },
+  {
+    id: "house-display-feature-2",
+    title: "Reading Challenges & Streaks",
+    description: "Earn XP, achievements, and badges. Stay motivated with gamification!",
+    clickThrough: "/challenges",
+  },
+  {
+    id: "house-display-feature-3",
+    title: "Easy English Mode",
+    description: "Simplified text for accessible reading. Available for every book.",
+    clickThrough: "/accessibility",
+  },
+  {
+    id: "house-display-premium-2",
+    title: "Offline Reading — Go Premium",
+    description: "Download books for offline access. Perfect for commutes and travel.",
+    clickThrough: "/subscribe",
+  },
+];
+
 export class HouseAdProvider implements IAdProvider {
   readonly name = "house";
 
-  async requestAd(_context: AdRequestContext): Promise<AdProviderResponse> {
+  async requestAd(context: AdRequestContext): Promise<AdProviderResponse> {
+    const isDisplay = context.adType === "display" || context.placementId?.startsWith("ebook-");
+    if (isDisplay) {
+      const ad = HOUSE_DISPLAY_ADS[Math.floor(Math.random() * HOUSE_DISPLAY_ADS.length)]!;
+      return {
+        id: ad.id,
+        provider: "house",
+        title: ad.title,
+        description: ad.description,
+        duration: 0,
+        isProgrammatic: false,
+        imageUrl: ad.imageUrl,
+        clickThrough: ad.clickThrough,
+      };
+    }
+
     const ad = HOUSE_ADS[Math.floor(Math.random() * HOUSE_ADS.length)]!;
     return {
       id: ad.id,

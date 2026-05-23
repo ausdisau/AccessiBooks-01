@@ -84,6 +84,26 @@ export default function PublisherDashboard() {
     queryKey: ["/api/ad/earnings"],
   });
 
+  // Live per-placement metrics (impressions, fill rate, completion rate) for
+  // the new in-content placements. Server endpoint groups by ad_type over the
+  // last 30 days. Fail-soft: returns an empty list rather than breaking the UI.
+  const { data: placementMetrics } = useQuery<{
+    placements: Array<{
+      adType: string;
+      impressions: number;
+      completions: number;
+      skips: number;
+      completionRate: number;
+      fillRate: number;
+      paidImpressions: number;
+    }>;
+    windowDays: number;
+  }>({
+    queryKey: ["/api/ads/placement-metrics"],
+    refetchInterval: 60000,
+    staleTime: 50000,
+  });
+
   const { data: analytics, isLoading: analyticsLoading, refetch: refetchAnalytics } = useQuery<{
     earnings: PublisherEarning | null;
     slots: Array<{ id: string; name: string; totalImpressions: number; totalEarningsCents: number }>;
@@ -456,6 +476,62 @@ export default function PublisherDashboard() {
               </Button>
             </div>
           )}
+
+          {/* In-app Placements (read-only) */}
+          <div className="mb-8">
+            <h2 className="text-sm font-semibold text-white/50 uppercase tracking-wider mb-1">In-App Placements</h2>
+            <p className="text-xs text-white/30 mb-4">AccessiBooks fills these placements on Free-tier readers automatically. Your registered slots participate via the bidding system.</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {[
+                { id: "audio-postroll", label: "Audio Post-Roll", desc: "Plays after audiobook finishes", tier: "Free only", badge: "Audio" },
+                { id: "ebook-interstitial", label: "Ebook Interstitial", desc: "Full-page between chapters (3 s min)", tier: "Free only", badge: "Display" },
+                { id: "ebook-banner", label: "Reading Banner", desc: "Sticky bottom banner while reading", tier: "Free only", badge: "Display" },
+                { id: "ebook-end-of-chapter", label: "End-of-Chapter Card", desc: "Sponsored card at chapter completion", tier: "Free only", badge: "Display" },
+              ].map(({ id, label, desc, tier, badge }) => {
+                // Match placement id ↔ ad_event_logs.ad_type. The client records
+                // hyphen-cased ad types (e.g. "post-roll"); the server stores
+                // ad_type with the same casing the client sent. Match flexibly.
+                const metric = placementMetrics?.placements.find((p) =>
+                  p.adType === id ||
+                  p.adType.replace(/-/g, "") === id.replace(/-/g, "") ||
+                  (id === "audio-postroll" && (p.adType === "post-roll" || p.adType === "postroll"))
+                );
+                return (
+                <Card key={id} className="bg-white/5 border-white/10">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm">{label}</span>
+                          <Badge className={`text-[9px] ${badge === "Audio" ? "bg-blue-600/20 text-blue-300 border-blue-500/30" : "bg-violet-600/20 text-violet-300 border-violet-500/30"}`}>{badge}</Badge>
+                        </div>
+                        <p className="text-xs text-white/40">{desc}</p>
+                      </div>
+                      <Badge className="text-[9px] bg-yellow-600/20 text-yellow-300 border-yellow-500/30 whitespace-nowrap">{tier}</Badge>
+                    </div>
+                    {metric && (
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-[10px]">
+                        <div>
+                          <div className="text-white/40">Impressions</div>
+                          <div className="text-white font-medium">{formatNum(metric.impressions)}</div>
+                        </div>
+                        <div>
+                          <div className="text-white/40">Fill Rate</div>
+                          <div className="text-white font-medium">{(metric.fillRate * 100).toFixed(0)}%</div>
+                        </div>
+                        <div>
+                          <div className="text-white/40">Completion</div>
+                          <div className="text-white font-medium">{(metric.completionRate * 100).toFixed(0)}%</div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 text-[10px] text-white/30 font-mono break-all">{id}</div>
+                  </CardContent>
+                </Card>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Ad slots */}
           <div>

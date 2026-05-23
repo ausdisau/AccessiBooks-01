@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Home as HomeIcon } from "lucide-react";
+import { EbookInterstitialAd, canShowEbookInterstitial } from "@/components/EbookInterstitialAd";
+import { EbookEndOfChapterCard } from "@/components/EbookEndOfChapterCard";
 import { ReaderToolbar } from "./ReaderToolbar";
 import { ReaderSettingsPanel } from "./ReaderSettingsPanel";
 import { PageNavigator } from "./PageNavigator";
@@ -135,6 +137,12 @@ export function FlipbookReader({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [flipDirection, setFlipDirection] = useState<"none" | "next" | "prev">("none");
   const [liveMessage, setLiveMessage] = useState(`Page ${initialSession.currentPage} of ${totalPages}`);
+  const [showFlipInterstitial, setShowFlipInterstitial] = useState(false);
+  const [showFlipEndOfSection, setShowFlipEndOfSection] = useState(false);
+  const prevFlipPageRef = useRef(initialSession.currentPage);
+  // Tracks chapterId of the previously-visible page so we can detect real
+  // chapter transitions instead of relying on arbitrary page intervals.
+  const prevFlipChapterIdRef = useRef<string | null>(null);
 
   // Dedupe consecutive identical announcements so screen readers stay calm.
   const lastMessageRef = useRef(liveMessage);
@@ -401,6 +409,33 @@ export function FlipbookReader({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
+
+  // ── Ebook in-content ads (Free tier) ─────────────────────────────────────
+  // Use real chapter boundaries from FlipbookPage.chapterId so interstitial /
+  // end-of-chapter ads only fire when the reader actually crosses a chapter,
+  // not at arbitrary page intervals. If the content provider exposes no
+  // chapter metadata at all, chapter-based ads are suppressed entirely.
+  useEffect(() => {
+    const curChapterId = pages[currentPage - 1]?.chapterId ?? null;
+    const hasChapterMetadata = pages.some((p) => p.chapterId !== undefined);
+    if (
+      hasChapterMetadata &&
+      currentPage > prevFlipPageRef.current &&
+      prevFlipChapterIdRef.current !== null &&
+      curChapterId !== null &&
+      curChapterId !== prevFlipChapterIdRef.current
+    ) {
+      if (!showFlipInterstitial && canShowEbookInterstitial()) {
+        setShowFlipInterstitial(true);
+      } else if (!showFlipEndOfSection && !showFlipInterstitial) {
+        setShowFlipEndOfSection(true);
+      }
+    }
+    prevFlipChapterIdRef.current = curChapterId;
+    prevFlipPageRef.current = currentPage;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   // ── Focus Mode ────────────────────────────────────────────────────────────
   const toggleFocusMode = useCallback(() => {
@@ -776,6 +811,24 @@ export function FlipbookReader({
 
       <KeyboardShortcutHelp open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <LiveStatusRegion message={liveMessage} />
+
+      {showFlipEndOfSection && !showFlipInterstitial && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 pb-8 px-4">
+          <div className="w-full max-w-2xl">
+            <EbookEndOfChapterCard
+              onContinue={() => setShowFlipEndOfSection(false)}
+              onUpgrade={() => { setShowFlipEndOfSection(false); window.location.href = "/subscribe"; }}
+            />
+          </div>
+        </div>
+      )}
+
+      {showFlipInterstitial && (
+        <EbookInterstitialAd
+          onDismiss={() => setShowFlipInterstitial(false)}
+          onUpgrade={() => { setShowFlipInterstitial(false); window.location.href = "/subscribe"; }}
+        />
+      )}
     </div>
   );
 }

@@ -301,11 +301,21 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
             <NotificationCenter />
             
             <div className="hidden sm:flex items-center space-x-2">
-              <User className="h-4 w-4 text-muted-foreground" />
+              {user.profileImageUrl ? (
+                <img
+                  src={user.profileImageUrl}
+                  alt=""
+                  className="h-6 w-6 rounded-full object-cover border border-border"
+                  data-testid="img-avatar"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User className="h-4 w-4 text-muted-foreground" />
+              )}
               <span className="text-sm font-medium" data-testid="text-username">
-                {user.firstName && user.lastName 
+                {user.firstName && user.lastName
                   ? `${user.firstName} ${user.lastName}`
-                  : user.email || "User"
+                  : user.firstName || user.email || "User"
                 }
               </span>
             </div>

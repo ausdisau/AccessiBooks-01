@@ -1,14 +1,18 @@
 /**
- * adMediation.ts — Programmatic Audio Ad Mediation Layer
+ * adMediation.ts — Ad Mediation Layer (audio + display in-content)
  *
- * Responsibility: Waterfall ad selection for audio playback ads (pre-roll/mid-roll):
+ * Responsibility: Unified waterfall ad selection for all in-content ad types:
  *   1. Entitlement check (shouldServeAds) — paid/institutional tiers and ad-free
  *      books are short-circuited with 204 before any provider work.
- *   2. AdDecisionService.decide() — server-side eligibility gate (a11y, flags).
- *   3. AdService waterfall: ProgrammaticAdProvider → SelfServeAdProvider → HouseAdProvider.
+ *   2. Server-side frequency cap — per-placement cap enforced via in-memory Map.
+ *   3. AdDecisionService.decide() — server-side eligibility gate (a11y, flags).
+ *   4. AdService waterfall: ProgrammaticAdProvider → SelfServeAdProvider → HouseAdProvider.
+ *      - Audio types (preroll/midroll/postroll): programmatic VAST → self-serve audio → house.
+ *      - Display type: programmatic display (DISPLAY_TAG_URL) → self-serve display
+ *        (campaigns with companionImageUrl) → house display creatives.
  *
  * Routes registered:
- *   - GET /api/ads/request         — request an audio ad (preroll or midroll)
+ *   - GET /api/ads/request         — request an ad (preroll/midroll/postroll/display)
  *   - GET /api/ads/placement/:id   — get placement registry entry
  *   - POST /api/ads/rewarded/complete — record rewarded ad completion
  *   - GET /api/ads/rewarded/status — get active rewarded period status
@@ -16,8 +20,8 @@
  *   - GET /api/ads/providers       — list configured providers and their status
  *   - GET /api/ads/analytics       — in-memory ad request analytics
  *
- * NOT responsible for display (banner) ads — see adPlatformRoutes.ts.
  * NOT responsible for ad campaign CRUD — see selfServeAds.ts.
+ * NOT responsible for ad platform management UI — see adPlatformRoutes.ts.
  */
 import { Router, type Request, type Response } from "express";
 import { AdService } from "./adService";
@@ -25,7 +29,7 @@ import { AdDecisionService } from "./adDecision";
 import { ProgrammaticAdProvider } from "./adProviders/ProgrammaticAdProvider";
 import { SelfServeAdProvider } from "./adProviders/SelfServeAdProvider";
 import { HouseAdProvider } from "./adProviders/HouseAdProvider";
-import { registerPlacementRoutes } from "./adPlacementRegistry";
+import { registerPlacementRoutes, getPlacement } from "./adPlacementRegistry";
 import { registerRewardedRoutes } from "./adRewards";
 import { getAllFlags } from "./adFeatureFlags";
 import { resolveEntitlementOverride, getUserEffectiveTier, shouldServeAds } from "./entitlements";
@@ -96,6 +100,21 @@ const analytics: AdAnalytics = {
   lastRequestTime: 0,
 };
 
+// ── Server-side frequency cap ─────────────────────────────────────────────────
+// In-memory store: key = "userId:placementId", value = last served timestamp (ms).
+// Survives across requests within one server process lifetime.
+const serverFrequencyCaps = new Map<string, number>();
+
+function isServerCapExceeded(userId: string, placementId: string, capMinutes: number): boolean {
+  const last = serverFrequencyCaps.get(`${userId}:${placementId}`) ?? 0;
+  return (Date.now() - last) < capMinutes * 60 * 1000;
+}
+
+function recordServerCap(userId: string, placementId: string): void {
+  serverFrequencyCaps.set(`${userId}:${placementId}`, Date.now());
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function getA11yProfile(req: Request): Promise<Record<string, boolean | undefined>> {
   try {
     const user = (req as any).user;
@@ -134,11 +153,18 @@ export function registerAdMediationRoutes(router: Router) {
         return res.status(204).end();
       }
 
-      const adType = (req.query.type as string) === "midroll" ? "midroll" : "preroll";
+      const rawType = req.query.type as string | undefined;
+      const adType = rawType === "midroll" ? "midroll"
+        : rawType === "postroll" ? "postroll"
+        : rawType === "display" ? "display"
+        : "preroll";
       const contentGenre = req.query.genre as string | undefined;
       const bookId = req.query.bookId as string | undefined;
       const placementId = (req.query.placement as string) ||
-        (adType === "midroll" ? "audio-midroll" : "audio-preroll");
+        (adType === "midroll" ? "audio-midroll"
+        : adType === "postroll" ? "audio-postroll"
+        : adType === "display" ? "ebook-banner"
+        : "audio-preroll");
       const user = (req as any).user ?? null;
 
       // ── Entitlement check: paid / institutional tiers + ad-free books ─────
@@ -149,6 +175,15 @@ export function registerAdMediationRoutes(router: Router) {
       const book = bookId ? await storage.getBook(bookId) : undefined;
 
       if (!shouldServeAds(user, effectiveTier, book)) {
+        return res.status(204).end();
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
+      // ── Server-side frequency cap ─────────────────────────────────────────
+      const placement = getPlacement(placementId);
+      const capMinutes = placement?.frequencyCapMinutes;
+      if (capMinutes && userId && isServerCapExceeded(userId, placementId, capMinutes)) {
+        console.log(`[AdMediation] Frequency cap active for ${userId}:${placementId} (${capMinutes}min)`);
         return res.status(204).end();
       }
       // ─────────────────────────────────────────────────────────────────────
@@ -164,8 +199,15 @@ export function registerAdMediationRoutes(router: Router) {
         return res.status(204).end();
       }
 
+      // All ad types (audio and display) flow through the same waterfall:
+      //   ProgrammaticAdProvider — returns null for display (no VAST display providers)
+      //   SelfServeAdProvider    — returns null for display (no self-serve display campaigns)
+      //   HouseAdProvider        — handles display via adType === "display" check
+      // post-roll is preserved as a first-class type so providers that care
+      // about the placement (analytics, frequency, billing) see the true type
+      // instead of a downgraded preroll.
       const context = {
-        adType: adType as "preroll" | "midroll",
+        adType: adType as "preroll" | "midroll" | "postroll" | "display",
         contentGenre,
         userId: user?.id,
         placementId,
@@ -187,7 +229,16 @@ export function registerAdMediationRoutes(router: Router) {
         analytics.houseFills++;
       }
 
-      analyticsService.track("ad_impression_served", "free", { placement: adType, adFormat: "audio" });
+      analyticsService.track("ad_impression_served", "free", {
+        placement: adType,
+        adFormat: adType === "display" ? "display" : "audio",
+      });
+
+      // Record server-side frequency cap so subsequent requests within the cap
+      // window receive 204 instead of another ad impression.
+      if (capMinutes && userId) {
+        recordServerCap(userId, placementId);
+      }
 
       const responseBody = {
         ...ad,
