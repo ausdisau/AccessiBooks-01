@@ -420,7 +420,19 @@ export function setupMultiAuth(app: Express) {
       path: "/",
     },
   };
-  app.get("/api/logout", makeAuth0LogoutGetHandler(logoutOpts));
+  // Wrap the Auth0 GET handler so we also clear any Replit Auth session
+  // (replit_sid cookie + DB row) before redirecting through Auth0 logout.
+  const auth0LogoutGet = makeAuth0LogoutGetHandler(logoutOpts);
+  app.get("/api/logout", async (req: Request, res: Response, next) => {
+    try {
+      const { clearSession, getSessionId } = await import("./lib/auth");
+      const sid = getSessionId(req);
+      await clearSession(res, sid);
+    } catch (err) {
+      console.error("Replit session cleanup error (GET /api/logout):", err);
+    }
+    return auth0LogoutGet(req, res, next);
+  });
   app.post("/api/auth/logout", makeAuth0LogoutPostHandler(logoutOpts));
   
   // Local registration

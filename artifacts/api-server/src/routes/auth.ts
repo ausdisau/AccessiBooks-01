@@ -255,6 +255,18 @@ router.get("/logout", async (req: Request, res: Response) => {
   const sid = getSessionId(req);
   await clearSession(res, sid);
 
+  // Also tear down any active Passport session so users who used both
+  // systems are fully logged out from a single click.
+  if (typeof req.logout === "function") {
+    await new Promise<void>((resolve) => {
+      try {
+        req.logout(() => resolve());
+      } catch {
+        resolve();
+      }
+    });
+  }
+
   const endSessionUrl = oidc.buildEndSessionUrl(config, {
     client_id: process.env.REPL_ID!,
     post_logout_redirect_uri: origin,
