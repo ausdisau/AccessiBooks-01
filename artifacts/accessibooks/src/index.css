@@ -1,5 +1,40 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap');
-@import url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/web-font/opendyslexic.css');
+
+/* OpenDyslexic — self-hosted so Dyslexia Mode keeps working regardless of CDN
+   availability or MIME-type changes. Files live under src/assets/fonts/opendyslexic/
+   and are bundled + hashed by Vite. */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Italic.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Italic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Bold-Italic.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Bold-Italic.woff') format('woff');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
