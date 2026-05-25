@@ -82,7 +82,6 @@
     "@uppy/aws-s3": "^5.1.0",
     "@uppy/core": "^5.2.0",
     "@uppy/react": "^5.2.0",
-    "@workspace/replit-auth-web": "workspace:*",
     "epubjs": "^0.3.93",
     "react-pdf": "^10.4.1"
   }
