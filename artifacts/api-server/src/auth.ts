@@ -320,16 +320,7 @@ export function setupAuth(app: Express) {
     })(req, res, next);
   });
 
-  app.post("/api/logout", async (req, res, next) => {
-    // Also clear any Replit Auth session that may be active on this client,
-    // so logging out really logs the user out of every auth system.
-    try {
-      const { clearSession, getSessionId } = await import("./lib/auth");
-      const sid = getSessionId(req);
-      await clearSession(res, sid);
-    } catch (err) {
-      console.error("Replit session cleanup error:", err);
-    }
+  app.post("/api/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) {
         console.error('Logout error:', err);

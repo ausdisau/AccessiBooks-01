@@ -7,7 +7,6 @@ import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/comp
 import { AccessibilityControls } from "@/components/accessibility-controls";
 import { AccessiBooksLogo } from "@/components/accessibooks-logo";
 import { useAuth } from "@/hooks/useAuth";
-import { useAuth as useReplitAuth } from "@workspace/replit-auth-web";
 import { Library } from "@/pages/library";
 import { Player } from "@/pages/player";
 import { PricingPage } from "@/pages/pricing";
@@ -210,11 +209,7 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   }, []);
 
   const handleLogout = () => {
-    // /api/replit-auth/logout tears down the Replit session AND calls
-    // req.logout() to end the Passport session, then redirects through
-    // the OIDC end-session URL. This is the single unified logout entry
-    // point regardless of how the user originally signed in.
-    window.location.href = "/api/replit-auth/logout";
+    window.location.href = "/api/logout";
   };
 
   useEffect(() => {
@@ -551,7 +546,6 @@ function LoginModal({
   setIsRegistering: (val: boolean) => void;
 }) {
   const { toast } = useToast();
-  const { login: replitLogin } = useReplitAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
@@ -732,16 +726,6 @@ function LoginModal({
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full h-12 text-base font-medium border-2 hover:bg-orange-50 dark:hover:bg-orange-950 transition-colors"
-                onClick={replitLogin}
-                data-testid="button-replit-auth"
-              >
-                <Zap className="mr-3 h-5 w-5 text-[#F26207]" />
-                Continue with Replit
-              </Button>
             </div>
           )}
           
