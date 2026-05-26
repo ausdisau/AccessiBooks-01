@@ -22,6 +22,7 @@ import { storage } from "./storage";
 import { User as SelectUser } from "@workspace/db";
 import { sendEmail, isEmailConfigured } from "./mailer";
 import { sendViaResend, isResendConfigured } from "./resendMailer";
+import { signAccessToken } from "./lib/jwt";
 
 // Per-IP limiters — coarse shield against distributed attacks
 const loginIpRateLimiter = rateLimit({
@@ -456,7 +457,11 @@ export function registerMagicLinkRoutes(app: Express) {
         return res.redirect("/?magic=error");
       }
       console.log(`[MagicLink] Logged in user: ${user!.id}`);
-      res.redirect("/?magic=success");
+      // Issue a JWT and pass it back in the URL fragment so stateless clients
+      // pick it up the same way they do after OAuth callbacks. Fragments are
+      // not sent to the server or logged in proxies.
+      const token = signAccessToken({ id: user!.id, email: user!.email ?? null });
+      res.redirect(`/?magic=success#token=${encodeURIComponent(token)}`);
     });
   });
 }
