@@ -722,6 +722,9 @@ importers:
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      stripe:
+        specifier: ^22.1.1
+        version: 22.1.1(@types/node@25.3.5)
       tailwind-merge:
         specifier: 'catalog:'
         version: 3.5.0
