@@ -1,0 +1,2025 @@
+// AccessiBooks Prisma schema
+// Ported from lib/db/src/schema/schema.ts (Drizzle).
+// snake_case Postgres names preserved via @map / @@map.
+// Battle pass tables (battle_passes, battle_pass_milestones, battle_pass_purchases) are
+// intentionally EXCLUDED. A few FK columns that referenced them are kept as plain scalars.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// CORE CONTENT
+// ============================================================
+
+model Book {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()"))
+  title                String
+  author               String
+  narrator             String?
+  description          String?
+  duration             Int      @default(0)
+  coverImage           String?  @map("cover_image")
+  audioUrl             String?  @map("audio_url")
+  contentUrl           String?  @map("content_url")
+  genre                String?
+  publishedYear        Int?     @map("published_year")
+  source               String   @default("local")
+  sourceId             String?  @map("source_id")
+  totalTime            String?  @map("total_time")
+  language             String?  @default("English")
+  contentType          String   @default("audiobook") @map("content_type")
+  isPremium            Boolean  @default(false) @map("is_premium")
+  freeTierAvailable    Boolean  @default(true) @map("free_tier_available")
+  adSupported          Boolean  @default(true) @map("ad_supported")
+  transcriptAvailable  Boolean  @default(false) @map("transcript_available")
+  narrationType        String?  @map("narration_type")
+  pageCount            Int?     @map("page_count")
+  searchVector         String?  @map("search_vector")
+  readingLevel         Int?     @map("reading_level")
+
+  chapters               Chapter[]
+  bookLoans              BookLoan[]
+  loanWaitlist           LoanWaitlist[]
+  bookTranscripts        BookTranscript[]
+  accessibilityMetadata  AccessibilityMetadata?
+  accessibilityReviews   AccessibilityReview[]
+
+  @@index([title], map: "idx_books_title")
+  @@index([author], map: "idx_books_author")
+  @@index([genre], map: "idx_books_genre")
+  @@index([source], map: "idx_books_source")
+  @@index([contentType], map: "idx_books_content_type")
+  @@index([publishedYear], map: "idx_books_published_year")
+  @@index([language], map: "idx_books_language")
+  @@index([isPremium], map: "idx_books_premium")
+  @@index([source, contentType], map: "idx_books_source_content")
+  @@index([genre, contentType], map: "idx_books_genre_content")
+  @@map("books")
+}
+
+model SeederProgress {
+  source         String   @id
+  currentOffset  Int      @default(0) @map("current_offset")
+  subjectIndex   Int      @default(0) @map("subject_index")
+  nextUrl        String?  @map("next_url")
+  status         String   @default("idle")
+  totalInserted  Int      @default(0) @map("total_inserted")
+  lastError      String?  @map("last_error")
+  updatedAt      DateTime? @default(now()) @map("updated_at")
+
+  @@map("seeder_progress")
+}
+
+model Chapter {
+  id            String @id @default(dbgenerated("gen_random_uuid()"))
+  bookId        String @map("book_id")
+  title         String
+  chapterNumber Int    @map("chapter_number")
+  startTime     Int?   @map("start_time")
+  endTime       Int?   @map("end_time")
+  pageStart     Int?   @map("page_start")
+  pageEnd       Int?   @map("page_end")
+  duration      Int?
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId], map: "idx_chapters_book_id")
+  @@index([bookId, chapterNumber], map: "idx_chapters_order")
+  @@map("chapters")
+}
+
+model Session {
+  sid    String   @id
+  sess   Json
+  expire DateTime
+
+  @@index([expire], map: "IDX_session_expire")
+  @@map("sessions")
+}
+
+// ============================================================
+// USERS
+// ============================================================
+
+model User {
+  id                                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  email                               String?   @unique
+  firstName                           String?   @map("first_name")
+  lastName                            String?   @map("last_name")
+  profileImageUrl                     String?   @map("profile_image_url")
+  authProvider                        String?   @default("local") @map("auth_provider")
+  providerId                          String?   @map("provider_id")
+  subscriptionTier                    String?   @default("free") @map("subscription_tier")
+  stripeCustomerId                    String?   @map("stripe_customer_id")
+  stripeSubscriptionId                String?   @map("stripe_subscription_id")
+  subscriptionEndDate                 DateTime? @map("subscription_end_date")
+  stripeEasyEnglishSubscriptionItemId String?   @map("stripe_easy_english_subscription_item_id")
+  createdAt                           DateTime? @default(now()) @map("created_at")
+  updatedAt                           DateTime? @default(now()) @map("updated_at")
+  referralCode                        String?   @unique @map("referral_code")
+  referralCredits                     Int       @default(0) @map("referral_credits")
+  passwordHash                        String?   @map("password_hash")
+  name                                String?
+  emailVerified                       DateTime? @map("email_verified")
+  image                               String?
+  role                                String?
+  companyName                         String?   @map("company_name")
+  website                             String?
+  subscriptionStatus                  String?   @map("subscription_status")
+
+  purchases                  Purchase[]
+  listeningHistory           ListeningHistory[]
+  reviews                    Review[]
+  reviewLikes                ReviewLike[]
+  followers                  UserFollow[] @relation("user_follows_follower")
+  following                  UserFollow[] @relation("user_follows_following")
+  playlists                  Playlist[]
+  userStreak                 UserStreak[]
+  userXp                     UserXp[]
+  userAchievements           UserAchievement[]
+  dailyListeningLogs         DailyListeningLog[]
+  userGoals                  UserGoal[]
+  userChallengeProgress      UserChallengeProgress[]
+  referralsMade              Referral[] @relation("referrals_referrer")
+  referralsReceived          Referral[] @relation("referrals_referred")
+  userPreferences            UserPreferences?
+  authorProfile              AuthorProfile?
+  pushSubscriptions          PushSubscription[]
+  notificationLog            NotificationLogEntry[]
+  hostedRooms                ListeningRoom[]
+  roomParticipations         ListeningRoomParticipant[]
+  roomMessages               ListeningRoomMessage[]
+  hostedQueues               StreamingQueue[]
+  addedQueueItems            StreamingQueueItem[]
+  queueVotes                 QueueVote[]
+  adCampaigns                AdCampaign[]
+  paymentTransactions        PaymentTransaction[]
+  streakFreezes              StreakFreeze[]
+  expiringRewards            ExpiringReward[]
+  adRewards                  AdReward[]
+  authorEarnings             AuthorEarning[]
+  voicePackPurchases         VoicePackPurchase[]
+  annotationSyncs            AnnotationSync[]
+  giftCardsSent              GiftCard[] @relation("gift_cards_from")
+  giftCardsRedeemed          GiftCard[] @relation("gift_cards_redeemed")
+  enterpriseMemberships      EnterpriseMember[]
+  familyAccountsOwned        FamilyAccount[]
+  familyMemberships          FamilyMember[]
+  authorTipsSent             AuthorTip[] @relation("author_tips_from")
+  authorTipsReceived         AuthorTip[] @relation("author_tips_to")
+  contentReports             ContentReport[]
+  activityFeed               ActivityFeed[]
+  readingClubsCreated        ReadingClub[]
+  readingClubMemberships     ReadingClubMember[]
+  engagementMetrics          EngagementMetric[]
+  bookLoans                  BookLoan[]
+  loanWaitlist               LoanWaitlist[]
+  accessibilityPreferences   AccessibilityPreferences?
+  accessibilityReviews       AccessibilityReview[]
+  institutionalMemberships   InstitutionalMember[]
+  displayAds                 DisplayAd[]
+  adSlots                    AdSlot[]
+  bids                       Bid[]
+  advertiserWallet           AdvertiserWallet?
+  publisherEarnings          PublisherEarning?
+  payoutRequests             PayoutRequest[]
+  wordBankEntries            WordBankEntry[]
+  subscriptions              Subscription[]
+  entitlements               Entitlement[]
+  listeningSessions          ListeningSession[]
+  engagementEvents           EngagementEvent[]
+  bulletinThreads            BulletinThread[]
+  bulletinReplies            BulletinReply[]
+  bulletinReactions          BulletinReaction[]
+  liveEventsHosted           LiveEvent[]
+  eventRsvps                 EventRsvp[]
+  eventChatMessages          EventChatMessage[]
+  shareClips                 ShareClip[]
+  userActivityEvents         UserActivityEvent[]
+  userActivityShares         UserActivityShare[]
+  conversations              Conversation[]
+  easyEnglishUsage           EasyEnglishUsage[]
+
+  @@map("users")
+}
+
+model Purchase {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  bookId          String    @map("book_id")
+  bookTitle       String    @map("book_title")
+  amountCents     Int       @map("amount_cents")
+  currency        String?   @default("usd")
+  stripePaymentId String?   @map("stripe_payment_id")
+  status          String    @default("completed")
+  purchasedAt     DateTime? @default(now()) @map("purchased_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_purchases_user")
+  @@index([bookId], map: "idx_purchases_book")
+  @@index([userId, bookId], map: "idx_purchases_user_book")
+  @@map("purchases")
+}
+
+model ListeningHistory {
+  id             String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId         String    @map("user_id")
+  bookId         String    @map("book_id")
+  bookTitle      String    @map("book_title")
+  bookAuthor     String?   @map("book_author")
+  bookCover      String?   @map("book_cover")
+  currentTime    Int       @default(0) @map("current_time")
+  totalDuration  Int?      @map("total_duration")
+  lastPlayedAt   DateTime? @default(now()) @map("last_played_at")
+  completedAt    DateTime? @map("completed_at")
+  playCount      Int       @default(1) @map("play_count")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_listening_history_user")
+  @@index([lastPlayedAt], map: "idx_listening_history_last_played")
+  @@map("listening_history")
+}
+
+model Review {
+  id        String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId    String    @map("user_id")
+  bookId    String    @map("book_id")
+  rating    Int
+  title     String?
+  content   String?
+  createdAt DateTime? @default(now()) @map("created_at")
+  updatedAt DateTime? @default(now()) @map("updated_at")
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes ReviewLike[]
+
+  @@index([userId], map: "idx_reviews_user")
+  @@index([bookId], map: "idx_reviews_book")
+  @@index([createdAt], map: "idx_reviews_created")
+  @@map("reviews")
+}
+
+model ReviewLike {
+  id        String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId    String    @map("user_id")
+  reviewId  String    @map("review_id")
+  createdAt DateTime? @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_review_likes_user")
+  @@index([reviewId], map: "idx_review_likes_review")
+  @@map("review_likes")
+}
+
+model UserFollow {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  followerId  String    @map("follower_id")
+  followingId String    @map("following_id")
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  follower  User @relation("user_follows_follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("user_follows_following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@index([followerId], map: "idx_user_follows_follower")
+  @@index([followingId], map: "idx_user_follows_following")
+  @@map("user_follows")
+}
+
+model ExternalRating {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  bookId      String    @map("book_id")
+  source      String
+  rating      Int?
+  reviewCount Int?      @map("review_count")
+  lastUpdated DateTime? @default(now()) @map("last_updated")
+
+  @@index([bookId], map: "idx_external_ratings_book")
+  @@map("external_ratings")
+}
+
+model Author {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  name            String
+  bio             String?
+  birthDate       String?   @map("birth_date")
+  deathDate       String?   @map("death_date")
+  photoUrl        String?   @map("photo_url")
+  openLibraryKey  String?   @map("open_library_key")
+  wikipedia       String?
+  lastUpdated     DateTime? @default(now()) @map("last_updated")
+
+  @@index([name], map: "idx_authors_name")
+  @@index([openLibraryKey], map: "idx_authors_ol_key")
+  @@map("authors")
+}
+
+model Playlist {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId      String?   @map("user_id")
+  name        String
+  description String?
+  coverImage  String?   @map("cover_image")
+  isPublic    Int       @default(1) @map("is_public")
+  isCurated   Int       @default(0) @map("is_curated")
+  category    String?
+  createdAt   DateTime? @default(now()) @map("created_at")
+  updatedAt   DateTime? @default(now()) @map("updated_at")
+
+  user  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items PlaylistItem[]
+
+  @@index([userId], map: "idx_playlists_user")
+  @@index([isCurated], map: "idx_playlists_curated")
+  @@index([category], map: "idx_playlists_category")
+  @@map("playlists")
+}
+
+model PlaylistItem {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  playlistId  String    @map("playlist_id")
+  bookId      String    @map("book_id")
+  bookTitle   String    @map("book_title")
+  bookAuthor  String?   @map("book_author")
+  bookCover   String?   @map("book_cover")
+  position    Int       @default(0)
+  addedAt     DateTime? @default(now()) @map("added_at")
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@index([playlistId], map: "idx_playlist_items_playlist")
+  @@index([position], map: "idx_playlist_items_position")
+  @@map("playlist_items")
+}
+
+// ============================================================
+// GAMIFICATION
+// ============================================================
+
+model UserStreak {
+  id                String  @id @default(dbgenerated("gen_random_uuid()"))
+  userId            String  @map("user_id")
+  currentStreak     Int     @default(0) @map("current_streak")
+  longestStreak     Int     @default(0) @map("longest_streak")
+  lastListenedDate  String? @map("last_listened_date")
+  streakStartDate   String? @map("streak_start_date")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_streaks_user")
+  @@map("user_streaks")
+}
+
+model UserXp {
+  id                     String @id @default(dbgenerated("gen_random_uuid()"))
+  userId                 String @map("user_id")
+  totalXp                Int    @default(0) @map("total_xp")
+  level                  Int    @default(1)
+  totalListeningMinutes  Int    @default(0) @map("total_listening_minutes")
+  booksCompleted         Int    @default(0) @map("books_completed")
+  reviewsWritten         Int    @default(0) @map("reviews_written")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_xp_user")
+  @@index([totalXp], map: "idx_user_xp_total")
+  @@map("user_xp")
+}
+
+model UserAchievement {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  achievementType String    @map("achievement_type")
+  unlockedAt      DateTime? @default(now()) @map("unlocked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_achievements_user")
+  @@map("user_achievements")
+}
+
+model DailyListeningLog {
+  id              String @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String @map("user_id")
+  date            String
+  minutesListened Int    @default(0) @map("minutes_listened")
+  booksStarted    Int    @default(0) @map("books_started")
+  booksCompleted  Int    @default(0) @map("books_completed")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date], map: "idx_daily_log_user_date")
+  @@map("daily_listening_log")
+}
+
+model UserGoal {
+  id                String @id @default(dbgenerated("gen_random_uuid()"))
+  userId            String @map("user_id")
+  dailyMinutesGoal  Int    @default(30) @map("daily_minutes_goal")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_goals_user")
+  @@map("user_goals")
+}
+
+model ReadingChallenge {
+  id          String  @id @default(dbgenerated("gen_random_uuid()"))
+  title       String
+  description String?
+  targetBooks Int     @map("target_books")
+  startDate   String  @map("start_date")
+  endDate     String  @map("end_date")
+  badgeIcon   String? @map("badge_icon")
+  isActive    Boolean @default(true) @map("is_active")
+
+  participants UserChallengeProgress[]
+
+  @@map("reading_challenges")
+}
+
+model UserChallengeProgress {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  challengeId     String    @map("challenge_id")
+  booksCompleted  Int       @default(0) @map("books_completed")
+  completedAt     DateTime? @map("completed_at")
+  joinedAt        DateTime? @default(now()) @map("joined_at")
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge ReadingChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_challenge_user")
+  @@index([challengeId], map: "idx_user_challenge_challenge")
+  @@map("user_challenge_progress")
+}
+
+// ============================================================
+// REFERRALS / PREFERENCES / SUBMISSIONS / AUTHOR PROFILES
+// ============================================================
+
+model Referral {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  referrerId      String    @map("referrer_id")
+  referredUserId  String?   @map("referred_user_id")
+  referralCode    String    @unique @map("referral_code")
+  status          String    @default("pending")
+  creditAmount    Int       @default(100) @map("credit_amount")
+  createdAt       DateTime? @default(now()) @map("created_at")
+
+  referrer User  @relation("referrals_referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred User? @relation("referrals_referred", fields: [referredUserId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId], map: "idx_referrals_referrer")
+  @@index([referralCode], map: "idx_referrals_code")
+  @@map("referrals")
+}
+
+model UserPreferences {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId                   String    @unique @map("user_id")
+  favoriteGenres           String[]  @default([]) @map("favorite_genres")
+  preferredContentTypes    String[]  @default([]) @map("preferred_content_types")
+  listeningHabit           String?   @map("listening_habit")
+  onboardingCompleted      Boolean   @default(false) @map("onboarding_completed")
+  welcomeBonusGranted      Boolean   @default(false) @map("welcome_bonus_granted")
+  premiumTrialEndDate      DateTime? @map("premium_trial_end_date")
+  createdAt                DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model UserSubmission {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId       String    @map("user_id")
+  title        String
+  author       String
+  description  String?
+  contentType  String    @default("audiobook") @map("content_type")
+  audioUrl     String?   @map("audio_url")
+  contentUrl   String?   @map("content_url")
+  coverImage   String?   @map("cover_image")
+  genre        String?
+  language     String?   @default("English")
+  status       String    @default("pending")
+  createdAt    DateTime? @default(now()) @map("created_at")
+  duration     Int?
+  pageCount    Int?      @map("page_count")
+  publishedAt  DateTime? @map("published_at")
+  totalPlays   Int       @default(0) @map("total_plays")
+  totalReads   Int       @default(0) @map("total_reads")
+  fileSize     Int?      @map("file_size")
+  narrator     String?
+  tags         String[]  @default([])
+  isPromoted   Boolean   @default(false) @map("is_promoted")
+  authorUserId String?   @map("author_user_id")
+
+  @@map("user_submissions")
+}
+
+model AuthorProfile {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @unique @map("user_id")
+  displayName     String    @map("display_name")
+  bio             String?
+  website         String?
+  socialLinks     Json?     @map("social_links")
+  profileImage    String?   @map("profile_image")
+  isVerified      Boolean   @default(false) @map("is_verified")
+  totalPlays      Int       @default(0) @map("total_plays")
+  totalListeners  Int       @default(0) @map("total_listeners")
+  createdAt       DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_author_profiles_user")
+  @@map("author_profiles")
+}
+
+model ContentAnalytic {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  bookId        String    @map("book_id")
+  authorUserId  String    @map("author_user_id")
+  eventType     String    @map("event_type")
+  listenerId    String?   @map("listener_id")
+  duration      Int?
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  @@index([bookId], map: "idx_content_analytics_book")
+  @@index([authorUserId], map: "idx_content_analytics_author")
+  @@index([createdAt], map: "idx_content_analytics_date")
+  @@map("content_analytics")
+}
+
+// ============================================================
+// PODCAST INGESTION
+// ============================================================
+
+model PodcastFeed {
+  id             String    @id @default(dbgenerated("gen_random_uuid()"))
+  feedUrl        String    @unique @map("feed_url")
+  title          String
+  description    String?
+  imageUrl       String?   @map("image_url")
+  author         String?
+  language       String?
+  websiteUrl     String?   @map("website_url")
+  categories     Json?
+  etag           String?
+  lastModified   String?   @map("last_modified")
+  lastFetchedAt  DateTime? @map("last_fetched_at")
+  createdAt      DateTime? @default(now()) @map("created_at")
+  updatedAt      DateTime? @default(now()) @map("updated_at")
+
+  episodes PodcastEpisode[]
+
+  @@index([title], map: "idx_podcast_feeds_title")
+  @@map("podcast_feeds")
+}
+
+model PodcastEpisode {
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  feedId            String    @map("feed_id")
+  guid              String?
+  title             String
+  descriptionText   String?   @map("description_text")
+  descriptionHtml   String?   @map("description_html")
+  pubDate           DateTime? @map("pub_date")
+  durationSeconds   Int?      @map("duration_seconds")
+  audioUrl          String    @map("audio_url")
+  audioType         String?   @map("audio_type")
+  audioLengthBytes  Int?      @map("audio_length_bytes")
+  explicit          Boolean?
+  transcriptUrl     String?   @map("transcript_url")
+  transcriptStatus  String    @default("none") @map("transcript_status")
+  contentWarnings   Json?     @map("content_warnings")
+  createdAt         DateTime? @default(now()) @map("created_at")
+  updatedAt         DateTime? @default(now()) @map("updated_at")
+
+  feed PodcastFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  @@index([feedId], map: "idx_podcast_episodes_feed")
+  @@index([pubDate], map: "idx_podcast_episodes_pub_date")
+  @@index([guid], map: "idx_podcast_episodes_guid")
+  @@index([audioUrl], map: "idx_podcast_episodes_audio_url")
+  @@map("podcast_episodes")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model PushSubscription {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId        String    @map("user_id")
+  endpoint      String
+  p256dh        String
+  auth          String
+  enabledTypes  String[]  @default(["streak_reminder", "goal_nudge", "new_content", "achievement", "recommendation", "re_engagement", "author_update", "system", "rsvp_reminder", "friend_digest", "win_back", "weekly_recap", "streak_at_risk"]) @map("enabled_types")
+  createdAt     DateTime? @default(now()) @map("created_at")
+  lastUsedAt    DateTime? @default(now()) @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_push_sub_user")
+  @@index([endpoint], map: "idx_push_sub_endpoint")
+  @@map("push_subscriptions")
+}
+
+model NotificationLogEntry {
+  id      String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId  String    @map("user_id")
+  type    String
+  title   String
+  body    String
+  url     String?
+  sentAt  DateTime? @default(now()) @map("sent_at")
+  clicked Int       @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_notif_log_user")
+  @@index([type], map: "idx_notif_log_type")
+  @@index([sentAt], map: "idx_notif_log_sent")
+  @@map("notification_log")
+}
+
+// ============================================================
+// LISTENING ROOMS / STREAMING QUEUES
+// ============================================================
+
+model ListeningRoom {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  bookId        String    @map("book_id")
+  bookTitle     String    @map("book_title")
+  bookAuthor    String?   @map("book_author")
+  bookCover     String?   @map("book_cover")
+  hostUserId    String    @map("host_user_id")
+  roomCode      String    @unique @map("room_code") @db.VarChar(8)
+  roomName      String?   @map("room_name")
+  maxListeners  Int       @default(10) @map("max_listeners")
+  hostTier      String    @default("plus") @map("host_tier") @db.VarChar(20)
+  status        String    @default("active") @db.VarChar(20)
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  host         User                        @relation(fields: [hostUserId], references: [id], onDelete: Cascade)
+  participants ListeningRoomParticipant[]
+  messages     ListeningRoomMessage[]
+
+  @@index([hostUserId], map: "idx_room_host")
+  @@index([roomCode], map: "idx_room_code")
+  @@index([status], map: "idx_room_status")
+  @@map("listening_rooms")
+}
+
+model ListeningRoomParticipant {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  roomId      String    @map("room_id")
+  userId      String    @map("user_id")
+  displayName String    @map("display_name")
+  role        String    @default("guest") @db.VarChar(10)
+  joinedAt    DateTime? @default(now()) @map("joined_at")
+
+  room ListeningRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId], map: "idx_participant_room")
+  @@index([userId], map: "idx_participant_user")
+  @@map("listening_room_participants")
+}
+
+model ListeningRoomMessage {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  roomId      String    @map("room_id")
+  userId      String    @map("user_id")
+  displayName String    @map("display_name")
+  content     String
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  room ListeningRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId], map: "idx_room_msg_room")
+  @@index([createdAt], map: "idx_room_msg_created")
+  @@map("listening_room_messages")
+}
+
+model StreamingQueue {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  name                String
+  description         String?
+  genre               String?
+  hostUserId          String    @map("host_user_id")
+  currentBookId       String?   @map("current_book_id")
+  currentBookTitle    String?   @map("current_book_title")
+  currentBookAuthor   String?   @map("current_book_author")
+  currentBookCover    String?   @map("current_book_cover")
+  currentBookAudioUrl String?   @map("current_book_audio_url")
+  status              String    @default("active") @db.VarChar(20)
+  listenerCount       Int       @default(0) @map("listener_count")
+  createdAt           DateTime? @default(now()) @map("created_at")
+
+  host  User                  @relation(fields: [hostUserId], references: [id], onDelete: Cascade)
+  items StreamingQueueItem[]
+
+  @@index([hostUserId], map: "idx_sq_host")
+  @@index([status], map: "idx_sq_status")
+  @@index([genre], map: "idx_sq_genre")
+  @@map("streaming_queues")
+}
+
+model StreamingQueueItem {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  queueId       String    @map("queue_id")
+  bookId        String    @map("book_id")
+  bookTitle     String    @map("book_title")
+  bookAuthor    String?   @map("book_author")
+  bookCover     String?   @map("book_cover")
+  bookAudioUrl  String?   @map("book_audio_url")
+  position      Int       @default(0)
+  votes         Int       @default(0)
+  status        String    @default("pending") @db.VarChar(20)
+  addedBy       String?   @map("added_by")
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  queue   StreamingQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  adder   User?          @relation(fields: [addedBy], references: [id])
+  voters  QueueVote[]
+
+  @@index([queueId], map: "idx_sqi_queue")
+  @@index([queueId, position], map: "idx_sqi_position")
+  @@index([status], map: "idx_sqi_status")
+  @@map("streaming_queue_items")
+}
+
+model QueueVote {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  queueItemId String    @map("queue_item_id")
+  userId      String    @map("user_id")
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  queueItem StreamingQueueItem @relation(fields: [queueItemId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([queueItemId], map: "idx_qv_item")
+  @@index([userId], map: "idx_qv_user")
+  @@map("queue_votes")
+}
+
+// ============================================================
+// SELF-SERVE ADS (AUDIO)
+// ============================================================
+
+model AdCampaign {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()"))
+  advertiserId       String    @map("advertiser_id")
+  name               String
+  description        String?
+  status             String    @default("draft") @db.VarChar(20)
+  budgetCents        Int       @default(0) @map("budget_cents")
+  dailyBudgetCents   Int?      @default(0) @map("daily_budget_cents")
+  spentCents         Int       @default(0) @map("spent_cents")
+  dailySpendCents    Int       @default(0) @map("daily_spend_cents")
+  cpmBidCents        Int       @default(500) @map("cpm_bid_cents")
+  targetGenres       String[]  @default([]) @map("target_genres")
+  targetTimeSlots    String[]  @default([]) @map("target_time_slots")
+  startDate          DateTime? @map("start_date")
+  endDate            DateTime? @map("end_date")
+  impressions        Int       @default(0)
+  clicks             Int       @default(0)
+  category           String?   @default("other")
+  createdAt          DateTime? @default(now()) @map("created_at")
+  updatedAt          DateTime? @default(now()) @map("updated_at")
+
+  advertiser    User           @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  creatives     AdCreative[]
+  impressionsRel AdImpression[]
+  displayAds    DisplayAd[]
+
+  @@index([advertiserId], map: "idx_campaign_advertiser")
+  @@index([status], map: "idx_campaign_status")
+  @@map("ad_campaigns")
+}
+
+model AdCreative {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  campaignId          String    @map("campaign_id")
+  name                String
+  audioUrl            String    @map("audio_url")
+  duration            Int       @default(0)
+  mimeType            String    @default("audio/mpeg") @map("mime_type")
+  fileSize            Int?      @map("file_size")
+  isRecorded          Boolean   @default(false) @map("is_recorded")
+  clickThroughUrl     String?   @map("click_through_url")
+  companionImageUrl   String?   @map("companion_image_url")
+  status              String    @default("pending") @db.VarChar(20)
+  createdAt           DateTime? @default(now()) @map("created_at")
+
+  campaign     AdCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  impressions  AdImpression[]
+
+  @@index([campaignId], map: "idx_creative_campaign")
+  @@index([status], map: "idx_creative_status")
+  @@map("ad_creatives")
+}
+
+model PaymentTransaction {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId                 String    @map("user_id")
+  provider               String    @db.VarChar(20)
+  providerTransactionId  String?   @map("provider_transaction_id")
+  type                   String    @db.VarChar(30)
+  status                 String    @default("pending") @db.VarChar(20)
+  amountCents            Int       @map("amount_cents")
+  currency               String    @default("USD") @db.VarChar(3)
+  description            String?
+  metadata               String?
+  receiptUrl             String?   @map("receipt_url")
+  createdAt              DateTime? @default(now()) @map("created_at")
+  updatedAt              DateTime? @default(now()) @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerTransactionId], map: "uniq_tx_provider_txid")
+  @@index([userId], map: "idx_tx_user")
+  @@index([provider], map: "idx_tx_provider")
+  @@index([createdAt], map: "idx_tx_created")
+  @@map("payment_transactions")
+}
+
+model AdImpression {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  campaignId  String    @map("campaign_id")
+  creativeId  String    @map("creative_id")
+  userId      String?   @map("user_id")
+  adType      String    @default("preroll") @map("ad_type") @db.VarChar(10)
+  costCents   Int       @default(0) @map("cost_cents")
+  clicked     Boolean   @default(false)
+  quartile25  Boolean   @default(false) @map("quartile_25")
+  quartile50  Boolean   @default(false) @map("quartile_50")
+  quartile75  Boolean   @default(false) @map("quartile_75")
+  completed   Boolean   @default(false)
+  servedAt    DateTime? @default(now()) @map("served_at")
+
+  campaign  AdCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creative  AdCreative  @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+  adRewards AdReward[]
+
+  @@index([campaignId], map: "idx_impression_campaign")
+  @@index([creativeId], map: "idx_impression_creative")
+  @@index([servedAt], map: "idx_impression_served")
+  @@map("ad_impressions")
+}
+
+// ============================================================
+// REWARDS / FREEZES / VOICE PACKS
+// ============================================================
+
+model StreakFreeze {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId        String    @map("user_id")
+  totalFreezes  Int       @default(0) @map("total_freezes")
+  usedFreezes   Int       @default(0) @map("used_freezes")
+  lastEarnedAt  DateTime? @map("last_earned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_streak_freezes_user")
+  @@map("streak_freezes")
+}
+
+model ExpiringReward {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId       String    @map("user_id")
+  rewardType   String    @map("reward_type")
+  rewardValue  Int       @default(0) @map("reward_value")
+  description  String
+  expiresAt    DateTime  @map("expires_at")
+  claimed      Boolean   @default(false)
+  claimedAt    DateTime? @map("claimed_at")
+  createdAt    DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_expiring_rewards_user")
+  @@index([expiresAt], map: "idx_expiring_rewards_expires")
+  @@map("expiring_rewards")
+}
+
+model AdReward {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  adImpressionId  String    @map("ad_impression_id")
+  rewardType      String    @map("reward_type")
+  grantedAt       DateTime? @default(now()) @map("granted_at")
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adImpression AdImpression @relation(fields: [adImpressionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, adImpressionId], map: "uniq_ad_rewards_user_impression")
+  @@index([userId], map: "idx_ad_rewards_user")
+  @@index([adImpressionId], map: "idx_ad_rewards_impression")
+  @@index([userId, rewardType], map: "idx_ad_rewards_user_type")
+  @@map("ad_rewards")
+}
+
+model AuthorEarning {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  bookId          String    @map("book_id")
+  earningType     String    @map("earning_type")
+  grossCents      Int       @default(0) @map("gross_cents")
+  commissionCents Int       @default(0) @map("commission_cents")
+  platformFeePct  Int       @default(30) @map("platform_fee_pct")
+  status          String    @default("pending")
+  periodStart     DateTime? @map("period_start")
+  periodEnd       DateTime? @map("period_end")
+  createdAt       DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_author_earnings_user")
+  @@index([bookId], map: "idx_author_earnings_book")
+  @@index([status], map: "idx_author_earnings_status")
+  @@map("author_earnings")
+}
+
+model VoicePack {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  name                String
+  description         String?
+  voices              String[]
+  priceCents          Int       @default(0) @map("price_cents")
+  isPremiumIncluded   Boolean   @default(false) @map("is_premium_included")
+  previewUrl          String?   @map("preview_url")
+  systemPrompt        String?   @map("system_prompt")
+  createdAt           DateTime? @default(now()) @map("created_at")
+
+  purchases VoicePackPurchase[]
+
+  @@map("voice_packs")
+}
+
+model VoicePackPurchase {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  voicePackId     String    @map("voice_pack_id")
+  amountCents     Int       @default(0) @map("amount_cents")
+  stripePaymentId String?   @map("stripe_payment_id")
+  purchasedAt     DateTime? @default(now()) @map("purchased_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voicePack VoicePack @relation(fields: [voicePackId], references: [id])
+
+  @@index([userId], map: "idx_vpp_user")
+  @@index([voicePackId], map: "idx_vpp_pack")
+  @@map("voice_pack_purchases")
+}
+
+// NOTE: battle_passes, battle_pass_milestones, battle_pass_purchases tables
+// intentionally excluded per task #181.
+
+model AnnotationSync {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId        String    @map("user_id")
+  bookId        String    @map("book_id")
+  annotations   String    @default("[]")
+  bookmarks     String    @default("[]")
+  lastSyncedAt  DateTime? @default(now()) @map("last_synced_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, bookId], map: "idx_annotation_sync_user_book")
+  @@map("annotation_sync")
+}
+
+model GiftCard {
+  id               String    @id @default(dbgenerated("gen_random_uuid()"))
+  code             String    @unique
+  fromUserId       String?   @map("from_user_id")
+  toEmail          String?   @map("to_email")
+  amountCents      Int       @map("amount_cents")
+  balanceRemaining Int       @map("balance_remaining")
+  type             String    @default("credits")
+  tierGift         String?   @map("tier_gift")
+  monthsGift       Int?      @map("months_gift")
+  message          String?
+  status           String    @default("active")
+  expiresAt        DateTime? @map("expires_at")
+  createdAt        DateTime? @default(now()) @map("created_at")
+  redeemedBy       String?   @map("redeemed_by")
+  redeemedAt       DateTime? @map("redeemed_at")
+
+  from     User? @relation("gift_cards_from", fields: [fromUserId], references: [id])
+  redeemer User? @relation("gift_cards_redeemed", fields: [redeemedBy], references: [id])
+
+  @@index([code], map: "idx_gift_cards_code")
+  @@index([fromUserId], map: "idx_gift_cards_from")
+  @@index([status], map: "idx_gift_cards_status")
+  @@map("gift_cards")
+}
+
+model EnterpriseAccount {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()"))
+  orgName               String    @map("org_name")
+  contactEmail          String    @map("contact_email")
+  tier                  String    @default("education")
+  maxSeats              Int       @default(50) @map("max_seats")
+  currentSeats          Int       @default(0) @map("current_seats")
+  amountCents           Int       @default(9900) @map("amount_cents")
+  billingCycle          String    @default("monthly") @map("billing_cycle")
+  stripeSubscriptionId  String?   @map("stripe_subscription_id")
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime? @default(now()) @map("created_at")
+
+  members EnterpriseMember[]
+
+  @@index([contactEmail], map: "idx_enterprise_email")
+  @@map("enterprise_accounts")
+}
+
+model EnterpriseMember {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  enterpriseId String    @map("enterprise_id")
+  userId       String    @map("user_id")
+  role         String    @default("member")
+  addedAt      DateTime? @default(now()) @map("added_at")
+
+  enterprise EnterpriseAccount @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enterpriseId], map: "idx_ent_members_enterprise")
+  @@index([userId], map: "idx_ent_members_user")
+  @@map("enterprise_members")
+}
+
+model SponsoredQueue {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  sponsorName  String    @map("sponsor_name")
+  queueId      String?   @map("queue_id")
+  adAudioUrl   String?   @map("ad_audio_url")
+  sponsorLogo  String?   @map("sponsor_logo")
+  impressions  Int       @default(0)
+  clicks       Int       @default(0)
+  amountCents  Int       @default(0) @map("amount_cents")
+  startDate    DateTime  @map("start_date")
+  endDate      DateTime  @map("end_date")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime? @default(now()) @map("created_at")
+
+  @@index([isActive], map: "idx_sponsored_queues_active")
+  @@index([startDate, endDate], map: "idx_sponsored_queues_dates")
+  @@map("sponsored_queues")
+}
+
+model FamilyAccount {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()"))
+  ownerId              String    @map("owner_id")
+  planName             String    @default("Family Plan") @map("plan_name")
+  maxMembers           Int       @default(5) @map("max_members")
+  amountCents          Int       @default(799) @map("amount_cents")
+  stripeSubscriptionId String?   @map("stripe_subscription_id")
+  isActive             Boolean   @default(true) @map("is_active")
+  createdAt            DateTime? @default(now()) @map("created_at")
+
+  owner   User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members FamilyMember[]
+
+  @@index([ownerId], map: "idx_family_owner")
+  @@map("family_accounts")
+}
+
+model FamilyMember {
+  id        String    @id @default(dbgenerated("gen_random_uuid()"))
+  familyId  String    @map("family_id")
+  userId    String    @map("user_id")
+  role      String    @default("member")
+  addedAt   DateTime? @default(now()) @map("added_at")
+
+  family FamilyAccount @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId], map: "idx_family_members_family")
+  @@index([userId], map: "idx_family_members_user")
+  @@map("family_members")
+}
+
+model AuthorTip {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  fromUserId      String    @map("from_user_id")
+  toAuthorId      String    @map("to_author_id")
+  bookId          String?   @map("book_id")
+  amountCents     Int       @map("amount_cents")
+  stripePaymentId String?   @map("stripe_payment_id")
+  message         String?
+  createdAt       DateTime? @default(now()) @map("created_at")
+
+  from User @relation("author_tips_from", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to   User @relation("author_tips_to", fields: [toAuthorId], references: [id], onDelete: Cascade)
+
+  @@index([fromUserId], map: "idx_tips_from")
+  @@index([toAuthorId], map: "idx_tips_to")
+  @@map("author_tips")
+}
+
+model ContentReport {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  reporterId  String    @map("reporter_id")
+  contentType String    @map("content_type")
+  contentId   String    @map("content_id")
+  reason      String
+  details     String?
+  status      String    @default("pending")
+  reviewedBy  String?   @map("reviewed_by")
+  reviewedAt  DateTime? @map("reviewed_at")
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([status], map: "idx_reports_status")
+  @@index([contentType, contentId], map: "idx_reports_content")
+  @@map("content_reports")
+}
+
+model ActivityFeed {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId       String    @map("user_id")
+  activityType String    @map("activity_type")
+  bookId       String?   @map("book_id")
+  bookTitle    String?   @map("book_title")
+  metadata     String?
+  createdAt    DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_activity_user")
+  @@index([createdAt], map: "idx_activity_created")
+  @@map("activity_feed")
+}
+
+model ReadingClub {
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  name              String
+  description       String?
+  creatorId         String    @map("creator_id")
+  currentBookId     String?   @map("current_book_id")
+  currentBookTitle  String?   @map("current_book_title")
+  memberCount       Int       @default(1) @map("member_count")
+  isPublic          Boolean   @default(true) @map("is_public")
+  createdAt         DateTime? @default(now()) @map("created_at")
+
+  creator User                  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  members ReadingClubMember[]
+
+  @@index([creatorId], map: "idx_clubs_creator")
+  @@map("reading_clubs")
+}
+
+model ReadingClubMember {
+  id        String    @id @default(dbgenerated("gen_random_uuid()"))
+  clubId    String    @map("club_id")
+  userId    String    @map("user_id")
+  joinedAt  DateTime? @default(now()) @map("joined_at")
+
+  club ReadingClub @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([clubId], map: "idx_club_members_club")
+  @@index([userId], map: "idx_club_members_user")
+  @@map("reading_club_members")
+}
+
+model BookVisual {
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  bookId            String    @map("book_id")
+  sceneIndex        Int       @map("scene_index")
+  pageStart         Int       @map("page_start")
+  pageEnd           Int       @map("page_end")
+  sceneDescription  String    @map("scene_description")
+  videoPrompt       String    @map("video_prompt")
+  videoUrl          String?   @map("video_url")
+  status            String    @default("pending")
+  createdAt         DateTime? @default(now()) @map("created_at")
+
+  @@index([bookId], map: "idx_book_visuals_book")
+  @@index([bookId, sceneIndex], map: "idx_book_visuals_book_scene")
+  @@map("book_visuals")
+}
+
+model EngagementMetric {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId                String    @map("user_id")
+  lastActiveAt          DateTime? @default(now()) @map("last_active_at")
+  totalSessionsLast30d  Int       @default(0) @map("total_sessions_last_30d")
+  totalMinutesLast30d   Int       @default(0) @map("total_minutes_last_30d")
+  churnRisk             String    @default("low") @map("churn_risk")
+  winbackOfferSent      Boolean   @default(false) @map("winback_offer_sent")
+  winbackOfferSentAt    DateTime? @map("winback_offer_sent_at")
+  updatedAt             DateTime? @default(now()) @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_engagement_user")
+  @@index([churnRisk], map: "idx_engagement_churn")
+  @@index([lastActiveAt], map: "idx_engagement_active")
+  @@map("engagement_metrics")
+}
+
+model BookLoan {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId        String    @map("user_id")
+  bookId        String    @map("book_id")
+  loanedAt      DateTime? @default(now()) @map("loaned_at")
+  expiresAt     DateTime  @map("expires_at")
+  returnedAt    DateTime? @map("returned_at")
+  status        String    @default("active")
+  downloadToken String    @map("download_token")
+  downloadCount Int       @default(0) @map("download_count")
+  maxDownloads  Int       @default(3) @map("max_downloads")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_loans_user")
+  @@index([bookId], map: "idx_loans_book")
+  @@index([status], map: "idx_loans_status")
+  @@index([expiresAt], map: "idx_loans_expires")
+  @@map("book_loans")
+}
+
+model LoanWaitlist {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId      String    @map("user_id")
+  bookId      String    @map("book_id")
+  position    Int       @default(0)
+  joinedAt    DateTime? @default(now()) @map("joined_at")
+  notifiedAt  DateTime? @map("notified_at")
+  status      String    @default("waiting")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_waitlist_user")
+  @@index([bookId], map: "idx_waitlist_book")
+  @@index([status], map: "idx_waitlist_status")
+  @@map("loan_waitlist")
+}
+
+// ============================================================
+// ACCESSIBILITY
+// ============================================================
+
+model AccessibilityPreferences {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId                   String    @unique @map("user_id")
+  profile                  Json      @default("{}")
+  activePreset             String?   @map("active_preset")
+  syncedAt                 DateTime? @default(now()) @map("synced_at")
+  reduceDistraction        Boolean   @default(false) @map("reduce_distraction")
+  highContrast             Boolean   @default(false) @map("high_contrast")
+  dyslexiaFriendly         Boolean   @default(false) @map("dyslexia_friendly")
+  captionsPreferred        Boolean   @default(false) @map("captions_preferred")
+  transcriptOpenByDefault  Boolean   @default(false) @map("transcript_open_by_default")
+  fontSizeScale            Int       @default(100) @map("font_size_scale")
+  readingSpeed             Int       @default(100) @map("reading_speed")
+  colorMode                String    @default("system") @map("color_mode")
+  focusMode                Boolean   @default(false) @map("focus_mode")
+  symbolSupport            Boolean   @default(false) @map("symbol_support")
+  signLanguageEnabled      Boolean   @default(false) @map("sign_language_enabled")
+  updatedAt                DateTime? @default(now()) @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_a11y_prefs_user")
+  @@map("accessibility_preferences")
+}
+
+model BookTranscript {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  bookId       String    @map("book_id")
+  chapterIndex Int       @default(0) @map("chapter_index")
+  segments     Json      @default("[]")
+  language     String    @default("en")
+  source       String    @default("manual")
+  createdAt    DateTime? @default(now()) @map("created_at")
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId], map: "idx_transcripts_book")
+  @@index([bookId, chapterIndex], map: "idx_transcripts_book_chapter")
+  @@map("book_transcripts")
+}
+
+model AccessibilityMetadata {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  bookId              String    @unique @map("book_id")
+  hasTranscript       Boolean   @default(false) @map("has_transcript")
+  hasDyslexiaFont     Boolean   @default(false) @map("has_dyslexia_font")
+  hasLargeText        Boolean   @default(false) @map("has_large_text")
+  readingLevel        String?   @map("reading_level")
+  contentWarnings     String[]  @default([]) @map("content_warnings")
+  accessibilityScore  Int?      @default(0) @map("accessibility_score")
+  updatedAt           DateTime? @default(now()) @map("updated_at")
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId], map: "idx_a11y_meta_book")
+  @@index([accessibilityScore], map: "idx_a11y_meta_score")
+  @@map("accessibility_metadata")
+}
+
+model AccessibilityReview {
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId            String    @map("user_id")
+  bookId            String    @map("book_id")
+  disabilityType    String    @default("other") @map("disability_type")
+  rating            Int
+  screenReaderScore Int?      @map("screen_reader_score")
+  navigationScore   Int?      @map("navigation_score")
+  contrastScore     Int?      @map("contrast_score")
+  audioQualityScore Int?      @map("audio_quality_score")
+  comments          String?
+  status            String    @default("pending")
+  createdAt         DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([bookId], map: "idx_a11y_reviews_book")
+  @@index([userId], map: "idx_a11y_reviews_user")
+  @@index([status], map: "idx_a11y_reviews_status")
+  @@index([disabilityType], map: "idx_a11y_reviews_disability")
+  @@map("accessibility_reviews")
+}
+
+model InstitutionalAccount {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()"))
+  orgName               String    @map("org_name")
+  contactEmail          String    @map("contact_email")
+  orgType               String    @default("school") @map("org_type")
+  maxSeats              Int       @default(50) @map("max_seats")
+  currentSeats          Int       @default(0) @map("current_seats")
+  amountCents           Int       @default(9900) @map("amount_cents")
+  features              Json      @default("{\"adFree\":true,\"premiumContent\":true,\"analytics\":true}")
+  billingCycle          String    @default("monthly") @map("billing_cycle")
+  stripeSubscriptionId  String?   @map("stripe_subscription_id")
+  isActive              Boolean   @default(true) @map("is_active")
+  weeklyGoalMinutes     Int       @default(180) @map("weekly_goal_minutes")
+  createdAt             DateTime? @default(now()) @map("created_at")
+
+  members InstitutionalMember[]
+
+  @@index([isActive], map: "idx_institutional_active")
+  @@map("institutional_accounts")
+}
+
+model InstitutionalMember {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  institutionalId String    @map("institutional_id")
+  userId          String    @map("user_id")
+  role            String    @default("member")
+  addedAt         DateTime? @default(now()) @map("added_at")
+
+  institutional InstitutionalAccount @relation(fields: [institutionalId], references: [id], onDelete: Cascade)
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([institutionalId], map: "idx_inst_members_org")
+  @@index([userId], map: "idx_inst_members_user")
+  @@map("institutional_members")
+}
+
+model MoatMetricsSnapshot {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()"))
+  date                  DateTime @default(now())
+  totalA11yReviews      Int      @default(0) @map("total_a11y_reviews")
+  avgA11yScore          Int      @default(0) @map("avg_a11y_score")
+  transcriptCoverage    Int      @default(0) @map("transcript_coverage")
+  prefsSyncedUsers      Int      @default(0) @map("prefs_synced_users")
+  institutionalOrgs     Int      @default(0) @map("institutional_orgs")
+  recommendationClicks  Int      @default(0) @map("recommendation_clicks")
+
+  @@index([date], map: "idx_moat_metrics_date")
+  @@map("moat_metrics_snapshots")
+}
+
+// ============================================================
+// AI CHAT
+// ============================================================
+
+model Conversation {
+  id        Int      @id @default(autoincrement())
+  userId    String?  @map("user_id")
+  title     String   @default("New Chat")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([createdAt], map: "idx_conversations_created_at")
+  @@index([userId], map: "idx_conversations_user_id")
+  @@map("conversations")
+}
+
+model Message {
+  id             Int      @id @default(autoincrement())
+  conversationId Int      @map("conversation_id")
+  role           String
+  content        String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId], map: "idx_messages_conversation_id")
+  @@index([createdAt], map: "idx_messages_created_at")
+  @@map("messages")
+}
+
+// ============================================================
+// EASY ENGLISH
+// ============================================================
+
+model EasyEnglishCache {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  bookId        String    @map("book_id")
+  chapterNumber Int       @map("chapter_number")
+  originalText  String    @map("original_text")
+  convertedText String    @map("converted_text")
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  @@index([bookId, chapterNumber], map: "idx_easy_english_cache_book_chapter")
+  @@map("easy_english_cache")
+}
+
+model EasyEnglishUsage {
+  id                  String @id @default(dbgenerated("gen_random_uuid()"))
+  userId              String @map("user_id")
+  yearMonth           String @map("year_month")
+  chaptersConverted   Int    @default(0) @map("chapters_converted")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, yearMonth], map: "idx_easy_english_usage_user_month")
+  @@map("easy_english_usage")
+}
+
+// ============================================================
+// AD BIDDING PLATFORM (display ads, slots, auctions)
+// ============================================================
+
+model DisplayAd {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  campaignId      String    @map("campaign_id")
+  advertiserId    String    @map("advertiser_id")
+  headline        String
+  body            String?
+  imageUrl        String?   @map("image_url")
+  destinationUrl  String    @map("destination_url")
+  status          String    @default("pending_review")
+  maxCpmCents     Int       @default(0) @map("max_cpm_cents")
+  rejectionReason String?   @map("rejection_reason")
+  impressionCount Int       @default(0) @map("impression_count")
+  clickCount      Int       @default(0) @map("click_count")
+  createdAt       DateTime? @default(now()) @map("created_at")
+  updatedAt       DateTime? @default(now()) @map("updated_at")
+
+  campaign         AdCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  advertiser       User             @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  winningAuctions  AdAuction[]
+  slotImpressions  SlotImpression[]
+  slotClicks       SlotClick[]
+  bids             Bid[]
+
+  @@index([campaignId], map: "idx_display_ads_campaign")
+  @@index([advertiserId], map: "idx_display_ads_advertiser")
+  @@index([status], map: "idx_display_ads_status")
+  @@map("display_ads")
+}
+
+model AdSlot {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()"))
+  publisherId        String    @map("publisher_id")
+  name               String
+  websiteUrl         String    @map("website_url")
+  width              Int       @default(728)
+  height             Int       @default(90)
+  category           String    @default("other")
+  minCpmCents        Int       @default(0) @map("min_cpm_cents")
+  isActive           Boolean   @default(true) @map("is_active")
+  totalImpressions   Int       @default(0) @map("total_impressions")
+  totalEarningsCents Int       @default(0) @map("total_earnings_cents")
+  createdAt          DateTime? @default(now()) @map("created_at")
+
+  publisher       User              @relation(fields: [publisherId], references: [id], onDelete: Cascade)
+  auctions        AdAuction[]
+  slotImpressions SlotImpression[]
+
+  @@index([publisherId], map: "idx_ad_slots_publisher")
+  @@index([isActive], map: "idx_ad_slots_active")
+  @@index([category], map: "idx_ad_slots_category")
+  @@map("ad_slots")
+}
+
+model AdAuction {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  slotId              String    @map("slot_id")
+  winningAdId         String?   @map("winning_ad_id")
+  winningCpmCents     Int       @default(0) @map("winning_cpm_cents")
+  secondPriceCpmCents Int       @default(0) @map("second_price_cpm_cents")
+  bidsConsidered      Int       @default(0) @map("bids_considered")
+  noFill              Boolean   @default(false) @map("no_fill")
+  createdAt           DateTime? @default(now()) @map("created_at")
+
+  slot            AdSlot           @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  winningAd       DisplayAd?       @relation(fields: [winningAdId], references: [id])
+  slotImpressions SlotImpression[]
+  bids            Bid[]
+
+  @@index([slotId], map: "idx_ad_auctions_slot")
+  @@index([createdAt], map: "idx_ad_auctions_created")
+  @@map("ad_auctions")
+}
+
+model SlotImpression {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  auctionId    String    @map("auction_id")
+  adId         String    @map("ad_id")
+  slotId       String    @map("slot_id")
+  advertiserId String    @map("advertiser_id")
+  publisherId  String    @map("publisher_id")
+  cpmCents     Int       @default(0) @map("cpm_cents")
+  clicked      Boolean   @default(false)
+  servedAt     DateTime? @default(now()) @map("served_at")
+
+  auction AdAuction   @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  ad      DisplayAd   @relation(fields: [adId], references: [id], onDelete: Cascade)
+  slot    AdSlot      @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  clicks  SlotClick[]
+
+  @@index([adId], map: "idx_slot_impressions_ad")
+  @@index([slotId], map: "idx_slot_impressions_slot")
+  @@index([advertiserId], map: "idx_slot_impressions_advertiser")
+  @@index([publisherId], map: "idx_slot_impressions_publisher")
+  @@index([servedAt], map: "idx_slot_impressions_served")
+  @@map("slot_impressions")
+}
+
+model SlotClick {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  impressionId String    @map("impression_id")
+  adId         String    @map("ad_id")
+  clickedAt    DateTime? @default(now()) @map("clicked_at")
+
+  impression SlotImpression @relation(fields: [impressionId], references: [id], onDelete: Cascade)
+  ad         DisplayAd      @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([impressionId], map: "idx_slot_clicks_impression")
+  @@index([adId], map: "idx_slot_clicks_ad")
+  @@map("slot_clicks")
+}
+
+model AdvertiserWallet {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  advertiserId    String    @unique @map("advertiser_id")
+  balanceCents    Int       @default(0) @map("balance_cents")
+  totalTopupCents Int       @default(0) @map("total_topup_cents")
+  totalSpendCents Int       @default(0) @map("total_spend_cents")
+  updatedAt       DateTime? @default(now()) @map("updated_at")
+
+  advertiser User @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  @@map("advertiser_wallets")
+}
+
+model PublisherEarning {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  publisherId     String    @unique @map("publisher_id")
+  totalEarnedCents Int      @default(0) @map("total_earned_cents")
+  pendingCents    Int       @default(0) @map("pending_cents")
+  paidOutCents    Int       @default(0) @map("paid_out_cents")
+  updatedAt       DateTime? @default(now()) @map("updated_at")
+
+  publisher User @relation(fields: [publisherId], references: [id], onDelete: Cascade)
+
+  @@map("publisher_earnings")
+}
+
+model PayoutRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()"))
+  publisherId    String    @map("publisher_id")
+  amountCents    Int       @map("amount_cents")
+  status         String    @default("pending")
+  paymentDetails String?   @map("payment_details")
+  adminNotes     String?   @map("admin_notes")
+  createdAt      DateTime? @default(now()) @map("created_at")
+  resolvedAt     DateTime? @map("resolved_at")
+
+  publisher User @relation(fields: [publisherId], references: [id], onDelete: Cascade)
+
+  @@index([publisherId], map: "idx_payout_requests_publisher")
+  @@index([status], map: "idx_payout_requests_status")
+  @@map("payout_requests")
+}
+
+model Bid {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  auctionId     String    @map("auction_id")
+  adId          String    @map("ad_id")
+  advertiserId  String    @map("advertiser_id")
+  cpmCents      Int       @default(0) @map("cpm_cents")
+  isWinner      Boolean   @default(false) @map("is_winner")
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  auction    AdAuction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  ad         DisplayAd @relation(fields: [adId], references: [id], onDelete: Cascade)
+  advertiser User      @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId], map: "idx_bids_auction")
+  @@index([adId], map: "idx_bids_ad")
+  @@index([advertiserId], map: "idx_bids_advertiser")
+  @@map("bids")
+}
+
+model WordBankEntry {
+  id         String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId     String    @map("user_id")
+  word       String
+  definition String?
+  imageUrl   String?   @map("image_url")
+  savedAt    DateTime? @default(now()) @map("saved_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_word_bank_user")
+  @@map("word_bank_entries")
+}
+
+// ============================================================
+// PLANS / SUBSCRIPTIONS / ENTITLEMENTS
+// ============================================================
+
+model Plan {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  tier                String    @unique
+  name                String
+  priceMonthlycents   Int       @default(0) @map("price_monthly_cents")
+  priceYearlyCents    Int       @default(0) @map("price_yearly_cents")
+  trialDays           Int       @default(0) @map("trial_days")
+  features            Json      @default("{}")
+  isActive            Boolean   @default(true) @map("is_active")
+  createdAt           DateTime? @default(now()) @map("created_at")
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId               String    @map("user_id")
+  planId               String    @map("plan_id")
+  status               String    @default("active")
+  currentPeriodStart   DateTime? @map("current_period_start")
+  currentPeriodEnd     DateTime? @map("current_period_end")
+  trialEnd             DateTime? @map("trial_end")
+  canceledAt           DateTime? @map("canceled_at")
+  stripeSubscriptionId String?   @map("stripe_subscription_id")
+  createdAt            DateTime? @default(now()) @map("created_at")
+  updatedAt            DateTime? @default(now()) @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([userId], map: "idx_subscriptions_user")
+  @@index([status], map: "idx_subscriptions_status")
+  @@index([stripeSubscriptionId], map: "idx_subscriptions_stripe")
+  @@map("subscriptions")
+}
+
+model Entitlement {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId      String    @map("user_id")
+  tier        String?
+  bookId      String?   @map("book_id")
+  feature     String?
+  grantedTier String?   @map("granted_tier")
+  expiresAt   DateTime? @map("expires_at")
+  reason      String?
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_entitlements_user")
+  @@index([userId, bookId], map: "idx_entitlements_user_book")
+  @@index([feature], map: "idx_entitlements_feature")
+  @@index([expiresAt], map: "idx_entitlements_expires")
+  @@map("entitlements")
+}
+
+model AdEventLog {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId      String?   @map("user_id")
+  adId        String    @map("ad_id")
+  adType      String    @map("ad_type") @db.VarChar(32)
+  provider    String    @db.VarChar(32)
+  placementId String?   @map("placement_id") @db.VarChar(64)
+  completed   Boolean   @default(false)
+  skipped     Boolean   @default(false)
+  servedAt    DateTime? @default(now()) @map("served_at")
+
+  @@index([userId], map: "idx_ad_event_logs_user")
+  @@index([servedAt], map: "idx_ad_event_logs_served")
+  @@index([provider], map: "idx_ad_event_logs_provider")
+  @@map("ad_event_logs")
+}
+
+// ============================================================
+// PRODUCT EVENTS / LISTENING SESSIONS / ENGAGEMENT
+// ============================================================
+
+model ProductEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  eventType  String   @map("event_type") @db.VarChar(100)
+  userTier   String   @default("free") @map("user_tier") @db.VarChar(20)
+  metadata   Json?
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  @@index([eventType, occurredAt], map: "idx_product_events_type_time")
+  @@index([occurredAt], map: "idx_product_events_occurred")
+  @@map("product_events")
+}
+
+model ListeningSession {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  bookId          String    @map("book_id")
+  deviceType      String?   @map("device_type")
+  startedAt       DateTime? @default(now()) @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  minutesListened Int       @default(0) @map("minutes_listened")
+  interruptedBy   String?   @map("interrupted_by")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_listening_sessions_user")
+  @@index([bookId], map: "idx_listening_sessions_book")
+  @@index([startedAt], map: "idx_listening_sessions_started")
+  @@map("listening_sessions")
+}
+
+model EngagementEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  userId     String   @map("user_id")
+  eventType  String   @map("event_type") @db.VarChar(80)
+  category   String?  @db.VarChar(60)
+  outcome    String   @default("sent") @db.VarChar(40)
+  reason     String?  @db.VarChar(60)
+  metadata   Json?
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredAt], map: "idx_engagement_events_user_time")
+  @@index([eventType, occurredAt], map: "idx_engagement_events_type_time")
+  @@map("engagement_events")
+}
+
+// ============================================================
+// BULLETIN BOARD / LIVE EVENTS / SHARE CLIPS
+// ============================================================
+
+model BulletinTopic {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()"))
+  slug                    String    @unique @db.VarChar(80)
+  name                    String    @db.VarChar(120)
+  description             String?
+  iconEmoji               String?   @map("icon_emoji") @db.VarChar(10)
+  premiumOnlyPost         Boolean   @default(false) @map("premium_only_post")
+  premiumOnlyView         Boolean   @default(false) @map("premium_only_view")
+  isAccessibilityCategory Boolean   @default(false) @map("is_accessibility_category")
+  sortOrder               Int       @default(0) @map("sort_order")
+  isActive                Boolean   @default(true) @map("is_active")
+  createdAt               DateTime? @default(now()) @map("created_at")
+
+  threads BulletinThread[]
+
+  @@index([isActive, sortOrder], map: "idx_bulletin_topics_active")
+  @@map("bulletin_topics")
+}
+
+model BulletinThread {
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  topicId           String    @map("topic_id")
+  authorUserId      String?   @map("author_user_id")
+  authorDisplayName String    @default("AccessiBooks") @map("author_display_name") @db.VarChar(120)
+  kind              String    @default("discussion") @db.VarChar(20)
+  title             String    @db.VarChar(240)
+  body              String
+  isPinned          Boolean   @default(false) @map("is_pinned")
+  isLocked          Boolean   @default(false) @map("is_locked")
+  replyCount        Int       @default(0) @map("reply_count")
+  reactionCount     Int       @default(0) @map("reaction_count")
+  lastActivityAt    DateTime? @default(now()) @map("last_activity_at")
+  createdAt         DateTime? @default(now()) @map("created_at")
+
+  topic   BulletinTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author  User?           @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  replies BulletinReply[]
+
+  @@index([topicId, isPinned, lastActivityAt], map: "idx_bulletin_threads_topic_pinned")
+  @@index([lastActivityAt], map: "idx_bulletin_threads_recent")
+  @@map("bulletin_threads")
+}
+
+model BulletinReply {
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  threadId          String    @map("thread_id")
+  parentReplyId     String?   @map("parent_reply_id")
+  authorUserId      String    @map("author_user_id")
+  authorDisplayName String    @map("author_display_name") @db.VarChar(120)
+  body              String
+  reactionCount     Int       @default(0) @map("reaction_count")
+  hiddenAt          DateTime? @map("hidden_at")
+  createdAt         DateTime? @default(now()) @map("created_at")
+
+  thread BulletinThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author User           @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt], map: "idx_bulletin_replies_thread")
+  @@map("bulletin_replies")
+}
+
+model BulletinReaction {
+  id         String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId     String    @map("user_id")
+  targetType String    @map("target_type") @db.VarChar(16)
+  targetId   String    @map("target_id")
+  emoji      String    @default("👍") @db.VarChar(16)
+  createdAt  DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([targetType, targetId], map: "idx_bulletin_reactions_target")
+  @@index([userId], map: "idx_bulletin_reactions_user")
+  @@map("bulletin_reactions")
+}
+
+model LiveEvent {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()"))
+  eventType                String    @map("event_type") @db.VarChar(32)
+  title                    String    @db.VarChar(240)
+  description              String
+  hostUserId               String?   @map("host_user_id")
+  hostDisplayName          String    @default("AccessiBooks") @map("host_display_name") @db.VarChar(120)
+  bookId                   String?   @map("book_id")
+  bookTitle                String?   @map("book_title") @db.VarChar(240)
+  scheduledStartAt         DateTime  @map("scheduled_start_at")
+  scheduledEndAt           DateTime  @map("scheduled_end_at")
+  status                   String    @default("scheduled") @db.VarChar(20)
+  listeningRoomId          String?   @map("listening_room_id")
+  replayUrl                String?   @map("replay_url")
+  rsvpCount                Int       @default(0) @map("rsvp_count")
+  attendedCount            Int       @default(0) @map("attended_count")
+  freeReplayPreviewSeconds Int       @default(600) @map("free_replay_preview_seconds")
+  createdAt                DateTime? @default(now()) @map("created_at")
+
+  host        User?              @relation(fields: [hostUserId], references: [id], onDelete: SetNull)
+  rsvps       EventRsvp[]
+  chatMessages EventChatMessage[]
+
+  @@index([status, scheduledStartAt], map: "idx_live_events_status_start")
+  @@index([scheduledStartAt], map: "idx_live_events_start")
+  @@map("live_events")
+}
+
+model EventRsvp {
+  id             String    @id @default(dbgenerated("gen_random_uuid()"))
+  eventId        String    @map("event_id")
+  userId         String    @map("user_id")
+  attendedAt     DateTime? @map("attended_at")
+  reminderSentAt DateTime? @map("reminder_sent_at")
+  createdAt      DateTime? @default(now()) @map("created_at")
+
+  event LiveEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId], map: "uq_event_rsvps_event_user")
+  @@index([eventId], map: "idx_event_rsvps_event")
+  @@index([userId], map: "idx_event_rsvps_user")
+  @@map("event_rsvps")
+}
+
+model EventChatMessage {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  eventId     String    @map("event_id")
+  userId      String    @map("user_id")
+  displayName String    @map("display_name") @db.VarChar(120)
+  body        String
+  hiddenAt    DateTime? @map("hidden_at")
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  event LiveEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt], map: "idx_event_chat_event")
+  @@map("event_chat_messages")
+}
+
+model ShareClip {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String    @map("user_id")
+  bookId          String    @map("book_id")
+  bookTitle       String    @map("book_title") @db.VarChar(240)
+  startSec        Int       @map("start_sec")
+  endSec          Int       @map("end_sec")
+  quote           String?
+  shareToken      String    @unique @map("share_token") @db.VarChar(32)
+  hideAttribution Boolean   @default(false) @map("hide_attribution")
+  viewCount       Int       @default(0) @map("view_count")
+  createdAt       DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_share_clips_user")
+  @@index([shareToken], map: "idx_share_clips_token")
+  @@map("share_clips")
+}
+
+// ============================================================
+// USER ACTIVITY (opt-in)
+// ============================================================
+
+model UserActivityEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()"))
+  userId          String   @map("user_id")
+  eventType       String   @map("event_type") @db.VarChar(50)
+  bookId          String?  @map("book_id")
+  bookTitle       String?  @map("book_title")
+  durationSeconds Int?     @map("duration_seconds")
+  outcomeTag      String?  @map("outcome_tag") @db.VarChar(40)
+  note            String?
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredAt], map: "idx_user_activity_user_time")
+  @@index([userId, eventType], map: "idx_user_activity_user_type")
+  @@index([userId, bookId], map: "idx_user_activity_user_book")
+  @@map("user_activity_events")
+}
+
+model UserActivityShare {
+  id             String    @id @default(dbgenerated("gen_random_uuid()"))
+  userId         String    @map("user_id")
+  caregiverLabel String    @map("caregiver_label")
+  shareToken     String    @unique @map("share_token") @db.VarChar(64)
+  rangeFrom      DateTime? @map("range_from")
+  rangeTo        DateTime? @map("range_to")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  revokedAt      DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_activity_shares_user")
+  @@index([shareToken], map: "idx_user_activity_shares_token")
+  @@map("user_activity_shares")
+}
+
+// ============================================================
+// ENTITLEMENT CONFIG / AUTO RESPONSE LOG
+// ============================================================
+
+model EntitlementConfig {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  featureKey String   @map("feature_key")
+  tier       String
+  enabled    Boolean  @default(false)
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  @@unique([featureKey, tier], map: "ux_entitlement_config_feature_tier")
+  @@map("entitlement_config")
+}
+
+model AutoResponseLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  recipient String
+  sender    String
+  dedupeKey String   @map("dedupe_key")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([recipient, sender, dedupeKey], map: "ux_auto_response_log_recipient_sender_key")
+  @@index([expiresAt], map: "idx_auto_response_log_expires")
+  @@map("auto_response_log")
+}
