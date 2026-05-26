@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/next/"
+title = "AccessiBooks (Next)"
+version = "1.0.0"
+id = "artifacts/accessibooks-next"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/next/" ]
+localPort = 25255
+
+[services.development]
+run = "pnpm --filter @workspace/accessibooks-next run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/accessibooks-next", "run", "build" ]
+publicDir = "artifacts/accessibooks-next/dist/public"
+serve = "static"
+
+[services.env]
+PORT = "25255"
+BASE_PATH = "/next/"

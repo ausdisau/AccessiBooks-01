@@ -1,0 +1,1640 @@
+/* Inter, Fraunces, Atkinson Hyperlegible — self-hosted (mirrored from Google
+   Fonts) so core typography and the Atkinson accessibility preset keep working
+   regardless of CDN availability, MIME-type changes, regional blocking, or
+   privacy/cookie concerns. Files live under src/assets/fonts/{inter,fraunces,
+   atkinson-hyperlegible}/ and are bundled + hashed by Vite. */
+/* latin-ext */
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/atkinson-hyperlegible/atkinson-hyperlegible-01.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/atkinson-hyperlegible/atkinson-hyperlegible-02.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/atkinson-hyperlegible/atkinson-hyperlegible-03.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/atkinson-hyperlegible/atkinson-hyperlegible-04.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-01.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-02.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-03.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-01.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-02.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-03.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-01.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-02.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-03.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-01.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-02.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url(./assets/fonts/fraunces/fraunces-03.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-01.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-02.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-03.woff2) format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-04.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-05.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-06.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-07.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-01.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-02.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-03.woff2) format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-04.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-05.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-06.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-07.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-01.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-02.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-03.woff2) format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-04.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-05.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-06.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-07.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-01.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-02.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-03.woff2) format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-04.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-05.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-06.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(./assets/fonts/inter/inter-07.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* OpenDyslexic — self-hosted so Dyslexia Mode keeps working regardless of CDN
+   availability or MIME-type changes. Files live under src/assets/fonts/opendyslexic/
+   and are bundled + hashed by Vite. */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Italic.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Italic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('./assets/fonts/opendyslexic/OpenDyslexic-Bold-Italic.woff2') format('woff2'),
+       url('./assets/fonts/opendyslexic/OpenDyslexic-Bold-Italic.woff') format('woff');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(210, 40%, 98%);
+  --foreground: hsl(222.2, 84%, 4.9%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(222.2, 84%, 4.9%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(222.2, 84%, 4.9%);
+  --primary: hsl(18, 95%, 52%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(210, 40%, 94%);
+  --secondary-foreground: hsl(222.2, 84%, 4.9%);
+  --muted: hsl(210, 40%, 94%);
+  --muted-foreground: hsl(215.4, 16.3%, 44%);
+  --accent: hsl(18, 95%, 52%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(214.3, 31.8%, 88%);
+  --input: hsl(214.3, 31.8%, 88%);
+  --ring: hsl(18, 95%, 52%);
+  --radius: 0.5rem;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-serif: 'Fraunces', ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+
+  /* Sidebar tokens — light mode uses a dark navy sidebar (Spotify-style always-dark nav) */
+  --sidebar-background: hsl(214, 64%, 14%);
+  --sidebar-foreground: hsl(36, 30%, 88%);
+  --sidebar-primary: hsl(18, 95%, 60%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(214, 50%, 22%);
+  --sidebar-accent-foreground: hsl(36, 30%, 95%);
+  --sidebar-border: hsl(214, 40%, 20%);
+  --sidebar-ring: hsl(18, 95%, 60%);
+
+  /* AccessiBooks brand foundation. These add a warmer cream/navy/orange
+     palette and a serif display family for marketing surfaces (landing,
+     pricing, etc). They live alongside the existing semantic tokens —
+     existing components keep using --background/--primary as before. */
+  --brand-cream: hsl(36, 56%, 95%);
+  --brand-cream-deep: hsl(34, 46%, 90%);
+  --brand-ink: hsl(214, 64%, 14%);
+  --brand-ink-soft: hsl(214, 30%, 30%);
+  --brand-navy: hsl(214, 64%, 22%);
+  --brand-navy-strong: hsl(214, 70%, 16%);
+  --brand-orange: hsl(18, 100%, 58%);
+  --brand-orange-deep: hsl(14, 88%, 48%);
+  --brand-muted: hsl(34, 25%, 70%);
+  --brand-line: hsl(34, 22%, 80%);
+}
+
+.dark .brand-surface,
+.brand-surface.dark {
+  --brand-cream: hsl(0, 0%, 9%);
+  --brand-cream-deep: hsl(0, 0%, 12%);
+  --brand-ink: hsl(36, 20%, 92%);
+  --brand-ink-soft: hsl(36, 10%, 72%);
+  --brand-navy: hsl(18, 95%, 65%);
+  --brand-navy-strong: hsl(18, 95%, 75%);
+  --brand-orange: hsl(18, 100%, 62%);
+  --brand-orange-deep: hsl(14, 95%, 55%);
+  --brand-muted: hsl(0, 0%, 45%);
+  --brand-line: hsl(0, 0%, 20%);
+}
+
+.high-contrast .brand-surface,
+.brand-surface.high-contrast {
+  --brand-cream: hsl(0, 0%, 100%);
+  --brand-cream-deep: hsl(0, 0%, 100%);
+  --brand-ink: hsl(0, 0%, 0%);
+  --brand-ink-soft: hsl(0, 0%, 0%);
+  --brand-navy: hsl(0, 0%, 0%);
+  --brand-navy-strong: hsl(0, 0%, 0%);
+  --brand-orange: hsl(0, 0%, 0%);
+  --brand-orange-deep: hsl(0, 0%, 0%);
+  --brand-muted: hsl(0, 0%, 20%);
+  --brand-line: hsl(0, 0%, 0%);
+}
+
+.brand-surface {
+  background-color: var(--brand-cream);
+  color: var(--brand-ink);
+  font-family: var(--font-sans);
+}
+
+.brand-surface .brand-display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.015em;
+  font-feature-settings: "ss01", "ss02";
+}
+
+/* ============================================================
+   Dark mode — Spotify-grade near-black palette.
+   Background is #181818-ish (9% L), not the old blue-tinted navy.
+   Surfaces have a clear 3-step hierarchy:
+     bg  → hsl(0,0%,9%)   — page canvas
+     card → hsl(0,0%,12%) — raised surfaces / cards
+     muted → hsl(0,0%,18%) — hover states, inputs, secondary surfaces
+   The brand orange hsl(18,95%,58%) replaces Spotify green as the accent.
+   ============================================================ */
+.dark {
+  --background: hsl(0, 0%, 9%);
+  --foreground: hsl(0, 0%, 95%);
+  --card: hsl(0, 0%, 13%);
+  --card-foreground: hsl(0, 0%, 95%);
+  --popover: hsl(0, 0%, 13%);
+  --popover-foreground: hsl(0, 0%, 95%);
+  --primary: hsl(18, 95%, 58%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(0, 0%, 19%);
+  --secondary-foreground: hsl(0, 0%, 90%);
+  --muted: hsl(0, 0%, 19%);
+  --muted-foreground: hsl(0, 0%, 62%);
+  --accent: hsl(18, 95%, 58%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 72%, 51%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(0, 0%, 20%);
+  --input: hsl(0, 0%, 20%);
+  --ring: hsl(18, 95%, 58%);
+
+  /* Sidebar is slightly darker than the page canvas in dark mode */
+  --sidebar-background: hsl(0, 0%, 6%);
+  --sidebar-foreground: hsl(0, 0%, 82%);
+  --sidebar-primary: hsl(18, 95%, 58%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(0, 0%, 16%);
+  --sidebar-accent-foreground: hsl(0, 0%, 92%);
+  --sidebar-border: hsl(0, 0%, 14%);
+  --sidebar-ring: hsl(18, 95%, 58%);
+}
+
+.high-contrast {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(0, 0%, 0%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(0, 0%, 0%);
+  --primary: hsl(0, 0%, 0%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(0, 0%, 90%);
+  --secondary-foreground: hsl(0, 0%, 0%);
+  --muted: hsl(0, 0%, 95%);
+  --muted-foreground: hsl(0, 0%, 20%);
+  --accent: hsl(0, 0%, 0%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 0%, 0%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(0, 0%, 0%);
+  --input: hsl(0, 0%, 95%);
+  --ring: hsl(0, 0%, 0%);
+}
+
+.dyslexia-font * {
+  font-family: 'OpenDyslexic', 'Inter', sans-serif !important;
+}
+
+.focus-visible:focus {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* Enhanced focus indicators for accessibility - WCAG 2.4.7 */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible,
+  [role="button"]:focus-visible,
+  [role="tab"]:focus-visible,
+  [role="menuitem"]:focus-visible,
+  [role="link"]:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Ensure sufficient color contrast */
+  .high-contrast button,
+  .high-contrast input,
+  .high-contrast select {
+    border: 2px solid var(--foreground) !important;
+  }
+
+  /* Improve readability for dyslexic users */
+  .dyslexia-font {
+    letter-spacing: 0.05em;
+    word-spacing: 0.1em;
+    line-height: 1.6;
+  }
+
+  /* Animation preferences */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* High contrast mode improvements */
+  .high-contrast img {
+    filter: contrast(120%);
+  }
+
+  /* Enhanced tab styling */
+  .border-b-3 {
+    border-bottom-width: 3px;
+  }
+
+  /* Professional styling enhancements */
+  .bg-card\/50 {
+    background-color: hsl(var(--card) / 0.5);
+  }
+}
+
+/* ============================================================
+   Task #100 — App shell chrome.
+   - .app-shell-bg: subtle radial wash on the main content area so
+     dark mode doesn't read as a flat black slab. Inspired by
+     Spotify's top-of-page tint. Light mode gets a faint cream wash
+     so the warm Audible feel carries through.
+   - .brand-glow: token-based ring/glow used by the play button
+     and other primary call-to-action surfaces, replacing hard-coded
+     orange RGB shadows.
+   - .section-rule: thin underline used by section headers on
+     discovery pages.
+   ============================================================ */
+.app-shell-bg {
+  background:
+    radial-gradient(
+      120% 60% at 50% -10%,
+      hsl(var(--primary) / 0.08) 0%,
+      hsl(var(--primary) / 0) 60%
+    ),
+    hsl(var(--background));
+}
+
+.dark .app-shell-bg {
+  background:
+    radial-gradient(
+      120% 70% at 50% -10%,
+      hsl(var(--primary) / 0.10) 0%,
+      hsl(var(--primary) / 0) 55%
+    ),
+    hsl(var(--background));
+}
+
+/* High-contrast mode wins over the gradient in any combination so
+   the page background stays the token-driven solid surface. */
+.high-contrast .app-shell-bg,
+.high-contrast.dark .app-shell-bg,
+.dark.high-contrast .app-shell-bg {
+  background: hsl(var(--background)) !important;
+}
+
+.brand-glow {
+  box-shadow:
+    0 1px 2px hsl(0 0% 0% / 0.25),
+    0 8px 24px -8px hsl(var(--primary) / 0.55);
+}
+
+.brand-glow:hover {
+  box-shadow:
+    0 1px 2px hsl(0 0% 0% / 0.25),
+    0 10px 28px -6px hsl(var(--primary) / 0.7);
+}
+
+.section-rule {
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+/* ============================================================
+   Task #100 — Page-level chrome.
+   - .page-hero: token-driven gradient banner used at the top of
+     signed-in pages (library, player, account, monetization,
+     onboarding, operator dashboards) so every surface inherits a
+     consistent Audible/Spotify intro band.
+   - .page-title: editorial heading style (serif, tight tracking)
+     used by page-hero.
+   - .operator-shell: denser, calmer treatment for admin / dashboard
+     surfaces — no decorative gradient, just a token-driven solid
+     background and tighter borders.
+   ============================================================ */
+.page-hero {
+  position: relative;
+  isolation: isolate;
+  border-radius: 1rem;
+  padding: 2rem 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background:
+    radial-gradient(
+      80% 100% at 0% 0%,
+      hsl(var(--primary) / 0.18) 0%,
+      hsl(var(--primary) / 0) 60%
+    ),
+    linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.6) 100%);
+  overflow: hidden;
+}
+
+.page-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      60% 80% at 100% 100%,
+      hsl(var(--accent) / 0.18) 0%,
+      hsl(var(--accent) / 0) 60%
+    );
+  pointer-events: none;
+  z-index: -1;
+}
+
+.page-title {
+  font-family: var(--font-serif, ui-serif, Georgia, serif);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.operator-shell {
+  background: hsl(var(--background));
+}
+
+.operator-shell .page-hero {
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--muted) / 0.4) 100%);
+  border-color: hsl(var(--border));
+  padding: 1.5rem;
+}
+
+/* Honor high-contrast across new chrome */
+.high-contrast .page-hero,
+.high-contrast.dark .page-hero,
+.dark.high-contrast .page-hero {
+  background: hsl(var(--card)) !important;
+  border-color: hsl(var(--foreground)) !important;
+}
+
+/* Adaptive Accessibility Styles */
+:root {
+  --a11y-font-size: 100%;
+  --a11y-letter-spacing: 0em;
+  --a11y-line-height: 100%;
+  --a11y-saturation: 100%;
+  --a11y-word-spacing: 0em;
+}
+
+/* Apply adaptive font sizing — clamped to prevent oversized content */
+html {
+  font-size: clamp(80%, var(--a11y-font-size), 150%);
+}
+
+/* Apply adaptive letter spacing */
+body {
+  letter-spacing: var(--a11y-letter-spacing);
+  line-height: calc(1.5 * var(--a11y-line-height) / 100);
+  word-spacing: var(--a11y-word-spacing);
+}
+
+/* Invert Colors Mode
+   Note: the root-level filter (invert) is now composed inline by applySettings()
+   together with saturation and CVD filters so they all coexist in one filter string.
+   The class is still toggled so these child-counter-invert rules keep working. */
+.invert-colors img,
+.invert-colors video,
+.invert-colors svg {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Saturation + color vision deficiency filters are applied inline via JS
+   in the accessibility widget's applySettings() to allow combining them */
+
+/* Highlight Links Mode */
+.highlight-links a,
+.highlight-links button {
+  text-decoration: underline !important;
+  text-underline-offset: 3px;
+  outline: 2px dashed currentColor;
+  outline-offset: 2px;
+}
+
+/* Enhanced Focus Mode */
+.highlight-focus *:focus,
+.highlight-focus *:focus-visible {
+  outline: 4px solid hsl(210, 100%, 50%) !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 8px hsla(210, 100%, 50%, 0.2) !important;
+}
+
+/* Pause Animations Mode */
+.pause-animations *,
+.pause-animations *::before,
+.pause-animations *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Larger Cursor Mode */
+.larger-cursor,
+.larger-cursor * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' stroke='%23fff' stroke-width='1' d='M5.5 3.21V20.8l4.59-4.59 3.26 7.28 2.5-1.12-3.26-7.28H18.5z'/%3E%3C/svg%3E") 0 0, auto !important;
+}
+
+.larger-cursor a,
+.larger-cursor button,
+.larger-cursor [role="button"],
+.larger-cursor input[type="submit"],
+.larger-cursor input[type="button"] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' stroke='%23fff' stroke-width='1' d='M13 19c0 .34.04.67.09 1H4a2 2 0 0 1-2-2V6c0-1.1.9-2 2-2h16a2 2 0 0 1 2 2v8.09c-.33-.05-.66-.09-1-.09a6 6 0 0 0-6 6zm7-4v3h-3v2h3v3h2v-3h3v-2h-3v-3h-2z'/%3E%3C/svg%3E") 0 0, pointer !important;
+}
+
+/* Skip to content link - enhanced */
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: 0 0 0.5rem 0.5rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.skip-to-content:focus {
+  top: 0;
+  outline: 3px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Minimum touch target sizes - WCAG 2.5.8 */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a,
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  [role="tab"],
+  [role="menuitem"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Readable line lengths - WCAG 1.4.8 */
+.readable-width {
+  max-width: 75ch;
+}
+
+p, li, blockquote, .prose {
+  max-width: 75ch;
+}
+
+/* Screen reader live announcements */
+.sr-live-region {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Carousel keyboard navigation indicator */
+.carousel-item:focus-visible {
+  @apply ring-2 ring-ring ring-offset-2 ring-offset-background rounded-lg;
+}
+
+/* Ensure badges have text + icon, not just color */
+.high-contrast .badge-status {
+  border: 2px solid currentColor !important;
+  font-weight: 700;
+}
+
+/* Respect prefers-reduced-motion - WCAG 2.3.3 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-pulse, .animate-spin, .animate-bounce {
+    animation: none !important;
+  }
+}
+
+/* High Contrast Dark Combination */
+@keyframes premium-border-glow {
+  0%, 100% {
+    border-color: hsl(38, 92%, 50%);
+    box-shadow: 0 0 8px hsla(38, 92%, 50%, 0.3);
+  }
+  50% {
+    border-color: hsl(45, 93%, 58%);
+    box-shadow: 0 0 16px hsla(45, 93%, 58%, 0.4);
+  }
+}
+
+.premium-card-animated {
+  animation: premium-border-glow 3s ease-in-out infinite;
+  border-width: 2px;
+}
+
+@keyframes premium-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.premium-shimmer-bg {
+  background: linear-gradient(
+    110deg,
+    hsl(38, 92%, 50%) 0%,
+    hsl(45, 100%, 65%) 25%,
+    hsl(38, 92%, 50%) 50%,
+    hsl(30, 90%, 45%) 75%,
+    hsl(38, 92%, 50%) 100%
+  );
+  background-size: 200% 100%;
+  animation: premium-shimmer 4s linear infinite;
+}
+
+.premium-hero-gradient {
+  background: linear-gradient(135deg, hsl(38, 92%, 50%) 0%, hsl(25, 95%, 45%) 50%, hsl(15, 90%, 40%) 100%);
+}
+
+.dark .premium-hero-gradient {
+  background: linear-gradient(135deg, hsl(38, 80%, 35%) 0%, hsl(25, 85%, 30%) 50%, hsl(15, 80%, 25%) 100%);
+}
+
+/* ============================================================
+   Sensory Regulation Mode — single user-facing toggle that
+   dampens animation, hides decorative imagery/gradients, and
+   simplifies non-essential layout. Audio softening is handled
+   in the player via Web Audio (AudioContext.tsx). All rules
+   are scoped to .sensory-mode on <html>.
+   ============================================================ */
+
+.sensory-mode *,
+.sensory-mode *::before,
+.sensory-mode *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+.sensory-mode .animate-pulse,
+.sensory-mode .animate-spin,
+.sensory-mode .animate-bounce,
+.sensory-mode .premium-card-animated,
+.sensory-mode .premium-shimmer-bg {
+  animation: none !important;
+  background-image: none !important;
+}
+
+/* Flatten decorative gradients to a single calm tone */
+.sensory-mode .premium-hero-gradient,
+.sensory-mode .premium-shimmer-bg,
+.sensory-mode [data-decorative-gradient="true"] {
+  background-image: none !important;
+  background: hsl(var(--muted)) !important;
+}
+
+/* Hide purely decorative imagery */
+.sensory-mode [aria-hidden="true"] img,
+.sensory-mode .decorative-image,
+.sensory-mode .hero-banner-image,
+.sensory-mode .book-cover-decoration,
+.sensory-mode [data-decorative="true"] {
+  display: none !important;
+}
+
+/* Disable parallax / sticky decorative effects */
+.sensory-mode [data-parallax="true"],
+.sensory-mode .parallax {
+  transform: none !important;
+  position: static !important;
+  background-attachment: scroll !important;
+}
+
+/* ============================================================
+   Cognitive Focus Mode — hides distracting UI elements so the
+   user can concentrate on the current book and audio player.
+   All rules are scoped to .focus-mode on <html>.
+   Gentle fade-out transition is applied on enter (class added),
+   instant restore on exit to avoid flicker.
+   ============================================================ */
+
+/* ── Elements that will gently fade on Focus Mode entry ──────────────── */
+aside,
+header[role="banner"],
+nav[aria-label="Breadcrumb"],
+nav[aria-label="Main navigation"],
+footer,
+[data-testid="book-carousel"],
+[data-testid="landing-carousel"],
+[data-testid="for-you-section"],
+[data-testid="genre-cards"],
+[data-testid="gamification-dashboard"],
+[data-testid="social-feed"],
+[data-testid="streaming-queue"],
+[data-testid="ad-banner"],
+[data-testid="ad-overlay"],
+[data-testid="book-reviews"],
+[data-testid="bookmark-list"] {
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+/* ── Focus Mode: hide distracting chrome ───────────────────────────── */
+
+/* Sidebar and top nav */
+.focus-mode aside,
+.focus-mode [data-testid="sidebar"],
+.focus-mode nav[aria-label="Main navigation"],
+.focus-mode header[role="banner"],
+.focus-mode nav[aria-label="Breadcrumb"],
+.focus-mode footer {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: fixed !important;
+}
+
+/* Carousels and discovery sections */
+.focus-mode [data-testid="book-carousel"],
+.focus-mode [data-testid="landing-carousel"],
+.focus-mode [data-testid="for-you-section"],
+.focus-mode [data-testid="genre-cards"],
+.focus-mode [data-testid="section-trending"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Gamification dashboard */
+.focus-mode [data-testid="panel-stats"],
+.focus-mode [data-testid="gamification-dashboard"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Social feed */
+.focus-mode [data-testid="social-feed"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Streaming queue */
+.focus-mode [data-testid="panel-queue"],
+.focus-mode [data-testid="streaming-queue"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Ads */
+.focus-mode [data-testid="ad-overlay"],
+.focus-mode [data-testid="ad-banner"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Player extra chrome */
+.focus-mode [data-testid="book-reviews"],
+.focus-mode [data-testid="bookmark-list"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* Hide nav buttons that wrap Back + Author + Share on player page */
+.focus-mode [data-testid="button-back-to-library"],
+.focus-mode [data-testid="button-view-author"] {
+  display: none !important;
+}
+
+.focus-mode .flex.items-center.justify-between:has([data-testid="button-back-to-library"]) {
+  display: none !important;
+}
+
+/* Make the main content area fill the viewport */
+.focus-mode main,
+.focus-mode [role="main"] {
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+
+/* Center the player / book cover within the full viewport */
+.focus-mode #main-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem !important;
+}
+
+/* Keep the audio player fully visible and centred */
+.focus-mode [data-testid="audio-player"] {
+  width: 100% !important;
+  max-width: 56rem !important;
+  margin: 0 auto !important;
+}
+
+/* Accessibility widget — always on top, never hidden */
+.focus-mode [data-testid="accessibility-widget-toggle"],
+.focus-mode [aria-label="Open accessibility menu"] {
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Respect prefers-reduced-motion for focus-mode transitions */
+@media (prefers-reduced-motion: reduce) {
+  aside,
+  header[role="banner"],
+  nav[aria-label="Breadcrumb"],
+  nav[aria-label="Main navigation"],
+  footer,
+  [data-testid="book-carousel"],
+  [data-testid="landing-carousel"],
+  [data-testid="for-you-section"],
+  [data-testid="genre-cards"],
+  [data-testid="gamification-dashboard"],
+  [data-testid="social-feed"],
+  [data-testid="streaming-queue"],
+  [data-testid="ad-banner"],
+  [data-testid="ad-overlay"],
+  [data-testid="book-reviews"],
+  [data-testid="bookmark-list"] {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   Flipbook Focus Mode — scoped to the flipbook reader root via
+   `.flipbook-focus-mode`. Quiets surrounding chrome (toolbar,
+   navigator, header) without removing them, narrows the reading
+   column, and gives the open page a soft glow so the eye lands
+   on the text. The toggle button itself stays at full opacity
+   so it never feels lost.
+   ============================================================ */
+.flipbook-focus-mode .flipbook-chrome {
+  opacity: 0.45;
+  transition: opacity 0.25s ease;
+}
+.flipbook-focus-mode .flipbook-chrome:hover,
+.flipbook-focus-mode .flipbook-chrome:focus-within {
+  opacity: 1;
+}
+.flipbook-focus-mode [data-testid="flipbook-btn-focus-mode"] {
+  opacity: 1 !important;
+}
+.flipbook-focus-mode .flipbook-reading-area {
+  padding: 1rem 0.5rem;
+}
+.flipbook-focus-mode .flipbook-reading-column {
+  max-width: 42rem;
+  margin: 0 auto;
+  box-shadow: 0 0 0 1px var(--fb-border), 0 8px 32px -8px rgba(0, 0, 0, 0.18);
+  border-radius: 0.75rem;
+  transition: box-shadow 0.25s ease, max-width 0.25s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flipbook-focus-mode .flipbook-chrome,
+  .flipbook-focus-mode .flipbook-reading-column {
+    transition: none;
+  }
+}
+
+.dark.high-contrast {
+  --background: hsl(0, 0%, 0%);
+  --foreground: hsl(0, 0%, 100%);
+  --card: hsl(0, 0%, 5%);
+  --card-foreground: hsl(0, 0%, 100%);
+  --primary: hsl(60, 100%, 50%);
+  --primary-foreground: hsl(0, 0%, 0%);
+  --secondary: hsl(0, 0%, 15%);
+  --secondary-foreground: hsl(0, 0%, 100%);
+  --muted: hsl(0, 0%, 10%);
+  --muted-foreground: hsl(0, 0%, 80%);
+  --accent: hsl(60, 100%, 50%);
+  --accent-foreground: hsl(0, 0%, 0%);
+  --border: hsl(0, 0%, 100%);
+}
+
+.switch-access-focus {
+  outline: 3px solid hsl(var(--primary)) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 6px hsl(var(--primary) / 0.35) !important;
+  animation: switch-access-pulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes switch-access-pulse {
+  from { box-shadow: 0 0 0 4px hsl(var(--primary) / 0.25); }
+  to   { box-shadow: 0 0 0 8px hsl(var(--primary) / 0.45); }
+}
+
+/* Reduce Distraction Mode — hides decorative images, reduces visual noise */
+.reduce-distraction [aria-hidden="true"] img,
+.reduce-distraction .decorative-image,
+.reduce-distraction .book-cover-decoration,
+.reduce-distraction .hero-banner-image {
+  visibility: hidden !important;
+}
+.reduce-distraction .animated-element,
+.reduce-distraction [data-animated="true"] {
+  animation: none !important;
+  transition: none !important;
+}
+.reduce-distraction .sidebar-section-icon-decorative,
+.reduce-distraction .badge-icon-decorative {
+  display: none !important;
+}
+
+/* Low-Bandwidth Mode (Task #66) — hides bandwidth-heavy decoration: video,
+   background images, large hero imagery, and animated GIFs. Audio bitrate
+   clamping is enforced in AudioContext, ad-video filtering is enforced
+   server-side in adMediation. */
+.low-bandwidth-mode video,
+.low-bandwidth-mode .hero-banner-image,
+.low-bandwidth-mode .background-video,
+.low-bandwidth-mode [data-bandwidth="heavy"] {
+  display: none !important;
+}
+.low-bandwidth-mode [style*="background-image"] {
+  background-image: none !important;
+}
+
+/* Text-Only Mode (Task #66) — strips visual chrome from the ebook reader. */
+.text-only-mode .book-cover-decoration,
+.text-only-mode .book-cover-large,
+.text-only-mode .book-illustration,
+.text-only-mode video {
+  display: none !important;
+}
+
+/* Flipbook reader page-flip animation (Task #79). */
+@keyframes flipbook-flip-next {
+  0%   { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+  50%  { transform: perspective(1400px) rotateY(-12deg); opacity: 0.85; }
+  100% { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+}
+@keyframes flipbook-flip-prev {
+  0%   { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+  50%  { transform: perspective(1400px) rotateY(12deg);  opacity: 0.85; }
+  100% { transform: perspective(1400px) rotateY(0deg);   opacity: 1; }
+}
+.flipbook-page-flip-next {
+  animation: flipbook-flip-next 360ms ease-in-out;
+  will-change: transform, opacity;
+}
+.flipbook-page-flip-prev {
+  animation: flipbook-flip-prev 360ms ease-in-out;
+  will-change: transform, opacity;
+}
+
+/* Reduced-motion fallback: a minimal ~200ms cross-fade so the page
+   change still has a calm, perceptible cue. Marked !important so it is
+   not flattened by the project-wide reduced-motion rule. */
+@keyframes flipbook-page-fade {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+.flipbook-page-fade {
+  animation: flipbook-page-fade 200ms ease-in-out !important;
+  will-change: opacity;
+}
+
+/* Flipbook reader theme tokens (Task #80).
+   Each .flipbook-theme-* class is applied on the FlipbookReader root and
+   defines the --fb-* CSS variables that all flipbook surfaces consume. */
+.flipbook-theme-light {
+  --fb-bg: hsl(0, 0%, 98%);
+  --fb-fg: hsl(220, 14%, 12%);
+  --fb-surface: hsl(0, 0%, 100%);
+  --fb-page-bg: hsl(0, 0%, 100%);
+  --fb-page-fg: hsl(220, 14%, 12%);
+  --fb-border: hsl(220, 14%, 88%);
+  --fb-muted: hsl(220, 9%, 46%);
+  --fb-accent: hsl(221, 83%, 53%);
+  --fb-on-accent: hsl(0, 0%, 100%);
+  --fb-focus: hsl(221, 83%, 53%);
+}
+.flipbook-theme-sepia {
+  --fb-bg: hsl(38, 50%, 92%);
+  --fb-fg: hsl(28, 35%, 18%);
+  --fb-surface: hsl(38, 55%, 95%);
+  --fb-page-bg: hsl(38, 60%, 96%);
+  --fb-page-fg: hsl(28, 40%, 16%);
+  --fb-border: hsl(34, 30%, 75%);
+  --fb-muted: hsl(28, 18%, 38%);
+  --fb-accent: hsl(20, 60%, 35%);
+  --fb-on-accent: hsl(38, 60%, 96%);
+  --fb-focus: hsl(20, 80%, 35%);
+}
+.flipbook-theme-dark {
+  --fb-bg: hsl(220, 13%, 8%);
+  --fb-fg: hsl(0, 0%, 92%);
+  --fb-surface: hsl(220, 13%, 12%);
+  --fb-page-bg: hsl(220, 13%, 14%);
+  --fb-page-fg: hsl(0, 0%, 92%);
+  --fb-border: hsl(220, 13%, 22%);
+  --fb-muted: hsl(220, 9%, 65%);
+  --fb-accent: hsl(25, 95%, 58%);
+  --fb-on-accent: hsl(220, 13%, 8%);
+  --fb-focus: hsl(25, 95%, 58%);
+}
+.flipbook-theme-high-contrast {
+  --fb-bg: #000000;
+  --fb-fg: #ffffff;
+  --fb-surface: #000000;
+  --fb-page-bg: #000000;
+  --fb-page-fg: #ffffff;
+  --fb-border: #ffffff;
+  --fb-muted: #ffffff;
+  --fb-accent: #ffff00;
+  --fb-on-accent: #000000;
+  --fb-focus: #ffff00;
+}
+.flipbook-theme-high-contrast :focus-visible {
+  outline: 3px solid #ffff00 !important;
+  outline-offset: 2px;
+}
+
+/* Search match highlighting (Task #81). The mark element inherits the page
+   foreground colour so contrast remains compliant in every theme; we only
+   change the background and add a thin underline as a non-colour cue. */
+.flipbook-theme-light .flipbook-search-match,
+.flipbook-theme-sepia .flipbook-search-match {
+  background-color: hsl(48, 100%, 70%);
+  color: hsl(28, 50%, 12%);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+.flipbook-theme-dark .flipbook-search-match {
+  background-color: hsl(48, 95%, 50%);
+  color: hsl(220, 13%, 8%);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+.flipbook-theme-high-contrast .flipbook-search-match {
+  background-color: #ffff00;
+  color: #000000;
+  outline: 2px solid #ffff00;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+/* Remap shadcn semantic tokens within the flipbook reader scope so that
+   Button / Input / Slider / etc. inherit the active flipbook theme. */
+.flipbook-theme-light,
+.flipbook-theme-sepia,
+.flipbook-theme-dark,
+.flipbook-theme-high-contrast {
+  --background: var(--fb-page-bg);
+  --foreground: var(--fb-fg);
+  --card: var(--fb-surface);
+  --card-foreground: var(--fb-fg);
+  --popover: var(--fb-surface);
+  --popover-foreground: var(--fb-fg);
+  --primary: var(--fb-accent);
+  --primary-foreground: var(--fb-on-accent);
+  --secondary: var(--fb-surface);
+  --secondary-foreground: var(--fb-fg);
+  --muted: var(--fb-surface);
+  --muted-foreground: var(--fb-muted);
+  --accent: var(--fb-accent);
+  --accent-foreground: var(--fb-on-accent);
+  --border: var(--fb-border);
+  --input: var(--fb-border);
+  --ring: var(--fb-focus);
+}
+
+
+/* ============================================================
+   Scrollbar hiding utility (used in carousels, section rows)
+   ============================================================ */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============================================================
+   Flipbook Reader — Stage 2: themes scoped to .flipbook-reader-root
+   These tokens drive the reading surface, toolbar, sidebar, and
+   page footer/border. They are independent of the global
+   light/dark/high-contrast tokens so the reader can present its
+   own theme regardless of the surrounding app shell.
+   ============================================================ */
+
+.flipbook-reader-root {
+  --reader-bg: hsl(0, 0%, 98%);
+  --reader-surface: hsl(0, 0%, 100%);
+  --reader-surface-muted: hsl(210, 20%, 96%);
+  --reader-text: hsl(222, 30%, 12%);
+  --reader-text-muted: hsl(222, 14%, 40%);
+  --reader-border: hsl(214, 24%, 86%);
+  --reader-accent: hsl(18, 95%, 52%);
+  --reader-accent-text: hsl(0, 0%, 100%);
+  --reader-focus: hsl(18, 95%, 52%);
+
+  /* Typography defaults (overridden by useReaderTheme inline style) */
+  --reader-font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --reader-font-size: 18px;
+  --reader-line-height: 1.6;
+  --reader-letter-spacing: 0em;
+  --reader-word-spacing: 0em;
+
+  background-color: var(--reader-bg);
+  color: var(--reader-text);
+}
+
+.flipbook-reader-root[data-reader-theme="sepia"] {
+  --reader-bg: hsl(38, 45%, 92%);
+  --reader-surface: hsl(36, 50%, 95%);
+  --reader-surface-muted: hsl(36, 38%, 88%);
+  --reader-text: hsl(28, 35%, 18%);
+  --reader-text-muted: hsl(28, 22%, 36%);
+  --reader-border: hsl(34, 30%, 72%);
+  --reader-accent: hsl(18, 80%, 42%);
+  --reader-accent-text: hsl(36, 50%, 97%);
+  --reader-focus: hsl(18, 80%, 42%);
+}
+
+.flipbook-reader-root[data-reader-theme="dark"] {
+  --reader-bg: hsl(0, 0%, 9%);
+  --reader-surface: hsl(0, 0%, 13%);
+  --reader-surface-muted: hsl(0, 0%, 17%);
+  --reader-text: hsl(0, 0%, 94%);
+  --reader-text-muted: hsl(0, 0%, 66%);
+  --reader-border: hsl(0, 0%, 24%);
+  --reader-accent: hsl(18, 95%, 60%);
+  --reader-accent-text: hsl(0, 0%, 100%);
+  --reader-focus: hsl(18, 95%, 60%);
+}
+
+.flipbook-reader-root[data-reader-theme="high-contrast"] {
+  --reader-bg: hsl(0, 0%, 100%);
+  --reader-surface: hsl(0, 0%, 100%);
+  --reader-surface-muted: hsl(0, 0%, 92%);
+  --reader-text: hsl(0, 0%, 0%);
+  --reader-text-muted: hsl(0, 0%, 0%);
+  --reader-border: hsl(0, 0%, 0%);
+  --reader-accent: hsl(0, 0%, 0%);
+  --reader-accent-text: hsl(0, 0%, 100%);
+  --reader-focus: hsl(220, 100%, 40%);
+}
+
+/* Apply tokens to the reader's chrome (toolbar, sidebar, page nav,
+   headers) by overriding the shadcn semantic tokens within scope. */
+.flipbook-reader-root,
+.flipbook-reader-root .bg-card,
+.flipbook-reader-root [data-testid="flipbook-settings-panel"],
+.flipbook-reader-root [data-testid="flipbook-toolbar"] {
+  --background: var(--reader-bg);
+  --foreground: var(--reader-text);
+  --card: var(--reader-surface);
+  --card-foreground: var(--reader-text);
+  --popover: var(--reader-surface);
+  --popover-foreground: var(--reader-text);
+  --muted: var(--reader-surface-muted);
+  --muted-foreground: var(--reader-text-muted);
+  --border: var(--reader-border);
+  --input: var(--reader-border);
+  --ring: var(--reader-focus);
+  --primary: var(--reader-accent);
+  --primary-foreground: var(--reader-accent-text);
+  --accent: var(--reader-accent);
+  --accent-foreground: var(--reader-accent-text);
+}
+
+/* The reading page surface itself — uses tokens directly so the page
+   stays themed even if the parent app toggles dark mode. */
+.flipbook-reading-surface {
+  background-color: var(--reader-surface);
+  color: var(--reader-text);
+  border-color: var(--reader-border);
+}
+
+.flipbook-reading-text {
+  color: var(--reader-text);
+}
+
+.flipbook-reading-footer {
+  color: var(--reader-text-muted);
+  border-color: var(--reader-border);
+}
+
+/* Maintain a clearly visible focus ring on every theme — required
+   for keyboard navigation to remain obvious in High Contrast / Dark. */
+.flipbook-reader-root *:focus-visible {
+  outline: 3px solid var(--reader-focus) !important;
+  outline-offset: 2px !important;
+}
+
+.flipbook-reader-root[data-reader-theme="high-contrast"] *:focus-visible {
+  outline-width: 4px !important;
+}
+
+/* Compact control density — applied via data-reader-density on the
+   reader root. Tightens toolbar/page-navigator padding and shrinks the
+   settings sidebar so keyboard-focused users can see more at once. */
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-toolbar"] {
+  padding: 0.375rem 0.5rem;
+  gap: 0.25rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-toolbar"] button {
+  height: 2rem;
+  width: 2rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-navigator"] {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-navigator"] button {
+  height: 2rem;
+  min-width: 2rem;
+}
+
+.flipbook-reader-root[data-reader-density="compact"] [data-testid="flipbook-settings-panel"] {
+  width: 18rem;
+}
+
+/* Reduced motion (preset-driven) — short-circuits the page-flip
+   animation regardless of OS preference, so users who pick a
+   "reduced motion" preset get the calm fade. */
+.flipbook-reader-root[data-reader-motion="reduced"] .flipbook-page-flip-next,
+.flipbook-reader-root[data-reader-motion="reduced"] .flipbook-page-flip-prev {
+  animation: none !important;
+  transition: opacity 0.12s linear !important;
+}
