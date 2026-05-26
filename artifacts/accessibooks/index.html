@@ -15,7 +15,9 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AccessiBooks - Accessible Audiobooks for Everyone" />
     <meta name="twitter:description" content="Stream free audiobooks with advanced accessibility features including high contrast mode, dyslexia-friendly fonts, and full keyboard navigation." />
-    <!-- Theme picker fonts are self-hosted; see src/assets/fonts/_vendor/google-fonts.css -->
+    <!-- Theme picker fonts are self-hosted under src/assets/fonts/<family>/.
+         Always-on families (Inter/Fraunces/Atkinson) ship via index.css; the
+         rest are lazy-loaded by src/lib/themeFont.ts on theme switch. -->
   </head>
   <body>
     <div id="root"></div>
