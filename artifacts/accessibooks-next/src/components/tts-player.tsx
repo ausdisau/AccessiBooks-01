@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAudioContext } from "@/contexts/audio-context";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link } from "@/lib/wouter-compat";
 
 type OpenAIVoice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 type VoiceProvider = "openai" | "elevenlabs";

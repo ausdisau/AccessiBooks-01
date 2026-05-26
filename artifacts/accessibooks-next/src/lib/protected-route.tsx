@@ -1,7 +1,7 @@
 // Based on javascript_auth_all_persistance blueprint
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
-import { Redirect, Route } from "wouter";
+import { Redirect, Route } from "@/lib/wouter-compat";
 import { ReactNode } from "react";
 
 interface ProtectedRouteProps {
