@@ -1,0 +1,235 @@
+/* Self-hosted fonts mirrored from Google Fonts so core typography and the
+   Atkinson accessibility / Dyslexia Mode presets keep working regardless of
+   CDN availability, MIME-type changes, regional blocking, or privacy/cookie
+   concerns. Files live under public/fonts/ and are served as static assets. */
+
+/* Atkinson Hyperlegible */
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/atkinson-hyperlegible/atkinson-hyperlegible-02.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/atkinson-hyperlegible/atkinson-hyperlegible-04.woff2") format("woff2");
+}
+
+/* Fraunces — display serif used on marketing surfaces */
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/fraunces/fraunces-03.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/fraunces/fraunces-03.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/fraunces/fraunces-03.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/fraunces/fraunces-03.woff2") format("woff2");
+}
+
+/* Inter — primary sans-serif */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter/inter-07.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter/inter-07.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/inter/inter-07.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/inter/inter-07.woff2") format("woff2");
+}
+
+/* OpenDyslexic — used by Dyslexia Mode */
+@font-face {
+  font-family: "OpenDyslexic";
+  src:
+    url("/fonts/opendyslexic/OpenDyslexic-Regular.woff2") format("woff2"),
+    url("/fonts/opendyslexic/OpenDyslexic-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  src:
+    url("/fonts/opendyslexic/OpenDyslexic-Italic.woff2") format("woff2"),
+    url("/fonts/opendyslexic/OpenDyslexic-Italic.woff") format("woff");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  src:
+    url("/fonts/opendyslexic/OpenDyslexic-Bold.woff2") format("woff2"),
+    url("/fonts/opendyslexic/OpenDyslexic-Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  src:
+    url("/fonts/opendyslexic/OpenDyslexic-Bold-Italic.woff2") format("woff2"),
+    url("/fonts/opendyslexic/OpenDyslexic-Bold-Italic.woff") format("woff");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(210, 40%, 98%);
+  --foreground: hsl(222.2, 84%, 4.9%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(222.2, 84%, 4.9%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(222.2, 84%, 4.9%);
+  --primary: hsl(18, 95%, 52%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(210, 40%, 94%);
+  --secondary-foreground: hsl(222.2, 84%, 4.9%);
+  --muted: hsl(210, 40%, 94%);
+  --muted-foreground: hsl(215.4, 16.3%, 44%);
+  --accent: hsl(18, 95%, 52%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(214.3, 31.8%, 88%);
+  --input: hsl(214.3, 31.8%, 88%);
+  --ring: hsl(18, 95%, 52%);
+  --radius: 0.5rem;
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-serif:
+    "Fraunces", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+
+  --sidebar-background: hsl(214, 64%, 14%);
+  --sidebar-foreground: hsl(36, 30%, 88%);
+  --sidebar-primary: hsl(18, 95%, 60%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(214, 50%, 22%);
+  --sidebar-accent-foreground: hsl(36, 30%, 95%);
+  --sidebar-border: hsl(214, 40%, 20%);
+  --sidebar-ring: hsl(18, 95%, 60%);
+
+  --brand-cream: hsl(36, 56%, 95%);
+  --brand-cream-deep: hsl(34, 46%, 90%);
+  --brand-ink: hsl(214, 64%, 14%);
+  --brand-ink-soft: hsl(214, 30%, 30%);
+  --brand-navy: hsl(214, 64%, 22%);
+  --brand-navy-strong: hsl(214, 70%, 16%);
+  --brand-orange: hsl(18, 100%, 58%);
+  --brand-orange-deep: hsl(14, 88%, 48%);
+  --brand-muted: hsl(34, 25%, 70%);
+  --brand-line: hsl(34, 22%, 80%);
+}
+
+.dark {
+  --background: hsl(0, 0%, 9%);
+  --foreground: hsl(0, 0%, 95%);
+  --card: hsl(0, 0%, 13%);
+  --card-foreground: hsl(0, 0%, 95%);
+  --popover: hsl(0, 0%, 13%);
+  --popover-foreground: hsl(0, 0%, 95%);
+  --primary: hsl(18, 95%, 58%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(0, 0%, 19%);
+  --secondary-foreground: hsl(0, 0%, 90%);
+  --muted: hsl(0, 0%, 19%);
+  --muted-foreground: hsl(0, 0%, 62%);
+  --accent: hsl(18, 95%, 58%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 72%, 51%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(0, 0%, 20%);
+  --input: hsl(0, 0%, 20%);
+  --ring: hsl(18, 95%, 58%);
+
+  --sidebar-background: hsl(0, 0%, 6%);
+  --sidebar-foreground: hsl(0, 0%, 82%);
+  --sidebar-primary: hsl(18, 95%, 58%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(0, 0%, 16%);
+  --sidebar-accent-foreground: hsl(0, 0%, 92%);
+  --sidebar-border: hsl(0, 0%, 14%);
+  --sidebar-ring: hsl(18, 95%, 58%);
+}
+
+.high-contrast {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(0, 0%, 0%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(0, 0%, 0%);
+  --primary: hsl(0, 0%, 0%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(0, 0%, 90%);
+  --secondary-foreground: hsl(0, 0%, 0%);
+  --muted: hsl(0, 0%, 95%);
+  --muted-foreground: hsl(0, 0%, 20%);
+  --accent: hsl(0, 0%, 0%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 0%, 0%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(0, 0%, 0%);
+  --input: hsl(0, 0%, 95%);
+  --ring: hsl(0, 0%, 0%);
+}
+
+.dyslexia-font * {
+  font-family: "OpenDyslexic", "Inter", sans-serif !important;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+}
