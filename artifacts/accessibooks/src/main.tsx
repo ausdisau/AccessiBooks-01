@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import "./assets/fonts/_vendor/google-fonts.css";
 import "./index.css";
 import { consumeTokenFromUrlHash } from "./lib/authToken";
 
