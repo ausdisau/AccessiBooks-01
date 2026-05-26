@@ -29,6 +29,8 @@ import {
   makeAuth0LogoutGetHandler,
   makeAuth0LogoutPostHandler,
 } from "./auth0LogoutHandlers";
+import { signAccessToken } from "./lib/jwt";
+import { jwtAuthMiddleware } from "./jwtAuth";
 
 // Per-IP limiters — coarse shield against distributed attacks
 const authLoginIpRateLimiter = rateLimit({
@@ -380,6 +382,12 @@ export function setupMultiAuth(app: Express) {
   // Initialize Passport
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Bearer-token authentication (JWT). Runs after passport.session() so the
+  // cookie path stays the primary auth source; the JWT middleware only kicks
+  // in when no session cookie is present. This is what lets the API run
+  // stateless on Vercel serverless once cookies are no longer in play.
+  app.use(jwtAuthMiddleware());
   
   // Serialize user to session (store user ID as string)
   passport.serializeUser((user: any, done) => {
@@ -468,13 +476,15 @@ export function setupMultiAuth(app: Express) {
         website: website || null,
       });
 
-      // Log them in
+      // Log them in (cookie session) AND issue a JWT so stateless clients
+      // (mobile, future Vercel serverless API) can authenticate without cookies.
       req.login(newUser, (err) => {
         if (err) {
           return res.status(500).json({ message: "Login failed after registration" });
         }
         const { passwordHash: _pw, ...userWithoutPassword } = newUser;
-        return res.json(userWithoutPassword);
+        const token = signAccessToken(newUser);
+        return res.json({ ...userWithoutPassword, token });
       });
     } catch (error) {
       console.error("Registration error:", error);
@@ -502,7 +512,8 @@ export function setupMultiAuth(app: Express) {
           return res.status(500).json({ message: "Login failed" });
         }
         const { passwordHash, ...userWithoutPassword } = user;
-        return res.json(userWithoutPassword);
+        const token = signAccessToken(user);
+        return res.json({ ...userWithoutPassword, token });
       });
     })(req, res, next);
   });
@@ -565,9 +576,23 @@ export function setupMultiAuth(app: Express) {
       }
       try {
         const strategyName = await ensureGoogleOidcStrategy(req.hostname);
-        passport.authenticate(strategyName, {
-          successReturnToOrRedirect: "/",
-          failureRedirect: "/?auth=failed",
+        passport.authenticate(strategyName, (err: any, user: any) => {
+          if (err) {
+            console.error("[Auth] Replit OIDC verify failed:", err);
+            return res.redirect("/?auth=failed");
+          }
+          if (!user) return res.redirect("/?auth=failed");
+          req.login(user, (loginErr) => {
+            if (loginErr) {
+              console.error("[Auth] Replit OIDC session login failed:", loginErr);
+              return res.redirect("/?auth=failed&reason=session_error");
+            }
+            // Issue a JWT and hand it to the SPA via the URL fragment.
+            // Fragments are not sent to the server and are not stored in
+            // referer/proxy logs, so the token cannot leak server-side.
+            const token = signAccessToken(user);
+            return res.redirect(`/?auth=success#token=${encodeURIComponent(token)}`);
+          });
         })(req, res, next);
       } catch (err) {
         console.error("[Auth] Replit OIDC callback failed:", err);
@@ -632,6 +657,12 @@ export function setupMultiAuth(app: Express) {
         authenticator: (cb) =>
           passport.authenticate("auth0", cb) as RequestHandler,
         markUnusable: markAuth0Unusable,
+        successRedirect: (user) => {
+          const u = user as { id?: string; email?: string | null };
+          if (!u?.id) return "/";
+          const token = signAccessToken({ id: u.id, email: u.email ?? null });
+          return `/?auth=success#token=${encodeURIComponent(token)}`;
+        },
       }),
     );
   }

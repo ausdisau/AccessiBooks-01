@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 export type Book = {
   id: string;
   title: string;
@@ -69,11 +71,50 @@ export function bookCover(book: Book): string | null {
   return null;
 }
 
-async function getJson<T>(path: string, withCreds = false): Promise<T> {
-  const res = await fetch(`${apiBase()}${path}`, {
-    headers: { Accept: "application/json" },
-    credentials: withCreds ? "include" : "omit",
-  });
+/**
+ * JWT bearer-token authentication. React Native does not have a usable
+ * cookie jar across native fetch + WebView, so the mobile app authenticates
+ * exclusively via Authorization: Bearer <jwt> against the same API endpoints
+ * the web app uses.
+ */
+const AUTH_TOKEN_KEY = "accessibooks_auth_token";
+
+export async function getAuthToken(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function setAuthToken(token: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+  } catch {
+    /* storage unavailable — request will fall back to unauthenticated */
+  }
+}
+
+export async function clearAuthToken(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAuthToken();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function getJson<T>(path: string, withAuth = false): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (withAuth) {
+    Object.assign(headers, await authHeaders());
+  }
+  const res = await fetch(`${apiBase()}${path}`, { headers });
   if (!res.ok) throw new Error(`Request failed: ${res.status} ${path}`);
   return (await res.json()) as T;
 }

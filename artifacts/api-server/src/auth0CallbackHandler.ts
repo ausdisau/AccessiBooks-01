@@ -76,8 +76,16 @@ export function makeAuth0CallbackHandler(deps: {
   authenticator: (cb: Auth0AuthCallback) => RequestHandler;
   markUnusable: (reason: string) => void;
   warn?: (...args: unknown[]) => void;
+  /**
+   * Optional builder for the success-redirect URL. Receives the
+   * authenticated user and should return a relative path. Defaults to "/".
+   * Used by the JWT migration to redirect with `#token=<jwt>` in the URL
+   * fragment so stateless clients can pick it up without the cookie.
+   */
+  successRedirect?: (user: PassportLikeUser) => string;
 }): RequestHandler {
   const warn = deps.warn ?? ((...args: unknown[]) => console.warn(...args));
+  const buildSuccessRedirect = deps.successRedirect ?? (() => "/");
 
   return (req: Request, res: Response, next: NextFunction) => {
     const cb: Auth0AuthCallback = (err, user) => {
@@ -102,7 +110,7 @@ export function makeAuth0CallbackHandler(deps: {
           warn("[Auth0] Session login failed:", getErrorMessage(loginErr));
           return res.redirect(failedRedirect("session_error"));
         }
-        return res.redirect("/");
+        return res.redirect(buildSuccessRedirect(user));
       });
     };
 

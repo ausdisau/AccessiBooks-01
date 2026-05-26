@@ -209,7 +209,13 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
   }, []);
 
   const handleLogout = () => {
-    window.location.href = "/api/logout";
+    // Drop the bearer token before navigating, otherwise the session cookie
+    // gets destroyed server-side but the JWT survives in localStorage and
+    // continues to authenticate subsequent requests.
+    void import("./lib/authToken").then(({ clearAuthToken }) => {
+      clearAuthToken();
+      window.location.href = "/api/logout";
+    });
   };
 
   useEffect(() => {
@@ -2216,6 +2222,8 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
+    // JWT pickup from `#token=...` happens in main.tsx before mount; no
+    // duplicate call here.
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get("ref");
     if (refCode) {
