@@ -24,7 +24,7 @@ import {
   Sparkles,
   Lock,
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { useLocation } from "@/lib/wouter-compat";
 
 interface Conversation {
   id: number;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation } from "@/lib/wouter-compat";
 import { useAuth } from "@/hooks/useAuth";
 import { AccessibilityControls } from "@/components/accessibility-controls";
 import { Button } from "@/components/ui/button";

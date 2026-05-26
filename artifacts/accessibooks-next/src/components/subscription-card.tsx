@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { useSubscription } from "@/hooks/use-subscription";
 import { useToast } from "@/hooks/use-toast";
 import { TIER_PRICING } from "@shared/schema";
-import { Link } from "wouter";
+import { Link } from "@/lib/wouter-compat";
 
 function ComingSoonBanner() {
   return (

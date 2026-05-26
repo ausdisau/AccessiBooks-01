@@ -18,7 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { ReviewWithUser, AggregatedRatings } from "@shared/schema";
-import { Link } from "wouter";
+import { Link } from "@/lib/wouter-compat";
 
 interface StarRatingProps {
   rating: number;

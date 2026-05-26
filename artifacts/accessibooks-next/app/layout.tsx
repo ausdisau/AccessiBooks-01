@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "../src/index.css";
+import { RootProviders } from "@/components/shell/RootProviders";
 
 export const metadata: Metadata = {
   title: "AccessiBooks - Accessible Audiobooks for Everyone",
@@ -33,7 +34,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <div id="root">{children}</div>
+        <div id="root">
+          <RootProviders>{children}</RootProviders>
+        </div>
       </body>
     </html>
   );

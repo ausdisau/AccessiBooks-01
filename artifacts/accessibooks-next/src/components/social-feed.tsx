@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSocialFeed, useToggleReviewLike } from "@/hooks/use-reviews";
 import { StarRating } from "@/components/book-reviews";
-import { Link } from "wouter";
+import { Link } from "@/lib/wouter-compat";
 import type { ReviewWithUser } from "@shared/schema";
 
 function FeedReviewCard({ review }: { review: ReviewWithUser & { bookTitle?: string } }) {

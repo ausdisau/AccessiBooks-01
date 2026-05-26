@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation } from "@/lib/wouter-compat";
 import { useAuth } from "@/hooks/useAuth";
 import { AccessiBooksLogo } from "@/components/accessibooks-logo";
 import { PlanBadge } from "@/components/plan-badge";

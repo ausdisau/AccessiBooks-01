@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Book } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Play, BookOpen } from "lucide-react";
-import { Link } from "wouter";
+import { Link } from "@/lib/wouter-compat";
 
 interface BookCarouselProps {
   title: string;

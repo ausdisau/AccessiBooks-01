@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Music2, BookOpen as BookOpenIcon, Trophy, Crown } from "lucide-react";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
-import { BrandLandingPage } from "@/pages/landing";
+import { BrandLandingPage } from "@/page-views/landing";
 import { LoginModal } from "@/components/LoginModal";
 
 const CATEGORY_ICONS: Record<string, string> = {};
