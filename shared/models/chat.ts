@@ -1,6 +1,9 @@
 import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+// See shared/schema.ts for the rationale: drizzle-zod 0.8.x is on the
+// Zod v4 API, so we pull `z` from `zod/v4` to keep the `z.infer`
+// constraint compatible with the ZodObject `createInsertSchema` returns.
+import { z } from "zod/v4";
 import { sql } from "drizzle-orm";
 
 export const conversations = pgTable("conversations", {

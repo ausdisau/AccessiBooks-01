@@ -5,7 +5,14 @@ import { pgTable, text, varchar, integer, serial, timestamp, jsonb, index, boole
 export const CONTENT_TYPES = ["audiobook", "ebook", "magazine"] as const;
 export type ContentType = typeof CONTENT_TYPES[number];
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+// drizzle-zod 0.8.x uses the Zod v4 API internally (`zod/v4`). Importing
+// `z` from the root `zod` entry yields the v3 ZodType, whose 3-arg
+// `ZodType<any,any,any>` constraint no longer accepts the ZodObject that
+// `createInsertSchema` returns — surfacing as ~40 TS2344 errors in this
+// file. Pulling `z` from `zod/v4` keeps the constraint side and the
+// schema side on the same type lineage, fixing every error in one go
+// without any other code changes.
+import { z } from "zod/v4";
 
 export const books = pgTable("books", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
