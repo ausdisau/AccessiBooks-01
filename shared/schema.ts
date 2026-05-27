@@ -81,7 +81,7 @@ export const insertChapterSchema = createInsertSchema(chapters).omit({
 export type InsertChapter = z.infer<typeof insertChapterSchema>;
 export type Chapter = typeof chapters.$inferSelect;
 
-// Session storage table for Replit Auth
+// Session storage table for Passport sessions
 export const sessions = pgTable(
   "sessions",
   {

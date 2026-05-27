@@ -1,15 +1,14 @@
-import OpenAI, { toFile } from "openai";
+import { toFile } from "openai";
 import { Buffer } from "node:buffer";
 import { spawn } from "child_process";
 import { writeFile, unlink, readFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
+import { openai, OPENAI_TTS_MODEL } from "../../lib/openai";
 
-export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+const OPENAI_AUDIO_CHAT_MODEL =
+  process.env.OPENAI_AUDIO_CHAT_MODEL ?? "gpt-4o-audio-preview";
 
 export type AudioFormat = "wav" | "mp3" | "webm" | "mp4" | "ogg" | "unknown";
 
@@ -107,7 +106,7 @@ export async function ensureCompatibleFormat(
 
 /**
  * Voice Chat: User speaks, LLM responds with audio (audio-in, audio-out).
- * Uses gpt-audio model via Replit AI Integrations.
+ * Uses the OpenAI audio chat model (OPENAI_AUDIO_CHAT_MODEL).
  * Note: Browser records WebM/opus - convert to WAV using ffmpeg before calling this.
  */
 export async function voiceChat(
@@ -118,7 +117,7 @@ export async function voiceChat(
 ): Promise<{ transcript: string; audioResponse: Buffer }> {
   const audioBase64 = audioBuffer.toString("base64");
   const response = await openai.chat.completions.create({
-    model: "gpt-audio",
+    model: OPENAI_AUDIO_CHAT_MODEL,
     modalities: ["text", "audio"],
     audio: { voice, format: outputFormat },
     messages: [{
@@ -154,7 +153,7 @@ export async function voiceChatStream(
 ): Promise<AsyncIterable<{ type: "transcript" | "audio"; data: string }>> {
   const audioBase64 = audioBuffer.toString("base64");
   const stream = await openai.chat.completions.create({
-    model: "gpt-audio",
+    model: OPENAI_AUDIO_CHAT_MODEL,
     modalities: ["text", "audio"],
     audio: { voice, format: "pcm16" },
     messages: [{
@@ -181,30 +180,35 @@ export async function voiceChatStream(
 }
 
 /**
- * Text-to-Speech: Converts text to speech verbatim.
- * Uses gpt-audio model via Replit AI Integrations.
+ * Text-to-Speech via the OpenAI Audio API (OPENAI_TTS_MODEL).
  */
 export async function textToSpeech(
   text: string,
   voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy",
-  format: "wav" | "mp3" | "flac" | "opus" | "pcm16" = "wav"
+  format: "wav" | "mp3" | "flac" | "opus" | "pcm16" = "mp3",
 ): Promise<Buffer> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-audio",
-    modalities: ["text", "audio"],
-    audio: { voice, format },
-    messages: [
-      { role: "system", content: "You are an assistant that performs text-to-speech." },
-      { role: "user", content: `Repeat the following text verbatim: ${text}` },
-    ],
+  const responseFormat =
+    format === "wav"
+      ? "wav"
+      : format === "flac"
+        ? "flac"
+        : format === "opus"
+          ? "opus"
+          : "mp3";
+
+  const response = await openai.audio.speech.create({
+    model: OPENAI_TTS_MODEL,
+    voice,
+    input: text.slice(0, 4096),
+    response_format: responseFormat,
   });
-  const audioData = (response.choices[0]?.message as any)?.audio?.data ?? "";
-  return Buffer.from(audioData, "base64");
+
+  return Buffer.from(await response.arrayBuffer());
 }
 
 /**
  * Streaming Text-to-Speech: Converts text to speech with real-time streaming.
- * Uses gpt-audio model via Replit AI Integrations.
+ * Uses the OpenAI audio chat model (OPENAI_AUDIO_CHAT_MODEL).
  * Note: Streaming only supports pcm16 output format.
  */
 export async function textToSpeechStream(
@@ -212,7 +216,7 @@ export async function textToSpeechStream(
   voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy"
 ): Promise<AsyncIterable<string>> {
   const stream = await openai.chat.completions.create({
-    model: "gpt-audio",
+    model: OPENAI_AUDIO_CHAT_MODEL,
     modalities: ["text", "audio"],
     audio: { voice, format: "pcm16" },
     messages: [

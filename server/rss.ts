@@ -3,7 +3,7 @@ import Parser from "rss-parser";
 const parser = new Parser({
   timeout: 15000,
   headers: {
-    "User-Agent": "AccessiBooks-PodcastIngestion/1.0 (+https://accessibooks.replit.app)",
+    "User-Agent": "AccessiBooks-PodcastIngestion/1.0 (+https://accessibooks.app)",
     Accept: "application/rss+xml, application/xml, text/xml, */*",
   },
   customFields: {

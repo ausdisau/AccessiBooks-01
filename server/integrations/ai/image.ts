@@ -1,48 +1,48 @@
 import fs from "node:fs";
-import OpenAI, { toFile } from "openai";
+import { toFile } from "openai";
 import { Buffer } from "node:buffer";
+import { openai, OPENAI_IMAGE_MODEL } from "../../lib/openai";
 
-export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+type ImageSize = "1024x1024" | "512x512" | "256x256";
+type OpenAIImageSize = "1024x1024" | "1792x1024" | "1024x1792" | "256x256" | "512x512";
 
-/**
- * Generate an image and return as Buffer.
- * Uses gpt-image-1 model via Replit AI Integrations.
- */
+function resolveImageSize(size: ImageSize): OpenAIImageSize {
+  if (OPENAI_IMAGE_MODEL.startsWith("dall-e-3")) {
+    return "1024x1024";
+  }
+  return size as OpenAIImageSize;
+}
+
 export async function generateImageBuffer(
   prompt: string,
-  size: "1024x1024" | "512x512" | "256x256" = "1024x1024"
+  size: ImageSize = "1024x1024",
 ): Promise<Buffer> {
+  const resolvedSize = resolveImageSize(size);
   const response = await openai.images.generate({
-    model: "gpt-image-1",
+    model: OPENAI_IMAGE_MODEL,
     prompt,
-    size,
+    size: resolvedSize,
+    response_format: "b64_json",
   });
   const base64 = response.data?.[0]?.b64_json ?? "";
   return Buffer.from(base64, "base64");
 }
 
-/**
- * Edit/combine multiple images into a composite.
- * Uses gpt-image-1 model via Replit AI Integrations.
- */
 export async function editImages(
   imageFiles: string[],
   prompt: string,
-  outputPath?: string
+  outputPath?: string,
 ): Promise<Buffer> {
   const images = await Promise.all(
     imageFiles.map((file) =>
       toFile(fs.createReadStream(file), file, {
         type: "image/png",
-      })
-    )
+      }),
+    ),
   );
 
   const response = await openai.images.edit({
-    model: "gpt-image-1",
+    model: OPENAI_IMAGE_MODEL,
     image: images,
     prompt,
   });
@@ -56,4 +56,3 @@ export async function editImages(
 
   return imageBytes;
 }
-

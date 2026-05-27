@@ -845,7 +845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: `Invalid voice. Choose from: ${validVoices.join(", ")}` });
       }
 
-      const { textToSpeech } = await import("./replit_integrations/audio/client");
+      const { textToSpeech } = await import("./integrations/ai/audio");
       const audioBuffer = await textToSpeech(text, voice, format);
 
       const contentTypes: Record<string, string> = {

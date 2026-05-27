@@ -76,7 +76,7 @@ export interface IStorage {
   searchBooks(query: string): Promise<Book[]>;
   refreshRuntimeBooks(): Promise<{ inserted: number; skipped: number }>;
   
-  // User management (Replit Auth)
+  // User management (OAuth / local auth)
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   

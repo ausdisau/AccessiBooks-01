@@ -1,12 +1,7 @@
-import OpenAI from "openai";
 import { db } from "./db";
 import { bookVisuals } from "@shared/schema";
 import { eq, and, asc } from "drizzle-orm";
-
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+import { openai } from "./lib/openai";
 
 const WORDS_PER_PAGE = 300;
 const PAGES_PER_SCENE = 3;

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { generateImageBuffer } from './replit_integrations/image/client';
+import { generateImageBuffer } from "./integrations/ai/image";
 
 const GENERATED_COVERS_DIR = path.join(process.cwd(), 'client', 'public', 'generated-covers');
 
