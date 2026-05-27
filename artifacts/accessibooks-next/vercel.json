@@ -1,0 +1,45 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "functions": {
+    "app/api/billing/webhook/route.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 30
+    },
+    "app/api/cron/expire-loans/route.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 60
+    },
+    "app/api/cron/notifications/route.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 120
+    },
+    "app/api/cron/recommendations/route.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 300
+    },
+    "app/api/cron/ad-spend-reset/route.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/expire-loans",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/recommendations",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/ad-spend-reset",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}
