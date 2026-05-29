@@ -232,6 +232,7 @@ export async function ensureEntitlementSchema(): Promise<void> {
     await runSql(`ALTER TABLE books ADD COLUMN IF NOT EXISTS free_tier_available boolean NOT NULL DEFAULT true`);
     await runSql(`ALTER TABLE books ADD COLUMN IF NOT EXISTS ad_supported boolean NOT NULL DEFAULT true`);
     await runSql(`ALTER TABLE books ADD COLUMN IF NOT EXISTS transcript_available boolean NOT NULL DEFAULT false`);
+    await runSql(`ALTER TABLE books ADD COLUMN IF NOT EXISTS narration_type text`);
     await runSql(`
       CREATE TABLE IF NOT EXISTS entitlements (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
