@@ -114,7 +114,7 @@ export function EngagementUpsell({ type, detail, open, onOpenChange, onUpgrade }
 
           <DialogFooter className="flex-col gap-2 sm:flex-col pt-2">
             <Button
-              onClick={onUpgrade}
+              onClick={() => onUpgrade()}
               className="w-full bg-yellow-500 hover:bg-yellow-600 text-black"
             >
               <Crown className="h-4 w-4 mr-2" />

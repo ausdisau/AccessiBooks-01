@@ -56,8 +56,8 @@ export function AdBanner({ variant = "library", onClose, useGoogleAds = true, su
   }
 
   const hasGoogleAdsConfig = !!(
-    import.meta.env.VITE_ADSENSE_CLIENT || 
-    import.meta.env.VITE_DFP_NETWORK_CODE
+    process.env.NEXT_PUBLIC_ADSENSE_CLIENT ||
+    process.env.NEXT_PUBLIC_DFP_NETWORK_CODE
   );
 
   if (useGoogleAds && hasGoogleAdsConfig && variant === "library") {

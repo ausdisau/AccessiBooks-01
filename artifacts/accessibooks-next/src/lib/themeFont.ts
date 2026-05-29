@@ -10,6 +10,17 @@
 // vendor stylesheet on every visit) and makes a theme switch a single CSS
 // fetch instead of a no-op (browsers won't re-parse what's already there).
 
+// `import.meta.glob` is a bundler-provided API (Vite originally; Turbopack
+// implements a compatible subset). It is not part of the standard ImportMeta
+// type, so we declare it here to keep `tsc` (and therefore the Next/Vercel
+// build's type-check step) happy. Return `any` so both the lazy-loader map
+// and the eager `{ query: "?url" }` URL map below type-check against it.
+declare global {
+  interface ImportMeta {
+    glob: (pattern: string, options?: Record<string, unknown>) => any;
+  }
+}
+
 // Vite's import.meta.glob produces a record of "module path -> dynamic
 // import()". Importing a CSS module for its side effects appends a <style>
 // (dev) or <link rel="stylesheet"> (build) tag, which registers the
