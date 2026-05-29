@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import type { JSX } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -414,52 +415,6 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const longPressStartRef = useRef<{ x: number; y: number; target: EventTarget | null }>({ x: 0, y: 0, target: null });
   const [pageSymbolImageCache, setPageSymbolImageCache] = useState<Record<string, string | null>>({});
   const symbolFetchRef = useRef<string>("");
-
-  useEffect(() => {
-    if (!symbolOverlay || !pageContent) {
-      setPageSymbolImageCache({});
-      symbolFetchRef.current = "";
-      return;
-    }
-    const cacheKey = `${currentPage}:${pageContent.slice(0, 60)}`;
-    if (symbolFetchRef.current === cacheKey) return;
-    symbolFetchRef.current = cacheKey;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const kwRes = await fetch("/api/symbols/keywords", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: pageContent }),
-        });
-        if (cancelled || !kwRes.ok) return;
-        const { keywords } = await kwRes.json() as { keywords: string[] };
-        if (!keywords?.length) return;
-
-        const results = await Promise.all(
-          keywords.map(async (w: string) => {
-            try {
-              const r = await fetch(`/api/symbols/${encodeURIComponent(w)}`);
-              const d = await r.json() as { url: string | null };
-              return [w, d.url] as [string, string | null];
-            } catch {
-              return [w, null] as [string, null];
-            }
-          })
-        );
-
-        if (!cancelled) {
-          const cache: Record<string, string | null> = {};
-          for (const [w, url] of results) cache[w] = url;
-          setPageSymbolImageCache(cache);
-        }
-      } catch {}
-    })();
-
-    return () => { cancelled = true; };
-  }, [symbolOverlay, pageContent, currentPage]);
 
   const handleToggleSymbolOverlay = () => {
     const newSettings = { ...a11ySettings, symbolOverlay: !a11ySettings.symbolOverlay };
@@ -937,6 +892,52 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   }, [words, currentPage]);
 
   const pageContent = useMemo(() => getPageContent(), [getPageContent]);
+
+  useEffect(() => {
+    if (!symbolOverlay || !pageContent) {
+      setPageSymbolImageCache({});
+      symbolFetchRef.current = "";
+      return;
+    }
+    const cacheKey = `${currentPage}:${pageContent.slice(0, 60)}`;
+    if (symbolFetchRef.current === cacheKey) return;
+    symbolFetchRef.current = cacheKey;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const kwRes = await fetch("/api/symbols/keywords", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: pageContent }),
+        });
+        if (cancelled || !kwRes.ok) return;
+        const { keywords } = await kwRes.json() as { keywords: string[] };
+        if (!keywords?.length) return;
+
+        const results = await Promise.all(
+          keywords.map(async (w: string) => {
+            try {
+              const r = await fetch(`/api/symbols/${encodeURIComponent(w)}`);
+              const d = await r.json() as { url: string | null };
+              return [w, d.url] as [string, string | null];
+            } catch {
+              return [w, null] as [string, null];
+            }
+          })
+        );
+
+        if (!cancelled) {
+          const cache: Record<string, string | null> = {};
+          for (const [w, url] of results) cache[w] = url;
+          setPageSymbolImageCache(cache);
+        }
+      } catch {}
+    })();
+
+    return () => { cancelled = true; };
+  }, [symbolOverlay, pageContent, currentPage]);
 
   useEffect(() => {
     const prev = prevPageRef.current;
@@ -1673,7 +1674,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                   size="sm"
                   variant="outline"
                   className="h-7 text-xs"
-                  onClick={() => generateNarrationMutation.mutate()}
+                  onClick={() => generateNarrationMutation.mutate(undefined)}
                   disabled={generateNarrationMutation.isPending}
                 >
                   {generateNarrationMutation.isPending ? (
@@ -1708,7 +1709,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                   size="sm"
                   variant="ghost"
                   className="h-7 text-xs text-muted-foreground"
-                  onClick={() => generateNarrationMutation.mutate()}
+                  onClick={() => generateNarrationMutation.mutate(undefined)}
                   disabled={generateNarrationMutation.isPending}
                   title="Re-generate narration"
                 >

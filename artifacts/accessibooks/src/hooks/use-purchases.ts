@@ -72,7 +72,7 @@ export function usePurchaseCheckout() {
 }
 
 export function getDiscountedPrice(baseCents: number, tier: SubscriptionTier): { finalCents: number; discount: number; saved: number } {
-  const discount = TIER_DISCOUNTS[tier] || 0;
+  const discount = TIER_DISCOUNTS[tier as keyof typeof TIER_DISCOUNTS] || 0;
   const finalCents = Math.round(baseCents * (1 - discount));
   return { finalCents, discount, saved: baseCents - finalCents };
 }

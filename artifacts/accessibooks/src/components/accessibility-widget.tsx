@@ -214,7 +214,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
       setFocusShellActive(!!stored.focusShell);
       setSettings((prev) => {
         const changed = (Object.keys(stored) as (keyof AccessibilitySettings)[]).some(
-          (k) => (stored as Record<string, unknown>)[k] !== (prev as Record<string, unknown>)[k]
+          (k) => stored[k] !== prev[k]
         );
         return changed ? stored : prev;
       });
@@ -255,8 +255,8 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
 
       // Schema compatibility guard: reject profiles whose numeric fields are
       // clearly on a different scale (e.g. raw px fontSize like 16 vs % like 100)
-      const fontSize = (serverProfile as Record<string, unknown>).fontSize;
-      const lineHeight = (serverProfile as Record<string, unknown>).lineHeight;
+      const fontSize = serverProfile.fontSize;
+      const lineHeight = serverProfile.lineHeight;
       const fontSizeOk = fontSize === undefined || (typeof fontSize === "number" && fontSize >= 80 && fontSize <= 200);
       const lineHeightOk = lineHeight === undefined || (typeof lineHeight === "number" && lineHeight >= 100 && lineHeight <= 250);
 
@@ -274,10 +274,8 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
 
     // hasStoredRecord === false: no record saved yet — check for local custom settings
     const localSettings = localStorageService.getSettings();
-    const isLocalDefault = Object.keys(defaults).every(
-      (k) =>
-        (localSettings as Record<string, unknown>)[k] ===
-        (defaults as Record<string, unknown>)[k]
+    const isLocalDefault = (Object.keys(defaults) as (keyof AccessibilitySettings)[]).every(
+      (k) => localSettings[k] === defaults[k]
     );
     const migrationKey = "a11y-migration-prompted";
     if (!isLocalDefault && !localStorage.getItem(migrationKey)) {
@@ -324,6 +322,7 @@ export function AccessibilityWidget({ externalOpen, onExternalOpenChange }: { ex
       window.addEventListener("mousemove", handleMouseMove);
       return () => window.removeEventListener("mousemove", handleMouseMove);
     }
+    return undefined;
   }, [settings.readingGuide]);
 
   const applySettings = applyA11ySettings;
