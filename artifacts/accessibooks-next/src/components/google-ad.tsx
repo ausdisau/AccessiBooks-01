@@ -131,8 +131,8 @@ export function ResponsiveAd({ position, className = "" }: ResponsiveAdProps) {
     return null;
   }
 
-  const adsenseClient = import.meta.env.VITE_ADSENSE_CLIENT;
-  const networkCode = import.meta.env.VITE_DFP_NETWORK_CODE;
+  const adsenseClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT;
+  const networkCode = process.env.NEXT_PUBLIC_DFP_NETWORK_CODE;
 
   if (!adsenseClient && !networkCode) {
     return null;
@@ -143,19 +143,19 @@ export function ResponsiveAd({ position, className = "" }: ResponsiveAdProps) {
       slotId: "accessibooks-library-top",
       sizes: [[728, 90], [320, 50]] as number[][],
       adUnitName: "library_top",
-      adsenseSlot: import.meta.env.VITE_ADSENSE_SLOT_LIBRARY_TOP,
+      adsenseSlot: process.env.NEXT_PUBLIC_ADSENSE_SLOT_LIBRARY_TOP,
     },
     "library-inline": {
       slotId: "accessibooks-library-inline",
       sizes: [[336, 280], [300, 250]] as number[][],
       adUnitName: "library_inline",
-      adsenseSlot: import.meta.env.VITE_ADSENSE_SLOT_LIBRARY_INLINE,
+      adsenseSlot: process.env.NEXT_PUBLIC_ADSENSE_SLOT_LIBRARY_INLINE,
     },
     "player-sidebar": {
       slotId: "accessibooks-player-sidebar",
       sizes: [[300, 250]] as number[][],
       adUnitName: "player_sidebar",
-      adsenseSlot: import.meta.env.VITE_ADSENSE_SLOT_PLAYER_SIDEBAR,
+      adsenseSlot: process.env.NEXT_PUBLIC_ADSENSE_SLOT_PLAYER_SIDEBAR,
     },
   };
 

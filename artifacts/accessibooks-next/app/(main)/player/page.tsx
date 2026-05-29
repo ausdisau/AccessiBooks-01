@@ -1,5 +1,5 @@
 "use client";
-import { Player } from "@/components/player";
+import { Player } from "@/page-views/player";
 import { useSelection } from "@/contexts/SelectionContext";
 import { useAudioContext } from "@/contexts/audio-context";
 export default function Page() {

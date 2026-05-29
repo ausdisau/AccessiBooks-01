@@ -215,8 +215,8 @@ export function AiChatPanel({ isOpen, onClose }: AiChatPanelProps) {
     enabled: isOpen,
   });
 
-  const createConversationMutation = useMutation({
-    mutationFn: async (title?: string) => {
+  const createConversationMutation = useMutation<Conversation, Error, string | void>({
+    mutationFn: async (title) => {
       const res = await apiRequest("POST", "/api/conversations", { title: title || "New Chat" });
       return res.json();
     },

@@ -64,7 +64,7 @@ export function BrandFooter({ columns = defaultColumns }: BrandFooterProps) {
               aria-label="Australian Disability Ltd — opens in a new tab"
             >
               <img
-                src={adLogo}
+                src={adLogo.src}
                 alt=""
                 className="h-12 w-auto bg-white rounded-md p-1.5"
               />

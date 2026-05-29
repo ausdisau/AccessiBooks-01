@@ -95,6 +95,7 @@ export interface Collection {
 export type ColorVisionMode = "none" | "protanopia" | "deuteranopia" | "tritanopia" | "achromatopsia";
 
 export interface AccessibilitySettings {
+  [key: string]: unknown;
   highContrast: boolean;
   dyslexiaFont: boolean;
   darkMode: boolean;

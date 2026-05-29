@@ -17,7 +17,7 @@ export type StreamQualityInfo = SharedStreamQualityInfo;
 
 export interface AudioContextType {
   currentBook: Book | null;
-  audioRef: React.RefObject<HTMLAudioElement>;
+  audioRef: React.RefObject<HTMLAudioElement | null>;
   isPlaying: boolean;
   isMuted: boolean;
   currentTime: number;
