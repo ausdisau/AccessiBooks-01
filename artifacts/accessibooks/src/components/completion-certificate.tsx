@@ -306,6 +306,7 @@ export function CompletionModal({ data, onClose, onSelectBook }: CompletionModal
       const timer = setTimeout(() => setShowConfetti(false), 4500);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [data?.bookId]);
 
   const handleShare = useCallback(async () => {

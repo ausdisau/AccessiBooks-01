@@ -20,6 +20,7 @@ export function AchievementPopup({ achievement, onDismiss }: AchievementPopupPro
       }, 6000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [achievement, onDismiss]);
 
   if (!achievement) return null;

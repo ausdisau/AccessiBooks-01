@@ -442,7 +442,7 @@ export function AccountSettingsPage() {
               <p className="text-sm text-muted-foreground mt-1">Fine-tune your reading and listening experience.</p>
             </div>
             <div className="rounded-xl border bg-card p-6">
-              <PreferencesKernel onOpenChange={setPrefsOpen} />
+              <PreferencesKernel open={prefsOpen} onOpenChange={setPrefsOpen} />
               <div className="mt-6 pt-6 border-t flex items-center justify-between">
                 <div>
                   <p className="font-medium">Custom Preferences</p>

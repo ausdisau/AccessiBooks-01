@@ -282,7 +282,7 @@ export function AiChatPanel({ isOpen, onClose }: AiChatPanelProps) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    createConversationMutation.mutate();
+    createConversationMutation.mutate(undefined);
     setShowHistory(false);
   }, [createConversationMutation]);
 

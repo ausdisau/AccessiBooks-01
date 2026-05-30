@@ -111,7 +111,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
       if (!viewerRef.current) return;
 
       // epubjs 0.4.x: ePub() is async — returns a Promise<Book> resolving when book is fully open
-      const epub: EpubBook = await ePub(epubUrl);
+      const epub = (await ePub(epubUrl)) as EpubBook;
       epubRef.current = epub;
 
       const rendition: EpubRendition = epub.renderTo(viewerRef.current, {

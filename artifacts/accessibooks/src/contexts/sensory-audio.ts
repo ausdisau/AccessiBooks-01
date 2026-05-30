@@ -6,6 +6,7 @@
  */
 
 interface WindowWithLegacyAudio extends Window {
+  AudioContext?: typeof AudioContext;
   webkitAudioContext?: typeof AudioContext;
 }
 

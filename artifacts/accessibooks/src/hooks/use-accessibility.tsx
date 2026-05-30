@@ -23,11 +23,7 @@ export function useAccessibility() {
       const stored = localStorageService.getSettings();
       setSettings((prev) => {
         const keys = Object.keys(stored) as (keyof AccessibilitySettings)[];
-        const changed = keys.some(
-          (k) =>
-            (stored as Record<string, unknown>)[k] !==
-            (prev as Record<string, unknown>)[k]
-        );
+        const changed = keys.some((k) => stored[k] !== prev[k]);
         return changed ? stored : prev;
       });
     };

@@ -28,6 +28,7 @@ export function RewardedAdOffer({ offer, onAccept, onDismiss }: RewardedAdOfferP
       const t = setTimeout(() => setAnnounced(true), 500);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [dismissed]);
 
   const handleDismiss = () => {
