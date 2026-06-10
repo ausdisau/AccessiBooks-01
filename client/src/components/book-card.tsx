@@ -1,11 +1,15 @@
-import { Book, TITLE_PRICING, TIER_DISCOUNTS, type SubscriptionTier } from "@shared/schema";
+import { Book, TITLE_PRICING } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon, ShoppingCart, Check as CheckIcon } from "lucide-react";
+import { Play, BookOpen, Headphones, Newspaper, BookOpenIcon, ShoppingCart, Check as CheckIcon, LibraryBig, Clock, Loader2 } from "lucide-react";
 import { BookCover } from "@/components/book-cover";
 import { usePurchaseCheckout } from "@/hooks/use-purchases";
 import { useSubscription } from "@/hooks/use-subscription";
+import { useAuth } from "@/hooks/useAuth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface BookCardProps {
   book: Book;
@@ -13,6 +17,13 @@ interface BookCardProps {
   compact?: boolean;
   owned?: boolean;
 }
+
+type LoanBookStatus = {
+  availableCopies: number;
+  waitlistCount: number;
+  userLoan?: { id: string } | null;
+  userWaitlist?: { position: number } | null;
+};
 
 const contentTypeConfig = {
   audiobook: { icon: Headphones, label: "Audiobook", color: "bg-blue-500" },
@@ -38,6 +49,113 @@ const sourceLabels: Record<string, string> = {
   community: "Community",
   local: "",
 };
+
+function useBookLoanActions(bookId: string) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
+
+  const { data: loanStatus } = useQuery<LoanBookStatus>({
+    queryKey: ["/api/loans/book", bookId, "status"],
+    queryFn: async () => {
+      const res = await fetch(`/api/loans/book/${bookId}/status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch loan status");
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
+  const borrowMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/loans/borrow", { bookId }),
+    onSuccess: () => {
+      toast({ title: "Book borrowed", description: "Find it in My Loans to download or return early." });
+      queryClient.invalidateQueries({ queryKey: ["/api/loans/book", bookId, "status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/loans/active"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not borrow", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const waitlistMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/loans/waitlist/${bookId}`, {}),
+    onSuccess: () => {
+      toast({ title: "Added to waitlist", description: "We'll notify you when a copy is available." });
+      queryClient.invalidateQueries({ queryKey: ["/api/loans/book", bookId, "status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/loans/waitlist"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Could not join waitlist", description: error.message, variant: "destructive" });
+    },
+  });
+
+  return { loanStatus, borrowMutation, waitlistMutation, isAuthenticated };
+}
+
+function LoanActions({ bookId, compact = false }: { bookId: string; compact?: boolean }) {
+  const { loanStatus, borrowMutation, waitlistMutation, isAuthenticated } = useBookLoanActions(bookId);
+
+  if (!isAuthenticated) return null;
+
+  const hasLoan = !!loanStatus?.userLoan;
+  const onWaitlist = !!loanStatus?.userWaitlist;
+  const unavailable = loanStatus && loanStatus.availableCopies === 0;
+  const isPending = borrowMutation.isPending || waitlistMutation.isPending;
+
+  if (hasLoan) {
+    return (
+      <div className={`flex items-center justify-center gap-1 text-xs text-green-600 dark:text-green-400 ${compact ? "" : "mt-1"}`}>
+        <LibraryBig className="h-3 w-3" aria-hidden="true" />
+        <span>On loan</span>
+      </div>
+    );
+  }
+
+  if (onWaitlist) {
+    return (
+      <div className={`flex items-center justify-center gap-1 text-xs text-amber-600 dark:text-amber-400 ${compact ? "" : "mt-1"}`}>
+        <Clock className="h-3 w-3" aria-hidden="true" />
+        <span>Waitlist #{loanStatus?.userWaitlist?.position}</span>
+      </div>
+    );
+  }
+
+  if (unavailable) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className={compact ? "w-full text-xs mt-1" : "w-full text-xs"}
+        onClick={(e) => {
+          e.stopPropagation();
+          waitlistMutation.mutate();
+        }}
+        disabled={isPending}
+        data-testid={`button-waitlist-${bookId}`}
+      >
+        {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clock className="h-3 w-3 mr-1" />}
+        Join waitlist
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className={compact ? "w-full text-xs mt-1" : "w-full text-xs"}
+      onClick={(e) => {
+        e.stopPropagation();
+        borrowMutation.mutate();
+      }}
+      disabled={isPending}
+      data-testid={`button-borrow-${bookId}`}
+    >
+      {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <LibraryBig className="h-3 w-3 mr-1" />}
+      Borrow
+    </Button>
+  );
+}
 
 export function BookCard({ book, onPlayBook, compact = false, owned = false }: BookCardProps) {
   const { purchaseTitle, isPurchasing } = usePurchaseCheckout();
@@ -87,7 +205,6 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
               )}
             </div>
             
-            {/* Content type badge */}
             <Badge 
               className={`absolute top-2 left-2 text-xs px-1.5 py-0.5 ${typeConfig.color} text-white`}
               aria-label={typeConfig.label}
@@ -107,6 +224,7 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
           {sourceLabels[book.source] && (
             <p className="text-[10px] text-muted-foreground/70 mt-0.5">{sourceLabels[book.source]}</p>
           )}
+          <LoanActions bookId={book.id} compact />
         </CardContent>
       </Card>
     );
@@ -125,7 +243,6 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
             iconSize="h-12 w-12"
           />
           
-          {/* Content type badge */}
           <Badge 
             className={`absolute top-2 left-2 ${typeConfig.color} text-white`}
             aria-label={typeConfig.label}
@@ -170,6 +287,8 @@ export function BookCard({ book, onPlayBook, compact = false, owned = false }: B
               </>
             )}
           </Button>
+
+          <LoanActions bookId={book.id} />
 
           {owned ? (
             <div className="flex items-center justify-center gap-1 text-xs text-green-600 dark:text-green-400">

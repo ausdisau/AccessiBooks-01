@@ -383,6 +383,7 @@ function transformExternalUser(externalUser: ExternalUser): User {
     updatedAt: externalUser.updatedAt ? new Date(externalUser.updatedAt) : new Date(),
     referralCode: null,
     referralCredits: 0,
+    isAdmin: false,
     // Legacy NextAuth columns
     name: null,
     emailVerified: null,

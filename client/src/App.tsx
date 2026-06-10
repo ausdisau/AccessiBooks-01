@@ -90,7 +90,8 @@ function LoadingSpinner() {
   );
 }
 
-const sidebarNavGroups: { label: string; items: { path: string; label: string; icon: React.ReactNode }[] }[] = [
+function getSidebarNavGroups(isAdmin: boolean): { label: string; items: { path: string; label: string; icon: React.ReactNode }[] }[] {
+  const groups: { label: string; items: { path: string; label: string; icon: React.ReactNode }[] }[] = [
   {
     label: "Browse",
     items: [
@@ -131,14 +132,21 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
     ],
   },
-  {
-    label: "Admin",
-    items: [
-      { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
-      { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
-    ],
-  },
-];
+  ];
+
+  if (isAdmin) {
+    groups.push({
+      label: "Admin",
+      items: [
+        { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
+        { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
+        { path: "/moat-metrics", label: "Moat Metrics", icon: <BarChart3 className="h-5 w-5" /> },
+      ],
+    });
+  }
+
+  return groups;
+}
 
 function AppHeader({ sidebarOpen, onToggleSidebar }: { 
   sidebarOpen: boolean; 
@@ -238,6 +246,8 @@ function AppSidebar({ mobileOpen, onCloseMobile }: {
   onCloseMobile: () => void;
 }) {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const sidebarNavGroups = getSidebarNavGroups(!!user?.isAdmin);
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/" || location === "";
@@ -703,6 +713,7 @@ function MainApp() {
   const [location, navigate] = useLocation();
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user } = useAuth();
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
   const { 
@@ -812,6 +823,7 @@ function MainApp() {
   const hasMiniPlayer = currentBook !== null;
 
   const isAtHome = location === "/" || location === "";
+  const sidebarNavGroups = getSidebarNavGroups(!!user?.isAdmin);
   const currentNavItem = sidebarNavGroups.flatMap(g => g.items).find(i => {
     if (i.path === "/") return isAtHome;
     return location === i.path || location.startsWith(i.path + "/");
@@ -1057,6 +1069,17 @@ function MainApp() {
                     <VoicePacksPage />
                   </div>
                 </Route>
+                <Route path="/pricing">
+                  <div id="pricing-panel" role="region" data-testid="panel-pricing" className="max-w-4xl mx-auto space-y-6">
+                    <div>
+                      <h1 className="text-3xl font-bold tracking-tight">Choose your plan</h1>
+                      <p className="mt-2 text-muted-foreground">
+                        Upgrade for more loans, ad-free listening, and premium features.
+                      </p>
+                    </div>
+                    <SubscriptionCard />
+                  </div>
+                </Route>
                 <Route>
                   <Suspense fallback={<LoadingSpinner />}>
                     <NotFoundPage />
@@ -1249,10 +1272,18 @@ function App() {
           <AudioAdManager />
           <Switch>
             <Route path="/pricing">
-              <PublicMarketingPage
-                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
-                render={(props) => <PricingPage {...props} />}
-              />
+              {isAuthenticated ? (
+                <>
+                  <MainApp />
+                  <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
+                  <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
+                </>
+              ) : (
+                <PublicMarketingPage
+                  onBrowseAsGuest={browseAsGuest}
+                  render={(props) => <PricingPage {...props} />}
+                />
+              )}
             </Route>
             <Route path="/privacy">
               <PublicMarketingPage

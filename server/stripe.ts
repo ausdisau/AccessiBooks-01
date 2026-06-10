@@ -10,6 +10,17 @@ export const stripe = stripeSecretKey
   ? new Stripe(stripeSecretKey, { apiVersion: "2025-12-15.clover" })
   : null;
 
+export function paymentsRequiredInProduction(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+export function stripeUnavailableMessage(): { status: number; message: string } {
+  return {
+    status: 503,
+    message: "Payment system not configured. Set STRIPE_SECRET_KEY in production.",
+  };
+}
+
 import { TIER_PRICING } from "@shared/schema";
 
 export const PREMIUM_PRICE_MONTHLY = TIER_PRICING.premium.monthly;

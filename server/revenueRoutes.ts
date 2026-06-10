@@ -6,6 +6,7 @@ import {
   enterpriseAccounts, enterpriseMembers, sponsoredQueues, users,
 } from "@shared/schema";
 import { isAuthenticated } from "./multiAuth";
+import { stripe, paymentsRequiredInProduction, stripeUnavailableMessage } from "./stripe";
 
 export function registerRevenueRoutes(app: Express) {
 
@@ -48,14 +49,45 @@ export function registerRevenueRoutes(app: Express) {
         .where(and(eq(voicePackPurchases.userId, userId), eq(voicePackPurchases.voicePackId, packId)));
       if (existing.length > 0) return res.status(400).json({ message: "Already purchased" });
 
-      await db.insert(voicePackPurchases).values({
-        userId,
-        voicePackId: packId,
-        amountCents: pack.priceCents,
-        stripePaymentId: req.body.stripePaymentId || null,
+      if (!stripe) {
+        if (paymentsRequiredInProduction()) {
+          const { status, message } = stripeUnavailableMessage();
+          return res.status(status).json({ message });
+        }
+        await db.insert(voicePackPurchases).values({
+          userId,
+          voicePackId: packId,
+          amountCents: pack.priceCents,
+          stripePaymentId: null,
+        });
+        return res.json({ message: "Voice pack purchased (dev mode)", packId });
+      }
+
+      const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: pack.name,
+              description: pack.description || "Premium AI narration voice pack",
+            },
+            unit_amount: pack.priceCents,
+          },
+          quantity: 1,
+        }],
+        mode: "payment",
+        success_url: `${origin}/voice-packs?purchase=success`,
+        cancel_url: `${origin}/voice-packs?purchase=cancelled`,
+        metadata: {
+          type: "voice_pack",
+          userId,
+          voicePackId: packId,
+        },
       });
 
-      res.json({ message: "Voice pack purchased", packId });
+      res.json({ checkoutUrl: session.url, sessionId: session.id });
     } catch (error) {
       res.status(500).json({ message: "Failed to purchase voice pack" });
     }

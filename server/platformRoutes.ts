@@ -8,13 +8,7 @@ import {
   engagementMetrics, seederProgress
 } from "@shared/schema";
 import rateLimit from "express-rate-limit";
-
-const isAuthenticated = (req: any, res: Response, next: NextFunction) => {
-  if (!req.isAuthenticated || !req.isAuthenticated()) {
-    return res.status(401).json({ message: "Not authenticated" });
-  }
-  next();
-};
+import { isAuthenticated, requireAdmin } from "./multiAuth";
 
 export function createRateLimiter() {
   return rateLimit({
@@ -681,7 +675,7 @@ export function registerPlatformRoutes(app: Express) {
     }
   });
 
-  app.get("/api/admin/reports", isAuthenticated, async (req: any, res: Response) => {
+  app.get("/api/admin/reports", requireAdmin, async (req: any, res: Response) => {
     try {
       const reports = await db.select().from(contentReports)
         .orderBy(desc(contentReports.createdAt));
@@ -692,7 +686,7 @@ export function registerPlatformRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/admin/reports/:id", isAuthenticated, async (req: any, res: Response) => {
+  app.patch("/api/admin/reports/:id", requireAdmin, async (req: any, res: Response) => {
     try {
       const userId = req.user.id;
       const { id } = req.params;
@@ -749,7 +743,7 @@ export function registerPlatformRoutes(app: Express) {
     }
   });
 
-  app.get("/api/admin/churn-risk", isAuthenticated, async (req: any, res: Response) => {
+  app.get("/api/admin/churn-risk", requireAdmin, async (req: any, res: Response) => {
     try {
       const atRisk = await db.select({
         userId: engagementMetrics.userId,
@@ -776,7 +770,7 @@ export function registerPlatformRoutes(app: Express) {
   });
 
   // ─── 11. Admin Health Dashboard ───
-  app.get("/api/admin/health", isAuthenticated, async (req: any, res: Response) => {
+  app.get("/api/admin/health", requireAdmin, async (req: any, res: Response) => {
     try {
       const [bookCount] = await db.select({ count: count() }).from(books);
       const [userCount] = await db.select({ count: count() }).from(users);

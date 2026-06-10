@@ -33,8 +33,15 @@ export function VoicePacksPage() {
   });
 
   const purchaseMutation = useMutation({
-    mutationFn: (packId: string) => apiRequest("POST", `/api/voice-packs/${packId}/purchase`, {}),
-    onSuccess: () => {
+    mutationFn: async (packId: string) => {
+      const res = await apiRequest("POST", `/api/voice-packs/${packId}/purchase`, {});
+      return res.json() as Promise<{ checkoutUrl?: string; message?: string; packId?: string }>;
+    },
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/voice-packs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/voice-packs/owned"] });
       toast({ title: "Voice pack unlocked", description: "Your new voices are ready in the reader." });
