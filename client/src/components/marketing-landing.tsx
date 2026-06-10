@@ -1,36 +1,55 @@
-import { useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Accessibility,
+  ArrowRight,
   BookOpen,
-  Headphones,
-  Keyboard,
   Brain,
-  Mic,
-  Eye,
+  Building2,
   Check,
-  Play,
-  Pause,
-  Quote,
-  Shield,
+  Contrast,
+  Eye,
+  GraduationCap,
+  Headphones,
   Heart,
+  Keyboard,
   Menu,
+  Mic,
+  Pause,
+  Play,
+  ShieldCheck,
+  Sparkles,
+  Type,
+  Users,
   X,
-  User,
 } from "lucide-react";
-import { AccessiBooksLogo } from "@/components/accessibooks-logo";
 import { AccessibilityControls } from "@/components/accessibility-controls";
-import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Slider } from "@/components/ui/slider";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
 import { cn } from "@/lib/utils";
 
 type ReadingMode = "standard" | "dyslexia" | "easy-english";
 type DemoContrast = "normal" | "high" | "sepia";
+type SectionTone = "cream" | "deep" | "navy";
+
+const SECTION_SPACING = {
+  lg: "py-16 sm:py-24",
+  xl: "py-20 sm:py-28 md:py-32",
+} as const;
+
+const SECTION_TONE: Record<SectionTone, { bg: string; color: string }> = {
+  cream: { bg: "var(--brand-cream)", color: "var(--brand-ink)" },
+  deep: { bg: "var(--brand-cream-deep)", color: "var(--brand-ink)" },
+  navy: { bg: "var(--brand-navy-strong)", color: "var(--brand-cream)" },
+};
+
+const NAV_ITEMS = [
+  { label: "Features", href: "#features" },
+  { label: "Accessibility", href: "#accessibility" },
+  { label: "Audiences", href: "#audiences" },
+  { label: "Pricing", href: "#pricing" },
+] as const;
 
 const SAMPLE_PASSAGE = {
   standard: [
@@ -50,13 +69,13 @@ const SAMPLE_PASSAGE = {
   ],
 };
 
-const WHO_ITS_FOR = [
-  "People with print or vision differences",
-  "Readers with dyslexia or cognitive needs",
-  "NDIS participants and support workers",
-  "Families reading together",
-  "Students and lifelong learners",
-  "Schools, libraries and institutions",
+const AUDIENCES = [
+  { icon: Eye, label: "People with print or vision differences" },
+  { icon: Brain, label: "Readers with dyslexia or cognitive needs" },
+  { icon: Heart, label: "NDIS participants and support workers" },
+  { icon: Users, label: "Families reading together" },
+  { icon: GraduationCap, label: "Students and lifelong learners" },
+  { icon: Building2, label: "Schools, libraries and institutions" },
 ];
 
 const FEATURES = [
@@ -135,176 +154,740 @@ const FREE_TIER_ITEMS = [
 ];
 
 const PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5] as const;
+const DEMO_DURATION_SEC = 1710;
 
 function formatTitleCount(count: number): string {
   if (count >= 1000) {
     const rounded = (count / 1000).toFixed(1).replace(/\.0$/, "");
-    return `${rounded}k+`;
+    return `${rounded}k`;
   }
-  return `${count}+`;
+  return `${count}`;
 }
 
-function ReadingDemo() {
+function formatClock(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function BrandWordmark({ size = "md", showTagline = false }: { size?: "md" | "lg"; showTagline?: boolean }) {
+  const titleClass = size === "lg" ? "text-3xl" : "text-2xl";
+  const tagClass = size === "lg" ? "text-sm" : "text-xs";
+
+  return (
+    <div className="flex flex-col">
+      <span className={cn("brand-display font-semibold leading-none", titleClass)} style={{ color: "var(--brand-navy)" }}>
+        Accessi<span style={{ color: "var(--brand-orange-deep)" }}>Books</span>
+      </span>
+      {showTagline && (
+        <span
+          className={cn("mt-2 uppercase tracking-[0.18em] font-medium", tagClass)}
+          style={{ color: "var(--brand-ink-soft)" }}
+        >
+          Audiobooks &amp; ebooks for everyone
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SectionEyebrow({ children }: { children: ReactNode }) {
+  return (
+    <p
+      className="text-xs sm:text-sm font-semibold uppercase tracking-[0.22em] mb-4"
+      style={{ color: "var(--brand-orange-deep)" }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function MarketingSection({
+  id,
+  tone = "cream",
+  spacing = "lg",
+  ariaLabel,
+  ariaLabelledby,
+  className,
+  children,
+}: {
+  id?: string;
+  tone?: SectionTone;
+  spacing?: keyof typeof SECTION_SPACING;
+  ariaLabel?: string;
+  ariaLabelledby?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const palette = SECTION_TONE[tone];
+  return (
+    <section
+      id={id}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledby}
+      className={cn(SECTION_SPACING[spacing], className)}
+      style={{ backgroundColor: palette.bg, color: palette.color }}
+    >
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">{children}</div>
+    </section>
+  );
+}
+
+type BrandButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "outline-light";
+
+function BrandButton({
+  variant = "primary",
+  size = "default",
+  className,
+  children,
+  rightIcon,
+  ...props
+}: Omit<React.ComponentProps<typeof Button>, "variant"> & {
+  variant?: BrandButtonVariant;
+  rightIcon?: ReactNode;
+}) {
+  const styles: Record<string, string> = {
+    primary:
+      "bg-[var(--brand-navy)] text-[var(--brand-cream)] hover:bg-[var(--brand-navy-strong)] border-transparent",
+    secondary:
+      "bg-[var(--brand-orange)] text-white hover:bg-[var(--brand-orange-deep)] border-transparent",
+    outline:
+      "bg-transparent border-2 border-[var(--brand-navy)] text-[var(--brand-navy)] hover:bg-[var(--brand-navy)] hover:text-[var(--brand-cream)]",
+    ghost: "bg-transparent text-[var(--brand-navy)] hover:bg-[var(--brand-cream-deep)] border-transparent",
+    "outline-light":
+      "bg-transparent border-2 border-[var(--brand-cream)] text-[var(--brand-cream)] hover:bg-[var(--brand-cream)] hover:text-[var(--brand-navy-strong)]",
+  };
+
+  return (
+    <Button
+      size={size}
+      className={cn("font-semibold focus-visible:ring-[var(--brand-orange)]", styles[variant], className)}
+      {...props}
+    >
+      {children}
+      {rightIcon}
+    </Button>
+  );
+}
+
+function StatTile({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="min-w-0">
+      <div
+        className="brand-display text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight break-words"
+        style={{ color: "var(--brand-orange-deep)" }}
+      >
+        {value}
+      </div>
+      <div className="mt-2 text-sm uppercase tracking-wider font-medium" style={{ color: "var(--brand-ink-soft)" }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function FeatureCard({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: typeof Headphones;
+  title: string;
+  description: string;
+}) {
+  return (
+    <article
+      className="rounded-2xl p-6 sm:p-7 h-full border-2 transition-colors"
+      style={{ backgroundColor: "var(--brand-cream)", borderColor: "var(--brand-line)" }}
+    >
+      <div
+        className="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4"
+        style={{ backgroundColor: "var(--brand-cream-deep)", color: "var(--brand-orange-deep)" }}
+        aria-hidden="true"
+      >
+        <Icon className="h-6 w-6" />
+      </div>
+      <h3 className="brand-display text-xl sm:text-2xl font-semibold mb-2 leading-tight" style={{ color: "var(--brand-navy)" }}>
+        {title}
+      </h3>
+      <p className="text-base leading-relaxed" style={{ color: "var(--brand-ink-soft)" }}>
+        {description}
+      </p>
+    </article>
+  );
+}
+
+function TestimonialCard({
+  quote,
+  name,
+  role,
+}: {
+  quote: string;
+  name: string;
+  role: string;
+}) {
+  return (
+    <figure
+      className="rounded-2xl border-2 p-6 sm:p-7 h-full"
+      style={{ backgroundColor: "var(--brand-cream)", borderColor: "var(--brand-line)" }}
+    >
+      <div className="brand-display text-5xl leading-none mb-2" style={{ color: "var(--brand-orange)" }} aria-hidden="true">
+        &ldquo;
+      </div>
+      <blockquote className="brand-display text-xl sm:text-2xl leading-snug font-medium" style={{ color: "var(--brand-navy)" }}>
+        {quote}
+      </blockquote>
+      <figcaption className="mt-6">
+        <p className="font-semibold" style={{ color: "var(--brand-ink)" }}>
+          {name}
+        </p>
+        <p className="text-sm" style={{ color: "var(--brand-ink-soft)" }}>
+          {role}
+        </p>
+      </figcaption>
+    </figure>
+  );
+}
+
+function MarketingFooter() {
+  const year = new Date().getFullYear();
+  const footerColumns = [
+    {
+      title: "Product",
+      links: ["Features", "Accessibility", "Pricing"],
+    },
+    {
+      title: "Support",
+      links: ["Contact", "Privacy", "Terms"],
+    },
+    {
+      title: "Organisation",
+      links: ["Australian Disability Ltd", "Our mission"],
+    },
+  ];
+
+  return (
+    <footer
+      role="contentinfo"
+      className="border-t"
+      style={{
+        backgroundColor: "var(--brand-navy-strong)",
+        borderColor: "var(--brand-navy-strong)",
+        color: "var(--brand-cream)",
+      }}
+    >
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 py-14 sm:py-16">
+        <div className="grid gap-10 md:grid-cols-12">
+          <div className="md:col-span-5">
+            <BrandWordmark size="lg" showTagline />
+            <a
+              href="https://ausdis.au"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 inline-flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+              aria-label="Australian Disability Ltd — opens in a new tab"
+            >
+              <img src="/assets/ausdis-logo.jpg" alt="" className="h-12 w-auto bg-white rounded-md p-1.5" />
+              <span className="text-xs uppercase tracking-[0.18em] font-semibold opacity-80">
+                A project of
+                <span className="block normal-case tracking-normal text-sm mt-0.5 text-[var(--brand-cream)]">
+                  Australian Disability Ltd
+                </span>
+              </span>
+            </a>
+            <p className="mt-6 text-base leading-relaxed max-w-md opacity-80">
+              AccessiBooks is built and operated by Australian Disability Ltd, a registered charity working to make
+              literature accessible to every reader and listener.
+            </p>
+            <p className="mt-4 text-sm font-medium opacity-70">
+              Designed to meet WCAG 2.2 AA · Keyboard friendly · Screen reader tested
+            </p>
+          </div>
+          <div className="md:col-span-7 grid grid-cols-2 sm:grid-cols-3 gap-8">
+            {footerColumns.map((column) => (
+              <div key={column.title}>
+                <h2 className="text-xs uppercase tracking-[0.18em] font-semibold mb-4 opacity-70">{column.title}</h2>
+                <ul className="space-y-2 text-sm opacity-80">
+                  {column.links.map((link) => (
+                    <li key={link}>
+                      <span className="hover:opacity-100 transition-opacity">{link}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div
+          className="mt-12 pt-6 border-t flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between text-sm opacity-70"
+          style={{ borderColor: "color-mix(in srgb, var(--brand-cream) 20%, transparent)" }}
+        >
+          <p>&copy; {year} Australian Disability Ltd. All rights reserved.</p>
+          <p className="flex items-center gap-1.5">
+            <Heart className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+            Made with care for accessible reading
+          </p>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function DemoRadioGroup<T extends string>({
+  legend,
+  legendIcon: LegendIcon,
+  options,
+  value,
+  onChange,
+  testIdPrefix,
+}: {
+  legend: string;
+  legendIcon?: typeof Type;
+  options: { id: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  testIdPrefix: string;
+}) {
+  const ids = options.map((option) => option.id);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, current: T) => {
+    const index = ids.indexOf(current);
+    if (index < 0) return;
+
+    let next = index;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % ids.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index - 1 + ids.length) % ids.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = ids.length - 1;
+    else return;
+
+    event.preventDefault();
+    onChange(ids[next]);
+  };
+
+  return (
+    <fieldset>
+      <legend className="text-sm font-semibold inline-flex items-center gap-2 mb-3" style={{ color: "var(--brand-navy)" }}>
+        {LegendIcon && <LegendIcon className="h-4 w-4" aria-hidden="true" />}
+        {legend}
+      </legend>
+      <div
+        className="grid grid-cols-3 gap-2 rounded-xl p-1 border"
+        style={{ backgroundColor: "var(--brand-cream)", borderColor: "var(--brand-line)" }}
+        role="radiogroup"
+        aria-label={legend}
+      >
+        {options.map((option) => {
+          const selected = value === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onChange(option.id)}
+              onKeyDown={(event) => handleKeyDown(event, option.id)}
+              className="px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+              style={{
+                backgroundColor: selected ? "var(--brand-navy)" : "transparent",
+                color: selected ? "var(--brand-cream)" : "var(--brand-ink)",
+              }}
+              data-testid={`${testIdPrefix}-${option.id}`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function ReadingDemo({
+  onOpenRegister,
+  onBrowseAsGuest,
+}: {
+  onOpenRegister: () => void;
+  onBrowseAsGuest?: () => void;
+}) {
   const [readingMode, setReadingMode] = useState<ReadingMode>("standard");
   const [textSize, setTextSize] = useState(18);
   const [lineSpacing, setLineSpacing] = useState(1.7);
   const [contrast, setContrast] = useState<DemoContrast>("normal");
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [progressSec, setProgressSec] = useState(718);
+  const fontSizeId = useId();
+  const lineSpacingId = useId();
 
   const passage = SAMPLE_PASSAGE[readingMode];
 
-  const demoStyles: Record<string, string | number> = {
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = window.setInterval(() => {
+      setProgressSec((current) => Math.min(current + 1, DEMO_DURATION_SEC));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isPlaying]);
+
+  const passageStyle: Record<string, string | number> = {
     fontSize: `${textSize}px`,
     lineHeight: lineSpacing,
     ...(readingMode === "dyslexia"
-      ? { fontFamily: "'OpenDyslexic', 'Inter', sans-serif", letterSpacing: "0.05em", wordSpacing: "0.1em" }
-      : {}),
+      ? {
+          fontFamily: "'OpenDyslexic', var(--font-serif), serif",
+          letterSpacing: "0.04em",
+        }
+      : { fontFamily: "var(--font-serif)" }),
+    ...(contrast === "high"
+      ? { backgroundColor: "#000", color: "#fff" }
+      : contrast === "sepia"
+        ? { backgroundColor: "#f4ecd8", color: "#3d2f1c" }
+        : { backgroundColor: "var(--brand-cream)", color: "var(--brand-ink)" }),
   };
 
+  const progressPct = Math.round((progressSec / DEMO_DURATION_SEC) * 100);
+
   return (
-    <div className="grid lg:grid-cols-2 gap-8 items-start">
-      <div className="space-y-6">
-        <fieldset>
-          <legend className="text-sm font-medium mb-2">Reading mode</legend>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["standard", "Standard"],
-                ["dyslexia", "Dyslexia"],
-                ["easy-english", "Easy English"],
-              ] as const
-            ).map(([value, label]) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={readingMode === value ? "default" : "outline"}
-                onClick={() => setReadingMode(value)}
-                aria-pressed={readingMode === value}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </fieldset>
-
-        <div>
-          <label htmlFor="demo-text-size" className="text-sm font-medium flex justify-between mb-2">
-            <span>Text size</span>
-            <span className="text-muted-foreground">{textSize}px</span>
-          </label>
-          <Slider
-            id="demo-text-size"
-            min={14}
-            max={28}
-            step={1}
-            value={[textSize]}
-            onValueChange={([v]) => setTextSize(v)}
-            aria-label="Text size"
-          />
+    <section id="see-the-product" aria-labelledby="see-the-product-heading" className="py-20 sm:py-24" style={{ backgroundColor: "var(--brand-cream)" }}>
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
+        <div className="max-w-2xl">
+          <SectionEyebrow>See it in action</SectionEyebrow>
+          <h2
+            id="see-the-product-heading"
+            className="brand-display text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight"
+            style={{ color: "var(--brand-navy)" }}
+          >
+            Try the controls. Watch the page respond.
+          </h2>
+          <p className="mt-5 text-lg leading-relaxed" style={{ color: "var(--brand-ink-soft)" }}>
+            Change the reading mode, type size, line spacing, or contrast — and the sample passage updates instantly.
+            No sign-up needed.
+          </p>
         </div>
 
-        <div>
-          <label htmlFor="demo-line-spacing" className="text-sm font-medium flex justify-between mb-2">
-            <span>Line spacing</span>
-            <span className="text-muted-foreground">{lineSpacing.toFixed(1)}</span>
-          </label>
-          <Slider
-            id="demo-line-spacing"
-            min={1.2}
-            max={2.4}
-            step={0.1}
-            value={[lineSpacing]}
-            onValueChange={([v]) => setLineSpacing(v)}
-            aria-label="Line spacing"
-          />
-        </div>
+        <div className="mt-12 grid gap-8 lg:grid-cols-12 items-start">
+          <div className="lg:col-span-5">
+            <div
+              className="rounded-2xl border-2 p-6 sm:p-7 space-y-7"
+              style={{ backgroundColor: "var(--brand-cream-deep)", borderColor: "var(--brand-line)" }}
+              role="group"
+              aria-label="Reading preferences"
+            >
+              <DemoRadioGroup
+                legend="Reading mode"
+                legendIcon={Sparkles}
+                options={[
+                  { id: "standard", label: "Standard" },
+                  { id: "dyslexia", label: "Dyslexia" },
+                  { id: "easy-english", label: "Easy English" },
+                ]}
+                value={readingMode}
+                onChange={setReadingMode}
+                testIdPrefix="demo-mode"
+              />
 
-        <fieldset>
-          <legend className="text-sm font-medium mb-2">Contrast</legend>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["normal", "Normal"],
-                ["high", "High"],
-                ["sepia", "Sepia"],
-              ] as const
-            ).map(([value, label]) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={contrast === value ? "default" : "outline"}
-                onClick={() => setContrast(value)}
-                aria-pressed={contrast === value}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </fieldset>
-      </div>
-
-      <div className="space-y-4">
-        <Card
-          className={cn(
-            "overflow-hidden border-2",
-            contrast === "high" && "bg-white text-black border-black",
-            contrast === "sepia" && "bg-[#f4ecd8] text-[#433422] border-[#c4a882]",
-          )}
-        >
-          <CardContent className="p-6">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground mb-4">
-              Pride and Prejudice · Chapter 1
-              <span className="ml-2 text-primary">Sample passage</span>
-            </p>
-            <div style={demoStyles} className="space-y-4 max-w-prose">
-              {passage.map((paragraph, i) => (
-                <p key={i}>{paragraph}</p>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between gap-4 mb-3">
-              <div className="min-w-0">
-                <p className="font-medium text-sm truncate">Pride and Prejudice — Ch. 1</p>
-                <p className="text-xs text-muted-foreground">Narrated by Karen Savage · 11:58 / 28:30</p>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor={fontSizeId} className="text-sm font-semibold inline-flex items-center gap-2" style={{ color: "var(--brand-navy)" }}>
+                    <Type className="h-4 w-4" aria-hidden="true" />
+                    Text size
+                  </label>
+                  <span className="text-sm tabular-nums" style={{ color: "var(--brand-ink-soft)" }}>
+                    {textSize}px
+                  </span>
+                </div>
+                <input
+                  id={fontSizeId}
+                  type="range"
+                  min={14}
+                  max={28}
+                  step={1}
+                  value={textSize}
+                  onChange={(event) => setTextSize(parseInt(event.target.value, 10))}
+                  className="w-full accent-[var(--brand-orange-deep)]"
+                  data-testid="demo-font-size"
+                />
               </div>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                onClick={() => setIsPlaying((p) => !p)}
-                aria-label={isPlaying ? "Pause" : "Play"}
-              >
-                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </Button>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor={lineSpacingId} className="text-sm font-semibold inline-flex items-center gap-2" style={{ color: "var(--brand-navy)" }}>
+                    <BookOpen className="h-4 w-4" aria-hidden="true" />
+                    Line spacing
+                  </label>
+                  <span className="text-sm tabular-nums" style={{ color: "var(--brand-ink-soft)" }}>
+                    {lineSpacing.toFixed(1)}
+                  </span>
+                </div>
+                <input
+                  id={lineSpacingId}
+                  type="range"
+                  min={1.2}
+                  max={2.4}
+                  step={0.1}
+                  value={lineSpacing}
+                  onChange={(event) => setLineSpacing(parseFloat(event.target.value))}
+                  className="w-full accent-[var(--brand-orange-deep)]"
+                  data-testid="demo-line-spacing"
+                />
+              </div>
+
+              <DemoRadioGroup
+                legend="Contrast"
+                legendIcon={Contrast}
+                options={[
+                  { id: "normal", label: "Normal" },
+                  { id: "high", label: "High" },
+                  { id: "sepia", label: "Sepia" },
+                ]}
+                value={contrast}
+                onChange={setContrast}
+                testIdPrefix="demo-contrast"
+              />
             </div>
-            <p className="text-xs text-muted-foreground mb-3" aria-live="polite">
-              {isPlaying ? "Playing" : "Paused"}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {PLAYBACK_SPEEDS.map((speed) => (
-                <Button
-                  key={speed}
+          </div>
+
+          <div className="lg:col-span-7 space-y-4">
+            <div
+              className="rounded-2xl border-2 p-6 sm:p-8 min-h-[280px]"
+              style={{
+                ...passageStyle,
+                borderColor: contrast === "high" ? "#000" : contrast === "sepia" ? "#d8c9a8" : "var(--brand-line)",
+              }}
+            >
+              <p className="text-xs uppercase tracking-wider font-semibold mb-5 opacity-70">
+                Pride and Prejudice · Chapter 1
+                <span className="ml-2" style={{ color: "var(--brand-orange-deep)" }}>
+                  Sample passage
+                </span>
+              </p>
+              <div className="space-y-4 max-w-prose">
+                {passage.map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="rounded-2xl border-2 p-5 sm:p-6"
+              style={{ backgroundColor: "var(--brand-cream)", borderColor: "var(--brand-line)" }}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate" style={{ color: "var(--brand-navy)" }}>
+                    Pride and Prejudice — Ch. 1
+                  </p>
+                  <p className="text-sm truncate" style={{ color: "var(--brand-ink-soft)" }}>
+                    Narrated by Karen Savage · {formatClock(progressSec)} / {formatClock(DEMO_DURATION_SEC)}
+                  </p>
+                </div>
+                <button
                   type="button"
-                  size="sm"
-                  variant={playbackSpeed === speed ? "default" : "outline"}
-                  onClick={() => setPlaybackSpeed(speed)}
-                  aria-pressed={playbackSpeed === speed}
+                  onClick={() => setIsPlaying((playing) => !playing)}
+                  className="inline-flex items-center justify-center w-11 h-11 rounded-full border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+                  style={{ borderColor: "var(--brand-navy)", color: "var(--brand-navy)" }}
+                  aria-label={isPlaying ? "Pause sample playback" : "Play sample playback"}
                 >
-                  {speed}x
-                </Button>
-              ))}
+                  {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                </button>
+              </div>
+              <p className="text-xs mt-2" style={{ color: "var(--brand-ink-soft)" }} aria-live="polite">
+                {isPlaying ? "Playing" : "Paused"}
+              </p>
+              <div className="mt-4 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--brand-cream-deep)" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${progressPct}%`, backgroundColor: "var(--brand-orange-deep)" }}
+                />
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {PLAYBACK_SPEEDS.map((speed) => (
+                  <button
+                    key={speed}
+                    type="button"
+                    onClick={() => setPlaybackSpeed(speed)}
+                    className="px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+                    style={{
+                      backgroundColor: playbackSpeed === speed ? "var(--brand-navy)" : "transparent",
+                      color: playbackSpeed === speed ? "var(--brand-cream)" : "var(--brand-ink)",
+                      borderColor: "var(--brand-line)",
+                    }}
+                    aria-pressed={playbackSpeed === speed}
+                  >
+                    {speed}x
+                  </button>
+                ))}
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        <div
+          className="mt-12 rounded-2xl border-2 p-6 sm:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6"
+          style={{ backgroundColor: "var(--brand-cream-deep)", borderColor: "var(--brand-line)" }}
+        >
+          <div>
+            <h3 className="brand-display text-xl sm:text-2xl font-semibold" style={{ color: "var(--brand-navy)" }}>
+              Like what you see? Save your settings to your account.
+            </h3>
+            <p className="mt-2 text-base" style={{ color: "var(--brand-ink-soft)" }}>
+              Sign up free to keep your reading preferences across every device.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+            <BrandButton variant="secondary" onClick={onOpenRegister}>
+              Create a free account
+            </BrandButton>
+            {onBrowseAsGuest && (
+              <BrandButton variant="outline" onClick={onBrowseAsGuest}>
+                Browse as a guest
+              </BrandButton>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
+  );
+}
+
+function MarketingNav({
+  onOpenLogin,
+  onOpenRegister,
+}: {
+  onOpenLogin: () => void;
+  onOpenRegister: () => void;
+}) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    const sectionIds = NAV_ITEMS.map((item) => item.href.slice(1));
+    const sections = sectionIds.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+    if (sections.length === 0) return;
+
+    const ratios = new Map<string, number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) ratios.set(entry.target.id, entry.intersectionRatio);
+          else ratios.delete(entry.target.id);
+        }
+        let bestId: string | null = null;
+        let bestRatio = 0;
+        for (const [id, ratio] of Array.from(ratios.entries())) {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestId = id;
+          }
+        }
+        setActiveSection(bestId);
+      },
+      { rootMargin: "-30% 0px -55% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <header
+      role="banner"
+      className="sticky top-0 z-30 backdrop-blur-md border-b"
+      style={{
+        backgroundColor: "color-mix(in srgb, var(--brand-cream) 88%, transparent)",
+        borderColor: "var(--brand-line)",
+      }}
+    >
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 h-16 sm:h-[4.5rem] flex items-center justify-between gap-4">
+        <a href="#" className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)] rounded-sm">
+          <BrandWordmark />
+        </a>
+
+        <nav className="hidden lg:flex items-center gap-1" aria-label="Landing page sections">
+          {NAV_ITEMS.map((item) => {
+            const isActive = activeSection === item.href.slice(1);
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                className="relative px-3 py-2 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-navy)]"
+                style={{
+                  color: isActive ? "var(--brand-orange-deep)" : "var(--brand-ink)",
+                  fontWeight: isActive ? 700 : 500,
+                }}
+              >
+                {item.label}
+                {isActive && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-3 right-3 -bottom-0.5 h-0.5 rounded-full"
+                    style={{ backgroundColor: "var(--brand-orange-deep)" }}
+                  />
+                )}
+              </a>
+            );
+          })}
+        </nav>
+
+        <div className="hidden md:flex items-center gap-3">
+          <AccessibilityControls />
+          <BrandButton variant="ghost" onClick={onOpenLogin} data-testid="nav-sign-in">
+            Sign In
+          </BrandButton>
+          <BrandButton variant="secondary" onClick={onOpenRegister} data-testid="nav-get-started">
+            Get Started
+          </BrandButton>
+        </div>
+
+        <button
+          type="button"
+          className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)]"
+          style={{ borderColor: "var(--brand-line)", color: "var(--brand-navy)" }}
+          onClick={() => setMobileOpen((open) => !open)}
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
+          data-testid="mobile-menu-toggle"
+        >
+          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
+
+      {mobileOpen && (
+        <div className="md:hidden border-t px-5 pb-5 pt-4 space-y-3" style={{ borderColor: "var(--brand-line)" }}>
+          <div className="flex justify-center">
+            <AccessibilityControls />
+          </div>
+          {NAV_ITEMS.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              className="block px-3 py-2 rounded-lg text-sm font-medium"
+              style={{ color: "var(--brand-ink)" }}
+              onClick={() => setMobileOpen(false)}
+            >
+              {item.label}
+            </a>
+          ))}
+          <BrandButton variant="ghost" className="w-full justify-start" onClick={() => { onOpenLogin(); setMobileOpen(false); }}>
+            Sign In
+          </BrandButton>
+          <BrandButton variant="secondary" className="w-full justify-start" onClick={() => { onOpenRegister(); setMobileOpen(false); }}>
+            Get Started
+          </BrandButton>
+        </div>
+      )}
+    </header>
   );
 }
 
@@ -316,7 +899,6 @@ export interface MarketingLandingProps {
 
 export function MarketingLanding({ onBrowseAsGuest, onOpenLogin, onOpenRegister }: MarketingLandingProps) {
   const { toggleHighContrast } = useAccessibility();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const { data: platformStats } = useQuery<{
     totalBooks: number;
@@ -330,318 +912,326 @@ export function MarketingLanding({ onBrowseAsGuest, onOpenLogin, onOpenRegister 
     onHighContrast: toggleHighContrast,
   });
 
-  const titleCount = platformStats?.totalBooks
-    ? formatTitleCount(platformStats.totalBooks)
-    : "13.7k+";
+  const titleCount = useMemo(() => {
+    if (platformStats?.totalBooks) return `${formatTitleCount(platformStats.totalBooks)}+`;
+    return "13.7k+";
+  }, [platformStats?.totalBooks]);
+
+  const thirdStat = useMemo(() => {
+    const minutes = platformStats?.totalListeningMinutes ?? 0;
+    if (minutes > 0) {
+      return { value: `${formatTitleCount(minutes)}+`, label: "Minutes listened" };
+    }
+    return { value: "100%", label: "Keyboard navigable" };
+  }, [platformStats?.totalListeningMinutes]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/20">
+    <div className="brand-surface min-h-screen flex flex-col">
       <a href="#main-content" className="skip-to-content">
         Skip to main content
       </a>
 
-      <nav className="border-b bg-background/90 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex justify-between items-center gap-4">
-          <AccessiBooksLogo onClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
+      <MarketingNav onOpenLogin={onOpenLogin} onOpenRegister={onOpenRegister} />
 
-          <div className="hidden md:flex items-center gap-3">
-            <AccessibilityControls />
-            <Button variant="ghost" onClick={onOpenLogin} data-testid="nav-sign-in">
-              Sign In
-            </Button>
-            <Button onClick={onOpenRegister} data-testid="nav-get-started">
-              Get Started
-            </Button>
+      <main id="main-content" className="flex-1" data-testid="brand-landing-main">
+        <MarketingSection spacing="lg" tone="cream" ariaLabel="AccessiBooks introduction" className="!pt-10 sm:!pt-14">
+          <div className="grid gap-10 md:gap-14 md:grid-cols-12 items-center">
+            <div className="md:col-span-7 max-w-2xl">
+              <SectionEyebrow>From Australian Disability Ltd</SectionEyebrow>
+              <h1
+                className="brand-display text-3xl sm:text-4xl md:text-[2.5rem] lg:text-5xl xl:text-[3.25rem] font-semibold leading-[1.08] tracking-tight"
+                style={{ color: "var(--brand-navy)" }}
+              >
+                Audiobooks &amp; ebooks,
+                <br />
+                <span style={{ color: "var(--brand-orange-deep)" }}>designed for every reader</span>.
+              </h1>
+              <p className="mt-6 text-lg sm:text-xl leading-relaxed max-w-prose" style={{ color: "var(--brand-ink-soft)" }}>
+                A calm, accessibility-first library you can listen to, read, and shape to suit how <em>you</em> read best
+                — whatever your vision, hearing, motor or cognitive needs.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <BrandButton
+                  variant="secondary"
+                  size="lg"
+                  onClick={onOpenRegister}
+                  rightIcon={<ArrowRight className="h-5 w-5 ml-2" aria-hidden="true" />}
+                  data-testid="hero-get-started"
+                >
+                  Create a free account
+                </BrandButton>
+                {onBrowseAsGuest && (
+                  <BrandButton variant="outline" size="lg" onClick={onBrowseAsGuest} data-testid="browse-as-guest">
+                    Browse as a guest
+                  </BrandButton>
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-5">
+              <div className="relative">
+                <div
+                  className="relative rounded-3xl overflow-hidden border-2"
+                  style={{ borderColor: "var(--brand-line)", backgroundColor: "var(--brand-cream-deep)" }}
+                >
+                  <img
+                    src="/assets/hero-illustration.png"
+                    alt=""
+                    className="block w-full h-auto"
+                    loading="eager"
+                    decoding="async"
+                  />
+                </div>
+                <div
+                  aria-hidden="true"
+                  className="hidden sm:block absolute -bottom-6 -left-6 md:-left-10 w-[78%] max-w-xs rounded-2xl border-2 shadow-xl p-4"
+                  style={{ backgroundColor: "var(--brand-cream)", borderColor: "var(--brand-line)", color: "var(--brand-ink)" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "var(--brand-navy)", color: "var(--brand-cream)" }}
+                    >
+                      <Headphones className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs uppercase tracking-wider font-semibold" style={{ color: "var(--brand-orange-deep)" }}>
+                        Now playing
+                      </div>
+                      <div className="text-sm font-semibold truncate">Pride and Prejudice</div>
+                      <div className="text-xs truncate" style={{ color: "var(--brand-ink-soft)" }}>
+                        Ch. 3 · 12:04 / 28:30
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--brand-cream-deep)" }}>
+                    <div className="h-full w-2/5 rounded-full" style={{ backgroundColor: "var(--brand-orange-deep)" }} />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs" style={{ color: "var(--brand-ink-soft)" }}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Type className="h-3.5 w-3.5" /> Dyslexia font
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Contrast className="h-3.5 w-3.5" /> High contrast
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileMenuOpen}
-            data-testid="mobile-menu-toggle"
+          <div
+            className="mt-16 sm:mt-24 grid grid-cols-1 md:grid-cols-3 gap-y-8 gap-x-8 border-t pt-10"
+            style={{ borderColor: "var(--brand-line)" }}
+            aria-label="Platform highlights"
           >
-            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </Button>
-        </div>
+            <StatTile value={titleCount} label="Titles in library" />
+            <StatTile value="WCAG 2.2 AA" label="Built to conform" />
+            <StatTile value={thirdStat.value} label={thirdStat.label} />
+          </div>
+        </MarketingSection>
 
-        <div
-          className={cn(
-            "md:hidden overflow-hidden transition-all duration-300",
-            mobileMenuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0",
-          )}
-        >
-          <div className="px-4 pb-4 space-y-3 border-t pt-4">
-            <div className="flex justify-center">
-              <AccessibilityControls />
-            </div>
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => {
-                onOpenLogin();
-                setMobileMenuOpen(false);
-              }}
+        <MarketingSection id="audiences" tone="deep" spacing="lg" ariaLabelledby="audiences-heading">
+          <div className="text-center max-w-2xl mx-auto">
+            <SectionEyebrow>Who it&apos;s for</SectionEyebrow>
+            <h2
+              id="audiences-heading"
+              className="brand-display text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight"
+              style={{ color: "var(--brand-navy)" }}
             >
-              <User className="mr-2 h-4 w-4" /> Sign In
-            </Button>
-            <Button
-              className="w-full justify-start"
-              onClick={() => {
-                onOpenRegister();
-                setMobileMenuOpen(false);
-              }}
-            >
-              <Headphones className="mr-2 h-4 w-4" /> Get Started
-            </Button>
-          </div>
-        </div>
-      </nav>
-
-      <main id="main-content">
-        {/* Hero */}
-        <section className="max-w-7xl mx-auto px-4 md:px-8 py-16 md:py-24" aria-labelledby="hero-heading">
-          <div className="max-w-3xl">
-            <Badge variant="secondary" className="mb-6 text-sm font-normal">
-              From Australian Disability Ltd
-            </Badge>
-            <h1 id="hero-heading" className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-tight mb-6">
-              Audiobooks &amp; ebooks,{" "}
-              <span className="text-primary">designed for every reader.</span>
-            </h1>
-            <p className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-8 max-w-2xl">
-              A calm, accessibility-first library you can listen to, read, and shape to suit how you read best —
-              whatever your vision, hearing, motor or cognitive needs.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 mb-4">
-              <Button size="lg" onClick={onOpenRegister} data-testid="hero-get-started">
-                Create a free account
-              </Button>
-              {onBrowseAsGuest && (
-                <Button size="lg" variant="outline" onClick={onBrowseAsGuest} data-testid="browse-as-guest">
-                  Browse as a guest
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-16 max-w-3xl">
-            <div>
-              <p className="text-3xl font-bold text-primary">{titleCount}</p>
-              <p className="text-sm text-muted-foreground mt-1">Titles in library</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-primary">WCAG 2.2 AA</p>
-              <p className="text-sm text-muted-foreground mt-1">Built to conform</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-primary">100%</p>
-              <p className="text-sm text-muted-foreground mt-1">Keyboard navigable</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Who it's for */}
-        <section className="bg-muted/40 py-16 md:py-20" aria-labelledby="who-heading">
-          <div className="max-w-7xl mx-auto px-4 md:px-8">
-            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">Who it&apos;s for</p>
-            <h2 id="who-heading" className="text-3xl md:text-4xl font-bold mb-8 max-w-2xl">
               A library that adapts to the way you read.
             </h2>
-            <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl">
-              {WHO_ITS_FOR.map((item) => (
-                <li key={item} className="flex items-start gap-3 text-muted-foreground">
-                  <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
           </div>
-        </section>
+          <ul className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="list">
+            {AUDIENCES.map(({ icon: Icon, label }) => (
+              <li
+                key={label}
+                className="flex items-start gap-4 rounded-2xl p-5 border-2"
+                style={{ backgroundColor: "var(--brand-cream)", borderColor: "var(--brand-line)" }}
+              >
+                <span
+                  aria-hidden="true"
+                  className="inline-flex items-center justify-center w-11 h-11 rounded-xl shrink-0"
+                  style={{ backgroundColor: "var(--brand-cream-deep)", color: "var(--brand-orange-deep)" }}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="text-base sm:text-lg font-medium leading-snug pt-1.5" style={{ color: "var(--brand-ink)" }}>
+                  {label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </MarketingSection>
 
-        {/* Features */}
-        <section className="py-16 md:py-20" aria-labelledby="features-heading">
-          <div className="max-w-7xl mx-auto px-4 md:px-8">
-            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">What you can do</p>
-            <h2 id="features-heading" className="text-3xl md:text-4xl font-bold mb-4 max-w-2xl">
+        <MarketingSection id="features" spacing="lg" ariaLabelledby="features-heading">
+          <div className="max-w-2xl">
+            <SectionEyebrow>What you can do</SectionEyebrow>
+            <h2
+              id="features-heading"
+              className="brand-display text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight"
+              style={{ color: "var(--brand-navy)" }}
+            >
               Read your way. Listen your way. No compromise.
             </h2>
-            <p className="text-muted-foreground mb-12 max-w-2xl leading-relaxed">
+            <p className="mt-5 text-lg leading-relaxed" style={{ color: "var(--brand-ink-soft)" }}>
               Every feature is built with access in mind from the start — not retrofitted later.
             </p>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {FEATURES.map((feature) => (
-                <Card key={feature.title} className="border-2 hover:border-primary/40 transition-colors">
-                  <CardContent className="pt-6">
-                    <div className="p-2 rounded-lg bg-primary/10 text-primary w-fit mb-4">
-                      <feature.icon className="h-6 w-6" aria-hidden="true" />
-                    </div>
-                    <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
+          </div>
+          <div className="mt-12 grid gap-5 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((feature) => (
+              <FeatureCard key={feature.title} {...feature} />
+            ))}
+          </div>
+        </MarketingSection>
+
+        <ReadingDemo onOpenRegister={onOpenRegister} onBrowseAsGuest={onBrowseAsGuest} />
+
+        <MarketingSection id="accessibility" tone="deep" spacing="lg" ariaLabelledby="commitments-heading">
+          <div className="grid gap-10 md:grid-cols-12 items-start">
+            <div className="md:col-span-5">
+              <SectionEyebrow>Our accessibility promise</SectionEyebrow>
+              <h2
+                id="commitments-heading"
+                className="brand-display text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight"
+                style={{ color: "var(--brand-navy)" }}
+              >
+                Accessibility isn&apos;t a setting. It&apos;s the whole product.
+              </h2>
+              <p className="mt-5 text-lg leading-relaxed" style={{ color: "var(--brand-ink-soft)" }}>
+                AccessiBooks is built and operated by Australian Disability Ltd, a registered charity. A share of every
+                subscription supports accessibility programs across Australia.
+              </p>
+            </div>
+            <div className="md:col-span-7">
+              <ul className="space-y-4" role="list">
+                {ACCESSIBILITY_PROMISES.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <ShieldCheck className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--brand-navy)" }} aria-hidden="true" />
+                    <span className="text-base" style={{ color: "var(--brand-ink)" }}>
+                      {item}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
-        </section>
+        </MarketingSection>
 
-        {/* Interactive demo */}
-        <section className="bg-muted/40 py-16 md:py-20" aria-labelledby="demo-heading">
-          <div className="max-w-7xl mx-auto px-4 md:px-8">
-            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">See it in action</p>
-            <h2 id="demo-heading" className="text-3xl md:text-4xl font-bold mb-4 max-w-2xl">
-              Try the controls. Watch the page respond.
-            </h2>
-            <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
-              Change the reading mode, type size, line spacing, or contrast — and the sample passage updates
-              instantly. No sign-up needed.
-            </p>
-            <ReadingDemo />
-            <Card className="mt-12 border-primary/20 bg-primary/5">
-              <CardContent className="py-8 px-6 md:px-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                <div>
-                  <h3 className="text-xl font-semibold mb-2">Like what you see? Save your settings to your account.</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Sign up free to keep your reading preferences across every device.
-                  </p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3 shrink-0">
-                  <Button onClick={onOpenRegister}>Create a free account</Button>
-                  {onBrowseAsGuest && (
-                    <Button variant="outline" onClick={onBrowseAsGuest}>
-                      Browse as a guest
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {/* Accessibility promise */}
-        <section className="py-16 md:py-20" aria-labelledby="promise-heading">
-          <div className="max-w-7xl mx-auto px-4 md:px-8">
-            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">
-              Our accessibility promise
-            </p>
-            <h2 id="promise-heading" className="text-3xl md:text-4xl font-bold mb-4 max-w-2xl">
-              Accessibility isn&apos;t a setting. It&apos;s the whole product.
-            </h2>
-            <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
-              AccessiBooks is built and operated by Australian Disability Ltd, a registered charity. A share of every
-              subscription supports accessibility programs across Australia.
-            </p>
-            <ul className="space-y-4 max-w-3xl">
-              {ACCESSIBILITY_PROMISES.map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
-                  <span className="text-muted-foreground">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        {/* Testimonials */}
-        <section className="bg-muted/40 py-16 md:py-20" aria-labelledby="testimonials-heading">
-          <div className="max-w-7xl mx-auto px-4 md:px-8">
-            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">
-              Voices from the community
-            </p>
-            <h2 id="testimonials-heading" className="text-3xl md:text-4xl font-bold mb-12">
+        <MarketingSection spacing="lg" ariaLabelledby="testimonials-heading">
+          <div className="max-w-2xl">
+            <SectionEyebrow>Voices from the community</SectionEyebrow>
+            <h2
+              id="testimonials-heading"
+              className="brand-display text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight"
+              style={{ color: "var(--brand-navy)" }}
+            >
               Built with — not just for — readers.
             </h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              {TESTIMONIALS.map((t) => (
-                <Card key={t.name} className="border-2">
-                  <CardContent className="pt-6">
-                    <Quote className="h-8 w-8 text-primary/40 mb-4" aria-hidden="true" />
-                    <blockquote className="text-sm leading-relaxed mb-4">&ldquo;{t.quote}&rdquo;</blockquote>
-                    <footer>
-                      <p className="font-semibold text-sm">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">{t.role}</p>
-                    </footer>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
           </div>
-        </section>
+          <div className="mt-12 grid gap-6 md:grid-cols-3">
+            {TESTIMONIALS.map((testimonial) => (
+              <TestimonialCard key={testimonial.name} {...testimonial} />
+            ))}
+          </div>
+        </MarketingSection>
 
-        {/* Pricing preview */}
-        <section className="py-16 md:py-20" aria-labelledby="pricing-heading">
-          <div className="max-w-7xl mx-auto px-4 md:px-8">
-            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">Simple, fair pricing</p>
-            <h2 id="pricing-heading" className="text-3xl md:text-4xl font-bold mb-4 max-w-2xl">
-              Start free. Upgrade only when it helps.
-            </h2>
-            <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
-              A generous free tier covers the public-domain library, full accessibility features, and personal
-              bookmarks. Plus and Premium plans unlock ad-free listening, offline downloads, and family sharing.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 mb-10">
-              <Button size="lg" onClick={onOpenRegister}>
-                See plans &amp; pricing
-              </Button>
-              <Button size="lg" variant="outline" onClick={onOpenRegister}>
-                Or start free
-              </Button>
+        <MarketingSection id="pricing" tone="deep" spacing="lg" ariaLabelledby="pricing-heading">
+          <div className="grid gap-10 md:grid-cols-12 items-center">
+            <div className="md:col-span-7">
+              <SectionEyebrow>Simple, fair pricing</SectionEyebrow>
+              <h2
+                id="pricing-heading"
+                className="brand-display text-3xl sm:text-4xl md:text-5xl font-semibold leading-tight"
+                style={{ color: "var(--brand-navy)" }}
+              >
+                Start free. Upgrade only when it helps.
+              </h2>
+              <p className="mt-5 text-lg leading-relaxed" style={{ color: "var(--brand-ink-soft)" }}>
+                A generous free tier covers the public-domain library, full accessibility features, and personal
+                bookmarks. Plus and Premium plans unlock ad-free listening, offline downloads, and family sharing.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <BrandButton
+                  variant="primary"
+                  size="lg"
+                  onClick={onOpenRegister}
+                  rightIcon={<ArrowRight className="h-5 w-5 ml-2" aria-hidden="true" />}
+                >
+                  See plans &amp; pricing
+                </BrandButton>
+                <BrandButton variant="ghost" size="lg" onClick={onOpenRegister}>
+                  Or start free
+                </BrandButton>
+              </div>
             </div>
-            <Card className="max-w-xl border-2">
-              <CardContent className="pt-6">
-                <h3 className="font-semibold mb-4 flex items-center gap-2">
-                  <Heart className="h-5 w-5 text-primary" aria-hidden="true" />
-                  Included free
-                </h3>
+            <div className="md:col-span-5">
+              <div
+                className="rounded-2xl p-7 border-2"
+                style={{ backgroundColor: "var(--brand-cream)", borderColor: "var(--brand-line)" }}
+              >
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="h-5 w-5" style={{ color: "var(--brand-orange-deep)" }} aria-hidden="true" />
+                  <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--brand-ink-soft)" }}>
+                    Included free
+                  </span>
+                </div>
                 <ul className="space-y-3">
                   {FREE_TIER_ITEMS.map((item) => (
-                    <li key={item} className="flex items-start gap-3 text-sm text-muted-foreground">
-                      <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" aria-hidden="true" />
-                      {item}
+                    <li key={item} className="flex items-start gap-3">
+                      <Check className="h-5 w-5 mt-0.5 shrink-0" style={{ color: "var(--brand-navy)" }} aria-hidden="true" />
+                      <span className="text-base" style={{ color: "var(--brand-ink)" }}>
+                        {item}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {/* Final CTA */}
-        <section className="py-16 md:py-20 bg-primary text-primary-foreground" aria-labelledby="cta-heading">
-          <div className="max-w-7xl mx-auto px-4 md:px-8 text-center">
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <Accessibility className="h-8 w-8" aria-hidden="true" />
-              <span className="text-xl font-bold">AccessiBooks</span>
+              </div>
             </div>
-            <h2 id="cta-heading" className="text-3xl md:text-4xl font-bold mb-4">
+          </div>
+        </MarketingSection>
+
+        <MarketingSection spacing="xl" tone="navy" ariaLabelledby="final-cta-heading">
+          <div className="text-center max-w-3xl mx-auto">
+            <div className="flex items-center justify-center gap-2">
+              <Accessibility className="h-8 w-8" style={{ color: "var(--brand-cream)" }} aria-hidden="true" />
+              <span className="brand-display text-2xl font-semibold" style={{ color: "var(--brand-cream)" }}>
+                AccessiBooks
+              </span>
+            </div>
+            <h2
+              id="final-cta-heading"
+              className="brand-display text-4xl sm:text-5xl md:text-6xl font-semibold leading-[1.05] mt-8"
+              style={{ color: "var(--brand-cream)" }}
+            >
               Ready to start reading on your terms?
             </h2>
-            <p className="text-lg opacity-90 mb-8 max-w-xl mx-auto">
+            <p className="mt-6 text-lg sm:text-xl leading-relaxed opacity-80">
               Create a free AccessiBooks account in seconds — no credit card needed.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" variant="secondary" onClick={onOpenRegister} data-testid="cta-get-started">
-                Create a free account
-              </Button>
-              <Button
+            <div className="mt-10 flex flex-wrap gap-3 justify-center">
+              <BrandButton
+                variant="secondary"
                 size="lg"
-                variant="outline"
-                className="bg-transparent border-primary-foreground/40 text-primary-foreground hover:bg-primary-foreground/10"
-                onClick={onOpenLogin}
+                onClick={onOpenRegister}
+                rightIcon={<ArrowRight className="h-5 w-5 ml-2" aria-hidden="true" />}
+                data-testid="cta-get-started"
               >
+                Create a free account
+              </BrandButton>
+              <BrandButton variant="outline-light" size="lg" onClick={onOpenLogin}>
                 I already have an account
-              </Button>
+              </BrandButton>
             </div>
-            <p className="text-sm opacity-75 mt-6">
+            <p className="mt-6 text-sm flex items-center justify-center gap-2 opacity-70">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               Built and tested with accessibility in mind, every step.
             </p>
           </div>
-        </section>
+        </MarketingSection>
       </main>
 
-      <Footer />
+      <MarketingFooter />
     </div>
   );
 }
