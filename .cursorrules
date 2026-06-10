@@ -1,5 +1,7 @@
 # AccessiBooks - Cursor Development Guide
 
+For full product context (features, architecture, implementation status), see **docs/ACCESSIBOOKS.md**.
+
 ## Project Overview
 AccessiBooks is an accessible multi-format content platform (audiobooks, ebooks, podcasts, magazines) with a 3-tier subscription model, built with React + Express + PostgreSQL.
 

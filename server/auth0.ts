@@ -140,7 +140,7 @@ function clearRateLimit(identifier: string) {
 // Cleanup old rate limit entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
-  for (const [key, record] of loginAttempts.entries()) {
+  for (const [key, record] of Array.from(loginAttempts.entries())) {
     if (now - record.lastAttempt > RATE_LIMIT_WINDOW * 2) {
       loginAttempts.delete(key);
     }
