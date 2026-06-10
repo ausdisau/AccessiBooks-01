@@ -18,7 +18,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, Mic } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,6 +34,13 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
 import { SocialFeed } from "@/components/social-feed";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
 import { MarketingLanding } from "@/components/marketing-landing";
+import { VoicePacksPage } from "@/components/voice-packs-page";
+import type { MarketingSectionId } from "@/lib/marketing-routes";
+import { AboutPage } from "@/pages/about";
+import { ContactPage } from "@/pages/contact";
+import { PricingPage } from "@/pages/pricing";
+import { PrivacyPage } from "@/pages/privacy";
+import { TermsPage } from "@/pages/terms";
 import { SignUpPrompt } from "@/components/sign-up-prompt";
 import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
 import { OnboardingFlow } from "@/components/onboarding-flow";
@@ -70,6 +77,7 @@ const ChurnDashboard = lazy(() => import('@/components/churn-dashboard').then(m 
 const TrustPage = lazy(() => import('@/pages/trust'));
 const InstitutionalPage = lazy(() => import('@/pages/institutional'));
 const MoatDashboard = lazy(() => import('@/pages/moat-dashboard'));
+const NotFoundPage = lazy(() => import('@/pages/not-found'));
 
 function LoadingSpinner() {
   return (
@@ -99,6 +107,8 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
       { path: "/party", label: "Party", icon: <Radio className="h-5 w-5" /> },
       { path: "/social", label: "Social", icon: <Users className="h-5 w-5" /> },
+      { path: "/trust", label: "Trust", icon: <Shield className="h-5 w-5" /> },
+      { path: "/institutional", label: "Institutional", icon: <Building2 className="h-5 w-5" /> },
     ],
   },
   {
@@ -116,6 +126,8 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
       { path: "/referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
       { path: "/family", label: "Family", icon: <Heart className="h-5 w-5" /> },
+      { path: "/pricing", label: "Pricing", icon: <CreditCard className="h-5 w-5" /> },
+      { path: "/voice-packs", label: "Voice Packs", icon: <Mic className="h-5 w-5" /> },
       { path: "/enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
     ],
   },
@@ -624,8 +636,7 @@ function LoginModal({
   );
 }
 
-// Landing page for logged-out users (production marketing experience)
-function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
+function usePublicAuthModal() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -638,22 +649,54 @@ function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
     setIsRegistering(true);
     setLoginOpen(true);
   };
-  
+
+  const loginModal = (
+    <LoginModal
+      open={loginOpen}
+      onOpenChange={setLoginOpen}
+      isRegistering={isRegistering}
+      setIsRegistering={setIsRegistering}
+    />
+  );
+
+  return { openLogin, openRegister, loginModal };
+}
+
+type PublicPageProps = {
+  onBrowseAsGuest?: () => void;
+  initialSection?: MarketingSectionId;
+};
+
+function LandingPage({ onBrowseAsGuest, initialSection }: PublicPageProps) {
+  const { openLogin, openRegister, loginModal } = usePublicAuthModal();
+
   return (
     <>
       <MarketingLanding
         onBrowseAsGuest={onBrowseAsGuest}
         onOpenLogin={openLogin}
         onOpenRegister={openRegister}
+        initialSection={initialSection}
       />
-      <LoginModal
-        open={loginOpen}
-        onOpenChange={setLoginOpen}
-        isRegistering={isRegistering}
-        setIsRegistering={setIsRegistering}
-      />
+      {loginModal}
     </>
   );
+}
+
+function PublicMarketingPage({
+  onBrowseAsGuest,
+  render,
+}: {
+  onBrowseAsGuest?: () => void;
+  render: (props: {
+    onBrowseAsGuest?: () => void;
+    onOpenLogin: () => void;
+    onOpenRegister: () => void;
+    loginModal: React.ReactNode;
+  }) => React.ReactNode;
+}) {
+  const { openLogin, openRegister, loginModal } = usePublicAuthModal();
+  return <>{render({ onBrowseAsGuest, onOpenLogin: openLogin, onOpenRegister: openRegister, loginModal })}</>;
 }
 
 function MainApp() {
@@ -1009,10 +1052,15 @@ function MainApp() {
                     </div>
                   </Suspense>
                 </Route>
-                <Route>
-                  <div id="library-panel" role="region" data-testid="panel-library">
-                    <Library onSelectBook={handleSelectBook} />
+                <Route path="/voice-packs">
+                  <div id="voice-packs-panel" role="region" data-testid="panel-voice-packs">
+                    <VoicePacksPage />
                   </div>
+                </Route>
+                <Route>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <NotFoundPage />
+                  </Suspense>
                 </Route>
               </Switch>
             </div>
@@ -1192,22 +1240,76 @@ function App() {
     );
   }
 
+  const browseAsGuest = () => setGuestMode(true);
+
   return (
     <TooltipProvider>
       <Router>
         <AudioProvider>
           <AudioAdManager />
-          {isAuthenticated ? (
-            <>
-              <MainApp />
-              <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
-              <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
-            </>
-          ) : guestMode ? (
-            <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
-          ) : (
-            <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
-          )}
+          <Switch>
+            <Route path="/pricing">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <PricingPage {...props} />}
+              />
+            </Route>
+            <Route path="/privacy">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <PrivacyPage {...props} />}
+              />
+            </Route>
+            <Route path="/terms">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <TermsPage {...props} />}
+              />
+            </Route>
+            <Route path="/contact">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <ContactPage {...props} />}
+              />
+            </Route>
+            <Route path="/about">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <AboutPage {...props} />}
+              />
+            </Route>
+            <Route path="/features">
+              <LandingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                initialSection="features"
+              />
+            </Route>
+            <Route path="/accessibility">
+              <LandingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                initialSection="accessibility"
+              />
+            </Route>
+            <Route path="/audiences">
+              <LandingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                initialSection="audiences"
+              />
+            </Route>
+            <Route>
+              {isAuthenticated ? (
+                <>
+                  <MainApp />
+                  <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
+                  <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
+                </>
+              ) : guestMode ? (
+                <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
+              ) : (
+                <LandingPage onBrowseAsGuest={browseAsGuest} />
+              )}
+            </Route>
+          </Switch>
           <AccessibilityWidget />
           <Toaster />
         </AudioProvider>

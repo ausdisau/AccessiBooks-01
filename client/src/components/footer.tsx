@@ -1,4 +1,5 @@
 import { Headphones, BookOpen, Accessibility, Heart, Mail, Shield, FileText, Phone } from "lucide-react";
+import { Link } from "wouter";
 import { Separator } from "@/components/ui/separator";
 
 export function Footer() {
@@ -46,28 +47,28 @@ export function Footer() {
             <h3 className="font-semibold mb-3 text-sm uppercase tracking-wider text-muted-foreground">Support</h3>
             <ul className="space-y-2 text-sm">
               <li>
-                <a href="https://ausdis.au" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+                <Link href="/contact" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
                   <Phone className="h-3.5 w-3.5" />
                   Contact Us
-                </a>
+                </Link>
               </li>
               <li>
-                <span className="text-muted-foreground flex items-center gap-1.5">
+                <Link href="/accessibility" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
                   <Accessibility className="h-3.5 w-3.5" />
                   Accessibility
-                </span>
+                </Link>
               </li>
               <li>
-                <a href="https://ausdis.au" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+                <Link href="/privacy" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
                   <Shield className="h-3.5 w-3.5" />
                   Privacy Policy
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="https://ausdis.au" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+                <Link href="/terms" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
                   <FileText className="h-3.5 w-3.5" />
                   Terms of Service
-                </a>
+                </Link>
               </li>
             </ul>
           </div>

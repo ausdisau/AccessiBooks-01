@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   Accessibility,
@@ -28,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useAccessibility } from "@/hooks/use-accessibility";
 import { cn } from "@/lib/utils";
+import { MARKETING_FOOTER_LINKS, MARKETING_NAV_ITEMS, type MarketingSectionId } from "@/lib/marketing-routes";
 
 type ReadingMode = "standard" | "dyslexia" | "easy-english";
 type DemoContrast = "normal" | "high" | "sepia";
@@ -43,13 +45,6 @@ const SECTION_TONE: Record<SectionTone, { bg: string; color: string }> = {
   deep: { bg: "var(--brand-cream-deep)", color: "var(--brand-ink)" },
   navy: { bg: "var(--brand-navy-strong)", color: "var(--brand-cream)" },
 };
-
-const NAV_ITEMS = [
-  { label: "Features", href: "#features" },
-  { label: "Accessibility", href: "#accessibility" },
-  { label: "Audiences", href: "#audiences" },
-  { label: "Pricing", href: "#pricing" },
-] as const;
 
 const SAMPLE_PASSAGE = {
   standard: [
@@ -349,21 +344,12 @@ function TestimonialCard({
   );
 }
 
-function MarketingFooter() {
+export function MarketingFooter({ onBrowseAsGuest: _onBrowseAsGuest }: { onBrowseAsGuest?: () => void } = {}) {
   const year = new Date().getFullYear();
   const footerColumns = [
-    {
-      title: "Product",
-      links: ["Features", "Accessibility", "Pricing"],
-    },
-    {
-      title: "Support",
-      links: ["Contact", "Privacy", "Terms"],
-    },
-    {
-      title: "Organisation",
-      links: ["Australian Disability Ltd", "Our mission"],
-    },
+    { title: "Product", links: MARKETING_FOOTER_LINKS.product },
+    { title: "Support", links: MARKETING_FOOTER_LINKS.support },
+    { title: "Organisation", links: MARKETING_FOOTER_LINKS.organisation },
   ];
 
   return (
@@ -409,8 +395,24 @@ function MarketingFooter() {
                 <h2 className="text-xs uppercase tracking-[0.18em] font-semibold mb-4 opacity-70">{column.title}</h2>
                 <ul className="space-y-2 text-sm opacity-80">
                   {column.links.map((link) => (
-                    <li key={link}>
-                      <span className="hover:opacity-100 transition-opacity">{link}</span>
+                    <li key={link.href}>
+                      {"external" in link && link.external ? (
+                        <a
+                          href={link.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)] rounded-sm"
+                        >
+                          {link.label}
+                        </a>
+                      ) : (
+                        <Link
+                          href={link.href}
+                          className="hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)] rounded-sm"
+                        >
+                          {link.label}
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -752,15 +754,17 @@ function ReadingDemo({
   );
 }
 
-function MarketingNav({
+export function MarketingNav({
   onOpenLogin,
   onOpenRegister,
 }: {
   onOpenLogin: () => void;
   onOpenRegister: () => void;
 }) {
+  const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
+  const routeSection = MARKETING_NAV_ITEMS.find((item) => item.href === location)?.sectionId ?? null;
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -772,7 +776,9 @@ function MarketingNav({
   }, [mobileOpen]);
 
   useEffect(() => {
-    const sectionIds = NAV_ITEMS.map((item) => item.href.slice(1));
+    if (location !== "/") return;
+
+    const sectionIds = MARKETING_NAV_ITEMS.map((item) => item.sectionId);
     const sections = sectionIds.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
     if (sections.length === 0) return;
 
@@ -798,7 +804,7 @@ function MarketingNav({
 
     sections.forEach((section) => observer.observe(section));
     return () => observer.disconnect();
-  }, []);
+  }, [location]);
 
   return (
     <header
@@ -810,15 +816,15 @@ function MarketingNav({
       }}
     >
       <div className="mx-auto w-full max-w-6xl px-5 sm:px-8 h-16 sm:h-[4.5rem] flex items-center justify-between gap-4">
-        <a href="#" className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)] rounded-sm">
+        <Link href="/" className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-orange)] rounded-sm">
           <BrandWordmark />
-        </a>
+        </Link>
 
         <nav className="hidden lg:flex items-center gap-1" aria-label="Landing page sections">
-          {NAV_ITEMS.map((item) => {
-            const isActive = activeSection === item.href.slice(1);
+          {MARKETING_NAV_ITEMS.map((item) => {
+            const isActive = routeSection === item.sectionId || activeSection === item.sectionId;
             return (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 className="relative px-3 py-2 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-navy)]"
@@ -835,7 +841,7 @@ function MarketingNav({
                     style={{ backgroundColor: "var(--brand-orange-deep)" }}
                   />
                 )}
-              </a>
+              </Link>
             );
           })}
         </nav>
@@ -868,8 +874,8 @@ function MarketingNav({
           <div className="flex justify-center">
             <AccessibilityControls />
           </div>
-          {NAV_ITEMS.map((item) => (
-            <a
+          {MARKETING_NAV_ITEMS.map((item) => (
+            <Link
               key={item.href}
               href={item.href}
               className="block px-3 py-2 rounded-lg text-sm font-medium"
@@ -877,7 +883,7 @@ function MarketingNav({
               onClick={() => setMobileOpen(false)}
             >
               {item.label}
-            </a>
+            </Link>
           ))}
           <BrandButton variant="ghost" className="w-full justify-start" onClick={() => { onOpenLogin(); setMobileOpen(false); }}>
             Sign In
@@ -895,9 +901,15 @@ export interface MarketingLandingProps {
   onBrowseAsGuest?: () => void;
   onOpenLogin: () => void;
   onOpenRegister: () => void;
+  initialSection?: MarketingSectionId;
 }
 
-export function MarketingLanding({ onBrowseAsGuest, onOpenLogin, onOpenRegister }: MarketingLandingProps) {
+export function MarketingLanding({
+  onBrowseAsGuest,
+  onOpenLogin,
+  onOpenRegister,
+  initialSection,
+}: MarketingLandingProps) {
   const { toggleHighContrast } = useAccessibility();
 
   const { data: platformStats } = useQuery<{
@@ -911,6 +923,16 @@ export function MarketingLanding({ onBrowseAsGuest, onOpenLogin, onOpenRegister 
   useKeyboardShortcuts({
     onHighContrast: toggleHighContrast,
   });
+
+  useEffect(() => {
+    if (!initialSection) return;
+    const target = document.getElementById(initialSection);
+    if (!target) return;
+    const timer = window.setTimeout(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [initialSection]);
 
   const titleCount = useMemo(() => {
     if (platformStats?.totalBooks) return `${formatTitleCount(platformStats.totalBooks)}+`;
@@ -1152,14 +1174,15 @@ export function MarketingLanding({ onBrowseAsGuest, onOpenLogin, onOpenRegister 
                 bookmarks. Plus and Premium plans unlock ad-free listening, offline downloads, and family sharing.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <BrandButton
-                  variant="primary"
-                  size="lg"
-                  onClick={onOpenRegister}
-                  rightIcon={<ArrowRight className="h-5 w-5 ml-2" aria-hidden="true" />}
-                >
-                  See plans &amp; pricing
-                </BrandButton>
+                <Link href="/pricing">
+                  <BrandButton
+                    variant="primary"
+                    size="lg"
+                    rightIcon={<ArrowRight className="h-5 w-5 ml-2" aria-hidden="true" />}
+                  >
+                    See plans &amp; pricing
+                  </BrandButton>
+                </Link>
                 <BrandButton variant="ghost" size="lg" onClick={onOpenRegister}>
                   Or start free
                 </BrandButton>
