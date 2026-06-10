@@ -7,7 +7,7 @@ import {
   users,
 } from "@shared/schema";
 import { eq, and, count, avg, sql, desc } from "drizzle-orm";
-import { isAuthenticated } from "./multiAuth";
+import { isAuthenticated, requireAdmin } from "./multiAuth";
 import { z } from "zod";
 
 export function registerMoatScaffoldRoutes(app: Express) {
@@ -245,7 +245,7 @@ export function registerMoatScaffoldRoutes(app: Express) {
     }
   });
 
-  app.get("/api/admin/moat-metrics", async (_req: any, res) => {
+  app.get("/api/admin/moat-metrics", requireAdmin, async (_req: any, res) => {
     try {
       res.json({
         totalA11yReviews: 156,
@@ -262,7 +262,7 @@ export function registerMoatScaffoldRoutes(app: Express) {
     }
   });
 
-  app.post("/api/admin/moat-metrics/snapshot", async (_req: any, res) => {
+  app.post("/api/admin/moat-metrics/snapshot", requireAdmin, async (_req: any, res) => {
     try {
       const [reviewCount] = await db.select({ value: count() }).from(accessibilityReviews);
       const [avgScore] = await db.select({ value: avg(accessibilityReviews.rating) }).from(accessibilityReviews);

@@ -2,12 +2,9 @@ import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { validatePlaybackSession, getActiveSession } from "./monetization";
+import { getDrmSigningSecret } from "./env";
 
-const SIGNING_SECRET = process.env.DRM_SIGNING_SECRET;
-if (!SIGNING_SECRET) {
-  console.warn("DRM_SIGNING_SECRET not set - using development fallback. Set this in production!");
-}
-const EFFECTIVE_SIGNING_SECRET = SIGNING_SECRET || "dev-signing-secret-not-for-production";
+const EFFECTIVE_SIGNING_SECRET = getDrmSigningSecret();
 const URL_EXPIRY_SECONDS = 15 * 60; // 15 minutes
 
 interface RateLimitEntry {

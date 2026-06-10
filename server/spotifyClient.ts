@@ -8,68 +8,84 @@ interface SpotifyTokens {
 }
 
 let cachedTokens: SpotifyTokens | null = null;
-let tokenExpiresAt: number = 0;
+let tokenExpiresAt = 0;
+
+async function refreshAccessToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<SpotifyTokens> {
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+
+  const response = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+    },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Spotify token refresh failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    access_token: string;
+    expires_in: number;
+    refresh_token?: string;
+  };
+
+  return {
+    accessToken: data.access_token,
+    clientId,
+    refreshToken: data.refresh_token ?? refreshToken,
+    expiresIn: data.expires_in,
+  };
+}
 
 async function getAccessToken(): Promise<SpotifyTokens> {
-  // Check if we have valid cached tokens
   if (cachedTokens && tokenExpiresAt > Date.now()) {
     return cachedTokens;
   }
-  
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
 
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN;
+
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "Spotify not configured. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.",
+    );
   }
 
-  const connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=spotify',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-  
-  const refreshToken = connectionSettings?.settings?.oauth?.credentials?.refresh_token;
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings?.settings?.oauth?.credentials?.access_token;
-  const clientId = connectionSettings?.settings?.oauth?.credentials?.client_id;
-  const expiresIn = connectionSettings?.settings?.oauth?.credentials?.expires_in || 3600;
-  
-  if (!connectionSettings || !accessToken || !clientId || !refreshToken) {
-    throw new Error('Spotify not connected');
+  if (!refreshToken) {
+    throw new Error(
+      "Spotify user connection not configured. Set SPOTIFY_REFRESH_TOKEN from your Spotify OAuth flow.",
+    );
   }
-  
-  // Cache the tokens with expiration
-  cachedTokens = { accessToken, clientId, refreshToken, expiresIn };
-  tokenExpiresAt = Date.now() + (expiresIn * 1000) - 60000; // Expire 1 minute early for safety
-  
+
+  cachedTokens = await refreshAccessToken(clientId, clientSecret, refreshToken);
+  tokenExpiresAt = Date.now() + cachedTokens.expiresIn * 1000 - 60_000;
+
   return cachedTokens;
 }
 
-// WARNING: Never cache this client.
-// Access tokens expire, so a new client must be created each time.
-// Always call this function again to get a fresh client.
 export async function getUncachableSpotifyClient() {
-  const {accessToken, clientId, refreshToken, expiresIn} = await getAccessToken();
+  const { accessToken, clientId, refreshToken, expiresIn } =
+    await getAccessToken();
 
-  const spotify = SpotifyApi.withAccessToken(clientId, {
+  return SpotifyApi.withAccessToken(clientId, {
     access_token: accessToken,
     token_type: "Bearer",
     expires_in: expiresIn || 3600,
     refresh_token: refreshToken,
   });
-
-  return spotify;
 }
 
-// Check if Spotify connection is available
 export async function isSpotifyConnected(): Promise<boolean> {
   try {
     await getAccessToken();

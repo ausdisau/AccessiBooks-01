@@ -3,7 +3,10 @@ import { db } from "./db";
 import { eq, desc, sql, and, count, sum } from "drizzle-orm";
 import { userSubmissions, authorProfiles, contentAnalytics, users, books, authorEarnings } from "@shared/schema";
 import { isAuthenticated } from "./multiAuth";
-import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
+import {
+  registerObjectStorageRoutes,
+  ObjectStorageService,
+} from "./integrations/object-storage";
 
 const objectStorageService = new ObjectStorageService();
 

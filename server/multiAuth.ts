@@ -12,6 +12,7 @@ import { storage } from "./storage";
 import { users } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import { getSessionSecret } from "./env";
 
 // Local strategy (username/password)
 passport.use(
@@ -188,7 +189,7 @@ export function setupMultiAuth(app: Express) {
   const isProduction = process.env.NODE_ENV === 'production';
   
   sessionMiddlewareInstance = session({
-    secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
+    secret: getSessionSecret(),
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
@@ -388,3 +389,14 @@ export const isLocalAuthenticated = (req: Request, res: Response, next: NextFunc
 };
 
 export const isAuthenticated = isLocalAuthenticated;
+
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const user = req.user as { isAdmin?: boolean } | undefined;
+  if (!user?.isAdmin) {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  return next();
+};

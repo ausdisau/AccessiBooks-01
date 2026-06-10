@@ -3,9 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports } from "@shared/schema";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, voicePackPurchases } from "@shared/schema";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
-import { setupMultiAuth, isAuthenticated } from "./multiAuth";
+import { setupMultiAuth, isAuthenticated, requireAdmin } from "./multiAuth";
 import { setupAuth0Routes, isAuth0Configured } from "./auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "./spotifyClient";
 import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, getSeededBookCount } from "./catalogSeeder";
@@ -33,7 +33,7 @@ import {
   generateCoverForBook,
   generateCoversForBooks
 } from "./coverGenerator";
-import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature } from "./stripe";
+import { stripe, PREMIUM_PRICE_MONTHLY, PREMIUM_PRICE_YEARLY, PLUS_PRICE_MONTHLY, PLUS_PRICE_YEARLY, SUBSCRIPTION_CONFIG, SUBSCRIPTION_CONFIGS, DONATION_CONFIG, DONATION_AMOUNTS, verifyWebhookSignature, paymentsRequiredInProduction, stripeUnavailableMessage } from "./stripe";
 import { TIER_PRICING, TITLE_PRICING, TIER_DISCOUNTS, TIER_FEATURES, type SubscriptionTier, purchases } from "@shared/schema";
 import { rateLimitMiddleware, drmGuardMiddleware, premiumContentMiddleware, generateSignedStreamUrl } from "./drm";
 import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault, isPayPalEnabled } from "./paypal";
@@ -845,7 +845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: `Invalid voice. Choose from: ${validVoices.join(", ")}` });
       }
 
-      const { textToSpeech } = await import("./replit_integrations/audio/client");
+      const { textToSpeech } = await import("./integrations/ai/audio");
       const audioBuffer = await textToSpeech(text, voice, format);
 
       const contentTypes: Record<string, string> = {
@@ -1390,6 +1390,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
               }
               console.log(`Donation received: $${(session.amount_total / 100).toFixed(2)} from ${userId || "anonymous"}`);
+            } else if (session.metadata?.type === "voice_pack" && userId) {
+              const voicePackId = session.metadata.voicePackId;
+              if (voicePackId) {
+                const existing = await db.select().from(voicePackPurchases)
+                  .where(and(eq(voicePackPurchases.userId, userId), eq(voicePackPurchases.voicePackId, voicePackId)));
+                if (existing.length === 0) {
+                  await db.insert(voicePackPurchases).values({
+                    userId,
+                    voicePackId,
+                    amountCents: session.amount_total || 0,
+                    stripePaymentId: session.payment_intent || session.id,
+                  });
+                  await recordTransaction({
+                    userId,
+                    provider: "stripe",
+                    providerTransactionId: session.id,
+                    type: "voice_pack",
+                    status: "completed",
+                    amountCents: session.amount_total || 0,
+                    description: `Voice pack purchase: ${voicePackId}`,
+                  });
+                  console.log(`User ${userId} purchased voice pack ${voicePackId}`);
+                }
+              }
+            } else if (session.metadata?.type === "battle_pass" && userId) {
+              const battlePassId = session.metadata.battlePassId;
+              if (battlePassId) {
+                const [existingPurchase] = await db.select().from(battlePassPurchases)
+                  .where(and(
+                    eq(battlePassPurchases.userId, userId),
+                    eq(battlePassPurchases.battlePassId, battlePassId),
+                  ))
+                  .limit(1);
+                if (!existingPurchase) {
+                  const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
+                  await db.insert(battlePassPurchases).values({
+                    userId,
+                    battlePassId,
+                    amountCents: session.amount_total || 0,
+                    currentTier: 0,
+                    xpEarned: xpRecord?.totalXp ?? 0,
+                    claimedMilestones: "[]",
+                  });
+                  await recordTransaction({
+                    userId,
+                    provider: "stripe",
+                    providerTransactionId: session.id,
+                    type: "battle_pass",
+                    status: "completed",
+                    amountCents: session.amount_total || 0,
+                    description: "Battle pass purchase",
+                  });
+                  console.log(`User ${userId} purchased battle pass ${battlePassId}`);
+                }
+              }
             }
             break;
           }
@@ -1558,196 +1613,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // POST /api/webhook/stripe - Stripe webhook handler
-  app.post("/api/webhook/stripe", async (req, res) => {
-    if (!stripe) {
-      return res.status(503).json({ message: "Payment system not configured" });
-    }
-    
-    const sig = req.headers["stripe-signature"] as string;
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    
-    let event;
-    
-    try {
-      // In production, always require signature verification
-      if (endpointSecret && sig) {
-        // req.body is raw Buffer when using express.raw() middleware
-        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-      } else if (process.env.NODE_ENV === "development") {
-        // Only allow unverified webhooks in development (for testing)
-        console.warn("WARNING: Processing unverified Stripe webhook (dev mode only)");
-        event = JSON.parse(req.body.toString());
-      } else {
-        console.error("Webhook secret not configured - rejecting request");
-        return res.status(400).json({ message: "Webhook secret not configured" });
-      }
-    } catch (err: any) {
-      console.error("Webhook signature verification failed:", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-    
-    // Handle the event
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as any;
-        const userId = session.metadata?.userId;
-        const subscriptionId = session.subscription;
-        const customerId = session.customer;
-        
-        if (userId && subscriptionId) {
-          let subscriptionEndDate: Date | null = null;
-          try {
-            const subResponse = await stripe.subscriptions.retrieve(subscriptionId as string);
-            const sub = subResponse as any;
-            if (sub.current_period_end) {
-              subscriptionEndDate = new Date(sub.current_period_end * 1000);
-            }
-            await stripe.subscriptions.update(subscriptionId as string, {
-              metadata: { userId },
-            });
-          } catch (e) {
-            console.warn("Could not fetch subscription details:", e);
-          }
-          
-          await storage.updateUserSubscription(userId, {
-            stripeCustomerId: customerId as string,
-            stripeSubscriptionId: subscriptionId as string,
-            subscriptionTier: "premium",
-            subscriptionEndDate,
-          });
-          await recordTransaction({
-            userId,
-            provider: "stripe",
-            providerTransactionId: session.id,
-            type: "subscription",
-            status: "completed",
-            amountCents: session.amount_total || PREMIUM_PRICE_MONTHLY,
-            description: "AccessiBooks Premium subscription",
-          });
-          console.log(`User ${userId} upgraded to premium with customer ${customerId}`);
-        }
-        break;
-      }
-      
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object as any;
-        let userId = subscription.metadata?.userId;
-        
-        if (!userId && subscription.customer) {
-          const user = await storage.getUserByStripeCustomerId(subscription.customer);
-          if (user) {
-            userId = user.id;
-          }
-        }
-        
-        if (userId) {
-          await storage.updateUserSubscription(userId, {
-            subscriptionTier: "free",
-            stripeSubscriptionId: null,
-            subscriptionEndDate: null,
-          });
-          await recordTransaction({
-            userId,
-            provider: "stripe",
-            providerTransactionId: subscription.id,
-            type: "subscription_cancelled",
-            status: "completed",
-            amountCents: 0,
-            description: "Premium subscription cancelled",
-          });
-          console.log(`User ${userId} subscription deleted - downgraded to free`);
-        } else {
-          console.log(`Subscription ${subscription.id} deleted but no userId found`);
-        }
-        break;
-      }
-      
-      case "customer.subscription.updated": {
-        const subUpdated = event.data.object as any;
-        let userId = subUpdated.metadata?.userId;
-        
-        // Fallback: lookup user by Stripe customer ID if userId not in metadata
-        if (!userId && subUpdated.customer) {
-          const user = await storage.getUserByStripeCustomerId(subUpdated.customer);
-          if (user) {
-            userId = user.id;
-          }
-        }
-        
-        if (userId) {
-          if (subUpdated.status === "canceled" || subUpdated.status === "unpaid") {
-            await storage.updateUserSubscription(userId, {
-              subscriptionTier: "free",
-              stripeSubscriptionId: null,
-              subscriptionEndDate: null,
-            });
-            console.log(`User ${userId} downgraded to free (status: ${subUpdated.status})`);
-          } else if (subUpdated.status === "active" && subUpdated.cancel_at_period_end) {
-            // Subscription is active but will cancel at period end
-            const endDate = subUpdated.current_period_end 
-              ? new Date(subUpdated.current_period_end * 1000) 
-              : null;
-            await storage.updateUserSubscription(userId, {
-              subscriptionEndDate: endDate,
-            });
-            console.log(`User ${userId} subscription will cancel at period end`);
-          }
-        }
-        break;
-      }
-      
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as any;
-        const subscriptionId = invoice.subscription;
-        const customerId = invoice.customer;
-        
-        if (subscriptionId) {
-          try {
-            const subResponse = await stripe.subscriptions.retrieve(subscriptionId as string);
-            const subData = subResponse as any;
-            let userId = subData.metadata?.userId;
-            
-            // Fallback: lookup user by Stripe customer ID if userId not in metadata
-            if (!userId && customerId) {
-              const user = await storage.getUserByStripeCustomerId(customerId);
-              if (user) {
-                userId = user.id;
-              }
-            }
-            
-            if (userId) {
-              const endDate = subData.current_period_end 
-                ? new Date(subData.current_period_end * 1000) 
-                : null;
-              await storage.updateUserSubscription(userId, {
-                subscriptionTier: "premium",
-                subscriptionEndDate: endDate,
-              });
-              await recordTransaction({
-                userId,
-                provider: "stripe",
-                providerTransactionId: invoice.id,
-                type: "subscription_renewal",
-                status: "completed",
-                amountCents: invoice.amount_paid || 0,
-                description: "Subscription renewal payment",
-                receiptUrl: invoice.hosted_invoice_url || null,
-              });
-              console.log(`User ${userId} subscription renewed`);
-            }
-          } catch (e) {
-            console.warn("Could not process invoice payment:", e);
-          }
-        }
-        break;
-      }
-      
-      default:
-        console.log(`Unhandled event type ${event.type}`);
-    }
-    
-    res.json({ received: true });
+  // Legacy Stripe webhook path — consolidated to /api/webhooks/stripe
+  app.post("/api/webhook/stripe", (_req, res) => {
+    res.status(410).json({
+      message: "This endpoint is deprecated. Configure Stripe to use /api/webhooks/stripe instead.",
+    });
   });
 
   // ============================================
@@ -3307,46 +3177,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Battle pass already purchased for this season" });
       }
 
-      if (stripe) {
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ["card"],
-          line_items: [{
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: `Battle Pass: ${activeSeason.seasonName}`,
-                description: activeSeason.description || "Seasonal battle pass with exclusive rewards",
-              },
-              unit_amount: activeSeason.priceCents,
-            },
-            quantity: 1,
-          }],
-          mode: "payment",
-          success_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/?battle_pass=success`,
-          cancel_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/?battle_pass=cancelled`,
-          metadata: {
-            type: "battle_pass",
-            userId,
-            battlePassId: activeSeason.id,
-          },
-        });
-
-        return res.json({ checkoutUrl: session.url, sessionId: session.id });
+      if (!stripe) {
+        if (paymentsRequiredInProduction()) {
+          const { status, message } = stripeUnavailableMessage();
+          return res.status(status).json({ message });
+        }
+        const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
+        const currentXp = xpRecord?.totalXp ?? 0;
+        const [purchase] = await db.insert(battlePassPurchases).values({
+          userId,
+          battlePassId: activeSeason.id,
+          amountCents: activeSeason.priceCents,
+          currentTier: 0,
+          xpEarned: currentXp,
+          claimedMilestones: "[]",
+        }).returning();
+        return res.json({ purchase, message: "Battle pass purchased successfully (dev mode)" });
       }
 
-      const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
-      const currentXp = xpRecord?.totalXp ?? 0;
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `Battle Pass: ${activeSeason.seasonName}`,
+              description: activeSeason.description || "Seasonal battle pass with exclusive rewards",
+            },
+            unit_amount: activeSeason.priceCents,
+          },
+          quantity: 1,
+        }],
+        mode: "payment",
+        success_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/?battle_pass=success`,
+        cancel_url: `${req.headers.origin || req.protocol + "://" + req.get("host")}/?battle_pass=cancelled`,
+        metadata: {
+          type: "battle_pass",
+          userId,
+          battlePassId: activeSeason.id,
+        },
+      });
 
-      const [purchase] = await db.insert(battlePassPurchases).values({
-        userId,
-        battlePassId: activeSeason.id,
-        amountCents: activeSeason.priceCents,
-        currentTier: 0,
-        xpEarned: currentXp,
-        claimedMilestones: "[]",
-      }).returning();
-
-      res.json({ purchase, message: "Battle pass purchased successfully" });
+      return res.json({ checkoutUrl: session.url, sessionId: session.id });
     } catch (error) {
       console.error("Error purchasing battle pass:", error);
       res.status(500).json({ message: "Failed to purchase battle pass" });
@@ -4055,8 +3927,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Catalog Seeder API endpoints
-  app.get("/api/admin/seed/status", async (_req, res) => {
+  // Catalog Seeder API endpoints (admin only)
+  app.get("/api/admin/seed/status", requireAdmin, async (_req, res) => {
     try {
       const status = getSeederStatus();
       const counts = await getSeededBookCount();
@@ -4067,7 +3939,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/seed/start", async (req, res) => {
+  app.post("/api/admin/seed/start", requireAdmin, async (req, res) => {
     try {
       const sources = req.body.sources || ["librivox", "gutenberg"];
       const result = await startSeeding(sources);
@@ -4078,7 +3950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/seed/stop", (req, res) => {
+  app.post("/api/admin/seed/stop", requireAdmin, (req, res) => {
     try {
       const result = stopSeeding(req.body.source);
       res.json(result);
@@ -4087,7 +3959,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/seed/reset", (req, res) => {
+  app.post("/api/admin/seed/reset", requireAdmin, (req, res) => {
     try {
       const result = resetSeeder(req.body.source);
       res.json(result);
@@ -4096,7 +3968,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/seed/metrics", (_req, res) => {
+  app.get("/api/admin/seed/metrics", requireAdmin, (_req, res) => {
     try {
       const metrics = getSeederMetrics();
       res.json(metrics);
@@ -4777,7 +4649,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin Moderation Routes
-  app.get("/api/admin/reports", isAuthenticated, async (req: any, res) => {
+  app.get("/api/admin/reports", requireAdmin, async (req: any, res) => {
     try {
       const userId = req.user?.id || req.user?.claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -4798,7 +4670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/admin/reports/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/admin/reports/:id", requireAdmin, async (req: any, res) => {
     try {
       const userId = req.user?.id || req.user?.claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -4826,8 +4698,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Admin Health Dashboard
-  app.get("/api/admin/health", async (_req, res) => {
+  // Admin Health Dashboard (duplicate — platformRoutes registers first; kept for parity)
+  app.get("/api/admin/health", requireAdmin, async (_req, res) => {
     try {
       // Get total books count
       const bookCount = await db.select({ count: count() }).from(books);
@@ -4874,7 +4746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Churn Risk Dashboard
-  app.get("/api/admin/churn-risk", async (_req, res) => {
+  app.get("/api/admin/churn-risk", requireAdmin, async (_req, res) => {
     try {
       // Get all users first
       const allUsers = await db.select({ id: users.id, firstName: users.firstName }).from(users);

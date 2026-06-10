@@ -76,7 +76,7 @@ export interface IStorage {
   searchBooks(query: string): Promise<Book[]>;
   refreshRuntimeBooks(): Promise<{ inserted: number; skipped: number }>;
   
-  // User management (Replit Auth)
+  // User management (OAuth / local auth)
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   
@@ -383,6 +383,7 @@ function transformExternalUser(externalUser: ExternalUser): User {
     updatedAt: externalUser.updatedAt ? new Date(externalUser.updatedAt) : new Date(),
     referralCode: null,
     referralCredits: 0,
+    isAdmin: false,
     // Legacy NextAuth columns
     name: null,
     emailVerified: null,

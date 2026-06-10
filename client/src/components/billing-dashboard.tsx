@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, Download, ExternalLink, Crown, DollarSign, Receipt, Clock, ArrowUpRight, ChevronLeft, ChevronRight, FileText, Gift } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { GiftCards } from "./gift-cards";
+import { DeviceManagement } from "./device-management";
 
 function formatCents(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
@@ -404,6 +405,10 @@ export function BillingDashboard() {
           )}
         </CardContent>
       </Card>
+
+      <Separator />
+
+      <DeviceManagement />
 
       <Separator />
 

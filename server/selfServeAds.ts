@@ -3,7 +3,7 @@ import { db } from "./db";
 import { adCampaigns, adCreatives, adImpressions } from "@shared/schema";
 import { eq, desc, and, sql, gte, lte, or } from "drizzle-orm";
 import { isAuthenticated } from "./multiAuth";
-import { ObjectStorageService } from "./replit_integrations/object_storage";
+import { ObjectStorageService } from "./integrations/object-storage";
 
 const objectStorageService = new ObjectStorageService();
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/webm", "audio/ogg", "audio/mp4", "audio/x-m4a"];

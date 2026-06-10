@@ -18,7 +18,7 @@ import { PremiumPreviewPlayer } from "@/components/premium-preview-player";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search } from "lucide-react";
+import { Book as BookIcon, Play, LogOut, User, Loader2, Mail, Lock, Eye, EyeOff, Crown, Settings, Headphones, Accessibility, BookOpen, Star, Bookmark, Volume2, Menu, X, ChevronRight, Home, CreditCard, Phone, Shield, Users, Clock, TrendingUp, Gift, Upload, Radio, Search, Mic } from "lucide-react";
 import { SiFacebook } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,15 +32,21 @@ import { SubscriptionCard } from "@/components/subscription-card";
 import { AccessibilityWidget } from "@/components/accessibility-widget";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { SocialFeed } from "@/components/social-feed";
-import { LandingCarousel } from "@/components/book-carousel";
 import { SearchAutocomplete } from "@/components/search-autocomplete";
+import { MarketingLanding } from "@/components/marketing-landing";
+import { VoicePacksPage } from "@/components/voice-packs-page";
+import type { MarketingSectionId } from "@/lib/marketing-routes";
+import { AboutPage } from "@/pages/about";
+import { ContactPage } from "@/pages/contact";
+import { PricingPage } from "@/pages/pricing";
+import { PrivacyPage } from "@/pages/privacy";
+import { TermsPage } from "@/pages/terms";
 import { SignUpPrompt } from "@/components/sign-up-prompt";
 import { WelcomeBonusModal } from "@/components/welcome-bonus-modal";
 import { OnboardingFlow } from "@/components/onboarding-flow";
 import { ShareButton } from "@/components/share-button";
 import { NotificationCenter } from "@/components/notification-center";
 import { Footer } from "@/components/footer";
-import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { useSubscription } from "@/hooks/use-subscription";
 import { EngagementUpsell, hasShownUpsell } from "@/components/engagement-upsell";
 import { TrialNudge } from "@/components/trial-nudge";
@@ -71,6 +77,7 @@ const ChurnDashboard = lazy(() => import('@/components/churn-dashboard').then(m 
 const TrustPage = lazy(() => import('@/pages/trust'));
 const InstitutionalPage = lazy(() => import('@/pages/institutional'));
 const MoatDashboard = lazy(() => import('@/pages/moat-dashboard'));
+const NotFoundPage = lazy(() => import('@/pages/not-found'));
 
 function LoadingSpinner() {
   return (
@@ -83,7 +90,8 @@ function LoadingSpinner() {
   );
 }
 
-const sidebarNavGroups: { label: string; items: { path: string; label: string; icon: React.ReactNode }[] }[] = [
+function getSidebarNavGroups(isAdmin: boolean): { label: string; items: { path: string; label: string; icon: React.ReactNode }[] }[] {
+  const groups: { label: string; items: { path: string; label: string; icon: React.ReactNode }[] }[] = [
   {
     label: "Browse",
     items: [
@@ -100,6 +108,8 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/queue", label: "Live Queue", icon: <ListMusic className="h-5 w-5" /> },
       { path: "/party", label: "Party", icon: <Radio className="h-5 w-5" /> },
       { path: "/social", label: "Social", icon: <Users className="h-5 w-5" /> },
+      { path: "/trust", label: "Trust", icon: <Shield className="h-5 w-5" /> },
+      { path: "/institutional", label: "Institutional", icon: <Building2 className="h-5 w-5" /> },
     ],
   },
   {
@@ -117,17 +127,26 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
       { path: "/referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
       { path: "/family", label: "Family", icon: <Heart className="h-5 w-5" /> },
+      { path: "/pricing", label: "Pricing", icon: <CreditCard className="h-5 w-5" /> },
+      { path: "/voice-packs", label: "Voice Packs", icon: <Mic className="h-5 w-5" /> },
       { path: "/enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
     ],
   },
-  {
-    label: "Admin",
-    items: [
-      { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
-      { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
-    ],
-  },
-];
+  ];
+
+  if (isAdmin) {
+    groups.push({
+      label: "Admin",
+      items: [
+        { path: "/moderation", label: "Moderation", icon: <Shield className="h-5 w-5" /> },
+        { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
+        { path: "/moat-metrics", label: "Moat Metrics", icon: <BarChart3 className="h-5 w-5" /> },
+      ],
+    });
+  }
+
+  return groups;
+}
 
 function AppHeader({ sidebarOpen, onToggleSidebar }: { 
   sidebarOpen: boolean; 
@@ -227,6 +246,8 @@ function AppSidebar({ mobileOpen, onCloseMobile }: {
   onCloseMobile: () => void;
 }) {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const sidebarNavGroups = getSidebarNavGroups(!!user?.isAdmin);
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/" || location === "";
@@ -625,552 +646,74 @@ function LoginModal({
   );
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  classics: "📚",
-  mystery: "🔍",
-  sleep: "🌙",
-  motivation: "💪",
-  adventure: "🗺️",
-  romance: "💕",
-  scifi: "🚀",
-  history: "📜",
-};
-
-function CuratedCollectionsPreview() {
-  const { data: playlists, isLoading } = useCuratedPlaylists();
-  
-  if (isLoading || !playlists || playlists.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="w-full px-4 md:px-8 lg:px-16 py-12" aria-labelledby="curated-collections-heading">
-      <div className="text-center mb-8">
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <Music2 className="h-6 w-6 text-primary" aria-hidden="true" />
-          <h2 id="curated-collections-heading" className="text-2xl font-bold">Curated Collections</h2>
-        </div>
-        <p className="text-muted-foreground">Hand-picked audiobook collections for every mood and interest</p>
-      </div>
-      
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-6xl mx-auto">
-        {playlists.slice(0, 6).map((playlist) => {
-          const emoji = playlist.category ? CATEGORY_ICONS[playlist.category] || "📖" : "📖";
-          return (
-            <Card 
-              key={playlist.id}
-              className="hover:shadow-lg transition-shadow cursor-pointer group"
-              role="article"
-              aria-label={`${playlist.name} - ${playlist.description || 'Curated collection'}`}
-            >
-              <CardContent className="p-4 text-center">
-                <div className="w-full h-20 bg-gradient-to-br from-primary/20 via-primary/30 to-primary/50 rounded-lg mb-3 flex items-center justify-center">
-                  <span className="text-3xl" role="img" aria-hidden="true">{emoji}</span>
-                </div>
-                <h3 className="font-semibold text-sm line-clamp-1">{playlist.name}</h3>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
-                  <BookOpenIcon className="h-3 w-3" aria-hidden="true" />
-                  {playlist.itemCount} {playlist.itemCount === 1 ? 'book' : 'books'}
-                </p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function PublicCommunitySection({ onJoin }: { onJoin: () => void }) {
-  const { data: challenges = [], isLoading: challengesLoading } = useQuery<any[]>({
-    queryKey: ["/api/gamification/challenges"],
-  });
-
-  const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery<any[]>({
-    queryKey: ["/api/gamification/leaderboard?period=alltime"],
-  });
-
-  const isLoading = challengesLoading || leaderboardLoading;
-  if (isLoading) return null;
-  if (challenges.length === 0 && leaderboard.length === 0) return null;
-
-  return (
-    <section className="w-full px-4 md:px-8 lg:px-16 py-12">
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-3xl font-bold mb-2 text-center">Join Our Community</h2>
-        <p className="text-muted-foreground text-center mb-8">Compete with readers worldwide and earn achievements</p>
-        
-        <div className="grid md:grid-cols-2 gap-8">
-          {challenges.length > 0 && (
-            <div>
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-primary" />
-                Active Challenges
-              </h3>
-              <div className="space-y-3">
-                {challenges.slice(0, 3).map((challenge: any) => (
-                  <Card key={challenge.id} className="hover:border-primary/50 transition-colors">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{challenge.badgeIcon}</span>
-                        <div>
-                          <p className="font-medium text-sm">{challenge.title}</p>
-                          <p className="text-xs text-muted-foreground">{challenge.description}</p>
-                        </div>
-                      </div>
-                      <Button size="sm" variant="outline" onClick={onJoin}>Join</Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {leaderboard.length > 0 && (
-            <div>
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Crown className="h-5 w-5 text-yellow-500" />
-                Top Readers
-              </h3>
-              <Card>
-                <CardContent className="p-0">
-                  {leaderboard.slice(0, 5).map((entry: any, idx: number) => (
-                    <div key={entry.userId} className={`flex items-center justify-between p-3 ${idx < leaderboard.length - 1 ? "border-b" : ""}`}>
-                      <div className="flex items-center gap-3">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                          idx === 0 ? "bg-yellow-500 text-white" :
-                          idx === 1 ? "bg-gray-300 text-gray-700" :
-                          idx === 2 ? "bg-amber-600 text-white" :
-                          "bg-muted text-muted-foreground"
-                        }`}>{idx + 1}</span>
-                        <div>
-                          <p className="font-medium text-sm">{entry.firstName || "Reader"} {entry.lastName ? entry.lastName[0] + "." : ""}</p>
-                          <p className="text-xs text-muted-foreground">Level {entry.level} - {entry.totalXp} XP</p>
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{entry.booksCompleted} books</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-              <Button variant="link" className="mt-2 w-full" onClick={onJoin}>
-                Sign up to join the leaderboard
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// Landing page for logged-out users
-function LandingPage({ onBrowseAsGuest }: { onBrowseAsGuest?: () => void }) {
-  const { toggleHighContrast } = useAccessibility();
+function usePublicAuthModal() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  
-  const { data: platformStats } = useQuery<{ totalBooks: number; totalUsers: number; totalListeningMinutes: number }>({
-    queryKey: ["/api/platform/stats"],
-  });
-
-  const { data: featuredBook } = useQuery<Book>({
-    queryKey: ["/api/books/featured"],
-  });
-
-  const { data: trendingBooks = [] } = useQuery<Book[]>({
-    queryKey: ["/api/books/trending"],
-  });
-
-  const { data: publicReviews = [] } = useQuery<any[]>({
-    queryKey: ["/api/reviews/public"],
-  });
 
   const openLogin = () => {
     setIsRegistering(false);
     setLoginOpen(true);
   };
-  
+
   const openRegister = () => {
     setIsRegistering(true);
     setLoginOpen(true);
   };
-  
-  useKeyboardShortcuts({
-    onHighContrast: toggleHighContrast,
-  });
-  
-  const features = [
-    {
-      icon: Headphones,
-      title: "Multi-Source Library",
-      description: "Access audiobooks from iTunes, LibriVox, Open Library, and Google Books - all in one place"
-    },
-    {
-      icon: Accessibility,
-      title: "Built for Everyone",
-      description: "High contrast mode, dyslexia-friendly fonts, and full keyboard navigation support"
-    },
-    {
-      icon: Bookmark,
-      title: "Smart Bookmarks",
-      description: "Save your place with custom bookmarks and automatic progress tracking"
-    },
-    {
-      icon: Volume2,
-      title: "Advanced Playback",
-      description: "Variable speed controls, sleep timer, and seamless chapter navigation"
-    },
-    {
-      icon: BookOpen,
-      title: "90+ Free Books",
-      description: "Thousands of public domain classics from LibriVox, completely free"
-    },
-    {
-      icon: Star,
-      title: "Premium Experience",
-      description: "Ad-free listening, unlimited bookmarks, and priority support for just $9.99/month"
-    }
-  ];
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const loginModal = (
+    <LoginModal
+      open={loginOpen}
+      onOpenChange={setLoginOpen}
+      isRegistering={isRegistering}
+      setIsRegistering={setIsRegistering}
+    />
+  );
+
+  return { openLogin, openRegister, loginModal };
+}
+
+type PublicPageProps = {
+  onBrowseAsGuest?: () => void;
+  initialSection?: MarketingSectionId;
+};
+
+function LandingPage({ onBrowseAsGuest, initialSection }: PublicPageProps) {
+  const { openLogin, openRegister, loginModal } = usePublicAuthModal();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/30">
-      <a href="#main-content" className="skip-to-content">
-        Skip to main content
-      </a>
-      {/* Navigation */}
-      <nav className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-40">
-        <div className="w-full px-4 md:px-8 py-4 flex justify-between items-center">
-          <AccessiBooksLogo onClick={() => setMobileMenuOpen(!mobileMenuOpen)} />
-          
-          {/* Search Field with Autocomplete */}
-          <div className="hidden md:flex flex-1 max-w-md mx-8">
-            <SearchAutocomplete onSelectBook={() => onBrowseAsGuest ? onBrowseAsGuest() : openRegister()} />
-          </div>
-          
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-4">
-            <AccessibilityControls />
-            <Button variant="ghost" onClick={openLogin} data-testid="nav-sign-in">
-              Sign In
-            </Button>
-            <Button onClick={openRegister} data-testid="nav-get-started">
-              Get Started
-            </Button>
-          </div>
-          
-          {/* Mobile Menu Button */}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="md:hidden"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileMenuOpen}
-            data-testid="mobile-menu-toggle"
-          >
-            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </Button>
-        </div>
-        
-        {/* Collapsible Menu - Works on all screen sizes */}
-        <div 
-          className={`overflow-hidden transition-all duration-300 ease-in-out ${
-            mobileMenuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
-          <div className="w-full px-4 md:px-8 py-4 space-y-4 border-t">
-            <div className="flex justify-center">
-              <AccessibilityControls />
-            </div>
-            <div className="space-y-2">
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start" 
-                onClick={() => { openLogin(); setMobileMenuOpen(false); }}
-                data-testid="mobile-nav-sign-in"
-              >
-                <User className="mr-2 h-4 w-4" /> Sign In
-              </Button>
-              <Button 
-                className="w-full justify-start" 
-                onClick={() => { openRegister(); setMobileMenuOpen(false); }}
-                data-testid="mobile-nav-get-started"
-              >
-                <Headphones className="mr-2 h-4 w-4" /> Get Started Free
-              </Button>
-            </div>
-            <Separator />
-            <div className="space-y-1">
-              <button 
-                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
-                onClick={() => { openRegister(); setMobileMenuOpen(false); }}
-              >
-                <BookOpen className="h-4 w-4" /> Browse Library
-              </button>
-              <button 
-                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
-                onClick={() => { openRegister(); setMobileMenuOpen(false); }}
-              >
-                <Crown className="h-4 w-4" /> Premium Plans
-              </button>
-              <a 
-                href="https://ausdis.au" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="w-full text-left px-3 py-2 text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
-              >
-                <Phone className="h-4 w-4" /> Contact Us
-              </a>
-            </div>
-          </div>
-        </div>
-      </nav>
-      
-      {/* Hero Section */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16 md:py-24" aria-labelledby="hero-heading">
-        <div className="max-w-4xl mx-auto text-center space-y-6">
-          <h1 id="hero-heading" className="text-4xl md:text-6xl font-bold tracking-tight">
-            Audiobooks for <span className="text-primary">Everyone</span>
-          </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
-            The most accessible audiobook player, designed with care for readers of all abilities
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-            <Button size="lg" className="text-lg px-8" onClick={openRegister} data-testid="hero-get-started">
-              <Headphones className="mr-2 h-5 w-5" />
-              Start Listening Free
-            </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8" onClick={openLogin} data-testid="hero-sign-in">
-              Sign In
-            </Button>
-          </div>
-          {onBrowseAsGuest && (
-            <button 
-              onClick={onBrowseAsGuest}
-              className="text-sm text-primary hover:underline cursor-pointer"
-              data-testid="browse-as-guest"
-            >
-              or browse the library without an account
-            </button>
-          )}
-          <p className="text-sm text-muted-foreground">
-            No credit card required. Access {platformStats?.totalBooks || "90"}+ free audiobooks instantly.
-          </p>
-        </div>
-      </section>
-
-      {/* Social Proof Stats */}
-      {platformStats && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div className="p-4">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <BookOpen className="h-5 w-5 text-primary" />
-                  <span className="text-2xl md:text-3xl font-bold">{platformStats.totalBooks.toLocaleString()}+</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Books Available</p>
-              </div>
-              <div className="p-4">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <Users className="h-5 w-5 text-primary" />
-                  <span className="text-2xl md:text-3xl font-bold">{platformStats.totalUsers.toLocaleString()}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Active Readers</p>
-              </div>
-              <div className="p-4">
-                <div className="flex items-center justify-center gap-2 mb-1">
-                  <Clock className="h-5 w-5 text-primary" />
-                  <span className="text-2xl md:text-3xl font-bold">{Math.round(platformStats.totalListeningMinutes / 60).toLocaleString()}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">Hours Listened</p>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Book of the Day */}
-      {featuredBook && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <Star className="h-6 w-6 text-yellow-500" />
-              Book of the Day
-            </h2>
-            <Card className="overflow-hidden hover:border-primary/50 transition-colors cursor-pointer" onClick={onBrowseAsGuest}>
-              <CardContent className="p-6 flex gap-6">
-                {featuredBook.coverImage ? (
-                  <img src={featuredBook.coverImage} alt="" className="w-24 h-36 object-cover rounded-lg flex-shrink-0" loading="lazy" decoding="async" />
-                ) : (
-                  <div className="w-24 h-36 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
-                    <BookOpen className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-xl font-semibold line-clamp-1">{featuredBook.title}</h3>
-                  <p className="text-muted-foreground mb-2">by {featuredBook.author}</p>
-                  {featuredBook.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-3">{featuredBook.description}</p>
-                  )}
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                      <Headphones className="h-3 w-3" />
-                      {featuredBook.contentType || "Audiobook"}
-                    </span>
-                    {featuredBook.genre && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                        {featuredBook.genre}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-      )}
-
-      {/* Trending Books */}
-      {trendingBooks.length > 0 && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-8">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <TrendingUp className="h-6 w-6 text-primary" />
-              Trending Now
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {trendingBooks.slice(0, 5).map((book) => (
-                <div key={book.id} className="group cursor-pointer" onClick={onBrowseAsGuest}>
-                  <div className="aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-muted">
-                    {book.coverImage ? (
-                      <img src={book.coverImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" decoding="async" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <BookOpen className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="font-medium text-sm line-clamp-1">{book.title}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-1">{book.author}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-      
-      {/* Book Carousel */}
-      <LandingCarousel />
-      
-      {/* Curated Collections */}
-      <CuratedCollectionsPreview />
-
-      {/* User Testimonials / Recent Reviews */}
-      {publicReviews.length > 0 && (
-        <section className="w-full px-4 md:px-8 lg:px-16 py-12">
-          <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6 text-center">What Our Readers Say</h2>
-            <div className="grid md:grid-cols-2 gap-4">
-              {publicReviews.slice(0, 4).map((review: any, idx: number) => (
-                <Card key={idx} className="border">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="flex text-yellow-500">
-                        {[...Array(review.rating || 5)].map((_, i) => (
-                          <Star key={i} className="h-4 w-4 fill-current" />
-                        ))}
-                      </div>
-                    </div>
-                    {review.title && <p className="font-medium text-sm mb-1">{review.title}</p>}
-                    <p className="text-sm text-muted-foreground line-clamp-3">{review.content}</p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      - {review.userName || "A Reader"}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-      
-      {/* Features Grid */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16" aria-labelledby="features-heading">
-        <div className="text-center mb-12">
-          <h2 id="features-heading" className="text-3xl font-bold mb-4">Why AccessiBooks?</h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            We believe everyone deserves access to great literature. Our platform is built from the ground up with accessibility in mind.
-          </p>
-        </div>
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {features.map((feature, index) => (
-            <Card key={index} className="border-2 hover:border-primary/50 transition-colors">
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                    <feature.icon className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground">{feature.description}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-      
-      {/* Community Section - Public Challenges & Leaderboard */}
-      <PublicCommunitySection onJoin={openRegister} />
-      
-      {/* CTA Section */}
-      <section className="w-full px-4 md:px-8 lg:px-16 py-16" aria-labelledby="cta-heading">
-        <Card className="max-w-4xl mx-auto bg-primary text-primary-foreground">
-          <CardContent className="py-12 text-center">
-            <h2 id="cta-heading" className="text-3xl font-bold mb-4">Ready to Start Listening?</h2>
-            <p className="text-lg opacity-90 mb-6 max-w-xl mx-auto">
-              Join our community of audiobook lovers and discover your next favorite story.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button 
-                size="lg" 
-                variant="secondary" 
-                className="text-lg px-8"
-                onClick={openRegister}
-                data-testid="cta-get-started"
-              >
-                <Gift className="mr-2 h-5 w-5" />
-                Create Free Account
-              </Button>
-            </div>
-            <p className="text-sm opacity-75 mt-4">Get 250 XP welcome bonus + 7-day premium trial</p>
-          </CardContent>
-        </Card>
-      </section>
-      
-      <Footer />
-      
-      {/* Login Modal */}
-      <LoginModal 
-        open={loginOpen} 
-        onOpenChange={setLoginOpen}
-        isRegistering={isRegistering}
-        setIsRegistering={setIsRegistering}
+    <>
+      <MarketingLanding
+        onBrowseAsGuest={onBrowseAsGuest}
+        onOpenLogin={openLogin}
+        onOpenRegister={openRegister}
+        initialSection={initialSection}
       />
-    </div>
+      {loginModal}
+    </>
   );
+}
+
+function PublicMarketingPage({
+  onBrowseAsGuest,
+  render,
+}: {
+  onBrowseAsGuest?: () => void;
+  render: (props: {
+    onBrowseAsGuest?: () => void;
+    onOpenLogin: () => void;
+    onOpenRegister: () => void;
+    loginModal: React.ReactNode;
+  }) => React.ReactNode;
+}) {
+  const { openLogin, openRegister, loginModal } = usePublicAuthModal();
+  return <>{render({ onBrowseAsGuest, onOpenLogin: openLogin, onOpenRegister: openRegister, loginModal })}</>;
 }
 
 function MainApp() {
   const [location, navigate] = useLocation();
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const { user } = useAuth();
   const { toggleHighContrast } = useAccessibility();
   const { currentBook, playBook, togglePlayPause, skip, changeSpeed, onTrackEndCallback } = useAudioContext();
   const { 
@@ -1280,6 +823,7 @@ function MainApp() {
   const hasMiniPlayer = currentBook !== null;
 
   const isAtHome = location === "/" || location === "";
+  const sidebarNavGroups = getSidebarNavGroups(!!user?.isAdmin);
   const currentNavItem = sidebarNavGroups.flatMap(g => g.items).find(i => {
     if (i.path === "/") return isAtHome;
     return location === i.path || location.startsWith(i.path + "/");
@@ -1520,10 +1064,26 @@ function MainApp() {
                     </div>
                   </Suspense>
                 </Route>
-                <Route>
-                  <div id="library-panel" role="region" data-testid="panel-library">
-                    <Library onSelectBook={handleSelectBook} />
+                <Route path="/voice-packs">
+                  <div id="voice-packs-panel" role="region" data-testid="panel-voice-packs">
+                    <VoicePacksPage />
                   </div>
+                </Route>
+                <Route path="/pricing">
+                  <div id="pricing-panel" role="region" data-testid="panel-pricing" className="max-w-4xl mx-auto space-y-6">
+                    <div>
+                      <h1 className="text-3xl font-bold tracking-tight">Choose your plan</h1>
+                      <p className="mt-2 text-muted-foreground">
+                        Upgrade for more loans, ad-free listening, and premium features.
+                      </p>
+                    </div>
+                    <SubscriptionCard />
+                  </div>
+                </Route>
+                <Route>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <NotFoundPage />
+                  </Suspense>
                 </Route>
               </Switch>
             </div>
@@ -1703,22 +1263,84 @@ function App() {
     );
   }
 
+  const browseAsGuest = () => setGuestMode(true);
+
   return (
     <TooltipProvider>
       <Router>
         <AudioProvider>
           <AudioAdManager />
-          {isAuthenticated ? (
-            <>
-              <MainApp />
-              <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
-              <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
-            </>
-          ) : guestMode ? (
-            <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
-          ) : (
-            <LandingPage onBrowseAsGuest={() => setGuestMode(true)} />
-          )}
+          <Switch>
+            <Route path="/pricing">
+              {isAuthenticated ? (
+                <>
+                  <MainApp />
+                  <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
+                  <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
+                </>
+              ) : (
+                <PublicMarketingPage
+                  onBrowseAsGuest={browseAsGuest}
+                  render={(props) => <PricingPage {...props} />}
+                />
+              )}
+            </Route>
+            <Route path="/privacy">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <PrivacyPage {...props} />}
+              />
+            </Route>
+            <Route path="/terms">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <TermsPage {...props} />}
+              />
+            </Route>
+            <Route path="/contact">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <ContactPage {...props} />}
+              />
+            </Route>
+            <Route path="/about">
+              <PublicMarketingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                render={(props) => <AboutPage {...props} />}
+              />
+            </Route>
+            <Route path="/features">
+              <LandingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                initialSection="features"
+              />
+            </Route>
+            <Route path="/accessibility">
+              <LandingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                initialSection="accessibility"
+              />
+            </Route>
+            <Route path="/audiences">
+              <LandingPage
+                onBrowseAsGuest={!isAuthenticated ? browseAsGuest : undefined}
+                initialSection="audiences"
+              />
+            </Route>
+            <Route>
+              {isAuthenticated ? (
+                <>
+                  <MainApp />
+                  <WelcomeBonusModal open={showWelcomeBonus} onOpenChange={handleWelcomeBonusClose} />
+                  <OnboardingFlow open={showOnboarding} onOpenChange={setShowOnboarding} onComplete={handleOnboardingComplete} />
+                </>
+              ) : guestMode ? (
+                <GuestBrowseApp onExitGuest={() => setGuestMode(false)} />
+              ) : (
+                <LandingPage onBrowseAsGuest={browseAsGuest} />
+              )}
+            </Route>
+          </Switch>
           <AccessibilityWidget />
           <Toaster />
         </AudioProvider>

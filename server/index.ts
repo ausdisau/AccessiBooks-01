@@ -1,14 +1,27 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startNotificationScheduler } from "./notificationTriggers";
 import { setupFullTextSearch } from "./db";
 import { storage } from "./storage";
+import { validateBootEnv, isCatalogSeederEnabled } from "./env";
+
+validateBootEnv();
 
 const app = express();
 
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(compression({ level: 6, threshold: 1024 }));
+
+app.get("/healthz", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
 
 // Stripe webhook needs raw body for signature verification
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
@@ -102,15 +115,18 @@ app.use((req, res, next) => {
       }, 30 * 60 * 1000);
     }, 10000);
     
-    // Auto-start catalog seeder in background (resumes from where it left off)
-    import("./catalogSeeder").then(({ startSeeding }) => {
-      setTimeout(() => {
-        startSeeding(["librivox", "gutenberg", "openlibrary", "internetarchive"]).then(result => {
-          console.log(`[Auto-Seeder] ${result.message}`);
-        }).catch(err => {
-          console.warn("[Auto-Seeder] Failed to start:", err);
-        });
-      }, 30000);
-    });
+    if (isCatalogSeederEnabled()) {
+      import("./catalogSeeder").then(({ startSeeding }) => {
+        setTimeout(() => {
+          startSeeding(["librivox", "gutenberg", "openlibrary", "internetarchive"]).then(result => {
+            console.log(`[Auto-Seeder] ${result.message}`);
+          }).catch(err => {
+            console.warn("[Auto-Seeder] Failed to start:", err);
+          });
+        }, 30000);
+      });
+    } else {
+      log("[Auto-Seeder] Disabled (set ENABLE_CATALOG_SEEDER=true to enable)");
+    }
   });
 })();

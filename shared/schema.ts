@@ -81,7 +81,7 @@ export const insertChapterSchema = createInsertSchema(chapters).omit({
 export type InsertChapter = z.infer<typeof insertChapterSchema>;
 export type Chapter = typeof chapters.$inferSelect;
 
-// Session storage table for Replit Auth
+// Session storage table for Passport sessions
 export const sessions = pgTable(
   "sessions",
   {
@@ -140,6 +140,7 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
   referralCode: varchar("referral_code").unique(),
   referralCredits: integer("referral_credits").notNull().default(0),
+  isAdmin: boolean("is_admin").notNull().default(false),
   // Legacy columns from NextAuth migration - kept for database compatibility
   passwordHash: varchar("password_hash"),
   name: varchar("name"),
