@@ -1,0 +1,45 @@
+---
+description: TypeScript and pnpm workspace conventions for the AccessiBooks monorepo.
+alwaysApply: false
+globs: ["**/*.ts", "**/*.tsx", "tsconfig*.json", "pnpm-workspace.yaml", "package.json"]
+---
+
+# TypeScript & pnpm Workspace Conventions
+
+## Package Structure
+
+- Workspace package names use the `@workspace/` prefix.
+- `lib/*` packages are **composite** (emit declarations via `tsc --build`).
+- `artifacts/*` and `scripts` are **leaf** packages (checked with `tsc --noEmit`, never emit).
+- Leaf packages must NOT import from each other; extract shared code into a `lib/` package.
+- `shared/` at the workspace root is NOT a pnpm workspace package — accessed via Vite alias on the frontend and direct relative imports on the backend.
+
+## TypeScript Commands
+
+```bash
+pnpm run typecheck            # full check: builds libs then checks all leaf packages
+pnpm run typecheck:libs       # builds composite libs only (tsc --build)
+pnpm --filter @workspace/<name> run typecheck   # check a single package
+```
+
+- Prefer `typecheck` over `build` to verify code — `build` needs `PORT`/`BASE_PATH` env vars wired by the workflow and will fail from the shell even when the code is correct.
+- Trust `pnpm run typecheck` output over editor/LSP state when they disagree.
+- If cross-package types are missing, run `pnpm run typecheck:libs` first — stale lib declarations are the usual cause.
+
+## Dependencies
+
+- **Static/client-only artifacts** (Vite-built React apps): all packages → `devDependencies`.
+- **Server artifacts**: runtime imports (`express`, `drizzle-orm`, `pg`) → `dependencies`; build tools, `@types/*` → `devDependencies`.
+- If a dependency already exists in the `pnpm-workspace.yaml` catalog, use `"catalog:"` as the version.
+- Do NOT use `pnpm add --no-frozen-lockfile`.
+- Root `devDependencies` are for repo-level tooling only (`typescript`, `prettier`, `eslint`, `vitest`).
+
+## Project References
+
+- When one `lib/` imports another, declare it in `references` so `tsc --build` orders rebuilds correctly.
+- Root `tsconfig.json` lists only lib packages, not artifact packages.
+- Do NOT introduce composite setup for leaf packages — it causes TS2742 type portability errors.
+
+## `@shared` Alias
+
+Frontend resolves `@shared/*` via Vite alias pointing to `shared/` at workspace root. `drizzle-orm` and `zod` are installed at workspace root devDeps so Vite can resolve them. Backend uses direct relative path imports from `../../shared/`.

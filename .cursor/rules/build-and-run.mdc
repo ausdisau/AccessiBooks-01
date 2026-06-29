@@ -1,0 +1,59 @@
+---
+description: How to build, run, and verify the AccessiBooks monorepo — critical do/don't rules for dev workflow.
+alwaysApply: false
+globs: ["package.json", "pnpm-workspace.yaml", "artifacts/*/package.json", ".replit*"]
+---
+
+# Build & Run Conventions
+
+## NEVER Do These
+
+- **Never run `pnpm dev` or `pnpm run dev` at the workspace root.** The root has no `dev` script by design. Apps need `PORT` and `BASE_PATH` env vars wired by the Replit workflow config — running from the shell bypasses this.
+- **Never `cd` into a package and run commands directly** unless you are certain the environment variables are set. Prefer `--filter` from the workspace root.
+- **Never use `build` to verify correctness.** `build` needs workflow-provided `PORT`/`BASE_PATH` and will fail from bash even when the code is correct.
+
+## Running Services
+
+Services are managed by Replit workflows. To start or restart a service, use the Replit workflow controls, not a manual shell command.
+
+Dev commands (for reference / one-off checks only):
+```bash
+pnpm --filter @workspace/accessibooks run dev       # frontend (Vite, auto-assigned port)
+pnpm --filter @workspace/api-server run dev         # API server (port 8080; runs build then start)
+```
+
+Note: the api-server dev workflow runs `pnpm run build && pnpm run start` — build takes ~1 second via esbuild.
+
+## Verifying Code
+
+```bash
+pnpm run typecheck                                  # full typecheck (canonical check)
+pnpm --filter @workspace/<name> run typecheck       # single package
+```
+
+Always use `typecheck`, not `build`, to check correctness from the command line.
+
+## Package Management
+
+```bash
+pnpm add <pkg> --filter @workspace/<name>           # add to a specific package
+pnpm add <pkg> -D -w                                # add to workspace root devDeps
+```
+
+Always use `--filter` when targeting a specific package. If the dependency already has a `catalog:` entry in `pnpm-workspace.yaml`, use `"catalog:"` as the version.
+
+## DB Schema Changes
+
+```bash
+pnpm --filter @workspace/db run push                # interactive (dev only)
+# OR non-interactively:
+pnpm --filter @workspace/db run generate
+psql $DATABASE_URL -f lib/db/drizzle/<migration>.sql
+```
+
+See the `database-migrations.mdc` rule for full details.
+
+## Proxy & Port Rules
+
+- Ad hoc requests (curl): use `localhost:80/<path>` — never call service ports (e.g. `:8080`) directly.
+- The shared reverse proxy routes by path; paths are not rewritten.

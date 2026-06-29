@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+out/
+tmp/
+out-tsc/
+.next/
+.expo/
+.expo-shared/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Package manager lockfile (large, not useful for AI context)
+pnpm-lock.yaml
+
+# Caches
+.cache/
+**/.cache/
+
+# Test output
+coverage/
+test-results/
+playwright-report/
+
+# Replit-only internals (skill files, task files, agent memory)
+# Keep replit.md and threat_model.md indexed — they are sources of truth
+.local/
+.agents/
+
+# Attached assets (binary uploads, screenshots — not source)
+attached_assets/
+
+# Migration backup (non-production, non-source)
+.migration-backup/
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log
+yarn-error.log
+
+# Drizzle generated SQL output (derivable from schema)
+lib/db/drizzle/
+
+# Editor and IDE folders (not this project's source)
+.idea/
+.vscode/

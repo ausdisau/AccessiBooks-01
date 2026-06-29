@@ -1,0 +1,43 @@
+---
+description: Database schema, Drizzle ORM usage, and migration workflow for AccessiBooks.
+alwaysApply: false
+globs: ["lib/db/**/*.ts", "artifacts/api-server/src/db.ts", "artifacts/api-server/src/storage.ts", "**/schema.ts", "**/drizzle.config*"]
+---
+
+# Database & Migrations
+
+## Schema Source of Truth
+
+`lib/db/src/schema/schema.ts` is the single source of truth for all database tables. All Drizzle ORM table definitions live here. Do not define schema elsewhere.
+
+## ORM Driver
+
+The api-server uses `drizzle-orm/node-postgres` (standard pg pool).
+- Do NOT use the Neon HTTP driver (`drizzle-orm/neon-http`) — this project uses a standard Postgres DB.
+- DB connection and migration helpers are in `artifacts/api-server/src/db.ts`.
+
+## Running Migrations
+
+**Interactive (dev only — avoid in scripts):**
+```bash
+pnpm --filter @workspace/db run push
+```
+This is interactive — it prompts about potential table renames. Always choose **"create table"** for new tables, never rename.
+
+**Non-interactive (preferred for automation):**
+```bash
+pnpm --filter @workspace/db run generate   # generates SQL migration file
+psql $DATABASE_URL -f lib/db/drizzle/<migration>.sql   # applies it
+```
+
+## Required Environment Variable
+
+`DATABASE_URL` — Postgres connection string. Must be set before starting the API server.
+
+## Data Access Pattern
+
+All database reads/writes go through the `ExternalAPIStorage` class in `artifacts/api-server/src/storage.ts`. Add new data access methods there rather than querying directly in route handlers.
+
+## Security
+
+Every query that reads user or creator data must scope results to the authenticated user's ID or verify an admin role server-side. Missing row-level authorization at the API layer is the primary injection/disclosure risk (see `threat_model.md`).

@@ -1,0 +1,51 @@
+---
+description: Express API server conventions — logging, route patterns, Express 5 syntax, and security requirements.
+alwaysApply: false
+globs: ["artifacts/api-server/**/*.ts", "artifacts/api-server/**/*.js"]
+---
+
+# Server & API Conventions
+
+## Logging — CRITICAL
+
+**Never use `console.log` in server code.**
+
+- In route handlers: use `req.log` (pino logger attached to the request).
+- Outside request context: use the singleton `logger` imported from the logging module.
+- Rationale: pino structured logging with request IDs; `console.log` bypasses this and pollutes output.
+
+## Express 5 Route Syntax
+
+- Wildcard routes: use `/*name` syntax (e.g. `app.get('/*path', handler)`).
+- Do NOT use Express 4 patterns: `/*` or `/:param(*)` — these are invalid in Express 5.
+- All routes live in `artifacts/api-server/src/routes/routes.ts` (6000+ lines) — add new routes there or in focused sub-route files that are mounted in `app.ts`.
+
+## Security — Every Route
+
+Always enforce on the server side (never rely on client checks):
+- **Authentication**: verify the session/token is valid.
+- **Authorization**: check ownership or role before reading/mutating data (user, creator, payout, entitlement, moderation, billing).
+- **Input validation**: validate and sanitize all client-supplied data.
+- **Rate limiting**: apply throttling on login, magic-link, AI, upload, ingestion, and seeder routes.
+
+High-risk surfaces requiring extra care (from `threat_model.md`):
+`auth.ts`, `multiAuth.ts`, `platformRoutes.ts`, `selfPublishing.ts`, `billing.ts`, `subscriptionService.ts`, `adPlatformRoutes.ts`, `podcastIngestion.ts`, `catalogSeeder.ts`, object-storage routes.
+
+Webhook endpoints (Stripe, etc.) must verify signatures before processing.
+
+## API Architecture
+
+- No OpenAPI spec currently — the API uses a fetch-based client (`src/lib/queryClient.ts`).
+- Data access layer: `ExternalAPIStorage` class in `artifacts/api-server/src/storage.ts`.
+- DB connection: node-postgres pool in `artifacts/api-server/src/db.ts`.
+
+## Proxy Routing
+
+- All services are path-routed through a shared reverse proxy (paths defined in `artifact.toml`).
+- Paths are NOT rewritten — services must handle their full base path.
+- For ad hoc requests (e.g. curl), use `localhost:80/<path>`, never call service ports directly.
+- In application code, use relative URLs or the `BASE_PATH` prefix — never root-relative `/api/...` URLs that would escape the artifact path prefix.
+
+## Startup Warnings
+
+Auth0, Stripe price IDs, PayPal, Coinbase, etc. show startup warnings in dev — these are expected and safe to ignore without those API keys configured.
