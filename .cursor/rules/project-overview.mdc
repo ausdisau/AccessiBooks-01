@@ -1,0 +1,51 @@
+---
+description: AccessiBooks project overview, stack, monorepo layout, and sources of truth. Always apply this context.
+alwaysApply: true
+---
+
+# AccessiBooks — Project Overview
+
+AccessiBooks is a fullstack accessible audiobooks and e-reading platform (audiobooks, ebooks, magazines) for users with disabilities, from Australian Disability Ltd.
+
+## Sources of Truth
+
+- **`replit.md`** — canonical stack reference, run commands, architecture decisions, gotchas, and directory layout. Read it first when orienting.
+- **`threat_model.md`** — security architecture, trust boundaries, threat categories, and high-risk surfaces. Consult it for any security-relevant work.
+
+## Stack
+
+- pnpm workspaces, Node.js 24, TypeScript 5.9
+- Frontend: React + Vite + Tailwind CSS v3, wouter router, TanStack Query
+- API: Express 5 + pino logging
+- DB: PostgreSQL + Drizzle ORM (node-postgres driver)
+- Auth: Passport.js (local + Auth0/Google/Facebook/Microsoft OAuth)
+- Payments: Stripe
+- Build: esbuild (ESM bundle) for api-server, Vite for frontend
+
+## Monorepo Layout
+
+```
+artifacts/accessibooks/          React/Vite frontend
+artifacts/accessibooks-mobile/   Expo mobile app
+artifacts/accessibooks-next/     Next.js variant
+artifacts/api-server/            Express 5 API server
+artifacts/mockup-sandbox/        Design sandbox (non-production)
+lib/db/src/schema/schema.ts      Drizzle ORM schema — source of truth for all DB tables
+shared/                          Types shared between frontend and backend (NOT a pnpm package)
+scripts/                         Utility scripts (@workspace/scripts)
+```
+
+Key files:
+- `artifacts/accessibooks/src/App.tsx` — main frontend component (large single file) + `src/components/`
+- `artifacts/api-server/src/routes/routes.ts` — main API route file (6000+ lines)
+- `artifacts/api-server/src/db.ts` — DB connection (node-postgres pool) + migration helpers
+- `artifacts/api-server/src/storage.ts` — data access layer (ExternalAPIStorage class)
+- `shared/schema.ts`, `shared/rewardConfig.ts` — shared types
+
+## Architecture Decisions
+
+- **No OpenAPI spec**: uses fetch-based API client (`src/lib/queryClient.ts`), not generated hooks.
+- **DB driver**: `drizzle-orm/node-postgres` (standard pg pool), NOT the Neon HTTP driver.
+- **@shared alias**: frontend resolves `@shared/*` via Vite alias → `shared/` at workspace root.
+- **TensorFlow ML**: CF recommender (`recommendation/cfModel.ts`) lazy-imports `@tensorflow/tfjs-node` with try/catch.
+- **Express 5 wildcards**: use `/*name` syntax, not Express 4 `/*` or `/:param(*)`.
