@@ -1,0 +1,53 @@
+{
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.tsserver.experimental.enableProjectDiagnostics": true,
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "typescript.preferences.preferTypeOnlyAutoImports": true,
+  "typescript.workspaceSymbols.scope": "currentProject",
+  "javascript.preferences.importModuleSpecifier": "non-relative",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "prettier.requireConfig": false,
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.tsbuildinfo": true,
+    "**/*.tsbuildinfo": true,
+    ".migration-backup": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/*.tsbuildinfo": true
+  },
+  "tailwindCSS.experimental.configFile": {
+    "artifacts/accessibooks/tailwind.config.ts": "artifacts/accessibooks/src/**",
+    "artifacts/accessibooks-next/tailwind.config.ts": "artifacts/accessibooks-next/**"
+  },
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+  "npm.packageManager": "pnpm",
+  "typescript.tsc.autoDetect": "off"
+}
