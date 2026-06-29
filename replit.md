@@ -59,6 +59,12 @@ _Populate as you build — explicit user instructions worth remembering across s
 - Auth0, Stripe price IDs, PayPal, Coinbase, etc. all show startup warnings in dev — these are expected without those API keys configured.
 - The `shared/` directory at workspace root is NOT a pnpm workspace package; it's accessed via Vite alias (`@shared`) on the frontend and direct imports on the backend.
 
+## Editor config (Cursor / VS Code)
+
+- `.cursor/rules/*.mdc` and `.vscode/settings.json` mirror stack/convention facts from this file and `threat_model.md` so editors give accurate AI context.
+- **Keep them in sync:** when stack facts change (new package, auth provider, route pattern, moved file, renamed convention), update the matching `.cursor/rules/*.mdc` rule alongside `replit.md`.
+- Run `pnpm --filter @workspace/scripts run check:cursor-rules` to catch drift — it fails if a rule references a workspace package or repo path that no longer exists.
+
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
