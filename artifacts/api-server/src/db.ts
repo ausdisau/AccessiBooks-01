@@ -373,6 +373,107 @@ export async function ensureNdisSchema(): Promise<void> {
   }
 }
 
+export async function ensureCommercialCreditsSchema(): Promise<void> {
+  try {
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS credit_accounts (
+        user_id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        balance integer NOT NULL DEFAULT 0,
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS credit_grants (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount integer NOT NULL,
+        remaining integer NOT NULL,
+        source varchar(32) NOT NULL,
+        source_id varchar,
+        idempotency_key varchar,
+        expires_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_credit_grants_user ON credit_grants (user_id)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_credit_grants_user_expiry ON credit_grants (user_id, expires_at)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_credit_grants_user_remaining ON credit_grants (user_id, remaining)`);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_credit_grants_idempotency ON credit_grants (idempotency_key)`);
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS credit_ledger (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type varchar(16) NOT NULL,
+        amount integer NOT NULL,
+        balance_after integer NOT NULL,
+        grant_id varchar,
+        book_id varchar,
+        bundle_id varchar,
+        source varchar(32),
+        source_id varchar,
+        description text,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_credit_ledger_user ON credit_ledger (user_id)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_credit_ledger_user_created ON credit_ledger (user_id, created_at)`);
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS commercial_bundles (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        slug varchar NOT NULL,
+        title text NOT NULL,
+        description text,
+        cover_image text,
+        items jsonb NOT NULL DEFAULT '[]'::jsonb,
+        price_cents integer NOT NULL,
+        original_price_cents integer NOT NULL DEFAULT 0,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_commercial_bundles_slug ON commercial_bundles (slug)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_commercial_bundles_active ON commercial_bundles (is_active)`);
+    // Best-effort: enforce single ownership per (user, book). May fail if
+    // pre-existing duplicate purchase rows exist; the redeem/bundle service
+    // still guards double-ownership transactionally, so this is non-fatal.
+    try {
+      await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_purchases_user_book ON purchases (user_id, book_id)`);
+    } catch (e: any) {
+      console.warn("[CommercialCredits] Could not create unique purchases(user_id,book_id) index:", e.message);
+    }
+    console.log("[CommercialCredits] Schema ensured (credit_accounts, credit_grants, credit_ledger, commercial_bundles)");
+    await seedCommercialBundles();
+  } catch (error: any) {
+    console.warn("[CommercialCredits] Schema setup warning:", error.message);
+  }
+}
+
+export async function seedCommercialBundles(): Promise<void> {
+  try {
+    const titleById = new Map(schema.COMMERCIAL_TITLES.map((t) => [t.bookId, t]));
+    for (const b of schema.COMMERCIAL_BUNDLE_SEED) {
+      const items = b.bookIds
+        .map((id) => titleById.get(id))
+        .filter((t): t is NonNullable<typeof t> => Boolean(t));
+      await pool.query(
+        `INSERT INTO commercial_bundles (slug, title, description, cover_image, items, price_cents, original_price_cents, is_active)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, true)
+         ON CONFLICT (slug) DO UPDATE SET
+           title = EXCLUDED.title,
+           description = EXCLUDED.description,
+           cover_image = EXCLUDED.cover_image,
+           items = EXCLUDED.items,
+           price_cents = EXCLUDED.price_cents,
+           original_price_cents = EXCLUDED.original_price_cents`,
+        [b.slug, b.title, b.description, b.coverImage ?? null, JSON.stringify(items), b.priceCents, b.originalPriceCents],
+      );
+    }
+    console.log(`[CommercialCredits] Seeded ${schema.COMMERCIAL_BUNDLE_SEED.length} bundles`);
+  } catch (error: any) {
+    console.warn("[CommercialCredits] Bundle seed warning:", error.message);
+  }
+}
+
 export async function ensureNarrationSchema(): Promise<void> {
   try {
     await runSql(`

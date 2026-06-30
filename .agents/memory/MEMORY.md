@@ -1,1 +1,2 @@
-- [api-server typecheck](api-server-typecheck.md) — tsc --noEmit never passes (~647 pre-existing errors); verify via workflow boot + curl, not tsc.
+- [api-server typecheck](api-server-typecheck.md) — full `tsc` on api-server has hundreds of pre-existing errors; verify changes via boot+curl, not typecheck.
+- [Money fulfillment rules](money-fulfillment-rules.md) — Stripe webhook fulfillment must re-throw on failure (let Stripe retry); credit/ownership grants must be idempotent and claim ownership before debiting.

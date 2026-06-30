@@ -2775,3 +2775,195 @@ export const insertNdisInvoiceSchema = createInsertSchema(ndisInvoices).omit({
 });
 export type InsertNdisInvoice = z.infer<typeof insertNdisInvoiceSchema>;
 export type NdisInvoice = typeof ndisInvoices.$inferSelect;
+
+// ============================================================
+// COMMERCIAL CREDITS & BUNDLES (Task #213)
+// Audible-style economy: prepaid credit packs, monthly tier
+// allowances, and discounted bundles. Credits are spent to
+// permanently own commercial titles (tracked in `purchases`).
+// ============================================================
+
+// Prepaid credit packs sold via Stripe (one-time payment).
+// `credits` is the total number of credits granted on purchase.
+export const CREDIT_PACKS = [
+  { id: "starter", name: "Starter Pack", credits: 3, priceCents: 799, badge: null },
+  { id: "value", name: "Value Pack", credits: 7, priceCents: 1599, badge: "Most popular" },
+  { id: "premium", name: "Premium Pack", credits: 15, priceCents: 2999, badge: "Best value" },
+] as const;
+export type CreditPack = (typeof CREDIT_PACKS)[number];
+
+// Monthly credit allowance granted by each subscription tier. These
+// credits roll into the same ledger and expire at the end of the
+// billing period (unlike purchased pack credits, which never expire).
+export const TIER_CREDIT_ALLOWANCE: Record<string, number> = {
+  free: 0,
+  plus: 2,
+  premium: 5,
+  institutional: 15,
+  admin: 0,
+};
+
+// Default credit cost to redeem (permanently own) a single commercial title.
+export const TITLE_CREDIT_COST = 1;
+
+// Sources that can grant credits into the ledger.
+export const CREDIT_GRANT_SOURCES = [
+  "credit_pack",
+  "subscription_allowance",
+  "promo",
+  "adjustment",
+] as const;
+export type CreditGrantSource = (typeof CREDIT_GRANT_SOURCES)[number];
+
+// Ledger entry types (append-only audit trail).
+export const CREDIT_LEDGER_TYPES = ["grant", "spend", "expire", "refund"] as const;
+export type CreditLedgerType = (typeof CREDIT_LEDGER_TYPES)[number];
+
+// Per-user credit balance. Acts as the lock anchor for transactional
+// debits and a cached copy of the available (non-expired) balance.
+export const creditAccounts = pgTable("credit_accounts", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  balance: integer("balance").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCreditAccountSchema = createInsertSchema(creditAccounts).omit({ updatedAt: true });
+export type InsertCreditAccount = z.infer<typeof insertCreditAccountSchema>;
+export type CreditAccount = typeof creditAccounts.$inferSelect;
+
+// Individual credit grants. `remaining` is decremented as credits are
+// spent (FIFO by expiry). `idempotencyKey` makes Stripe/allowance
+// fulfillment safe to retry.
+export const creditGrants = pgTable("credit_grants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amount: integer("amount").notNull(),
+  remaining: integer("remaining").notNull(),
+  source: varchar("source", { length: 32 }).notNull(),
+  sourceId: varchar("source_id"),
+  idempotencyKey: varchar("idempotency_key"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("idx_credit_grants_user").on(t.userId),
+  index("idx_credit_grants_user_expiry").on(t.userId, t.expiresAt),
+  index("idx_credit_grants_user_remaining").on(t.userId, t.remaining),
+  uniqueIndex("ux_credit_grants_idempotency").on(t.idempotencyKey),
+]);
+
+export const insertCreditGrantSchema = createInsertSchema(creditGrants).omit({ id: true, createdAt: true });
+export type InsertCreditGrant = z.infer<typeof insertCreditGrantSchema>;
+export type CreditGrant = typeof creditGrants.$inferSelect;
+
+// Append-only ledger recording every credit movement for audit/history.
+export const creditLedger = pgTable("credit_ledger", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 16 }).notNull(),
+  amount: integer("amount").notNull(), // signed: +grant / -spend
+  balanceAfter: integer("balance_after").notNull(),
+  grantId: varchar("grant_id"),
+  bookId: varchar("book_id"),
+  bundleId: varchar("bundle_id"),
+  source: varchar("source", { length: 32 }),
+  sourceId: varchar("source_id"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("idx_credit_ledger_user").on(t.userId),
+  index("idx_credit_ledger_user_created").on(t.userId, t.createdAt),
+]);
+
+export const insertCreditLedgerSchema = createInsertSchema(creditLedger).omit({ id: true, createdAt: true });
+export type InsertCreditLedger = z.infer<typeof insertCreditLedgerSchema>;
+export type CreditLedgerEntry = typeof creditLedger.$inferSelect;
+
+// Discounted bundles (series / themed collections). `items` holds the
+// self-describing titles (bookId + display metadata) so ownership can be
+// granted into `purchases` without a separate commercial-catalog table.
+export const commercialBundles = pgTable("commercial_bundles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  coverImage: text("cover_image"),
+  items: jsonb("items").notNull().default(sql`'[]'::jsonb`),
+  priceCents: integer("price_cents").notNull(),
+  originalPriceCents: integer("original_price_cents").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("ux_commercial_bundles_slug").on(t.slug),
+  index("idx_commercial_bundles_active").on(t.isActive),
+]);
+
+export const insertCommercialBundleSchema = createInsertSchema(commercialBundles).omit({ id: true, createdAt: true });
+export type InsertCommercialBundle = z.infer<typeof insertCommercialBundleSchema>;
+export type CommercialBundle = typeof commercialBundles.$inferSelect;
+
+// A single title within a bundle / the commercial catalog.
+export interface CommercialTitleItem {
+  bookId: string;
+  title: string;
+  author: string;
+  coverUrl?: string;
+  contentType: string;
+  creditCost?: number;
+}
+
+// Curated commercial catalog: premium titles that can be permanently
+// owned by redeeming credits. bookIds are stable synthetic ids; ownership
+// is tracked by bookId in the `purchases` table.
+export const COMMERCIAL_TITLES: CommercialTitleItem[] = [
+  { bookId: "gutenberg-1661", title: "The Adventures of Sherlock Holmes", author: "Arthur Conan Doyle", coverUrl: "https://www.gutenberg.org/cache/epub/1661/pg1661.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-345", title: "Dracula", author: "Bram Stoker", coverUrl: "https://www.gutenberg.org/cache/epub/345/pg345.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-84", title: "Frankenstein", author: "Mary Shelley", coverUrl: "https://www.gutenberg.org/cache/epub/84/pg84.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-1342", title: "Pride and Prejudice", author: "Jane Austen", coverUrl: "https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-1260", title: "Jane Eyre", author: "Charlotte Brontë", coverUrl: "https://www.gutenberg.org/cache/epub/1260/pg1260.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-2701", title: "Moby Dick", author: "Herman Melville", coverUrl: "https://www.gutenberg.org/cache/epub/2701/pg2701.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-98", title: "A Tale of Two Cities", author: "Charles Dickens", coverUrl: "https://www.gutenberg.org/cache/epub/98/pg98.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-174", title: "The Picture of Dorian Gray", author: "Oscar Wilde", coverUrl: "https://www.gutenberg.org/cache/epub/174/pg174.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+  { bookId: "gutenberg-11", title: "Alice's Adventures in Wonderland", author: "Lewis Carroll", coverUrl: "https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg", contentType: "ebook", creditCost: 1 },
+];
+
+// Bundle definitions seeded at boot. `bookIds` reference COMMERCIAL_TITLES;
+// the seed expands them into the stored `items` metadata.
+export interface CommercialBundleSeed {
+  slug: string;
+  title: string;
+  description: string;
+  coverImage?: string;
+  bookIds: string[];
+  priceCents: number;
+  originalPriceCents: number;
+}
+
+export const COMMERCIAL_BUNDLE_SEED: CommercialBundleSeed[] = [
+  {
+    slug: "gothic-mystery",
+    title: "Gothic & Mystery Classics",
+    description: "Spine-tingling tales from the masters of suspense and horror.",
+    coverImage: "https://www.gutenberg.org/cache/epub/345/pg345.cover.medium.jpg",
+    bookIds: ["gutenberg-1661", "gutenberg-345", "gutenberg-84"],
+    priceCents: 399,
+    originalPriceCents: 597,
+  },
+  {
+    slug: "romance-realism",
+    title: "Romance & Realism",
+    description: "Beloved heroines and timeless love stories from the 19th century.",
+    coverImage: "https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg",
+    bookIds: ["gutenberg-1342", "gutenberg-1260"],
+    priceCents: 299,
+    originalPriceCents: 398,
+  },
+  {
+    slug: "literary-giants",
+    title: "Literary Giants",
+    description: "Monumental works of fiction that shaped the literary canon.",
+    coverImage: "https://www.gutenberg.org/cache/epub/2701/pg2701.cover.medium.jpg",
+    bookIds: ["gutenberg-2701", "gutenberg-98", "gutenberg-174"],
+    priceCents: 399,
+    originalPriceCents: 597,
+  },
+];

@@ -17,6 +17,7 @@ import { registerPlatformRoutes } from "../platformRoutes";
 import { registerPodcastRoutes } from "../podcastIngestion";
 import { registerNarrationRoutes } from "../narration";
 import { registerNdisRoutes } from "../ndis";
+import { registerCommercialCreditsRoutes, fulfillCreditPack, fulfillBundle } from "../commercialCredits";
 import { registerPushNotificationRoutes } from "../pushNotifications";
 import { registerAdMediationRoutes } from "../adMediation";
 import { logAdImpression } from "../adImpressionLogger";
@@ -207,6 +208,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // On-demand AI narration (chapter-based neural-voice audiobooks for text titles)
   registerNarrationRoutes(app);
   registerNdisRoutes(app);
+
+  // Commercial catalog: credit packs, bundles & redeem-with-credits (Task #213)
+  registerCommercialCreditsRoutes(app);
 
   // Push notification routes (subscribe, preferences, history)
   registerPushNotificationRoutes(app);
@@ -2540,6 +2544,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
             }
             console.log(`Donation received: $${((evtObj.amount_total || 0) / 100).toFixed(2)} from ${userId || "anonymous"}`);
+            handledBySpecialCase = true;
+          } else if (evtObj.mode === "payment" && evtObj.metadata?.type === "credit_pack" && userId) {
+            // Commercial credit pack (Task #213). fulfillCreditPack is itself
+            // idempotent via the session id, and paymentTransactions de-dupes the audit row.
+            try {
+              const [alreadyProcessed] = await db
+                .select({ id: paymentTransactions.id })
+                .from(paymentTransactions)
+                .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                .limit(1);
+              if (!alreadyProcessed) {
+                const packId = evtObj.metadata?.packId as string;
+                const credits = parseInt(evtObj.metadata?.credits || "0");
+                const amountCents = parseInt(evtObj.metadata?.amountCents || String(evtObj.amount_total || 0));
+                await fulfillCreditPack({ userId, packId, sessionId: evtObj.id });
+                await db.insert(paymentTransactions).values({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: evtObj.id,
+                  type: "credit_pack",
+                  status: "completed",
+                  amountCents,
+                  currency: "USD",
+                  description: `Credit pack: ${packId} (${credits} credits)`,
+                });
+                console.log(`[Credits] Granted ${credits} credits to ${userId} (pack ${packId})`);
+              } else {
+                console.log(`[Credits] Skipping duplicate credit_pack webhook for session ${evtObj.id}`);
+              }
+            } catch (e) {
+              // Money path: do NOT swallow. Re-throw so the outer handler returns
+              // 500 and Stripe retries — fulfillCreditPack (idempotency key) and
+              // the paymentTransactions de-dupe make retries safe, so a paid
+              // customer is never left without credits.
+              console.error("[Credits] Failed to fulfill credit pack:", e);
+              throw e;
+            }
+            handledBySpecialCase = true;
+          } else if (evtObj.mode === "payment" && evtObj.metadata?.type === "bundle_purchase" && userId) {
+            // Commercial bundle (Task #213) — grants ownership of every title.
+            try {
+              const [alreadyProcessed] = await db
+                .select({ id: paymentTransactions.id })
+                .from(paymentTransactions)
+                .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                .limit(1);
+              if (!alreadyProcessed) {
+                const bundleId = evtObj.metadata?.bundleId as string;
+                const amountCents = parseInt(evtObj.metadata?.amountCents || String(evtObj.amount_total || 0));
+                const result = await fulfillBundle({ userId, bundleId });
+                await db.insert(paymentTransactions).values({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: evtObj.id,
+                  type: "bundle_purchase",
+                  status: "completed",
+                  amountCents,
+                  currency: "USD",
+                  description: `Bundle: ${evtObj.metadata?.bundleSlug || bundleId}`,
+                });
+                console.log(`[Bundle] Granted ${result.granted}/${result.titles} titles to ${userId} (${evtObj.metadata?.bundleSlug || bundleId})`);
+              } else {
+                console.log(`[Bundle] Skipping duplicate bundle_purchase webhook for session ${evtObj.id}`);
+              }
+            } catch (e) {
+              // Money path: re-throw so Stripe retries. fulfillBundle is
+              // idempotent (per-title ON CONFLICT DO NOTHING) and the
+              // paymentTransactions row de-dupes, so retries cannot double-grant.
+              console.error("[Bundle] Failed to fulfill bundle:", e);
+              throw e;
+            }
+            handledBySpecialCase = true;
+          } else if (evtObj.mode === "payment" && evtObj.metadata?.type === "purchase" && userId) {
+            // Individual cash title purchase. The checkout session was created
+            // with metadata.type="purchase" but previously had no webhook handler,
+            // so paid titles were never granted — fix that gap here (idempotent).
+            try {
+              const [alreadyProcessed] = await db
+                .select({ id: paymentTransactions.id })
+                .from(paymentTransactions)
+                .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                .limit(1);
+              if (!alreadyProcessed) {
+                const bookId = evtObj.metadata?.bookId as string;
+                const bookTitle = (evtObj.metadata?.bookTitle as string) || "Untitled";
+                const amountCents = parseInt(evtObj.metadata?.amountCents || String(evtObj.amount_total || 0));
+                const existing = await storage.getUserPurchase(userId, bookId);
+                if (!existing) {
+                  await storage.createPurchase({
+                    userId,
+                    bookId,
+                    bookTitle,
+                    amountCents,
+                    currency: "usd",
+                    stripePaymentId: (evtObj.payment_intent as string) || evtObj.id,
+                    status: "completed",
+                  });
+                }
+                await db.insert(paymentTransactions).values({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: evtObj.id,
+                  type: "purchase",
+                  status: "completed",
+                  amountCents,
+                  currency: "USD",
+                  description: `Title purchase: ${bookTitle}`,
+                });
+                console.log(`[Purchase] Fulfilled title ${bookId} for ${userId}`);
+              } else {
+                console.log(`[Purchase] Skipping duplicate purchase webhook for session ${evtObj.id}`);
+              }
+            } catch (e) {
+              // Money path: re-throw so Stripe retries. The getUserPurchase guard
+              // plus the paymentTransactions de-dupe make re-delivery safe, so a
+              // paid title is never silently dropped on a transient failure.
+              console.error("[Purchase] Failed to fulfill title purchase:", e);
+              throw e;
+            }
             handledBySpecialCase = true;
           }
         }
