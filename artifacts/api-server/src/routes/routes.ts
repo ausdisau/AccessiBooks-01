@@ -2786,6 +2786,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
               throw e;
             }
             handledBySpecialCase = true;
+          } else if (evtObj.mode === "payment" && evtObj.metadata?.type === "battle_pass" && userId) {
+            // Battle pass premium-track unlock (Task #217). fulfillBattlePassPremium
+            // is the idempotency gate: it flips the user's per-season progress row to
+            // premium exactly once (WHERE is_premium = false), keyed by the metadata
+            // userId + battlePassId so a stale/overwritten session id cannot double-grant.
+            try {
+              const [alreadyProcessed] = await db
+                .select({ id: paymentTransactions.id })
+                .from(paymentTransactions)
+                .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                .limit(1);
+              if (!alreadyProcessed) {
+                const battlePassId = evtObj.metadata?.battlePassId as string;
+                const amountCents = parseInt(String(evtObj.amount_total || 0));
+                const { activated } = await fulfillBattlePassPremium({
+                  userId,
+                  battlePassId,
+                  sessionId: evtObj.id,
+                  amountCents,
+                });
+                await db.insert(paymentTransactions).values({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: evtObj.id,
+                  type: "battle_pass",
+                  status: "completed",
+                  amountCents,
+                  currency: "USD",
+                  description: `Battle pass premium unlock`,
+                }).onConflictDoNothing();
+                console.log(`[BattlePass] ${activated ? "Unlocked" : "Already unlocked"} premium for user ${userId} season ${battlePassId}`);
+              } else {
+                console.log(`[BattlePass] Skipping duplicate battle_pass webhook for session ${evtObj.id}`);
+              }
+            } catch (e) {
+              // Money path: re-throw so Stripe retries. The conditional flip and the
+              // paymentTransactions de-dupe make re-delivery safe.
+              console.error("[BattlePass] Failed to fulfill premium unlock:", e);
+              throw e;
+            }
+            handledBySpecialCase = true;
           }
         }
 
@@ -4547,125 +4588,291 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // === BATTLE PASS ROUTES ===
 
-  async function seedDefaultBattlePass() {
+  // Additive runtime migration (Task #217): free/premium track flag on milestones,
+  // and per-user season progress columns (premium unlock + Stripe idempotency).
+  // Mirrors ensureMoatMigrations() — ADD COLUMN IF NOT EXISTS so it is safe on every boot.
+  async function ensureBattlePassMigrations() {
     try {
-      const [existing] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
-      if (existing) return;
-
-      const now = new Date();
-      const endDate = new Date(now);
-      endDate.setMonth(endDate.getMonth() + 3);
-
-      const [pass] = await db.insert(battlePasses).values({
-        seasonName: "Spring Reading Challenge",
-        description: "Complete milestones to earn exclusive badges, streak freezes, XP multipliers, and more! Season runs for 3 months.",
-        priceCents: 299,
-        startDate: now,
-        endDate: endDate,
-        isActive: true,
-      }).returning();
-
-      const milestones = [
-        { tier: 1, xpRequired: 100, rewardType: "badge", rewardValue: "🌱", description: "Sprout Badge - You're just getting started!" },
-        { tier: 2, xpRequired: 250, rewardType: "streak_freeze", rewardValue: "1", description: "1 Streak Freeze - Protect your streak" },
-        { tier: 3, xpRequired: 500, rewardType: "badge", rewardValue: "📖", description: "Reader Badge - Dedicated listener" },
-        { tier: 4, xpRequired: 1000, rewardType: "xp_multiplier", rewardValue: "1.5x for 24h", description: "1.5x XP Boost for 24 hours" },
-        { tier: 5, xpRequired: 2000, rewardType: "streak_freeze", rewardValue: "2", description: "2 Streak Freezes - Extra protection" },
-        { tier: 6, xpRequired: 3500, rewardType: "badge", rewardValue: "⭐", description: "Star Badge - Rising star reader" },
-        { tier: 7, xpRequired: 5000, rewardType: "premium_trial", rewardValue: "3", description: "3-Day Premium Trial" },
-        { tier: 8, xpRequired: 7500, rewardType: "discount", rewardValue: "20", description: "20% off any title purchase" },
-        { tier: 9, xpRequired: 10000, rewardType: "badge", rewardValue: "🏆", description: "Champion Badge - Season champion" },
-        { tier: 10, xpRequired: 15000, rewardType: "premium_trial", rewardValue: "7", description: "7-Day Premium Trial + Exclusive 👑 Badge" },
-      ];
-
-      for (const m of milestones) {
-        await db.insert(battlePassMilestones).values({
-          battlePassId: pass.id,
-          tier: m.tier,
-          xpRequired: m.xpRequired,
-          rewardType: m.rewardType,
-          rewardValue: m.rewardValue,
-          description: m.description,
-        });
-      }
-
-      console.log(`[BattlePass] Seeded default season: ${pass.seasonName} with ${milestones.length} milestones`);
-    } catch (error) {
-      console.error("[BattlePass] Error seeding default battle pass:", error);
+      await db.execute(sql`
+        ALTER TABLE battle_pass_milestones
+          ADD COLUMN IF NOT EXISTS is_premium boolean NOT NULL DEFAULT false
+      `);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_bp_milestones_track ON battle_pass_milestones (battle_pass_id, is_premium)`);
+      await db.execute(sql`
+        ALTER TABLE battle_pass_purchases
+          ADD COLUMN IF NOT EXISTS is_premium boolean NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS status varchar NOT NULL DEFAULT 'active',
+          ADD COLUMN IF NOT EXISTS stripe_session_id varchar
+      `);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_bpp_session ON battle_pass_purchases (stripe_session_id)`);
+    } catch (err) {
+      console.error("[BattlePass] Migration warning (track/progress columns):", err);
+    }
+    // One progress row per user per season so onConflict upserts and the premium-unlock
+    // flip are race-safe. Separate try/catch: if legacy duplicates exist we log and
+    // continue rather than aborting startup.
+    try {
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_bpp_user_pass_unique ON battle_pass_purchases (user_id, battle_pass_id)`);
+    } catch (err) {
+      console.error("[BattlePass] Migration warning (unique progress index; legacy duplicates?):", err);
+    }
+    // At most one active season at a time so concurrent rollovers cannot create
+    // duplicate active seasons (createSeason re-selects on conflict).
+    try {
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_bp_single_active ON battle_passes (is_active) WHERE is_active = true`);
+    } catch (err) {
+      console.error("[BattlePass] Migration warning (single-active-season index; legacy duplicates?):", err);
+    }
+    // One reward per (season, tier, track). This makes seeding/backfill idempotent
+    // via ON CONFLICT DO NOTHING and stops a count-then-insert race from creating
+    // duplicate, separately-claimable rewards. Dedupe any legacy rows first (keep
+    // the lowest id) so the unique index can be created.
+    try {
+      await db.execute(sql`
+        DELETE FROM battle_pass_milestones a
+        USING battle_pass_milestones b
+        WHERE a.battle_pass_id = b.battle_pass_id
+          AND a.tier = b.tier
+          AND a.is_premium = b.is_premium
+          AND a.id > b.id
+      `);
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_bp_milestones_unique ON battle_pass_milestones (battle_pass_id, tier, is_premium)`);
+    } catch (err) {
+      console.error("[BattlePass] Migration warning (unique milestone index):", err);
     }
   }
 
-  seedDefaultBattlePass();
+  // Two parallel reward tracks reusing the existing reward types (badge,
+  // streak_freeze, xp_multiplier, premium_trial, discount). Each tier exists on
+  // both tracks at the same xp threshold; premium rewards are richer.
+  const BATTLE_PASS_MILESTONES: Array<{
+    tier: number; xpRequired: number; rewardType: string; rewardValue: string; description: string; isPremium: boolean;
+  }> = [
+    // Free track
+    { tier: 1, xpRequired: 100, isPremium: false, rewardType: "badge", rewardValue: "🌱", description: "Sprout Badge — you're getting started!" },
+    { tier: 2, xpRequired: 250, isPremium: false, rewardType: "badge", rewardValue: "📗", description: "Green Reader Badge" },
+    { tier: 3, xpRequired: 500, isPremium: false, rewardType: "streak_freeze", rewardValue: "1", description: "1 Streak Freeze — protect your streak" },
+    { tier: 4, xpRequired: 1000, isPremium: false, rewardType: "badge", rewardValue: "⭐", description: "Star Reader Badge" },
+    { tier: 5, xpRequired: 2000, isPremium: false, rewardType: "discount", rewardValue: "10", description: "10% off any title purchase" },
+    { tier: 6, xpRequired: 3500, isPremium: false, rewardType: "badge", rewardValue: "🔥", description: "On Fire Badge" },
+    { tier: 7, xpRequired: 5000, isPremium: false, rewardType: "streak_freeze", rewardValue: "1", description: "1 Streak Freeze — keep it going" },
+    { tier: 8, xpRequired: 7500, isPremium: false, rewardType: "badge", rewardValue: "🌟", description: "Shining Reader Badge" },
+    { tier: 9, xpRequired: 10000, isPremium: false, rewardType: "discount", rewardValue: "15", description: "15% off any title purchase" },
+    { tier: 10, xpRequired: 15000, isPremium: false, rewardType: "badge", rewardValue: "🏅", description: "Season Finisher Badge" },
+    // Premium track
+    { tier: 1, xpRequired: 100, isPremium: true, rewardType: "streak_freeze", rewardValue: "1", description: "1 Streak Freeze — premium head start" },
+    { tier: 2, xpRequired: 250, isPremium: true, rewardType: "xp_multiplier", rewardValue: "1.5x for 24h", description: "1.5x XP Boost for 24 hours" },
+    { tier: 3, xpRequired: 500, isPremium: true, rewardType: "badge", rewardValue: "📖", description: "Premium Reader Badge" },
+    { tier: 4, xpRequired: 1000, isPremium: true, rewardType: "premium_trial", rewardValue: "3", description: "3-Day Premium Trial" },
+    { tier: 5, xpRequired: 2000, isPremium: true, rewardType: "streak_freeze", rewardValue: "2", description: "2 Streak Freezes — extra protection" },
+    { tier: 6, xpRequired: 3500, isPremium: true, rewardType: "xp_multiplier", rewardValue: "1.5x for 24h", description: "1.5x XP Boost for 24 hours" },
+    { tier: 7, xpRequired: 5000, isPremium: true, rewardType: "premium_trial", rewardValue: "3", description: "3-Day Premium Trial" },
+    { tier: 8, xpRequired: 7500, isPremium: true, rewardType: "discount", rewardValue: "20", description: "20% off any title purchase" },
+    { tier: 9, xpRequired: 10000, isPremium: true, rewardType: "badge", rewardValue: "👑", description: "Champion Badge — season royalty" },
+    { tier: 10, xpRequired: 15000, isPremium: true, rewardType: "premium_trial", rewardValue: "7", description: "7-Day Premium Trial + exclusive 👑 Badge" },
+  ];
 
-  // GET /api/battle-pass/current - Active season + user progress if purchased
+  function seasonNameFor(date: Date): string {
+    const month = date.getMonth();
+    const season = month <= 1 || month === 11 ? "Winter" : month <= 4 ? "Spring" : month <= 7 ? "Summer" : "Autumn";
+    return `${season} Reading Challenge ${date.getFullYear()}`;
+  }
+
+  // Ensure a season has its full two-track milestone set. Idempotent and
+  // concurrency-safe; also backfills the premium track for seasons that predate
+  // two-track support without disturbing existing free milestones or progress.
+  async function ensureSeasonMilestones(seasonId: string): Promise<void> {
+    try {
+      // Insert the full two-track set; ON CONFLICT (battle_pass_id, tier, is_premium)
+      // DO NOTHING makes this idempotent and concurrency-safe. Pre-existing seasons
+      // keep their original free milestones (same tier+track conflicts are skipped)
+      // and gain the premium track; partial seeds self-heal on the next boot.
+      await db.insert(battlePassMilestones)
+        .values(BATTLE_PASS_MILESTONES.map((m) => ({ battlePassId: seasonId, ...m })))
+        .onConflictDoNothing({
+          target: [battlePassMilestones.battlePassId, battlePassMilestones.tier, battlePassMilestones.isPremium],
+        });
+    } catch (err) {
+      console.error("[BattlePass] Failed to ensure season milestones:", err);
+    }
+  }
+
+  // Returns the current non-expired active season, rolling over (closing the
+  // expired one + opening the next) when needed. The single-active partial unique
+  // index makes concurrent rollovers safe — the loser re-selects the winner's season.
+  async function ensureActiveBattlePassSeason(): Promise<typeof battlePasses.$inferSelect | null> {
+    try {
+      const now = new Date();
+      // Close any expired active season.
+      await db.execute(sql`UPDATE battle_passes SET is_active = false WHERE is_active = true AND end_date <= ${now}`);
+
+      const [active] = await db.select().from(battlePasses)
+        .where(and(eq(battlePasses.isActive, true), gt(battlePasses.endDate, now)))
+        .limit(1);
+      if (active) {
+        // Self-heal the milestone set (also backfills premium for pre-two-track seasons).
+        await ensureSeasonMilestones(active.id);
+        return active;
+      }
+
+      const start = new Date();
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 3);
+      const seasonName = seasonNameFor(start);
+      try {
+        // Season + its milestones are created atomically so a crash mid-seed can't
+        // leave an active season with a partial reward set.
+        const pass = await db.transaction(async (tx) => {
+          const [created] = await tx.insert(battlePasses).values({
+            seasonName,
+            description: "Earn XP by reading, listening, and keeping your streak alive to climb the tiers. Unlock the premium track for richer rewards! Season runs for 3 months.",
+            priceCents: 299,
+            startDate: start,
+            endDate: end,
+            isActive: true,
+          }).returning();
+          await tx.insert(battlePassMilestones)
+            .values(BATTLE_PASS_MILESTONES.map((m) => ({ battlePassId: created.id, ...m })))
+            .onConflictDoNothing({
+              target: [battlePassMilestones.battlePassId, battlePassMilestones.tier, battlePassMilestones.isPremium],
+            });
+          return created;
+        });
+        console.log(`[BattlePass] Started season "${seasonName}" with ${BATTLE_PASS_MILESTONES.length} milestones`);
+        return pass;
+      } catch (insertErr) {
+        // Another request won the single-active-season race — return its season.
+        const [existing] = await db.select().from(battlePasses)
+          .where(and(eq(battlePasses.isActive, true), gt(battlePasses.endDate, now)))
+          .limit(1);
+        if (existing) return existing;
+        console.error("[BattlePass] Failed to create season:", insertErr);
+        return null;
+      }
+    } catch (error) {
+      console.error("[BattlePass] ensureActiveBattlePassSeason error:", error);
+      return null;
+    }
+  }
+
+  // Idempotent premium-track unlock used by the Stripe webhook. Ensures a progress
+  // row exists, then flips it to premium exactly once (WHERE is_premium = false).
+  async function fulfillBattlePassPremium(args: {
+    userId: string; battlePassId: string; sessionId: string; amountCents: number;
+  }): Promise<{ activated: boolean }> {
+    const { userId, battlePassId, sessionId, amountCents } = args;
+    await db.insert(battlePassPurchases).values({
+      userId, battlePassId, amountCents: 0, claimedMilestones: "[]", isPremium: false, status: "active",
+    }).onConflictDoNothing({ target: [battlePassPurchases.userId, battlePassPurchases.battlePassId] });
+    const flipped = await db.update(battlePassPurchases)
+      .set({ isPremium: true, status: "active", amountCents, stripeSessionId: sessionId })
+      .where(and(
+        eq(battlePassPurchases.userId, userId),
+        eq(battlePassPurchases.battlePassId, battlePassId),
+        eq(battlePassPurchases.isPremium, false),
+      ))
+      .returning({ id: battlePassPurchases.id });
+    return { activated: flipped.length > 0 };
+  }
+
+  (async () => {
+    await ensureBattlePassMigrations();
+    await ensureActiveBattlePassSeason();
+  })().catch((err) => console.error("[BattlePass] Startup init failed:", err));
+
+  // GET /api/battle-pass/current - Active season, both reward tracks, and the
+  // user's progress (a free-track row is auto-created for any authed user).
   app.get("/api/battle-pass/current", async (req: any, res) => {
     try {
-      const [activeSeason] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      const now = new Date();
+      let [activeSeason] = await db.select().from(battlePasses)
+        .where(and(eq(battlePasses.isActive, true), gt(battlePasses.endDate, now)))
+        .limit(1);
+      // No current season (none yet, or the active one expired) — roll over.
       if (!activeSeason) {
-        return res.json({ season: null, milestones: [], purchase: null });
+        activeSeason = (await ensureActiveBattlePassSeason()) ?? undefined as any;
+      }
+      if (!activeSeason) {
+        return res.json({ season: null, milestones: [], progress: null });
       }
 
       const milestones = await db.select().from(battlePassMilestones)
         .where(eq(battlePassMilestones.battlePassId, activeSeason.id))
         .orderBy(battlePassMilestones.tier);
 
-      let purchase = null;
+      let progress = null;
       if (req.isAuthenticated?.() && req.user?.id) {
-        const [userPurchase] = await db.select().from(battlePassPurchases)
+        const userId = req.user.id;
+        const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
+        const currentXp = xpRecord?.totalXp ?? 0;
+
+        let currentTier = 0;
+        for (const m of milestones) {
+          if (currentXp >= m.xpRequired && m.tier > currentTier) currentTier = m.tier;
+        }
+
+        // Ensure a free-track progress row exists, then refresh derived tier/xp
+        // (without clobbering isPremium / status / claimedMilestones).
+        await db.insert(battlePassPurchases).values({
+          userId, battlePassId: activeSeason.id, amountCents: 0,
+          currentTier, xpEarned: currentXp, claimedMilestones: "[]",
+          isPremium: false, status: "active",
+        }).onConflictDoNothing({ target: [battlePassPurchases.userId, battlePassPurchases.battlePassId] });
+
+        const [row] = await db.select().from(battlePassPurchases)
           .where(and(
-            eq(battlePassPurchases.userId, req.user.id),
+            eq(battlePassPurchases.userId, userId),
             eq(battlePassPurchases.battlePassId, activeSeason.id)
           ))
           .limit(1);
 
-        if (userPurchase) {
-          const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, req.user.id)).limit(1);
-          const currentXp = xpRecord?.totalXp ?? 0;
-
-          let currentTier = 0;
-          for (const m of milestones) {
-            if (currentXp >= m.xpRequired) {
-              currentTier = m.tier;
-            }
-          }
-
-          if (currentTier !== userPurchase.currentTier) {
-            await db.update(battlePassPurchases)
-              .set({ currentTier, xpEarned: currentXp })
-              .where(eq(battlePassPurchases.id, userPurchase.id));
-          }
-
-          purchase = { ...userPurchase, currentTier, xpEarned: currentXp };
+        if (row && (row.currentTier !== currentTier || row.xpEarned !== currentXp)) {
+          await db.update(battlePassPurchases)
+            .set({ currentTier, xpEarned: currentXp })
+            .where(eq(battlePassPurchases.id, row.id));
         }
+
+        progress = row ? { ...row, currentTier, xpEarned: currentXp } : null;
       }
 
-      res.json({ season: activeSeason, milestones, purchase });
+      res.json({ season: activeSeason, milestones, progress });
     } catch (error) {
       console.error("Error fetching battle pass:", error);
       res.status(500).json({ message: "Failed to fetch battle pass" });
     }
   });
 
-  // POST /api/battle-pass/purchase - Buy via Stripe
+  // POST /api/battle-pass/purchase - Unlock the PREMIUM track for the active season.
+  // With Stripe configured this returns a checkout URL (the webhook flips the row to
+  // premium on payment); in dev (no Stripe) it unlocks immediately.
   app.post("/api/battle-pass/purchase", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const [activeSeason] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      const now = new Date();
+      const [activeSeason] = await db.select().from(battlePasses)
+        .where(and(eq(battlePasses.isActive, true), gt(battlePasses.endDate, now)))
+        .limit(1);
       if (!activeSeason) {
         return res.status(404).json({ message: "No active battle pass season" });
       }
 
-      const [existingPurchase] = await db.select().from(battlePassPurchases)
+      // Ensure the user's progress row exists (free track) before unlocking premium.
+      await db.insert(battlePassPurchases).values({
+        userId, battlePassId: activeSeason.id, amountCents: 0,
+        claimedMilestones: "[]", isPremium: false, status: "active",
+      }).onConflictDoNothing({ target: [battlePassPurchases.userId, battlePassPurchases.battlePassId] });
+
+      const [row] = await db.select().from(battlePassPurchases)
         .where(and(
           eq(battlePassPurchases.userId, userId),
           eq(battlePassPurchases.battlePassId, activeSeason.id)
         ))
         .limit(1);
 
-      if (existingPurchase) {
-        return res.status(400).json({ message: "Battle pass already purchased for this season" });
+      if (row?.isPremium) {
+        return res.status(400).json({ message: "Premium track already unlocked for this season" });
       }
 
       if (stripe) {
@@ -4675,8 +4882,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             price_data: {
               currency: "usd",
               product_data: {
-                name: `Battle Pass: ${activeSeason.seasonName}`,
-                description: activeSeason.description || "Seasonal battle pass with exclusive rewards",
+                name: `Battle Pass Premium: ${activeSeason.seasonName}`,
+                description: activeSeason.description || "Unlock the premium reward track for this season",
               },
               unit_amount: activeSeason.priceCents,
             },
@@ -4692,29 +4899,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
         });
 
+        // Mark pending + remember the session for fulfillment/UI. Latest checkout wins;
+        // the webhook flips by (userId, battlePassId) so a stale session cannot double-grant.
+        await db.update(battlePassPurchases)
+          .set({ status: "pending", stripeSessionId: session.id })
+          .where(eq(battlePassPurchases.id, row!.id));
+
         return res.json({ checkoutUrl: session.url, sessionId: session.id });
       }
 
-      const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
-      const currentXp = xpRecord?.totalXp ?? 0;
+      // Dev fallback (no Stripe configured): unlock the premium track immediately.
+      await db.update(battlePassPurchases)
+        .set({ isPremium: true, status: "active", amountCents: activeSeason.priceCents })
+        .where(eq(battlePassPurchases.id, row!.id));
 
-      const [purchase] = await db.insert(battlePassPurchases).values({
-        userId,
-        battlePassId: activeSeason.id,
-        amountCents: activeSeason.priceCents,
-        currentTier: 0,
-        xpEarned: currentXp,
-        claimedMilestones: "[]",
-      }).returning();
-
-      res.json({ purchase, message: "Battle pass purchased successfully" });
+      res.json({ unlocked: true, message: "Premium track unlocked" });
     } catch (error) {
-      console.error("Error purchasing battle pass:", error);
-      res.status(500).json({ message: "Failed to purchase battle pass" });
+      console.error("Error unlocking battle pass premium track:", error);
+      res.status(500).json({ message: "Failed to unlock premium track" });
     }
   });
 
-  // POST /api/battle-pass/claim/:milestone - Claim reward at reached tier
+  // POST /api/battle-pass/claim/:milestone - Claim a reward at a reached tier.
+  // Free-track milestones are claimable by any participant who reached the tier;
+  // premium-track milestones additionally require the premium track to be unlocked.
   app.post("/api/battle-pass/claim/:milestone", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.id;
@@ -4722,95 +4930,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const milestoneId = req.params.milestone;
 
-      const [activeSeason] = await db.select().from(battlePasses).where(eq(battlePasses.isActive, true)).limit(1);
+      const now = new Date();
+      const [activeSeason] = await db.select().from(battlePasses)
+        .where(and(eq(battlePasses.isActive, true), gt(battlePasses.endDate, now)))
+        .limit(1);
       if (!activeSeason) {
         return res.status(404).json({ message: "No active battle pass season" });
-      }
-
-      const [purchase] = await db.select().from(battlePassPurchases)
-        .where(and(
-          eq(battlePassPurchases.userId, userId),
-          eq(battlePassPurchases.battlePassId, activeSeason.id)
-        ))
-        .limit(1);
-
-      if (!purchase) {
-        return res.status(403).json({ message: "Battle pass not purchased" });
       }
 
       const [milestone] = await db.select().from(battlePassMilestones)
         .where(eq(battlePassMilestones.id, milestoneId))
         .limit(1);
 
-      if (!milestone) {
+      if (!milestone || milestone.battlePassId !== activeSeason.id) {
         return res.status(404).json({ message: "Milestone not found" });
       }
+
+      // Ensure a progress row exists (free track) so any participant can claim.
+      await db.insert(battlePassPurchases).values({
+        userId, battlePassId: activeSeason.id, amountCents: 0,
+        claimedMilestones: "[]", isPremium: false, status: "active",
+      }).onConflictDoNothing({ target: [battlePassPurchases.userId, battlePassPurchases.battlePassId] });
 
       const [xpRecord] = await db.select().from(userXp).where(eq(userXp.userId, userId)).limit(1);
       const currentXp = xpRecord?.totalXp ?? 0;
 
-      if (currentXp < milestone.xpRequired) {
-        return res.status(400).json({ message: "Not enough XP to claim this milestone" });
-      }
+      // The claim itself runs in a transaction with a row lock so concurrent
+      // claims of the same milestone cannot both succeed (claimedMilestones is JSON).
+      const outcome = await db.transaction(async (tx): Promise<{ ok: true } | { ok: false; status: number; message: string }> => {
+        const [purchase] = await tx.select().from(battlePassPurchases)
+          .where(and(
+            eq(battlePassPurchases.userId, userId),
+            eq(battlePassPurchases.battlePassId, activeSeason.id)
+          ))
+          .for("update")
+          .limit(1);
 
-      let claimed: string[] = [];
-      try { claimed = JSON.parse(purchase.claimedMilestones); } catch { claimed = []; }
-      if (claimed.includes(milestoneId)) {
-        return res.status(400).json({ message: "Milestone already claimed" });
-      }
-
-      claimed.push(milestoneId);
-      await db.update(battlePassPurchases)
-        .set({ claimedMilestones: JSON.stringify(claimed) })
-        .where(eq(battlePassPurchases.id, purchase.id));
-
-      let rewardDetails: any = { type: milestone.rewardType, value: milestone.rewardValue, description: milestone.description };
-
-      if (milestone.rewardType === "streak_freeze") {
-        const freezeCount = parseInt(milestone.rewardValue || "1");
-        const [existingFreeze] = await db.select().from(streakFreezes).where(eq(streakFreezes.userId, userId)).limit(1);
-        if (existingFreeze) {
-          await db.update(streakFreezes)
-            .set({ totalFreezes: sql`${streakFreezes.totalFreezes} + ${freezeCount}`, lastEarnedAt: new Date() })
-            .where(eq(streakFreezes.id, existingFreeze.id));
-        } else {
-          await db.insert(streakFreezes).values({ userId, totalFreezes: freezeCount, usedFreezes: 0, lastEarnedAt: new Date() });
+        if (!purchase) return { ok: false, status: 404, message: "Progress not found" };
+        if (currentXp < milestone.xpRequired) return { ok: false, status: 400, message: "Not enough XP to claim this milestone" };
+        if (milestone.isPremium && !purchase.isPremium) {
+          return { ok: false, status: 403, message: "Unlock the premium track to claim this reward" };
         }
-      } else if (milestone.rewardType === "premium_trial") {
-        const days = parseInt(milestone.rewardValue || "3");
-        const trialEnd = new Date();
-        trialEnd.setDate(trialEnd.getDate() + days);
-        const [existingPrefs] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).limit(1);
-        if (existingPrefs) {
-          await db.update(userPreferences).set({ premiumTrialEndDate: trialEnd }).where(eq(userPreferences.userId, userId));
-        } else {
-          await db.insert(userPreferences).values({ userId, premiumTrialEndDate: trialEnd, favoriteGenres: [], onboardingCompleted: false, welcomeBonusGranted: false });
+
+        let claimed: string[] = [];
+        try { claimed = JSON.parse(purchase.claimedMilestones); } catch { claimed = []; }
+        if (claimed.includes(milestoneId)) {
+          return { ok: false, status: 400, message: "Milestone already claimed" };
         }
-      } else if (milestone.rewardType === "xp_multiplier") {
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
-        await db.insert(expiringRewards).values({
-          userId,
-          rewardType: "xp_multiplier",
-          rewardValue: 150,
-          description: milestone.description || "1.5x XP Boost from Battle Pass",
-          expiresAt,
-          claimed: false,
-        });
-      } else if (milestone.rewardType === "discount") {
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30);
-        await db.insert(expiringRewards).values({
-          userId,
-          rewardType: "discount",
-          rewardValue: parseInt(milestone.rewardValue || "20"),
-          description: milestone.description || "Discount from Battle Pass",
-          expiresAt,
-          claimed: false,
-        });
+
+        claimed.push(milestoneId);
+        await tx.update(battlePassPurchases)
+          .set({ claimedMilestones: JSON.stringify(claimed) })
+          .where(eq(battlePassPurchases.id, purchase.id));
+
+        if (milestone.rewardType === "streak_freeze") {
+          const freezeCount = parseInt(milestone.rewardValue || "1");
+          const [existingFreeze] = await tx.select().from(streakFreezes).where(eq(streakFreezes.userId, userId)).limit(1);
+          if (existingFreeze) {
+            await tx.update(streakFreezes)
+              .set({ totalFreezes: sql`${streakFreezes.totalFreezes} + ${freezeCount}`, lastEarnedAt: new Date() })
+              .where(eq(streakFreezes.id, existingFreeze.id));
+          } else {
+            await tx.insert(streakFreezes).values({ userId, totalFreezes: freezeCount, usedFreezes: 0, lastEarnedAt: new Date() });
+          }
+        } else if (milestone.rewardType === "premium_trial") {
+          const days = parseInt(milestone.rewardValue || "3");
+          const trialEnd = new Date();
+          trialEnd.setDate(trialEnd.getDate() + days);
+          const [existingPrefs] = await tx.select().from(userPreferences).where(eq(userPreferences.userId, userId)).limit(1);
+          if (existingPrefs) {
+            await tx.update(userPreferences).set({ premiumTrialEndDate: trialEnd }).where(eq(userPreferences.userId, userId));
+          } else {
+            await tx.insert(userPreferences).values({ userId, premiumTrialEndDate: trialEnd, favoriteGenres: [], onboardingCompleted: false, welcomeBonusGranted: false });
+          }
+        } else if (milestone.rewardType === "xp_multiplier") {
+          const expiresAt = new Date();
+          expiresAt.setHours(expiresAt.getHours() + 24);
+          await tx.insert(expiringRewards).values({
+            userId,
+            rewardType: "xp_multiplier",
+            rewardValue: 150,
+            description: milestone.description || "1.5x XP Boost from Battle Pass",
+            expiresAt,
+            claimed: false,
+          });
+        } else if (milestone.rewardType === "discount") {
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 30);
+          await tx.insert(expiringRewards).values({
+            userId,
+            rewardType: "discount",
+            rewardValue: parseInt(milestone.rewardValue || "20"),
+            description: milestone.description || "Discount from Battle Pass",
+            expiresAt,
+            claimed: false,
+          });
+        }
+
+        return { ok: true };
+      });
+
+      if (!outcome.ok) {
+        return res.status(outcome.status).json({ message: outcome.message });
       }
 
-      res.json({ success: true, reward: rewardDetails });
+      res.json({
+        success: true,
+        reward: { type: milestone.rewardType, value: milestone.rewardValue, description: milestone.description },
+      });
     } catch (error) {
       console.error("Error claiming milestone:", error);
       res.status(500).json({ message: "Failed to claim milestone" });

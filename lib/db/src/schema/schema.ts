@@ -1222,8 +1222,13 @@ export const battlePassMilestones = pgTable("battle_pass_milestones", {
   rewardType: varchar("reward_type").notNull(),
   rewardValue: text("reward_value"),
   description: text("description"),
+  isPremium: boolean("is_premium").notNull().default(false), // false = free track, true = premium track
 }, (table) => [
   index("idx_bp_milestones_pass").on(table.battlePassId),
+  index("idx_bp_milestones_track").on(table.battlePassId, table.isPremium),
+  // One reward per (season, tier, track) so seeding/backfill is idempotent and
+  // concurrent inserts cannot create duplicate separately-claimable rewards.
+  uniqueIndex("idx_bp_milestones_unique").on(table.battlePassId, table.tier, table.isPremium),
 ]);
 
 export const insertBattlePassMilestoneSchema = createInsertSchema(battlePassMilestones).omit({ id: true });
@@ -1239,9 +1244,14 @@ export const battlePassPurchases = pgTable("battle_pass_purchases", {
   currentTier: integer("current_tier").notNull().default(0),
   xpEarned: integer("xp_earned").notNull().default(0),
   claimedMilestones: text("claimed_milestones").notNull().default("[]"),
+  isPremium: boolean("is_premium").notNull().default(false), // premium track unlocked for this user/season
+  status: varchar("status").notNull().default("active"), // 'active' (free progress) | 'pending' (premium checkout in flight)
+  stripeSessionId: varchar("stripe_session_id"), // idempotency key for premium-unlock webhook fulfillment
 }, (table) => [
   index("idx_bpp_user").on(table.userId),
   index("idx_bpp_pass").on(table.battlePassId),
+  uniqueIndex("idx_bpp_user_pass_unique").on(table.userId, table.battlePassId),
+  index("idx_bpp_session").on(table.stripeSessionId),
 ]);
 
 export const insertBattlePassPurchaseSchema = createInsertSchema(battlePassPurchases).omit({ id: true, purchasedAt: true });

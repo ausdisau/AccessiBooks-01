@@ -1,4 +1,5 @@
-- [api-server workflow restart times out](api-server-workflow-restart.md) — restart_workflow always TIMES_OUT (slow startup ingestion starves readiness probe); verify by background-booting dist/index.mjs on PORT=8080 + curl, all in one bash call.
+- [api-server workflow restart](api-server-workflow-restart.md) — restart_workflow SUCCEEDS with workflow_timeout:60 (build ~6s + listen); DB URL is workflow-injected so manual bash boot fails. Verify via workflow + curl through proxy.
+- [Dual schema sync](dual-schema-sync.md) — api-server uses lib/db schema; frontend uses a SEPARATE duplicate shared/schema.ts. A table change must be mirrored in BOTH or types drift silently.
 - [api-server typecheck](api-server-typecheck.md) — tsc --noEmit never passes (~647 pre-existing errors); verify via workflow boot + curl, not tsc.
 - [Money fulfillment rules](money-fulfillment-rules.md) — Stripe webhook fulfillment must re-throw on failure (let Stripe retry); credit/ownership grants must be idempotent and claim ownership before debiting.
 - [dev DB schema drift](dev-db-schema-drift.md) — dev Postgres can lag schema.ts; route 500 with PG 42703 means add the missing column via psql, not a code bug.
