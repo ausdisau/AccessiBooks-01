@@ -107,6 +107,7 @@ export interface IStorage {
     subscriptionTier?: string;
     subscriptionStatus?: string;
     subscriptionEndDate?: Date | null;
+    subscriptionProvider?: string | null;
   }): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
   
@@ -2406,6 +2407,7 @@ export class ExternalAPIStorage implements IStorage {
     subscriptionTier?: string;
     subscriptionStatus?: string;
     subscriptionEndDate?: Date | null;
+    subscriptionProvider?: string | null;
   }): Promise<User | undefined> {
     try {
       console.log(`Updating subscription for user ${userId}:`, subscription);
@@ -2430,6 +2432,13 @@ export class ExternalAPIStorage implements IStorage {
       if (subscription.subscriptionStatus !== undefined) {
         try {
           (updateData as any).subscriptionStatus = subscription.subscriptionStatus;
+        } catch {
+          // column may not exist yet
+        }
+      }
+      if (subscription.subscriptionProvider !== undefined) {
+        try {
+          (updateData as any).subscriptionProvider = subscription.subscriptionProvider;
         } catch {
           // column may not exist yet
         }

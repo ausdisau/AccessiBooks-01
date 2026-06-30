@@ -6,6 +6,13 @@ import { z } from "zod";
 import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns, accessibilityPreferences } from "@workspace/db";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated, requireAdmin, requireTier } from "../multiAuth";
+import {
+  syncRevenueCatEntitlementsForUser,
+  isRevenueCatWebhookAuthorized,
+  isRevenueCatEventProcessed,
+  markRevenueCatEventProcessed,
+  isUserNotFoundError,
+} from "../revenueCat";
 import { registerMagicLinkRoutes } from "../auth";
 import { setupAuth0Routes, isAuth0Configured } from "../auth0";
 import { getUncachableSpotifyClient, isSpotifyConnected } from "../spotifyClient";
@@ -2448,6 +2455,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       minimum: 100,
       maximum: 100000,
     });
+  });
+
+  // POST /api/webhooks/revenuecat - RevenueCat server-to-server webhook.
+  // Auth is a shared secret sent in the Authorization header (configured in the
+  // RevenueCat dashboard). Body is parsed by the global express.json middleware.
+  app.post("/api/webhooks/revenuecat", async (req, res) => {
+    if (!isRevenueCatWebhookAuthorized(req.headers["authorization"])) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const event = (req.body && (req.body as any).event) || req.body || {};
+    const appUserId: string | undefined =
+      event.app_user_id || event.original_app_user_id;
+    const eventId: string | undefined = event.id || event.event_id;
+
+    // RevenueCat may emit events for anonymous ids that aren't our users.
+    if (!appUserId || appUserId.startsWith("$RCAnonymousID:")) {
+      return res.status(200).json({ received: true, ignored: "anonymous" });
+    }
+
+    if (eventId && isRevenueCatEventProcessed(eventId)) {
+      return res.status(200).json({ received: true, deduped: true });
+    }
+
+    try {
+      await syncRevenueCatEntitlementsForUser(appUserId);
+      if (eventId) markRevenueCatEventProcessed(eventId);
+      return res.status(200).json({ received: true });
+    } catch (err) {
+      // Unknown user => acknowledge so RevenueCat stops retrying.
+      if (isUserNotFoundError(err)) {
+        if (eventId) markRevenueCatEventProcessed(eventId);
+        return res.status(200).json({ received: true, ignored: "unknown_user" });
+      }
+      // Transient failure => 500 so RevenueCat retries the delivery.
+      req.log?.error?.({ err }, "[RevenueCat] webhook sync failed");
+      return res.status(500).json({ message: "Sync failed" });
+    }
+  });
+
+  // POST /api/billing/revenuecat/sync - authenticated client-triggered sync.
+  // Called by the mobile app right after a purchase/restore so the account's
+  // subscriptionTier reflects the new entitlement without waiting on a webhook.
+  app.post("/api/billing/revenuecat/sync", isAuthenticated, async (req, res) => {
+    const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    try {
+      const result = await syncRevenueCatEntitlementsForUser(userId);
+      return res.json(result);
+    } catch (err) {
+      req.log?.error?.({ err }, "[RevenueCat] sync endpoint failed");
+      return res.status(502).json({ message: "Failed to sync subscription" });
+    }
   });
 
   // POST /api/webhooks/stripe - Stripe webhook handler

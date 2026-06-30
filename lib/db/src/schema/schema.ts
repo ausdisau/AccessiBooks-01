@@ -161,6 +161,9 @@ export const users = pgTable("users", {
   website: varchar("website"),
   // Freemium lifecycle: active | trialing | past_due | canceled | null
   subscriptionStatus: varchar("subscription_status"),
+  // Which system owns the current subscription row: "stripe" | "revenuecat" | "manual" | null.
+  // Lets the RevenueCat sync only downgrade rows it owns (never Stripe/institutional rows).
+  subscriptionProvider: varchar("subscription_provider"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

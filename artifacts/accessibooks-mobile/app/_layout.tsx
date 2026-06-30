@@ -22,8 +22,21 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
 
 SplashScreen.preventAutoHideAsync();
+
+// Initialize RevenueCat at module load. Throws when the public API keys are not
+// configured (the expected state until the keys are seeded), so we swallow the
+// error and let the app run without IAP rather than crashing.
+try {
+  initializeRevenueCat();
+} catch (err) {
+  console.warn(
+    "[RevenueCat] not configured:",
+    (err as Error)?.message ?? "unknown error",
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +58,10 @@ function RootLayoutNav() {
       <Stack.Screen
         name="player/[id]"
         options={{ presentation: "modal", title: "Now Playing" }}
+      />
+      <Stack.Screen
+        name="paywall"
+        options={{ presentation: "modal", title: "Upgrade" }}
       />
     </Stack>
   );
@@ -74,11 +91,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <RootLayoutNav />
-            </KeyboardProvider>
-          </GestureHandlerRootView>
+          <SubscriptionProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <KeyboardProvider>
+                <RootLayoutNav />
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </SubscriptionProvider>
         </QueryClientProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

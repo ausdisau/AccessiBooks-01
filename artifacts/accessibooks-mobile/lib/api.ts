@@ -238,6 +238,37 @@ export async function fetchActiveLoans(): Promise<ActiveLoansResponse | null> {
   }
 }
 
+export type RevenueCatSyncResult = {
+  tier: string;
+  status: string | null;
+  subscriptionEndDate: string | null;
+};
+
+/**
+ * Reconcile the signed-in user's RevenueCat entitlements into their server
+ * account (subscriptionTier). Called right after a purchase/restore so the
+ * account reflects the new entitlement without waiting on the webhook. Returns
+ * null when the request fails or the user is not signed in — callers fall back
+ * to the local RevenueCat customerInfo state.
+ */
+export async function syncRevenueCatEntitlements(): Promise<RevenueCatSyncResult | null> {
+  try {
+    const res = await fetch(`${apiBase()}/api/billing/revenuecat/sync`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      },
+      body: "{}",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as RevenueCatSyncResult;
+  } catch {
+    return null;
+  }
+}
+
 export function formatDuration(seconds?: number | null): string {
   if (!seconds || seconds <= 0) return "";
   const h = Math.floor(seconds / 3600);
