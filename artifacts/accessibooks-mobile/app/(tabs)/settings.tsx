@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import {
@@ -39,12 +40,6 @@ const ROWS: Row[] = [
     href: "/settings",
   },
   {
-    icon: "credit-card",
-    label: "Subscription",
-    description: "Free, Plus, or Premium",
-    href: "/pricing",
-  },
-  {
     icon: "headphones",
     label: "Listening rooms",
     description: "Co-listen with friends",
@@ -68,6 +63,7 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const r = useResponsive();
+  const router = useRouter();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: fetchMe,
@@ -159,6 +155,35 @@ export default function SettingsScreen() {
           />
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push("/paywall")}
+          style={({ pressed }) => [
+            styles.subCard,
+            { backgroundColor: colors.muted, opacity: pressed ? 0.85 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Subscription. Current plan: ${tierLabel}. View plans and upgrade.`}
+        >
+          <View
+            style={[styles.iconWrap, { backgroundColor: colors.background }]}
+          >
+            <Feather name="credit-card" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+              Subscription
+            </Text>
+            <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>
+              {tierLabel} · View plans
+            </Text>
+          </View>
+          <Feather
+            name="chevron-right"
+            size={20}
+            color={colors.mutedForeground}
+          />
+        </Pressable>
+
         <View style={styles.list}>
           {ROWS.map((row) => (
             <Pressable
@@ -243,6 +268,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     lineHeight: 18,
+  },
+  subCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 14,
   },
   list: {
     marginHorizontal: 16,
