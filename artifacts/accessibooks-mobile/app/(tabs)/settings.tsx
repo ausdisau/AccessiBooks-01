@@ -184,6 +184,35 @@ export default function SettingsScreen() {
           />
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push("/downloads")}
+          style={({ pressed }) => [
+            styles.subCard,
+            { backgroundColor: colors.muted, opacity: pressed ? 0.85 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Downloads. Manage titles saved for offline listening."
+        >
+          <View
+            style={[styles.iconWrap, { backgroundColor: colors.background }]}
+          >
+            <Feather name="download" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+              Downloads
+            </Text>
+            <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>
+              Listen offline · manage storage
+            </Text>
+          </View>
+          <Feather
+            name="chevron-right"
+            size={20}
+            color={colors.mutedForeground}
+          />
+        </Pressable>
+
         <View style={styles.list}>
           {ROWS.map((row) => (
             <Pressable

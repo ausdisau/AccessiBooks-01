@@ -47,6 +47,7 @@ import {
   startScheduler as startRecScheduler,
 } from "../recommendation";
 import { registerCoachRoutes } from "../coachRoutes";
+import { registerVoiceRoutes } from "../voiceRoutes";
 import { registerAdPlatformRoutes } from "../adPlatformRoutes";
 import { registerAnalyticsRoutes } from "../analyticsRoutes";
 import { registerAdminEntitlementsRoutes } from "../adminEntitlementsRoutes";
@@ -326,6 +327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI Accessibility Coach endpoint
   registerCoachRoutes(app);
+  registerVoiceRoutes(app);
 
   // AI conversational chat routes (conversations, messages, streaming AI responses)
   registerChatRoutes(app);

@@ -5,6 +5,8 @@ AccessiBooks is a fullstack accessible audiobooks and e-reading platform — aud
 ## Run & Operate
 
 - `pnpm --filter @workspace/accessibooks run dev` — run the frontend (Vite, auto-assigned port)
+- `pnpm --filter @workspace/accessibooks-mobile run dev` — run the Expo mobile app
+- `pnpm --filter @workspace/accessibooks-mobile run typecheck` — typecheck the mobile app (its `tsc` is clean; api-server `tsc` is not — see Gotchas)
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only, interactive prompt)
@@ -23,7 +25,8 @@ AccessiBooks is a fullstack accessible audiobooks and e-reading platform — aud
 ## Where things live
 
 - `artifacts/accessibooks/` — React/Vite frontend; all UI in `src/App.tsx` (large single-file component) and `src/components/`
-- `artifacts/api-server/src/` — Express server; `routes/routes.ts` is the main route file (6000+ lines)
+- `artifacts/accessibooks-mobile/` — Expo (React Native) app. Hands-free voice mode in `lib/voice.tsx`; offline downloads in `lib/downloads.tsx`; local playback-progress persistence in `lib/progress.ts`; downloads management screen at `app/downloads.tsx`; mobile API client in `lib/api.ts`
+- `artifacts/api-server/src/` — Express server; `routes/routes.ts` is the main route file (6000+ lines); `voiceRoutes.ts` is the mobile voice STT endpoint (`POST /api/voice/transcribe`)
 - `artifacts/api-server/src/db.ts` — DB connection (node-postgres pool) + schema migration helpers
 - `artifacts/api-server/src/storage.ts` — Data access layer (ExternalAPIStorage class)
 - `lib/db/src/schema/schema.ts` — Drizzle ORM schema (source of truth for all DB tables)
@@ -36,6 +39,10 @@ AccessiBooks is a fullstack accessible audiobooks and e-reading platform — aud
 - **@shared alias**: Frontend resolves `@shared/*` via Vite alias pointing to `shared/` at workspace root; `drizzle-orm` and `zod` are installed at workspace root devDeps so Vite can resolve them.
 - **TensorFlow ML**: The CF recommender model (`recommendation/cfModel.ts`) lazy-imports `@tensorflow/tfjs-node` with a try/catch so the server starts without it.
 - **Express 5 routes**: Wildcard routes use `/*name` syntax (not the Express 4 `/*` or `/:param(*)` syntax).
+- **Mobile voice mode**: STT is server-side (`POST /api/voice/transcribe`, gpt-4o-mini-transcribe) but intent parsing is client-side keyword matching in `lib/voice.tsx`. The route is `isAuthenticated` + a dedicated per-user voice rate limiter + a 3MB raw-body cap + a 415 content-type allowlist, because every call hits a paid AI model — **voice requires sign-in by design** (cost/DoS control). Screens register handlers via `useVoiceCommands`; navigation handlers are global. Audio bytes and transcripts are never logged.
+- **Mobile player is a native modal**: `app/player/[id].tsx` is `presentation: "modal"`, so the global mic overlay rendered in `_layout.tsx` cannot cover it — the player renders its own in-screen mic/download controls. Any new always-on-top control must be rendered inside the modal screen, not just in `_layout`.
+- **Mobile progress is local-only (drift)**: there is no server progress-sync endpoint, so downloaded-title playback position is persisted on-device (AsyncStorage via `lib/progress.ts`). Do not assume a sync API exists.
+- **No chapter model (drift)**: there is no chapter data model, so voice "next/previous chapter" maps to skip-forward/back and "chapter N" gives honest "no chapters" feedback.
 
 ## Product
 

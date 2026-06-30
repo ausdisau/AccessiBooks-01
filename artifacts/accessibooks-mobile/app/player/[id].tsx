@@ -27,6 +27,13 @@ import {
   fetchWordAlignment,
   formatDuration,
 } from "@/lib/api";
+import { useDownloads } from "@/lib/downloads";
+import { loadProgress, saveProgress } from "@/lib/progress";
+import {
+  useVoice,
+  useVoiceCommands,
+  type VoiceCommandHandlers,
+} from "@/lib/voice";
 
 const DEFAULT_SKIP = 30;
 const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
@@ -56,7 +63,14 @@ export default function PlayerScreen() {
   const skipFwdSecs =
     Number(settings.data?.preferences?.skipForwardSeconds) || DEFAULT_SKIP;
 
-  const audioUrl = book.data?.audioUrl ?? null;
+  const downloads = useDownloads();
+  const voice = useVoice();
+  const downloadEntry = id ? downloads.getEntry(id) : null;
+  const localUri = id ? downloads.getLocalUri(id) : null;
+  const remoteAudioUrl = book.data?.audioUrl ?? null;
+  // Prefer the downloaded file so a saved title plays fully offline.
+  const audioUrl = localUri ?? remoteAudioUrl;
+  const isDownloaded = !!localUri;
   const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null);
   const status = useAudioPlayerStatus(player);
 
@@ -111,6 +125,43 @@ export default function PlayerScreen() {
       } catch {}
     };
   }, [player]);
+
+  // Offline resume: restore the saved position for downloaded titles once audio
+  // is loaded, and persist progress periodically + on unmount so the listener
+  // can continue where they left off with no network.
+  const idRef = useRef(id);
+  idRef.current = id;
+  const posRef = useRef(0);
+  const downloadedRef = useRef(false);
+  downloadedRef.current = isDownloaded;
+  const resumedRef = useRef(false);
+
+  useEffect(() => {
+    if (resumedRef.current || !isDownloaded || !id) return;
+    if ((status?.duration ?? 0) <= 0) return;
+    resumedRef.current = true;
+    loadProgress(id).then((sec) => {
+      if (sec > 0) {
+        try {
+          player.seekTo(sec);
+        } catch {}
+      }
+    });
+  }, [isDownloaded, id, status?.duration, player]);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (downloadedRef.current && idRef.current) {
+        saveProgress(idRef.current, posRef.current);
+      }
+    }, 10000);
+    return () => {
+      clearInterval(iv);
+      if (downloadedRef.current && idRef.current) {
+        saveProgress(idRef.current, posRef.current);
+      }
+    };
+  }, []);
 
   const haptic = () => {
     if (Platform.OS !== "web") {
@@ -228,6 +279,7 @@ export default function PlayerScreen() {
 
   const total = status?.duration ?? book.data?.duration ?? 0;
   const livePosition = status?.currentTime ?? 0;
+  posRef.current = livePosition;
   const position = scrubPos !== null ? scrubPos : livePosition;
   const playing = !!status?.playing;
   const speed = SPEEDS[speedIdx];
@@ -258,6 +310,48 @@ export default function PlayerScreen() {
       player.setPlaybackRate(SPEEDS[next]);
     } catch {}
   };
+  const setSpeed = (idx: number) => {
+    const clamped = Math.max(0, Math.min(SPEEDS.length - 1, idx));
+    if (clamped === speedIdx) return;
+    haptic();
+    setSpeedIdx(clamped);
+    try {
+      player.setPlaybackRate(SPEEDS[clamped]);
+    } catch {}
+  };
+
+  // Hands-free playback commands for this screen. Only currently-actionable
+  // commands are registered, so screen-reader confirmations stay honest:
+  // unavailable actions fall through to a "not available" announcement instead
+  // of falsely confirming success. Handlers are stored by ref each render, so
+  // the registered set updates as state changes (e.g. once a title is saved).
+  const voiceHandlers: VoiceCommandHandlers = {};
+  if (audioUrl) {
+    voiceHandlers.play = () => {
+      haptic();
+      player.play();
+    };
+    voiceHandlers.pause = () => {
+      haptic();
+      try {
+        player.pause();
+      } catch {}
+    };
+    voiceHandlers.togglePlay = togglePlay;
+    voiceHandlers.skipForward = skipForward;
+    voiceHandlers.skipBack = skipBack;
+    voiceHandlers.faster = () => setSpeed(speedIdx + 1);
+    voiceHandlers.slower = () => setSpeed(speedIdx - 1);
+  }
+  if (readAlongAvailable) {
+    voiceHandlers.readAlong = () => toggleFollowAlong();
+  }
+  if (remoteAudioUrl && !isDownloaded) {
+    voiceHandlers.download = () => {
+      if (book.data) downloads.startDownload(book.data);
+    };
+  }
+  useVoiceCommands(voiceHandlers);
 
   if (book.isError) {
     return (
@@ -594,6 +688,105 @@ export default function PlayerScreen() {
             {speed.toFixed(2).replace(/\.?0+$/, "")}x
           </Text>
         </Pressable>
+        {remoteAudioUrl ? (
+          <Pressable
+            onPress={() => {
+              if (isDownloaded) {
+                if (id) downloads.removeDownload(id);
+              } else if (
+                downloadEntry?.status !== "downloading" &&
+                book.data
+              ) {
+                downloads.startDownload(book.data);
+              }
+            }}
+            disabled={downloadEntry?.status === "downloading"}
+            style={({ pressed }) => [
+              styles.speedBtn,
+              {
+                borderColor: isDownloaded ? colors.brandOrange : colors.brandInk,
+                opacity: pressed ? 0.7 : 1,
+                flexDirection: "row",
+                gap: 6,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isDownloaded
+                ? "Downloaded for offline. Tap to remove."
+                : downloadEntry?.status === "downloading"
+                  ? `Downloading ${Math.round((downloadEntry?.progress ?? 0) * 100)} percent`
+                  : "Download for offline listening"
+            }
+          >
+            <Feather
+              name={isDownloaded ? "check-circle" : "download"}
+              size={16}
+              color={isDownloaded ? colors.brandOrange : colors.brandInk}
+            />
+            <Text
+              style={[
+                styles.speedText,
+                { color: isDownloaded ? colors.brandOrange : colors.brandInk },
+              ]}
+            >
+              {isDownloaded
+                ? "Saved"
+                : downloadEntry?.status === "downloading"
+                  ? `${Math.round((downloadEntry?.progress ?? 0) * 100)}%`
+                  : "Download"}
+            </Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={voice.onMicPress}
+          style={({ pressed }) => [
+            styles.speedBtn,
+            {
+              borderColor:
+                voice.state === "recording"
+                  ? colors.destructive
+                  : colors.brandInk,
+              opacity: pressed ? 0.7 : 1,
+              flexDirection: "row",
+              gap: 6,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ busy: voice.state === "processing" }}
+          accessibilityLabel={
+            voice.state === "recording"
+              ? "Listening. Tap to stop and run command."
+              : voice.state === "processing"
+                ? "Processing voice command"
+                : "Voice command. Tap and speak."
+          }
+        >
+          <Feather
+            name={voice.state === "recording" ? "square" : "mic"}
+            size={16}
+            color={
+              voice.state === "recording" ? colors.destructive : colors.brandInk
+            }
+          />
+          <Text
+            style={[
+              styles.speedText,
+              {
+                color:
+                  voice.state === "recording"
+                    ? colors.destructive
+                    : colors.brandInk,
+              },
+            ]}
+          >
+            {voice.state === "processing"
+              ? "…"
+              : voice.state === "recording"
+                ? "Stop"
+                : "Voice"}
+          </Text>
+        </Pressable>
       </View>
       </View>
     </View>
@@ -728,6 +921,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 12,
   },
   speedBtn: {
