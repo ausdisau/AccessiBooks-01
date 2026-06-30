@@ -181,42 +181,70 @@ export interface GrantResult {
   balance: number;
 }
 
-export async function grantCredits(args: GrantArgs): Promise<GrantResult> {
+// Core grant logic. ASSUMES the caller already holds the per-user lock: the
+// credit_accounts row exists, is locked FOR UPDATE, and expired grants have been
+// swept. Inserts the grant, bumps the cached balance, and appends a ledger row.
+// Idempotent via idempotency_key. Used by both grantCredits (which wraps it in
+// withUserLock) and grantCreditsTx (which replays the lock setup on a caller-
+// owned client so the grant commits atomically with the caller's transaction).
+async function applyGrant(client: PoolClient, args: GrantArgs): Promise<GrantResult> {
   const { userId, amount, source, sourceId, idempotencyKey, expiresAt, description } = args;
-  if (amount <= 0) {
-    const balance = await getBalance(userId);
+  if (idempotencyKey) {
+    const { rows: dupe } = await client.query(
+      `SELECT id FROM credit_grants WHERE idempotency_key = $1`,
+      [idempotencyKey],
+    );
+    if (dupe.length > 0) {
+      const { rows } = await client.query(`SELECT balance FROM credit_accounts WHERE user_id = $1`, [userId]);
+      return { granted: false, duplicate: true, balance: Number(rows[0]?.balance ?? 0) };
+    }
+  }
+  const { rows: grantRows } = await client.query(
+    `INSERT INTO credit_grants (user_id, amount, remaining, source, source_id, idempotency_key, expires_at)
+     VALUES ($1, $2, $2, $3, $4, $5, $6) RETURNING id`,
+    [userId, amount, source, sourceId ?? null, idempotencyKey ?? null, expiresAt ?? null],
+  );
+  const grantId = grantRows[0].id;
+  const { rows: acctRows } = await client.query(
+    `UPDATE credit_accounts SET balance = balance + $2, updated_at = now()
+     WHERE user_id = $1 RETURNING balance`,
+    [userId, amount],
+  );
+  const balanceAfter = Number(acctRows[0].balance);
+  await client.query(
+    `INSERT INTO credit_ledger (user_id, type, amount, balance_after, grant_id, source, source_id, description)
+     VALUES ($1, 'grant', $2, $3, $4, $5, $6, $7)`,
+    [userId, amount, balanceAfter, grantId, source, sourceId ?? null, description ?? null],
+  );
+  return { granted: true, duplicate: false, balance: balanceAfter };
+}
+
+export async function grantCredits(args: GrantArgs): Promise<GrantResult> {
+  if (args.amount <= 0) {
+    const balance = await getBalance(args.userId);
     return { granted: false, duplicate: false, balance };
   }
-  return withUserLock(userId, async (client) => {
-    if (idempotencyKey) {
-      const { rows: dupe } = await client.query(
-        `SELECT id FROM credit_grants WHERE idempotency_key = $1`,
-        [idempotencyKey],
-      );
-      if (dupe.length > 0) {
-        const { rows } = await client.query(`SELECT balance FROM credit_accounts WHERE user_id = $1`, [userId]);
-        return { granted: false, duplicate: true, balance: Number(rows[0]?.balance ?? 0) };
-      }
-    }
-    const { rows: grantRows } = await client.query(
-      `INSERT INTO credit_grants (user_id, amount, remaining, source, source_id, idempotency_key, expires_at)
-       VALUES ($1, $2, $2, $3, $4, $5, $6) RETURNING id`,
-      [userId, amount, source, sourceId ?? null, idempotencyKey ?? null, expiresAt ?? null],
-    );
-    const grantId = grantRows[0].id;
-    const { rows: acctRows } = await client.query(
-      `UPDATE credit_accounts SET balance = balance + $2, updated_at = now()
-       WHERE user_id = $1 RETURNING balance`,
-      [userId, amount],
-    );
-    const balanceAfter = Number(acctRows[0].balance);
-    await client.query(
-      `INSERT INTO credit_ledger (user_id, type, amount, balance_after, grant_id, source, source_id, description)
-       VALUES ($1, 'grant', $2, $3, $4, $5, $6, $7)`,
-      [userId, amount, balanceAfter, grantId, source, sourceId ?? null, description ?? null],
-    );
-    return { granted: true, duplicate: false, balance: balanceAfter };
-  });
+  return withUserLock(args.userId, (client) => applyGrant(client, args));
+}
+
+// Grant credits inside an EXISTING transaction owned by the caller (e.g. gift
+// redemption or sponsorship claim, which atomically flip a row's status AND
+// grant the benefit). Replicates withUserLock's setup on the caller's client —
+// ensure the account row exists, lock it FOR UPDATE, sweep expired grants — but
+// does NOT open/commit its own transaction, so the grant is committed (or rolled
+// back) together with the caller's state change. Preserves all #213 invariants.
+export async function grantCreditsTx(client: PoolClient, args: GrantArgs): Promise<GrantResult> {
+  if (args.amount <= 0) {
+    const { rows } = await client.query(`SELECT balance FROM credit_accounts WHERE user_id = $1`, [args.userId]);
+    return { granted: false, duplicate: false, balance: Number(rows[0]?.balance ?? 0) };
+  }
+  await client.query(
+    `INSERT INTO credit_accounts (user_id, balance) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING`,
+    [args.userId],
+  );
+  await client.query(`SELECT balance FROM credit_accounts WHERE user_id = $1 FOR UPDATE`, [args.userId]);
+  await expireGrants(client, args.userId);
+  return applyGrant(client, args);
 }
 
 // Grant a tier's monthly allowance, idempotent per CALENDAR MONTH so it issues

@@ -67,6 +67,7 @@ const GamificationDashboard = lazy(() => import('@/components/gamification-dashb
 const YearInReview = lazy(() => import('./components/year-in-review').then(m => ({ default: m.YearInReview })));
 const ReferralSection = lazy(() => import('@/components/referral-section').then(m => ({ default: m.ReferralSection })));
 const ReferralsPage = lazy(() => import('@/pages/referrals').then(m => ({ default: m.ReferralsPage })));
+const GiftsPage = lazy(() => import('@/pages/gifts').then(m => ({ default: m.GiftsPage })));
 const AuthorDashboard = lazy(() => import('@/components/author-dashboard').then(m => ({ default: m.AuthorDashboard })));
 const ListeningParty = lazy(() => import('@/components/listening-party').then(m => ({ default: m.ListeningParty })));
 const StreamingQueue = lazy(() => import('@/components/streaming-queue').then(m => ({ default: m.StreamingQueue })));
@@ -159,6 +160,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/usage", label: "Usage", icon: <BarChart3 className="h-5 w-5" /> },
       { path: "/billing", label: "Billing", icon: <Wallet className="h-5 w-5" /> },
       { path: "/referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
+      { path: "/gifts", label: "Gift & Sponsor", icon: <HeartHandshake className="h-5 w-5" /> },
       { path: "/family", label: "Family", icon: <Heart className="h-5 w-5" /> },
       { path: "/enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
       { path: "/ndis", label: "NDIS Claims", icon: <HeartHandshake className="h-5 w-5" /> },
@@ -397,6 +399,15 @@ function AppHeader({ sidebarMode, onToggleSidebar }: {
               <Gift className="h-4 w-4" />
               Donate Now
             </a>
+            <Link
+              href="/gifts"
+              onClick={() => setDonateOpen(false)}
+              className="inline-flex items-center justify-center gap-2 w-full rounded-md border border-input bg-background hover:bg-accent font-semibold px-4 py-2.5 text-sm transition-colors"
+              data-testid="link-donate-gift"
+            >
+              <HeartHandshake className="h-4 w-4" />
+              Gift or sponsor a subscription
+            </Link>
             <Button variant="outline" size="sm" onClick={() => setDonateOpen(false)} className="w-full">
               Maybe Later
             </Button>
@@ -1880,6 +1891,13 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="referrals-panel" role="region" aria-label="Referrals" data-testid="panel-referrals">
                       <ReferralsPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/gifts">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="gifts-panel" role="region" aria-label="Gift and Sponsor" data-testid="panel-gifts">
+                      <GiftsPage />
                     </div>
                   </Suspense>
                 </Route>

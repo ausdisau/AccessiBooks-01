@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11"]
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -87,3 +87,6 @@ externalPort = 3002
 [userenv.shared]
 NEXT_PUBLIC_SUPABASE_URL = "https://mrcziszxsqovmbuyrnfn.supabase.co"
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_T3WRRMwr1rtU41l3Ucy4Ww_Hpcl47PN"
+
+[nix]
+channel = "stable-25_05"

@@ -18,6 +18,7 @@ import { registerPodcastRoutes } from "../podcastIngestion";
 import { registerNarrationRoutes } from "../narration";
 import { registerNdisRoutes } from "../ndis";
 import { registerCommercialCreditsRoutes, fulfillCreditPack, fulfillBundle } from "../commercialCredits";
+import { registerGiftAndSponsorshipRoutes, fulfillGiftPaid, fulfillSponsorshipFunded } from "../giftsSponsorships";
 import { registerPushNotificationRoutes } from "../pushNotifications";
 import { registerAdMediationRoutes } from "../adMediation";
 import { logAdImpression } from "../adImpressionLogger";
@@ -211,6 +212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Commercial catalog: credit packs, bundles & redeem-with-credits (Task #213)
   registerCommercialCreditsRoutes(app);
+  registerGiftAndSponsorshipRoutes(app);
 
   // Push notification routes (subscribe, preferences, history)
   registerPushNotificationRoutes(app);
@@ -2661,6 +2663,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // plus the paymentTransactions de-dupe make re-delivery safe, so a
               // paid title is never silently dropped on a transient failure.
               console.error("[Purchase] Failed to fulfill title purchase:", e);
+              throw e;
+            }
+            handledBySpecialCase = true;
+          } else if (evtObj.mode === "payment" && evtObj.metadata?.type === "gift_card" && userId) {
+            // Gift purchase (Task #214). fulfillGiftPaid is the idempotency gate
+            // (only a `pending` card flips to `active`); the benefit itself is
+            // delivered later when the recipient redeems the code.
+            try {
+              const [alreadyProcessed] = await db
+                .select({ id: paymentTransactions.id })
+                .from(paymentTransactions)
+                .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                .limit(1);
+              if (!alreadyProcessed) {
+                const giftId = evtObj.metadata?.giftId as string;
+                const amountCents = parseInt(String(evtObj.amount_total || 0));
+                const flipped = await fulfillGiftPaid(giftId);
+                await db.insert(paymentTransactions).values({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: evtObj.id,
+                  type: "gift_card_purchase",
+                  status: "completed",
+                  amountCents,
+                  currency: "USD",
+                  description: `Gift purchase`,
+                }).onConflictDoNothing();
+                console.log(`[Gift] ${flipped ? "Activated" : "Already active"} gift ${giftId} for buyer ${userId}`);
+              } else {
+                console.log(`[Gift] Skipping duplicate gift_card webhook for session ${evtObj.id}`);
+              }
+            } catch (e) {
+              // Money path: re-throw so Stripe retries. The conditional flip and
+              // the paymentTransactions de-dupe make re-delivery safe.
+              console.error("[Gift] Failed to fulfill gift purchase:", e);
+              throw e;
+            }
+            handledBySpecialCase = true;
+          } else if (evtObj.mode === "payment" && evtObj.metadata?.type === "sub_sponsorship" && userId) {
+            // Subscription sponsorship (Task #214). fulfillSponsorshipFunded is the
+            // idempotency gate (only a `pending` row flips to `funded`); an eligible
+            // free-tier user claims the benefit later from the pool.
+            try {
+              const [alreadyProcessed] = await db
+                .select({ id: paymentTransactions.id })
+                .from(paymentTransactions)
+                .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                .limit(1);
+              if (!alreadyProcessed) {
+                const sponsorshipId = evtObj.metadata?.sponsorshipId as string;
+                const amountCents = parseInt(String(evtObj.amount_total || 0));
+                const flipped = await fulfillSponsorshipFunded(sponsorshipId);
+                await db.insert(paymentTransactions).values({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: evtObj.id,
+                  type: "sub_sponsorship",
+                  status: "completed",
+                  amountCents,
+                  currency: "USD",
+                  description: `Subscription sponsorship`,
+                }).onConflictDoNothing();
+                console.log(`[Sponsor] ${flipped ? "Funded" : "Already funded"} sponsorship ${sponsorshipId} from ${userId}`);
+              } else {
+                console.log(`[Sponsor] Skipping duplicate sub_sponsorship webhook for session ${evtObj.id}`);
+              }
+            } catch (e) {
+              console.error("[Sponsor] Failed to fund sponsorship:", e);
               throw e;
             }
             handledBySpecialCase = true;
@@ -5379,255 +5449,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error tracking magazine read:", error);
       res.status(500).json({ message: "Failed to track magazine read" });
-    }
-  });
-
-  // === Gift Cards & Gifting System ===
-
-  function generateGiftCode(): string {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code = "";
-    for (let i = 0; i < 16; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-  }
-
-  const GIFT_SUBSCRIPTION_OPTIONS: Record<string, { tier: string; months: number; priceCents: number; label: string }> = {
-    "plus-1": { tier: "plus", months: 1, priceCents: 499, label: "1 Month Plus" },
-    "plus-3": { tier: "plus", months: 3, priceCents: 1397, label: "3 Months Plus" },
-    "plus-6": { tier: "plus", months: 6, priceCents: 2694, label: "6 Months Plus" },
-    "plus-12": { tier: "plus", months: 12, priceCents: 4999, label: "12 Months Plus" },
-    "premium-1": { tier: "premium", months: 1, priceCents: 999, label: "1 Month Premium" },
-    "premium-3": { tier: "premium", months: 3, priceCents: 2797, label: "3 Months Premium" },
-    "premium-6": { tier: "premium", months: 6, priceCents: 5394, label: "6 Months Premium" },
-    "premium-12": { tier: "premium", months: 12, priceCents: 9999, label: "12 Months Premium" },
-  };
-
-  const GIFT_CREDIT_OPTIONS: Record<number, { priceCents: number; label: string }> = {
-    500: { priceCents: 500, label: "$5 Credit" },
-    1000: { priceCents: 1000, label: "$10 Credit" },
-    2500: { priceCents: 2500, label: "$25 Credit" },
-    5000: { priceCents: 5000, label: "$50 Credit" },
-  };
-
-  app.post("/api/gifts/purchase", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id || req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const { type, optionKey, toEmail, message: giftMessage } = req.body;
-
-      if (!type || !["subscription", "credits"].includes(type)) {
-        return res.status(400).json({ message: "Invalid gift type" });
-      }
-
-      let amountCents = 0;
-      let tierGift: string | null = null;
-      let monthsGift: number | null = null;
-      let description = "";
-
-      if (type === "subscription") {
-        const option = GIFT_SUBSCRIPTION_OPTIONS[optionKey];
-        if (!option) return res.status(400).json({ message: "Invalid subscription option" });
-        amountCents = option.priceCents;
-        tierGift = option.tier;
-        monthsGift = option.months;
-        description = `Gift: ${option.label}`;
-      } else {
-        const creditAmount = parseInt(optionKey);
-        const option = GIFT_CREDIT_OPTIONS[creditAmount];
-        if (!option) return res.status(400).json({ message: "Invalid credit amount" });
-        amountCents = option.priceCents;
-        description = `Gift: ${option.label}`;
-      }
-
-      let stripeSessionUrl: string | null = null;
-      const code = generateGiftCode();
-
-      if (stripe) {
-        try {
-          const session = await stripe.checkout.sessions.create({
-            mode: "payment",
-            line_items: [{
-              price_data: {
-                currency: "usd",
-                product_data: { name: description },
-                unit_amount: amountCents,
-              },
-              quantity: 1,
-            }],
-            metadata: { giftCode: code, userId, type, optionKey },
-            success_url: `${req.headers.origin || "http://localhost:8080"}/billing?gift=success&code=${code}`,
-            cancel_url: `${req.headers.origin || "http://localhost:8080"}/billing?gift=cancelled`,
-          });
-          stripeSessionUrl = session.url;
-        } catch (stripeErr) {
-          console.error("[Gifts] Stripe error:", stripeErr);
-        }
-      }
-
-      const expiresAt = new Date();
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
-      const [giftCard] = await db.insert(giftCards).values({
-        code,
-        fromUserId: userId,
-        toEmail: toEmail || null,
-        amountCents,
-        balanceRemaining: amountCents,
-        type,
-        tierGift,
-        monthsGift,
-        message: giftMessage || null,
-        status: "active",
-        expiresAt,
-        redeemedBy: null,
-      }).returning();
-
-      try {
-        await recordTransaction({
-          userId,
-          provider: "stripe",
-          type: "gift_card_purchase",
-          status: "completed",
-          amountCents,
-          description,
-          metadata: { giftCardId: giftCard.id, code },
-        });
-      } catch {}
-
-      res.json({
-        giftCard,
-        code,
-        checkoutUrl: stripeSessionUrl,
-      });
-    } catch (error) {
-      console.error("[Gifts] Purchase error:", error);
-      res.status(500).json({ message: "Failed to purchase gift card" });
-    }
-  });
-
-  app.post("/api/gifts/redeem", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id || req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const { code } = req.body;
-      if (!code || typeof code !== "string") {
-        return res.status(400).json({ message: "Gift code is required" });
-      }
-
-      const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-      const [card] = await db.select().from(giftCards)
-        .where(eq(giftCards.code, normalizedCode))
-        .limit(1);
-
-      if (!card) {
-        return res.status(404).json({ message: "Invalid gift code" });
-      }
-
-      if (card.status === "redeemed") {
-        return res.status(400).json({ message: "This gift card has already been redeemed" });
-      }
-
-      if (card.status === "expired" || (card.expiresAt && new Date(card.expiresAt) < new Date())) {
-        return res.status(400).json({ message: "This gift card has expired" });
-      }
-
-      if (card.fromUserId === userId) {
-        return res.status(400).json({ message: "You cannot redeem your own gift card" });
-      }
-
-      if (card.type === "subscription" && card.tierGift && card.monthsGift) {
-        const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + card.monthsGift);
-
-        await db.update(users)
-          .set({
-            subscriptionTier: card.tierGift,
-            subscriptionEndDate: endDate,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, userId));
-      } else if (card.type === "credits") {
-        await db.update(users)
-          .set({
-            referralCredits: sql`${users.referralCredits} + ${card.balanceRemaining}`,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, userId));
-      }
-
-      await db.update(giftCards)
-        .set({
-          status: "redeemed",
-          redeemedBy: userId,
-          redeemedAt: new Date(),
-          balanceRemaining: 0,
-        })
-        .where(eq(giftCards.id, card.id));
-
-      try {
-        await recordTransaction({
-          userId,
-          provider: "gift_card",
-          type: "gift_card_redemption",
-          status: "completed",
-          amountCents: card.amountCents,
-          description: card.type === "subscription"
-            ? `Redeemed: ${card.monthsGift} month(s) ${card.tierGift}`
-            : `Redeemed: $${(card.amountCents / 100).toFixed(2)} credit`,
-          metadata: { giftCardId: card.id, code: card.code },
-        });
-      } catch {}
-
-      res.json({
-        success: true,
-        type: card.type,
-        tier: card.tierGift,
-        months: card.monthsGift,
-        amountCents: card.amountCents,
-        message: card.type === "subscription"
-          ? `Your account has been upgraded to ${card.tierGift} for ${card.monthsGift} month(s)!`
-          : `$${(card.amountCents / 100).toFixed(2)} in credits has been added to your account!`,
-      });
-    } catch (error) {
-      console.error("[Gifts] Redeem error:", error);
-      res.status(500).json({ message: "Failed to redeem gift card" });
-    }
-  });
-
-  app.get("/api/gifts/sent", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id || req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const sent = await db.select().from(giftCards)
-        .where(eq(giftCards.fromUserId, userId))
-        .orderBy(desc(giftCards.createdAt));
-
-      res.json(sent);
-    } catch (error) {
-      console.error("[Gifts] Sent error:", error);
-      res.status(500).json({ message: "Failed to fetch sent gifts" });
-    }
-  });
-
-  app.get("/api/gifts/received", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.id || req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
-      const received = await db.select().from(giftCards)
-        .where(eq(giftCards.redeemedBy, userId))
-        .orderBy(desc(giftCards.redeemedAt));
-
-      res.json(received);
-    } catch (error) {
-      console.error("[Gifts] Received error:", error);
-      res.status(500).json({ message: "Failed to fetch received gifts" });
     }
   });
 
