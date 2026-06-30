@@ -11,14 +11,21 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-const EASY_ENGLISH_SYSTEM_PROMPT = `You are an Easy English writer. Convert the given text into Easy English. Easy English uses:
-- Short sentences (max 15 words each)
+/**
+ * Shared Easy English style rules. Exported so other AI features (e.g. the
+ * comprehension companion) can apply the SAME plain-language conventions when a
+ * user's accessibility profile calls for simplified output.
+ */
+export const EASY_ENGLISH_GUIDELINES = `- Short sentences (max 15 words each)
 - Simple, common words (avoid jargon, technical words, or complex vocabulary)
 - Active voice
 - One idea per sentence
 - Concrete, specific language instead of abstract concepts
 - Present tense where possible
-- Direct address (you/we) where appropriate
+- Direct address (you/we) where appropriate`;
+
+const EASY_ENGLISH_SYSTEM_PROMPT = `You are an Easy English writer. Convert the given text into Easy English. Easy English uses:
+${EASY_ENGLISH_GUIDELINES}
 
 Keep all the original meaning and information. Do not add new information. Return only the converted text, no explanations.`;
 
