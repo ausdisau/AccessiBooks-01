@@ -433,13 +433,26 @@ export async function ensureCommercialCreditsSchema(): Promise<void> {
     `);
     await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_commercial_bundles_slug ON commercial_bundles (slug)`);
     await runSql(`CREATE INDEX IF NOT EXISTS idx_commercial_bundles_active ON commercial_bundles (is_active)`);
-    // Best-effort: enforce single ownership per (user, book). May fail if
-    // pre-existing duplicate purchase rows exist; the redeem/bundle service
-    // still guards double-ownership transactionally, so this is non-fatal.
-    try {
-      await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_purchases_user_book ON purchases (user_id, book_id)`);
-    } catch (e: any) {
-      console.warn("[CommercialCredits] Could not create unique purchases(user_id,book_id) index:", e.message);
+    // Enforce single ownership per (user, book). redeemTitle and fulfillBundle
+    // rely on `ON CONFLICT (user_id, book_id)`, which REQUIRES this unique index
+    // to exist or the inserts error at runtime. Dedupe any pre-existing duplicate
+    // rows first (keeping one row per user+book), create the index, then VERIFY
+    // it exists — we must not run the paid redeem/bundle flows without it.
+    await runSql(`
+      DELETE FROM purchases a
+      USING purchases b
+      WHERE a.ctid < b.ctid
+        AND a.user_id = b.user_id
+        AND a.book_id = b.book_id
+    `);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_purchases_user_book ON purchases (user_id, book_id)`);
+    const { rows: idxRows } = await pool.query(
+      `SELECT 1 FROM pg_indexes WHERE indexname = 'ux_purchases_user_book'`,
+    );
+    if (idxRows.length === 0) {
+      throw new Error(
+        "ux_purchases_user_book unique index missing after creation — commercial redeem/bundle fulfillment requires (user_id, book_id) uniqueness",
+      );
     }
     console.log("[CommercialCredits] Schema ensured (credit_accounts, credit_grants, credit_ledger, commercial_bundles)");
     await seedCommercialBundles();
