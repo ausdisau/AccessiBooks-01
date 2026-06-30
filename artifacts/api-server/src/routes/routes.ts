@@ -43,6 +43,7 @@ import { registerAdminEntitlementsRoutes } from "../adminEntitlementsRoutes";
 import { seedEntitlementConfigDefaults, loadEntitlementConfig } from "../entitlementConfig";
 import { analyticsService } from "../analyticsService";
 import { registerChatRoutes } from "../replit_integrations/chat";
+import { registerComprehensionCompanionRoutes } from "../comprehensionCompanion";
 import {
   convertToEasyEnglish,
   getUserEasyEnglishStatus,
@@ -312,6 +313,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI conversational chat routes (conversations, messages, streaming AI responses)
   registerChatRoutes(app);
+
+  // AI comprehension companion (chapter recaps, plain-language summaries, grounded Q&A)
+  registerComprehensionCompanionRoutes(app);
 
   // Analytics and monetization reporting dashboard routes
   registerAnalyticsRoutes(app);

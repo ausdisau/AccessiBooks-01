@@ -6,6 +6,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { Book } from "@shared/schema";
 import { AINarrationPanel } from "@/components/ai-narration-panel";
+import { ComprehensionCompanionPanel } from "@/components/comprehension-companion-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -43,6 +44,7 @@ import {
   Music2,
   Shapes,
   Volume2,
+  MessageCircleQuestion,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/audio-context";
 import { EbookInterstitialAd, canShowEbookInterstitial } from "./EbookInterstitialAd";
@@ -349,6 +351,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [easyEnglishMode, setEasyEnglishMode] = useState(false);
   const [easyEnglishText, setEasyEnglishText] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showCompanion, setShowCompanion] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
@@ -1336,6 +1339,17 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                 <Sparkles className="h-4 w-4" />
               )}
             </Button>
+            <Button
+              variant={showCompanion ? "default" : "ghost"}
+              size="icon"
+              className={`h-8 w-8 ${showCompanion ? "bg-indigo-600 text-white hover:bg-indigo-700" : ""}`}
+              onClick={() => setShowCompanion((v) => !v)}
+              aria-label="Comprehension companion"
+              aria-pressed={showCompanion}
+              title="Comprehension Companion — recaps, summaries, and answers"
+            >
+              <MessageCircleQuestion className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
             </Button>
@@ -1607,6 +1621,15 @@ function TextReader({ book, onBack }: EbookReaderProps) {
         <div className="mb-4">
           <AINarrationPanel bookId={book.id} darkMode={settings.theme === "dark"} />
         </div>
+
+        <ComprehensionCompanionPanel
+          isOpen={showCompanion}
+          onClose={() => setShowCompanion(false)}
+          book={book}
+          page={currentPage}
+          totalPages={totalPages}
+          easyEnglish={easyEnglishMode}
+        />
 
         {/* Visual Reader is hidden when the user has opted into Text-Only or
             Low-Bandwidth mode (Task #66). Both modes are designed to strip
