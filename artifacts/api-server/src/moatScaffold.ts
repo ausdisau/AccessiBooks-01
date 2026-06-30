@@ -5,10 +5,22 @@ import {
   institutionalAccounts, institutionalMembers,
   moatMetricsSnapshots, accessibilityPreferences, bookTranscripts,
   users, books, listeningHistory, userStreaks, userXp, DISABILITY_TYPES,
+  LICENSE_PLANS,
 } from "@workspace/db";
 import { eq, and, count, avg, sql, desc, inArray, gte, sum } from "drizzle-orm";
 import { isAuthenticated, requireAdmin } from "./multiAuth";
 import { z } from "zod";
+import {
+  createLicenseCheckout,
+  allocateMember,
+  reclaimMember,
+  InstitutionalLicenseError,
+} from "./institutionalLicensing";
+
+// Privacy floor for aggregate institutional reporting: cohorts smaller than this
+// suppress per-item breakdowns (top books, preset distribution, weekly detail)
+// so individuals cannot be re-identified from "aggregate" stats.
+const REPORTING_MIN_COHORT = 5;
 
 export async function ensureMoatMigrations() {
   try {
@@ -18,6 +30,34 @@ export async function ensureMoatMigrations() {
     `);
   } catch (err) {
     console.error("[Moat] Migration warning (weekly_goal_minutes):", err);
+  }
+
+  // Task #216: institutional / B2B licensing lifecycle columns + indexes.
+  try {
+    await db.execute(sql`
+      ALTER TABLE institutional_accounts
+        ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active',
+        ADD COLUMN IF NOT EXISTS license_type text NOT NULL DEFAULT 'seat',
+        ADD COLUMN IF NOT EXISTS plan_key text,
+        ADD COLUMN IF NOT EXISTS stripe_session_id text,
+        ADD COLUMN IF NOT EXISTS period_end timestamp
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_institutional_status ON institutional_accounts (status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_institutional_session ON institutional_accounts (stripe_session_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_institutional_subscription ON institutional_accounts (stripe_subscription_id)`);
+  } catch (err) {
+    console.error("[Moat] Migration warning (institutional licensing):", err);
+  }
+
+  // One org per user: enforce at the DB level so concurrent invites cannot race
+  // the route-level "already a member" check and seat a user twice (or across two
+  // orgs). Kept in its own try/catch: if legacy data already violates this we log
+  // and continue rather than aborting the rest of startup — allocateMember also
+  // maps the unique violation to a friendly error at allocation time.
+  try {
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_institutional_members_user_unique ON institutional_members (user_id)`);
+  } catch (err) {
+    console.error("[Moat] Migration warning (unique member index; legacy duplicate memberships?):", err);
   }
 }
 
@@ -266,31 +306,90 @@ export function registerMoatScaffoldRoutes(app: Express) {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-      const { orgName, contactEmail, orgType, maxSeats } = req.body;
+      const { orgName, contactEmail, orgType } = req.body;
       if (!orgName || !contactEmail) return res.status(400).json({ message: "orgName and contactEmail required" });
 
       const existing = await db.select().from(institutionalMembers)
         .where(eq(institutionalMembers.userId, userId));
       if (existing.length > 0) return res.status(400).json({ message: "Already part of an organization" });
 
-      const [account] = await db.insert(institutionalAccounts).values({
-        orgName,
-        contactEmail,
-        orgType: orgType || "school",
-        maxSeats: maxSeats || 50,
-        currentSeats: 1,
-      }).returning();
-
-      await db.insert(institutionalMembers).values({
-        institutionalId: account.id,
-        userId,
-        role: "admin",
-      });
+      // New orgs start `pending` and inactive. maxSeats is a placeholder until a
+      // licence is purchased — fulfilment sets the real cap from LICENSE_PLANS
+      // (never trusted from the client). The admin occupies the first seat. The
+      // account + admin-member inserts run in one transaction so a lost race on the
+      // unique member index can't leave an orphan org behind.
+      let account;
+      try {
+        account = await db.transaction(async (tx) => {
+          const [acct] = await tx.insert(institutionalAccounts).values({
+            orgName,
+            contactEmail,
+            orgType: orgType || "school",
+            currentSeats: 1,
+            status: "pending",
+            isActive: false,
+          }).returning();
+          await tx.insert(institutionalMembers).values({
+            institutionalId: acct.id,
+            userId,
+            role: "admin",
+          });
+          return acct;
+        });
+      } catch (e) {
+        if (e && typeof e === "object" && (e as { code?: string }).code === "23505") {
+          return res.status(400).json({ message: "Already part of an organization" });
+        }
+        throw e;
+      }
 
       res.json(account);
     } catch (error) {
       console.error("[Moat] Failed to create institutional account:", error);
       res.status(500).json({ message: "Failed to create institutional account" });
+    }
+  });
+
+  // Public licence catalogue for display. Pricing/seats are server-authoritative;
+  // the client only ever sends a planKey + billingCycle back to /checkout.
+  app.get("/api/institutional/plans", (_req, res) => {
+    res.json({ plans: Object.values(LICENSE_PLANS) });
+  });
+
+  // Admin starts a Stripe checkout to activate (or re-activate) a licence. The
+  // server prices it from LICENSE_PLANS; activation happens on the webhook.
+  app.post("/api/institutional/checkout", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [membership] = await db.select().from(institutionalMembers)
+        .where(eq(institutionalMembers.userId, userId));
+      if (!membership || membership.role !== "admin") {
+        return res.status(403).json({ message: "Admin only" });
+      }
+
+      const { planKey, billingCycle } = req.body ?? {};
+      if (!planKey || !billingCycle) {
+        return res.status(400).json({ message: "planKey and billingCycle required" });
+      }
+
+      const origin = (req.headers.origin as string) || "http://localhost:8080";
+      const { checkoutUrl } = await createLicenseCheckout({
+        userId,
+        orgId: membership.institutionalId,
+        planKey,
+        billingCycle,
+        origin,
+      });
+
+      res.json({ checkoutUrl });
+    } catch (error) {
+      if (error instanceof InstitutionalLicenseError) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      console.error("[Moat] Failed to start institutional checkout:", error);
+      res.status(500).json({ message: "Failed to start checkout" });
     }
   });
 
@@ -318,18 +417,15 @@ export function registerMoatScaffoldRoutes(app: Express) {
         return res.status(400).json({ message: "User already belongs to another organization" });
       }
 
-      await db.insert(institutionalMembers).values({
-        institutionalId: membership.institutionalId,
-        userId: invitee.id,
-        role: "member",
-      });
-
-      await db.update(institutionalAccounts)
-        .set({ currentSeats: sql`${institutionalAccounts.currentSeats} + 1` })
-        .where(eq(institutionalAccounts.id, membership.institutionalId));
+      // Atomic: claims a seat (enforcing the cap / active licence), inserts the
+      // membership, and grants the institutional entitlement in one transaction.
+      await allocateMember({ orgId: membership.institutionalId, userId: invitee.id, role: "member" });
 
       res.json({ message: "Member added", email });
     } catch (error) {
+      if (error instanceof InstitutionalLicenseError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("[Moat] Failed to invite member:", error);
       res.status(500).json({ message: "Failed to invite member" });
     }
@@ -509,14 +605,19 @@ export function registerMoatScaffoldRoutes(app: Express) {
       if (!target) return res.status(404).json({ message: "Member not found" });
       if (target.role === "admin") return res.status(400).json({ message: "Cannot remove admin" });
 
-      await db.delete(institutionalMembers).where(eq(institutionalMembers.id, memberId));
+      // Atomic: removes the membership, frees the seat, and revokes that member's
+      // institutional entitlement in one transaction. Returns the freed userId so
+      // the admin can reassign the seat to someone else.
+      const { userId: freedUserId } = await reclaimMember({
+        orgId: adminMembership.institutionalId,
+        memberId,
+      });
 
-      await db.update(institutionalAccounts)
-        .set({ currentSeats: sql`GREATEST(${institutionalAccounts.currentSeats} - 1, 0)` })
-        .where(eq(institutionalAccounts.id, adminMembership.institutionalId));
-
-      res.json({ message: "Member removed" });
+      res.json({ message: "Member removed", reclaimedUserId: freedUserId });
     } catch (error) {
+      if (error instanceof InstitutionalLicenseError) {
+        return res.status(error.status).json({ message: error.message });
+      }
       console.error("[Moat] Failed to remove member:", error);
       res.status(500).json({ message: "Failed to remove member" });
     }
@@ -634,17 +735,29 @@ export function registerMoatScaffoldRoutes(app: Express) {
       const completedCount = historyRows.filter((r) => r.completedAt !== null).length;
       const avgCompletionRate = totalHistoryCount > 0 ? Math.round((completedCount / totalHistoryCount) * 100) : 0;
 
+      // Privacy: for small cohorts, suppress per-item breakdowns (top books,
+      // preset distribution, weekly detail) so individuals can't be
+      // re-identified. Coarse org-wide totals are still returned.
+      const cohortSize = memberUserIds.length;
+      const suppressed = cohortSize < REPORTING_MIN_COHORT;
+
       res.json({
         totalListeningMinutes: totalMinutes,
         totalBooksCompleted: totalBooks,
         avgCompletionRate,
         activeUsersCount: Number(xpAgg?.activeCount ?? 0),
-        topBooks: topBooksRaw,
-        presetDistribution: presetRows.map((r) => ({
-          preset: r.activePreset ?? "None",
-          count: Number(r.cnt),
-        })),
-        weeklyListeningMinutes: weeklyByDay,
+        topBooks: suppressed ? [] : topBooksRaw,
+        presetDistribution: suppressed
+          ? []
+          : presetRows.map((r) => ({
+              preset: r.activePreset ?? "None",
+              count: Number(r.cnt),
+            })),
+        weeklyListeningMinutes: suppressed
+          ? Array.from({ length: 7 }, (_, i) => ({ day: i, minutes: 0 }))
+          : weeklyByDay,
+        reportingSuppressed: suppressed,
+        minCohort: REPORTING_MIN_COHORT,
       });
     } catch (error) {
       console.error("[Moat] Failed to fetch institutional analytics:", error);
