@@ -311,6 +311,68 @@ export async function ensureUserActivitySchema(): Promise<void> {
   }
 }
 
+export async function ensureNdisSchema(): Promise<void> {
+  try {
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS ndis_participants (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        participant_name text NOT NULL,
+        ndis_number varchar NOT NULL,
+        date_of_birth varchar,
+        management_type varchar NOT NULL DEFAULT 'self_managed',
+        plan_manager_name text,
+        plan_manager_email varchar,
+        plan_manager_company text,
+        plan_start_date varchar,
+        plan_end_date varchar,
+        contact_email varchar,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_ndis_participants_user ON ndis_participants (user_id)`);
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS ndis_invoices (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_number varchar NOT NULL UNIQUE,
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        participant_name text NOT NULL,
+        ndis_number varchar NOT NULL,
+        management_type varchar NOT NULL,
+        plan_manager_name text,
+        plan_manager_email varchar,
+        support_item_number varchar,
+        support_item_name text NOT NULL,
+        service_description text,
+        quantity integer NOT NULL DEFAULT 1,
+        unit_price_cents integer NOT NULL,
+        amount_cents integer NOT NULL,
+        gst_cents integer NOT NULL DEFAULT 0,
+        gst_treatment varchar NOT NULL DEFAULT 'GST-free',
+        total_cents integer NOT NULL,
+        currency varchar NOT NULL DEFAULT 'AUD',
+        service_start_date varchar,
+        service_end_date varchar,
+        status varchar NOT NULL DEFAULT 'issued',
+        claim_status varchar NOT NULL DEFAULT 'unclaimed',
+        source_type varchar NOT NULL DEFAULT 'manual',
+        source_transaction_id varchar,
+        notes text,
+        issued_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_ndis_invoices_number ON ndis_invoices (invoice_number)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_ndis_invoices_user ON ndis_invoices (user_id)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_ndis_invoices_claim_status ON ndis_invoices (claim_status)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_ndis_invoices_user_source ON ndis_invoices (user_id, source_type, source_transaction_id)`);
+    console.log("[NDIS] Schema ensured (ndis_participants + ndis_invoices)");
+  } catch (error: any) {
+    console.warn("[NDIS] Schema setup warning:", error.message);
+  }
+}
+
 export async function ensureNarrationSchema(): Promise<void> {
   try {
     await runSql(`
