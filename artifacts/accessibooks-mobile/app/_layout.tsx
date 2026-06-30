@@ -22,7 +22,9 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { DownloadsProvider } from "@/lib/downloads";
 import { initializeRevenueCat, SubscriptionProvider } from "@/lib/revenuecat";
+import { VoiceProvider } from "@/lib/voice";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -63,6 +65,7 @@ function RootLayoutNav() {
         name="paywall"
         options={{ presentation: "modal", title: "Upgrade" }}
       />
+      <Stack.Screen name="downloads" options={{ title: "Downloads" }} />
     </Stack>
   );
 }
@@ -92,11 +95,15 @@ export default function RootLayout() {
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <SubscriptionProvider>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <RootLayoutNav />
-              </KeyboardProvider>
-            </GestureHandlerRootView>
+            <DownloadsProvider>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <KeyboardProvider>
+                  <VoiceProvider>
+                    <RootLayoutNav />
+                  </VoiceProvider>
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </DownloadsProvider>
           </SubscriptionProvider>
         </QueryClientProvider>
       </ErrorBoundary>

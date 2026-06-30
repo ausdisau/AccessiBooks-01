@@ -269,6 +269,48 @@ export async function syncRevenueCatEntitlements(): Promise<RevenueCatSyncResult
   }
 }
 
+/**
+ * Record-then-transcribe for hands-free voice commands. Sends the raw audio
+ * bytes (not multipart) to the authenticated POST /api/voice/transcribe route
+ * and returns the recognised text, or null when offline / not signed in / the
+ * speech service is unavailable. Callers treat null as "couldn't understand".
+ */
+export async function transcribeVoiceClip(uri: string): Promise<string | null> {
+  try {
+    const token = await getAuthToken();
+    if (!token) return null;
+    const fileRes = await fetch(uri);
+    const blob = await fileRes.blob();
+    if (!blob || blob.size < 500) return null;
+    const res = await fetch(`${apiBase()}/api/voice/transcribe`, {
+      method: "POST",
+      headers: {
+        "Content-Type": guessAudioType(uri, blob.type),
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: blob,
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { transcript?: string };
+    const text = (data.transcript ?? "").trim();
+    return text.length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+function guessAudioType(uri: string, blobType: string): string {
+  if (blobType && blobType !== "application/octet-stream") return blobType;
+  const u = uri.toLowerCase().split("?")[0];
+  if (u.endsWith(".webm")) return "audio/webm";
+  if (u.endsWith(".wav")) return "audio/wav";
+  if (u.endsWith(".caf")) return "audio/x-caf";
+  if (u.endsWith(".mp3")) return "audio/mpeg";
+  if (u.endsWith(".aac")) return "audio/aac";
+  return "audio/mp4"; // .m4a — expo-audio HIGH_QUALITY default on iOS/Android
+}
+
 export function formatDuration(seconds?: number | null): string {
   if (!seconds || seconds <= 0) return "";
   const h = Math.floor(seconds / 3600);

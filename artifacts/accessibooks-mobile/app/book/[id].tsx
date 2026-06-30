@@ -22,11 +22,13 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { rememberRecent } from "@/app/(tabs)/library";
 import {
   apiBase,
+  type Book,
   fetchActiveLoans,
   fetchBook,
   fetchMe,
   formatDuration,
 } from "@/lib/api";
+import { formatBytes, useDownloads } from "@/lib/downloads";
 
 type Cta = {
   label: string;
@@ -321,6 +323,10 @@ export default function BookDetailScreen() {
             {cta.hint}
           </Text>
 
+          {isAudiobook && b.audioUrl ? (
+            <OfflineDownloadButton book={b} />
+          ) : null}
+
           {b.description ? (
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -366,6 +372,66 @@ export default function BookDetailScreen() {
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+function OfflineDownloadButton({ book }: { book: Book }) {
+  const colors = useColors();
+  const { getEntry, startDownload, removeDownload } = useDownloads();
+  const entry = getEntry(book.id);
+  const status = entry?.status;
+
+  const label =
+    status === "done"
+      ? `Downloaded${entry?.sizeBytes ? ` · ${formatBytes(entry.sizeBytes)}` : ""} · tap to remove`
+      : status === "downloading"
+        ? `Downloading ${Math.round((entry?.progress ?? 0) * 100)}%`
+        : status === "error"
+          ? "Download failed · tap to retry"
+          : "Download for offline";
+
+  const onPress = () => {
+    if (status === "done") removeDownload(book.id);
+    else if (status !== "downloading") startDownload(book);
+  };
+
+  const tint = status === "error" ? colors.destructive : colors.primary;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={status === "downloading"}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        marginTop: 14,
+        minHeight: 48,
+        paddingHorizontal: 16,
+        borderWidth: 1.5,
+        borderColor: tint,
+        borderRadius: 12,
+        opacity: pressed ? 0.7 : 1,
+      })}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Feather
+        name={
+          status === "done"
+            ? "check-circle"
+            : status === "error"
+              ? "alert-circle"
+              : "download"
+        }
+        size={18}
+        color={tint}
+      />
+      <Text style={{ fontSize: 14, fontFamily: "Inter_700Bold", color: tint }}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
