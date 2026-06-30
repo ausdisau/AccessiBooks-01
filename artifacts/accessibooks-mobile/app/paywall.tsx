@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useSubscription } from "@/lib/revenuecat";
+import { tierFromCustomerInfo, useSubscription } from "@/lib/revenuecat";
 
 type PlanTier = "plus" | "premium" | "other";
 
@@ -93,9 +93,9 @@ export default function PaywallScreen() {
     setError(null);
     setNotice(null);
     try {
-      await restore();
+      const info = await restore();
       setNotice(
-        tier === "free"
+        tierFromCustomerInfo(info) === "free"
           ? "No previous purchases were found for this account."
           : "Your purchases have been restored.",
       );

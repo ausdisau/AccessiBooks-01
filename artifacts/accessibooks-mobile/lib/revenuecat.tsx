@@ -44,17 +44,21 @@ let configured = false;
 
 export function initializeRevenueCat() {
   const apiKey = getRevenueCatApiKey();
-  Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+  Purchases.setLogLevel(
+    __DEV__ ? Purchases.LOG_LEVEL.DEBUG : Purchases.LOG_LEVEL.WARN,
+  );
   Purchases.configure({ apiKey });
   configured = true;
-  console.log("Configured RevenueCat");
+  if (__DEV__) console.log("Configured RevenueCat");
 }
 
 export function isRevenueCatConfigured(): boolean {
   return configured;
 }
 
-function tierFromCustomerInfo(info: CustomerInfo | undefined): SubscriptionTier {
+export function tierFromCustomerInfo(
+  info: CustomerInfo | undefined,
+): SubscriptionTier {
   const active = info?.entitlements.active ?? {};
   if (active["premium"]) return "premium";
   if (active["plus"]) return "plus";
