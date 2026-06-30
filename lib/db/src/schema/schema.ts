@@ -1757,11 +1757,29 @@ export const DEFAULT_A11Y_PROFILE: A11yProfile = {
   activityTrackingEnabledAt: null,
 };
 
+// Read-along (karaoke) timing format. Times are in SECONDS, absolute on the
+// audio timeline for the chapter's audio asset. `words` is optional: when the
+// timing source provides real per-word marks (e.g. AI narration with timestamps)
+// it is populated for exact read-along; otherwise only sentence/segment timing
+// exists and word timing is estimated by consumers within each timed segment.
+export interface TranscriptWordTiming {
+  text: string;
+  start: number;
+  end: number;
+  index?: number;
+}
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+  words?: TranscriptWordTiming[];
+}
+
 export const bookTranscripts = pgTable("book_transcripts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
   chapterIndex: integer("chapter_index").notNull().default(0),
-  segments: jsonb("segments").notNull().default(sql`'[]'::jsonb`),
+  segments: jsonb("segments").$type<TranscriptSegment[]>().notNull().default(sql`'[]'::jsonb`),
   language: text("language").notNull().default("en"),
   source: text("source").notNull().default("manual"),
   createdAt: timestamp("created_at").defaultNow(),

@@ -117,4 +117,75 @@ export async function textToSpeech(
   return Buffer.from(arrayBuffer);
 }
 
+// Character-level alignment returned by the ElevenLabs `/with-timestamps`
+// endpoint. Arrays are parallel: `characters[i]` is spoken from
+// `character_start_times_seconds[i]` to `character_end_times_seconds[i]`
+// (seconds, relative to the returned audio clip).
+export interface CharacterAlignment {
+  characters: string[];
+  character_start_times_seconds: number[];
+  character_end_times_seconds: number[];
+}
+
+export interface TimestampedSpeech {
+  audio: Buffer;
+  alignment: CharacterAlignment | null;
+}
+
+// Like `textToSpeech`, but uses the `/with-timestamps` endpoint so we can
+// capture per-character timing for read-along (karaoke) sync. Returns the
+// decoded mp3 buffer plus the character alignment (or null if the provider
+// omitted it). Callers should fall back to plain `textToSpeech` on failure.
+export async function textToSpeechWithTimestamps(
+  text: string,
+  voiceId: string,
+  options?: {
+    stability?: number;
+    similarityBoost?: number;
+    modelId?: string;
+  }
+): Promise<TimestampedSpeech> {
+  const modelId = options?.modelId || "eleven_turbo_v2_5";
+  const stability = options?.stability ?? 0.5;
+  const similarityBoost = options?.similarityBoost ?? 0.75;
+
+  const response = await fetch(
+    `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}/with-timestamps?output_format=mp3_44100_128`,
+    {
+      method: "POST",
+      headers: {
+        "xi-api-key": getApiKey(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text,
+        model_id: modelId,
+        voice_settings: {
+          stability,
+          similarity_boost: similarityBoost,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`ElevenLabs TTS (timestamps) error ${response.status}: ${errText}`);
+  }
+
+  const data = (await response.json()) as {
+    audio_base64?: string;
+    alignment?: CharacterAlignment | null;
+    normalized_alignment?: CharacterAlignment | null;
+  };
+
+  if (!data.audio_base64) {
+    throw new Error("ElevenLabs TTS (timestamps) response missing audio");
+  }
+
+  const audio = Buffer.from(data.audio_base64, "base64");
+  const alignment = data.alignment ?? data.normalized_alignment ?? null;
+  return { audio, alignment };
+}
+
 export type { ElevenLabsVoice };

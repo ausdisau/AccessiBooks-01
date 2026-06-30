@@ -2,13 +2,21 @@ import type { Express } from "express";
 import { db } from "./db";
 import { bookTranscripts, accessibilityMetadata, books } from "@workspace/db";
 import { eq, and, count, asc } from "drizzle-orm";
-import { isAuthenticated } from "./multiAuth";
+import { isAuthenticated, requireAdmin } from "./multiAuth";
 import { z } from "zod";
+
+const wordTimingSchema = z.object({
+  text: z.string(),
+  start: z.number(),
+  end: z.number(),
+  index: z.number().optional(),
+});
 
 const segmentSchema = z.object({
   start: z.number(),
   end: z.number(),
   text: z.string(),
+  words: z.array(wordTimingSchema).optional(),
 });
 
 const createTranscriptSchema = z.object({
@@ -23,10 +31,24 @@ interface WordAlignment {
   startMs: number;
   endMs: number;
   wordIndex: number;
+  segmentIndex: number;
+}
+
+interface SegmentTiming {
+  text: string;
+  startMs: number;
+  endMs: number;
+  segmentIndex: number;
+  firstWordIndex: number;
+  wordCount: number;
 }
 
 export function registerTranscriptRoutes(app: Express) {
-  // GET /api/books/:id/word-alignment - Returns word-level timestamps for karaoke read-along
+  // GET /api/books/:id/word-alignment - Returns word- AND sentence-level timing
+  // for read-along (karaoke). Prefers real per-word marks (precision "exact")
+  // when the timing source provided them; otherwise estimates words within each
+  // timed segment (precision "estimated"). Returns available:false when no
+  // timing exists at all so clients only surface read-along when supported.
   app.get("/api/books/:id/word-alignment", async (req, res) => {
     try {
       const { id } = req.params;
@@ -37,34 +59,78 @@ export function registerTranscriptRoutes(app: Express) {
         .orderBy(asc(bookTranscripts.chapterIndex));
 
       if (!transcripts.length) {
-        return res.json({ available: false, words: [] });
+        return res.json({ available: false, precision: "none", words: [], segments: [] });
       }
 
       const words: WordAlignment[] = [];
+      const segments: SegmentTiming[] = [];
       let globalWordIndex = 0;
+      let segmentIndex = 0;
+      let sawExact = false;
 
       for (const transcript of transcripts) {
         if (!Array.isArray(transcript.segments)) continue;
         for (const segment of transcript.segments) {
-          if (!segment.text) continue;
-          const segWords = segment.text.trim().split(/\s+/).filter(Boolean);
-          const segStartMs = segment.start * 1000;
-          const segEndMs = segment.end * 1000;
-          const segDurationMs = segEndMs - segStartMs;
-          const msPerWord = segDurationMs / Math.max(segWords.length, 1);
+          if (!segment || typeof segment.text !== "string" || !segment.text.trim()) continue;
 
-          for (let wi = 0; wi < segWords.length; wi++) {
-            words.push({
-              word: segWords[wi],
-              startMs: Math.round(segStartMs + wi * msPerWord),
-              endMs: Math.round(segStartMs + (wi + 1) * msPerWord),
-              wordIndex: globalWordIndex++,
-            });
+          const segStart = typeof segment.start === "number" ? segment.start : NaN;
+          const segEnd = typeof segment.end === "number" ? segment.end : NaN;
+          const segStartMs = segStart * 1000;
+          const segEndMs = segEnd * 1000;
+          const hasSegTiming = Number.isFinite(segStartMs) && Number.isFinite(segEndMs) && segEndMs > segStartMs;
+          const firstWordIndex = globalWordIndex;
+
+          if (Array.isArray(segment.words) && segment.words.length > 0) {
+            // Exact per-word timing supplied by the source.
+            for (const w of segment.words) {
+              if (!w || typeof w.text !== "string" || !w.text.trim()) continue;
+              if (!Number.isFinite(w.start)) continue;
+              const wStartMs = w.start * 1000;
+              const wEndMs = Number.isFinite(w.end) && w.end > w.start ? w.end * 1000 : wStartMs;
+              words.push({
+                word: w.text,
+                startMs: Math.round(wStartMs),
+                endMs: Math.round(wEndMs),
+                wordIndex: globalWordIndex++,
+                segmentIndex,
+              });
+            }
+            if (globalWordIndex > firstWordIndex) sawExact = true;
+          } else if (hasSegTiming) {
+            // Estimate evenly within a timed segment (never fabricate timing
+            // for an untimed segment).
+            const segWords = segment.text.trim().split(/\s+/).filter(Boolean);
+            const msPerWord = (segEndMs - segStartMs) / Math.max(segWords.length, 1);
+            for (let wi = 0; wi < segWords.length; wi++) {
+              words.push({
+                word: segWords[wi],
+                startMs: Math.round(segStartMs + wi * msPerWord),
+                endMs: Math.round(segStartMs + (wi + 1) * msPerWord),
+                wordIndex: globalWordIndex++,
+                segmentIndex,
+              });
+            }
+          } else {
+            // No usable timing for this segment; skip it.
+            continue;
           }
+
+          if (globalWordIndex === firstWordIndex) continue;
+
+          segments.push({
+            text: segment.text,
+            startMs: hasSegTiming ? Math.round(segStartMs) : words[firstWordIndex].startMs,
+            endMs: hasSegTiming ? Math.round(segEndMs) : words[globalWordIndex - 1].endMs,
+            segmentIndex,
+            firstWordIndex,
+            wordCount: globalWordIndex - firstWordIndex,
+          });
+          segmentIndex++;
         }
       }
 
-      res.json({ available: words.length > 0, words });
+      const precision = sawExact ? "exact" : words.length > 0 ? "estimated" : "none";
+      res.json({ available: words.length > 0, precision, words, segments });
     } catch (error) {
       console.error("[Transcripts] Error building word alignment:", error);
       res.status(500).json({ message: "Failed to build word alignment" });
@@ -86,7 +152,10 @@ export function registerTranscriptRoutes(app: Express) {
     }
   });
 
-  app.post("/api/books/:id/transcript", isAuthenticated, async (req: any, res) => {
+  // Writing a transcript flips public read-along output (and hasTranscript) for
+  // a book, so restrict it to admins; trusted server paths (narration, seeder)
+  // write directly via the DB, not through this route.
+  app.post("/api/books/:id/transcript", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
       const { id } = req.params;
 

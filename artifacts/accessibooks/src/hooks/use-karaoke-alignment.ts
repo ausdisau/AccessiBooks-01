@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 interface WordAlignment {
   word: string;
@@ -10,6 +10,9 @@ interface WordAlignment {
 
 interface AlignmentData {
   available: boolean;
+  // "exact" = real per-word marks from the timing source; "estimated" = words
+  // interpolated within a real sentence window; "none" = no timing at all.
+  precision?: "exact" | "estimated" | "none";
   words: WordAlignment[];
 }
 
@@ -27,8 +30,28 @@ export function useKaraokeAlignment(bookId: string | null, currentTimeMs: number
     retry: false,
   });
 
+  // Map global word index -> start time (ms) so callers can seek the audio to a
+  // tapped word (read-along tap-to-seek).
+  const startMsByIndex = useMemo(() => {
+    const m = new Map<number, number>();
+    if (data?.words) {
+      for (const w of data.words) m.set(w.wordIndex, w.startMs);
+    }
+    return m;
+  }, [data]);
+
+  const getWordStartMs = useCallback(
+    (wordIndex: number): number | null => {
+      const v = startMsByIndex.get(wordIndex);
+      return v === undefined ? null : v;
+    },
+    [startMsByIndex],
+  );
+
   const activeWordIndex = useMemo(() => {
-    if (!data?.available || !data.words.length) return null;
+    // Word-level karaoke only when timing is exact — never highlight individual
+    // words from interpolated ("estimated") timing.
+    if (data?.precision !== "exact" || !data.words.length) return null;
     const t = currentTimeMs;
     const words = data.words;
 
@@ -58,9 +81,13 @@ export function useKaraokeAlignment(bookId: string | null, currentTimeMs: number
   }, [data, currentTimeMs]);
 
   return {
-    isAvailable: data?.available ?? false,
+    // Word-level read-along (highlight + tap-to-seek) is only offered when the
+    // source provides exact per-word timing; estimated timing drives sentence-
+    // level read-along elsewhere (InteractiveTranscript), not word karaoke.
+    isAvailable: data?.precision === "exact",
     isLoading,
     activeWordIndex,
     totalAlignedWords: data?.words.length ?? 0,
+    getWordStartMs,
   };
 }

@@ -287,7 +287,10 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     updateProfile({ karaokeFollowAlong: !followAlong });
   };
 
-  const { data: alignmentData } = useQuery<{ available: boolean }>({
+  const { data: alignmentData } = useQuery<{
+    available: boolean;
+    precision?: "exact" | "estimated" | "none";
+  }>({
     queryKey: ["/api/books", book.id, "word-alignment"],
     queryFn: async () => {
       const res = await fetch(`/api/books/${book.id}/word-alignment`);
@@ -297,7 +300,9 @@ export function AudioPlayer({ book }: AudioPlayerProps) {
     staleTime: 60 * 60 * 1000,
     retry: false,
   });
-  const alignmentAvailable = alignmentData?.available ?? false;
+  // Follow Along is word-level karaoke; only offer it for exact per-word timing
+  // so we never highlight words from interpolated ("estimated") timing.
+  const alignmentAvailable = alignmentData?.precision === "exact";
 
   const hasChapters = chapters.length > 0;
   const canGoPrev = currentChapterIndex > 0;

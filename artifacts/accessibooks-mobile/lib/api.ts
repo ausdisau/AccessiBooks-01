@@ -42,7 +42,40 @@ export type SettingsSummary = {
   preferences: Record<string, unknown> & {
     skipForwardSeconds?: number;
     skipBackwardSeconds?: number;
+    fontSize?: number;
+    dyslexiaFont?: boolean;
+    highContrast?: boolean;
   };
+};
+
+/**
+ * Read-along (karaoke) timing. Mirrors the GET /api/books/:id/word-alignment
+ * contract in the API server (artifacts/api-server/src/transcripts.ts): word-
+ * AND sentence-level timing in milliseconds. `available` is false when the
+ * title has no usable timing, so clients only surface read-along when it works.
+ */
+export type WordAlignment = {
+  word: string;
+  startMs: number;
+  endMs: number;
+  wordIndex: number;
+  segmentIndex: number;
+};
+
+export type AlignmentSegment = {
+  text: string;
+  startMs: number;
+  endMs: number;
+  segmentIndex: number;
+  firstWordIndex: number;
+  wordCount: number;
+};
+
+export type WordAlignmentResponse = {
+  available: boolean;
+  precision: "exact" | "estimated" | "none";
+  words: WordAlignment[];
+  segments: AlignmentSegment[];
 };
 
 export type ActiveLoan = {
@@ -150,6 +183,30 @@ export async function fetchEasyRead(): Promise<BooksPage> {
 
 export async function fetchBook(id: string): Promise<Book> {
   return getJson<Book>(`/api/books/${encodeURIComponent(id)}`);
+}
+
+const EMPTY_ALIGNMENT: WordAlignmentResponse = {
+  available: false,
+  precision: "none",
+  words: [],
+  segments: [],
+};
+
+/**
+ * Public endpoint — returns read-along timing for a title, or a safe
+ * "unavailable" payload when timing is missing or the request fails. Callers
+ * should only surface read-along UI when `available` is true.
+ */
+export async function fetchWordAlignment(
+  id: string,
+): Promise<WordAlignmentResponse> {
+  try {
+    return await getJson<WordAlignmentResponse>(
+      `/api/books/${encodeURIComponent(id)}/word-alignment`,
+    );
+  } catch {
+    return EMPTY_ALIGNMENT;
+  }
 }
 
 /**

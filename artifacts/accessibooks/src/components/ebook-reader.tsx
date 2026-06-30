@@ -487,9 +487,31 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const audioCtx = useAudioContext();
   const isAudioMatchingBook = audioCtx.currentBook?.id === book.id;
   const karaokeTimeMs = followAlong && isAudioMatchingBook ? audioCtx.currentTime * 1000 : 0;
-  const { isAvailable: karaokeAvailable, activeWordIndex: karaokeWordIndex } = useKaraokeAlignment(
+  const {
+    isAvailable: karaokeAvailable,
+    activeWordIndex: karaokeWordIndex,
+    getWordStartMs: getKaraokeWordStartMs,
+  } = useKaraokeAlignment(
     followAlong && isAudioMatchingBook ? book.id : null,
     karaokeTimeMs
+  );
+
+  // Read-along tap-to-seek: when follow-along is on and timing exists, tapping a
+  // word seeks the narration to that word. Otherwise fall back to the dictionary
+  // / vocab lookup behaviour.
+  const handleWordSelect = useCallback(
+    (word: string, rect: DOMRect, pageLocalIndex: number) => {
+      if (followAlong && isAudioMatchingBook && karaokeAvailable) {
+        const globalIndex = (currentPage - 1) * WORDS_PER_PAGE + pageLocalIndex;
+        const startMs = getKaraokeWordStartMs(globalIndex);
+        if (startMs !== null) {
+          audioCtx.seekTo(startMs / 1000);
+          return;
+        }
+      }
+      handleWordClick(word, rect);
+    },
+    [followAlong, isAudioMatchingBook, karaokeAvailable, currentPage, getKaraokeWordStartMs, audioCtx, handleWordClick],
   );
 
   const explainMutation = useMutation({
@@ -1781,7 +1803,8 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                           symbolOverlay={symbolOverlay}
                           symbolImageCache={pageSymbolImageCache}
                           precomputed={precomp}
-                          onWordClick={handleWordClick}
+                          highContrast={a11ySettings.highContrast}
+                          onWordClick={handleWordSelect}
                         />
                       );
                     }
@@ -1795,7 +1818,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                         symbolOverlay={symbolOverlay}
                         symbolImageCache={pageSymbolImageCache}
                         precomputed={precomp}
-                        onWordClick={handleWordClick}
+                        onWordClick={handleWordSelect}
                       />
                     );
                   })()}
@@ -2319,7 +2342,7 @@ function AnnotatedText({
   symbolOverlay?: boolean;
   symbolImageCache?: Record<string, string | null>;
   precomputed?: PrecomputedWord[];
-  onWordClick?: (word: string, rect: DOMRect) => void;
+  onWordClick?: (word: string, rect: DOMRect, index: number) => void;
 }) {
   const wordsArr = text.split(/\s+/);
 
@@ -2350,14 +2373,14 @@ function AnnotatedText({
 
         const handleClick = onWordClick
           ? (e: React.MouseEvent<HTMLSpanElement>) => {
-              onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+              onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect(), i);
             }
           : undefined;
         const handleKeyDown = onWordClick
           ? (e: React.KeyboardEvent<HTMLSpanElement>) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+                onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect(), i);
               }
             }
           : undefined;
@@ -2385,6 +2408,7 @@ function HighlightedText({
   text,
   activeWordIndex,
   darkMode,
+  highContrast = false,
   annotations,
   searchQuery,
   bionicReading = false,
@@ -2396,13 +2420,14 @@ function HighlightedText({
   text: string;
   activeWordIndex: number;
   darkMode: boolean;
+  highContrast?: boolean;
   annotations: Annotation[];
   searchQuery: string;
   bionicReading?: boolean;
   symbolOverlay?: boolean;
   symbolImageCache?: Record<string, string | null>;
   precomputed?: PrecomputedWord[];
-  onWordClick?: (word: string, rect: DOMRect) => void;
+  onWordClick?: (word: string, rect: DOMRect, index: number) => void;
 }) {
   const wordsArr = text.split(/\s+/);
   const activeRef = useRef<HTMLSpanElement>(null);
@@ -2426,7 +2451,9 @@ function HighlightedText({
         let style: React.CSSProperties = {};
 
         if (isActive) {
-          className = `rounded px-0.5 ${darkMode ? "bg-primary/40 text-white font-medium" : "bg-primary/25 font-medium"}`;
+          className = highContrast
+            ? "rounded px-0.5 font-semibold bg-primary text-primary-foreground"
+            : `rounded px-0.5 ${darkMode ? "bg-primary/40 text-white font-medium" : "bg-primary/25 font-medium"}`;
         } else if (ann) {
           style.backgroundColor = ann.color;
           style.borderRadius = "2px";
@@ -2442,14 +2469,14 @@ function HighlightedText({
 
         const handleClick = onWordClick
           ? (e: React.MouseEvent<HTMLSpanElement>) => {
-              onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+              onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect(), i);
             }
           : undefined;
         const handleKeyDown = onWordClick
           ? (e: React.KeyboardEvent<HTMLSpanElement>) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect());
+                onWordClick(displayWord, (e.currentTarget as HTMLSpanElement).getBoundingClientRect(), i);
               }
             }
           : undefined;
