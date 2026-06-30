@@ -14,6 +14,14 @@ import {
 } from "@workspace/db";
 import { isAuthenticated } from "./multiAuth";
 import { analyticsService } from "./analyticsService";
+import {
+  appendCaptionSegments,
+  finalizeEventTranscript,
+  getEventTranscript,
+  captionRateLimiter,
+  captionInputSchema,
+  CaptionError,
+} from "./eventTranscripts";
 
 const MAX_PAGE = 50;
 
@@ -638,6 +646,60 @@ export function registerEngagementRoutes(app: Express) {
       res.json({ message: msg });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // ───────────────── EVENT CAPTIONS / SAVED TRANSCRIPT ─────────────────
+
+  // Public: live/saved transcript for an event (rendered as plain text by clients).
+  app.get("/api/events/:id/transcript", async (req: Request, res: Response) => {
+    try {
+      const transcript = await getEventTranscript("live_event", req.params.id);
+      res.json({ transcript });
+    } catch {
+      res.json({ transcript: null });
+    }
+  });
+
+  // Host or admin: append live caption cues (rate-limited + bounded).
+  app.post("/api/events/:id/captions", isAuthenticated, captionRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const userId = userIdFrom(req)!;
+      const eventId = req.params.id;
+      const [event] = await db.select().from(liveEvents).where(eq(liveEvents.id, eventId)).limit(1);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (!isAdmin(req) && event.hostUserId !== userId) {
+        return res.status(403).json({ message: "Only the event host or an admin can post captions" });
+      }
+      const parsed = captionInputSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid captions", errors: parsed.error.flatten() });
+      const transcript = await appendCaptionSegments({
+        sourceType: "live_event",
+        sourceId: eventId,
+        segments: parsed.data.segments,
+        createdByUserId: userId,
+      });
+      res.json({ transcript });
+    } catch (err: any) {
+      if (err instanceof CaptionError) return res.status(err.status).json({ message: err.message });
+      res.status(500).json({ message: "Failed to post captions" });
+    }
+  });
+
+  // Host or admin: finalize (lock) the saved transcript.
+  app.post("/api/events/:id/transcript/finalize", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = userIdFrom(req)!;
+      const eventId = req.params.id;
+      const [event] = await db.select().from(liveEvents).where(eq(liveEvents.id, eventId)).limit(1);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (!isAdmin(req) && event.hostUserId !== userId) {
+        return res.status(403).json({ message: "Only the event host or an admin can finalize the transcript" });
+      }
+      const transcript = await finalizeEventTranscript("live_event", eventId);
+      res.json({ transcript });
+    } catch {
+      res.status(500).json({ message: "Failed to finalize transcript" });
     }
   });
 

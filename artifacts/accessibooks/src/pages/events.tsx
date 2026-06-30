@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Calendar, Users, Lock, PlayCircle, MessageCircle, CalendarPlus } from "lucide-react";
+import { Calendar, Users, Lock, PlayCircle, MessageCircle, CalendarPlus, Captions } from "lucide-react";
 import { AdSlot } from "@/components/AdSlot";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -371,6 +371,8 @@ function EventCard({ event, expanded, onToggle }: { event: LiveEvent; expanded: 
             </>
           )}
 
+          <EventCaptions eventId={event.id} />
+
           <EventChat eventId={event.id} />
         </CardContent>
       )}
@@ -408,6 +410,119 @@ function ReplaySection({ access, replayUrl, previewSec }: { access: "none" | "pr
   }
   return (
     <audio controls src={replayUrl} className="w-full" aria-label="Event replay" data-testid="replay-full" />
+  );
+}
+
+interface EventTranscriptView {
+  transcript: { segments: { start: number; end: number; text: string }[]; status: "live" | "final" } | null;
+}
+
+/**
+ * Live captions + saved transcript for an event. Polls the public transcript
+ * endpoint (~6s). Hosts/admins can post caption cues and finalize (save) the
+ * transcript. Cue text is rendered as plain text — never as HTML.
+ */
+function EventCaptions({ eventId }: { eventId: string }) {
+  const { user } = useAuth() as { user: AuthUser | null | undefined };
+  const isAdmin = user?.role === "admin";
+  const [cue, setCue] = useState("");
+  const { toast } = useToast();
+
+  const { data, refetch } = useQuery<EventTranscriptView>({
+    queryKey: ["/api/events", eventId, "transcript"],
+    queryFn: async () => {
+      const r = await fetch(`/api/events/${eventId}/transcript`, { credentials: "include" });
+      return r.json();
+    },
+    refetchInterval: 6000,
+  });
+
+  const transcript = data?.transcript ?? null;
+  const segments = transcript?.segments ?? [];
+  const isFinal = transcript?.status === "final";
+
+  const sendCue = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/events/${eventId}/captions`, { segments: [{ text: cue.trim() }] });
+      return r.json();
+    },
+    onSuccess: () => { setCue(""); refetch(); },
+    onError: (err: any) => toast({ title: err?.message ?? "Could not post caption", variant: "destructive", duration: 3000 }),
+  });
+
+  const finalize = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", `/api/events/${eventId}/transcript/finalize`, {});
+      return r.json();
+    },
+    onSuccess: () => { toast({ title: "Transcript saved" }); refetch(); },
+    onError: (err: any) => toast({ title: err?.message ?? "Could not finalize", variant: "destructive", duration: 3000 }),
+  });
+
+  // Nothing to show and the viewer cannot add captions — hide entirely.
+  if (!transcript && !isAdmin) return null;
+
+  return (
+    <section aria-label="Event captions and transcript" className="space-y-2 border-t pt-3" data-testid={`captions-${eventId}`}>
+      <h3 className="text-sm font-semibold flex items-center gap-1.5">
+        <Captions className="h-4 w-4" aria-hidden="true" /> Captions &amp; transcript
+        {transcript && (
+          <Badge variant={isFinal ? "secondary" : "default"} data-testid={`captions-status-${eventId}`}>
+            {isFinal ? "Saved transcript" : "Live captions"}
+          </Badge>
+        )}
+      </h3>
+
+      {segments.length > 0 ? (
+        <div
+          className="max-h-48 overflow-y-auto rounded-md bg-muted/40 p-2 text-sm space-y-1"
+          aria-live="polite"
+          data-testid={`captions-list-${eventId}`}
+        >
+          {segments.map((s, i) => (
+            <p key={i}>{s.text}</p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {isFinal ? "No transcript was recorded." : "No captions yet."}
+        </p>
+      )}
+
+      {isAdmin && !isFinal && (
+        <div className="space-y-2">
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (cue.trim()) sendCue.mutate(); }}
+            className="flex gap-2"
+          >
+            <label className="sr-only" htmlFor={`cue-input-${eventId}`}>Add a caption cue</label>
+            <Input
+              id={`cue-input-${eventId}`}
+              value={cue}
+              onChange={(e) => setCue(e.target.value)}
+              maxLength={500}
+              placeholder="Type a live caption…"
+              data-testid={`cue-input-${eventId}`}
+            />
+            <Button type="submit" size="sm" disabled={!cue.trim() || sendCue.isPending} data-testid={`cue-send-${eventId}`}>
+              Post
+            </Button>
+          </form>
+          {segments.length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => { if (confirm("Finalize and save this transcript? Captions can no longer be edited.")) finalize.mutate(); }}
+              disabled={finalize.isPending}
+              data-testid={`cue-finalize-${eventId}`}
+            >
+              Save transcript
+            </Button>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

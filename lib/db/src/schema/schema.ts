@@ -28,6 +28,7 @@ export const books = pgTable("books", {
   freeTierAvailable: boolean("free_tier_available").notNull().default(true), // Whether free-tier users can access this title
   adSupported: boolean("ad_supported").notNull().default(true), // Whether ads may be served for this title
   transcriptAvailable: boolean("transcript_available").notNull().default(false), // Whether an interactive transcript is available (display hint only — NOT an access gate)
+  auslanAvailable: boolean("auslan_available").notNull().default(false), // Whether a published Auslan sign-language video companion exists (browse-filter hint)
   narrationType: text("narration_type"), // "human" | "ai" | null (null = not specified). Display hint only — NOT an access gate.
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
@@ -1814,6 +1815,35 @@ export const insertAccessibilityMetadataSchema = createInsertSchema(accessibilit
 export type InsertAccessibilityMetadata = z.infer<typeof insertAccessibilityMetadataSchema>;
 export type AccessibilityMetadata = typeof accessibilityMetadata.$inferSelect;
 
+// Admin/creator-managed, human-produced Auslan (sign-language) video companions for a title.
+// Videos are uploaded to object storage; objectPath is the normalized "/objects/..." serving path.
+export const AUSLAN_COMPANION_STATUSES = ["draft", "published", "archived"] as const;
+export type AuslanCompanionStatus = typeof AUSLAN_COMPANION_STATUSES[number];
+
+export const bookAuslanCompanions = pgTable("book_auslan_companions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 240 }).notNull(),
+  description: text("description"),
+  objectPath: text("object_path").notNull(), // normalized /objects/uploads/u_<b64>/<uuid> serving path
+  mimeType: varchar("mime_type", { length: 80 }).notNull().default("video/mp4"),
+  sizeBytes: integer("size_bytes"),
+  durationSeconds: integer("duration_seconds"),
+  language: varchar("language", { length: 16 }).notNull().default("AUSLAN"),
+  status: varchar("status", { length: 16 }).notNull().default("draft"), // draft | published | archived
+  uploadedByUserId: varchar("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("idx_auslan_companions_book").on(t.bookId),
+  // At most one published companion per (book, language)
+  uniqueIndex("uq_auslan_companions_book_lang_published").on(t.bookId, t.language).where(sql`status = 'published'`),
+]);
+
+export const insertBookAuslanCompanionSchema = createInsertSchema(bookAuslanCompanions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertBookAuslanCompanion = z.infer<typeof insertBookAuslanCompanionSchema>;
+export type BookAuslanCompanion = typeof bookAuslanCompanions.$inferSelect;
+
 export const DISABILITY_TYPES = ["dyslexia", "low-vision", "motor", "hearing", "cognitive", "other"] as const;
 export type DisabilityType = typeof DISABILITY_TYPES[number];
 
@@ -2679,6 +2709,33 @@ export const insertEventChatMessageSchema = createInsertSchema(eventChatMessages
 });
 export type InsertEventChatMessage = z.infer<typeof insertEventChatMessageSchema>;
 export type EventChatMessage = typeof eventChatMessages.$inferSelect;
+
+// Saved live-caption transcripts for events and reading-club sessions.
+// No video-conferencing: the host/admin posts caption cues that accumulate here and are saved.
+export const EVENT_TRANSCRIPT_SOURCE_TYPES = ["live_event", "reading_club"] as const;
+export type EventTranscriptSourceType = typeof EVENT_TRANSCRIPT_SOURCE_TYPES[number];
+
+export const EVENT_TRANSCRIPT_STATUSES = ["live", "final"] as const;
+export type EventTranscriptStatus = typeof EVENT_TRANSCRIPT_STATUSES[number];
+
+export const eventTranscripts = pgTable("event_transcripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceType: varchar("source_type", { length: 24 }).notNull(), // live_event | reading_club
+  sourceId: varchar("source_id").notNull(),
+  segments: jsonb("segments").$type<TranscriptSegment[]>().notNull().default(sql`'[]'::jsonb`),
+  language: text("language").notNull().default("en"),
+  source: text("source").notNull().default("live_caption"), // manual | live_caption | imported
+  status: varchar("status", { length: 12 }).notNull().default("live"), // live | final
+  createdByUserId: varchar("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  uniqueIndex("uq_event_transcripts_source").on(t.sourceType, t.sourceId),
+]);
+
+export const insertEventTranscriptSchema = createInsertSchema(eventTranscripts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEventTranscript = z.infer<typeof insertEventTranscriptSchema>;
+export type EventTranscript = typeof eventTranscripts.$inferSelect;
 
 // Share-clip records (15-60s player segments shared externally)
 export const shareClips = pgTable("share_clips", {
