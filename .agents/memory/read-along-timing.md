@@ -23,7 +23,7 @@ Narration assets are per-chapter AND per-voice, each a SEPARATE audio file with 
 
 **Why:** writing per-chapter narration timing into `book_transcripts` produces non-monotonic/overlapping timestamps across chapters → breaks the read-along binary search. The narration capture path persists timing to `narration_assets.timingJson` and exposes it via the manifest; it intentionally does NOT upsert `book_transcripts`.
 
-**How to apply:** consuming narration timing in a live read-along player (word-by-word as narration plays) is a SEPARATE task, not part of the book-level read-along. Don't "fix" the disconnect by mutating book_transcripts.
+**How to apply:** the live narration read-along (word-by-word as narration plays) is its OWN consumer — `NarrationReadAlong` in `artifacts/accessibooks/src/components/ai-narration-panel.tsx`. It renders words FROM the manifest `chapters[].timing` segments and highlights the active word via an rAF loop on the shared `<audio>` element (binary search mirroring `use-karaoke-alignment`), with tap-to-seek + an On/Off toggle and auto-scroll. It does NOT call `/word-alignment` and does NOT map onto the paginated book DOM. Falls back to plain playback when a chapter's `timing` is null/empty. Don't "fix" the chapter-vs-book disconnect by mutating book_transcripts. (Open accessibility gap: per-word seek is pointer-only — keyboard/switch users can't invoke it yet.)
 
 ## Transcript write authz
 `POST /api/books/:id/transcript` flips public read-along output + `accessibility_metadata.hasTranscript`, so it requires `requireAdmin` (after `isAuthenticated`). Trusted server paths (narration, seeder) write via DB directly, not this route — so admin-gating it breaks no legitimate user flow.
