@@ -46,6 +46,8 @@ import { seedEntitlementConfigDefaults, loadEntitlementConfig } from "../entitle
 import { analyticsService } from "../analyticsService";
 import { registerChatRoutes } from "../replit_integrations/chat";
 import { registerComprehensionCompanionRoutes } from "../comprehensionCompanion";
+import { registerAiAddonRoutes } from "../aiAddons";
+import { registerTranslationRoutes } from "../translation";
 import {
   convertToEasyEnglish,
   getUserEasyEnglishStatus,
@@ -322,6 +324,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI comprehension companion (chapter recaps, plain-language summaries, grounded Q&A)
   registerComprehensionCompanionRoutes(app);
+
+  // Premium AI add-ons: usage/quota status + AI translation (Task #212)
+  registerAiAddonRoutes(app);
+  registerTranslationRoutes(app);
 
   // Analytics and monetization reporting dashboard routes
   registerAnalyticsRoutes(app);

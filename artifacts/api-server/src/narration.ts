@@ -12,6 +12,7 @@ import {
   ELEVENLABS_DEFAULT_VOICES,
 } from "./replit_integrations/audio/elevenlabs";
 import { objectStorageClient } from "./replit_integrations/object_storage/objectStorage";
+import { getAiAddonStatus, incrementAiAddonUsage, buildUpsellPayload } from "./aiAddons";
 
 // ---------------------------------------------------------------------------
 // Curated narration voices.
@@ -393,6 +394,15 @@ export function registerNarrationRoutes(app: Express): void {
           return res.status(202).json({ status: "processing", voiceId });
         }
 
+        // Premium AI add-on quota — only a NEW generation consumes a credit
+        // (cached / already-running titles above are served for free so users
+        // never lose access to audio that already exists). Enforced here, not
+        // just in the UI, so a modified client can't exceed its allowance.
+        const addonStatus = await getAiAddonStatus(userId, "ai_narration");
+        if (!addonStatus.allowed) {
+          return res.status(402).json(buildUpsellPayload(addonStatus));
+        }
+
         // Concurrency caps.
         if (activeJobKeys.size >= MAX_GLOBAL_CONCURRENT_JOBS) {
           return res.status(429).json({ message: "The narration service is busy. Please try again shortly." });
@@ -443,6 +453,9 @@ export function registerNarrationRoutes(app: Express): void {
 
         // Kick off background processing (don't await).
         void runNarrationJob(bookId, voiceId, userId, chapters);
+
+        // Consume one narration credit now that a new job is actually queued.
+        await incrementAiAddonUsage(userId, "ai_narration");
 
         return res.status(202).json({ status: "queued", totalChapters: chapters.length, completedChapters: 0, voiceId });
       } catch (error) {

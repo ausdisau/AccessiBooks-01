@@ -3,8 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Crown, BookOpen, Clock, Headphones, Lock, Check, X, TrendingUp, BarChart3 } from "lucide-react";
+import { Crown, BookOpen, Clock, Headphones, Lock, Check, X, TrendingUp, BarChart3, Sparkles, Mic, MessageCircleQuestion, Languages, Infinity as InfinityIcon } from "lucide-react";
 import { localStorageService } from "@/lib/storage";
+import { useAiAddons, type AiAddonFeatureKey } from "@/hooks/use-ai-addons";
+
+const ADDON_ICONS: Record<AiAddonFeatureKey, typeof Mic> = {
+  ai_narration: Mic,
+  comprehension_companion: MessageCircleQuestion,
+  ai_translation: Languages,
+};
 
 interface UsageDashboardProps {
   isPremium: boolean;
@@ -34,6 +41,7 @@ const FEATURES = [
 
 export function UsageDashboard({ isPremium, onUpgrade }: UsageDashboardProps) {
   const [stats, setStats] = useState(localStorageService.getStats());
+  const { addons, tier: addonTier, isLoading: addonsLoading } = useAiAddons();
 
   useEffect(() => {
     setStats(localStorageService.getStats());
@@ -162,6 +170,89 @@ export function UsageDashboard({ isPremium, onUpgrade }: UsageDashboardProps) {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-purple-500" />
+            Premium AI Add-ons
+          </CardTitle>
+          <CardDescription>
+            Your monthly allowance for AI narration, the comprehension companion, and translation
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {addonsLoading ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Loading your AI usage…</p>
+          ) : addons.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Sign in to track your AI add-on usage.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {addons.map((addon) => {
+                const Icon = ADDON_ICONS[addon.feature] ?? Sparkles;
+                const usedPercent = addon.unlimited || !addon.limit
+                  ? 0
+                  : Math.min((addon.used / addon.limit) * 100, 100);
+                const blocked = addon.limit === 0;
+                const exhausted = !addon.unlimited && !blocked && (addon.remaining ?? 0) <= 0;
+                return (
+                  <div key={addon.feature} className="rounded-lg border p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-purple-500/10 shrink-0">
+                        <Icon className="h-4 w-4 text-purple-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-sm">{addon.label}</p>
+                          {addon.unlimited ? (
+                            <Badge className="bg-purple-500 text-white gap-1 text-[10px]">
+                              <InfinityIcon className="h-3 w-3" /> Unlimited
+                            </Badge>
+                          ) : blocked ? (
+                            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/30 gap-1 text-[10px]">
+                              <Lock className="h-3 w-3" /> Upgrade
+                            </Badge>
+                          ) : (
+                            <span className={`text-xs font-medium ${exhausted ? "text-red-500" : "text-muted-foreground"}`}>
+                              {addon.used} / {addon.limit} used
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{addon.description}</p>
+                        {!addon.unlimited && !blocked && (
+                          <Progress value={usedPercent} className="h-1.5 mt-2" />
+                        )}
+                        {exhausted && (
+                          <p className="text-xs text-red-500 mt-1.5">
+                            You've used your monthly allowance. Upgrade for more.
+                          </p>
+                        )}
+                        {blocked && (
+                          <p className="text-xs text-red-500 mt-1.5">
+                            Not included on your plan. Upgrade to unlock.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {addonTier !== "premium" && (
+                <Button
+                  variant="outline"
+                  className="w-full border-purple-500/30 text-purple-600 hover:bg-purple-500/10"
+                  onClick={onUpgrade}
+                >
+                  <Crown className="h-4 w-4 mr-2" />
+                  Upgrade for more AI access
+                </Button>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
