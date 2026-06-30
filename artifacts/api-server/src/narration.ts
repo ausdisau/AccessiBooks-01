@@ -2,13 +2,21 @@ import type { Express, Request, Response } from "express";
 import express from "express";
 import { eq, and, asc } from "drizzle-orm";
 import { db } from "./db";
-import { narrationJobs, narrationAssets, type NarrationAsset } from "@workspace/db";
+import {
+  narrationJobs,
+  narrationAssets,
+  type NarrationAsset,
+  type TranscriptSegment,
+  type TranscriptWordTiming,
+} from "@workspace/db";
 import { storage } from "./storage";
 import { isAuthenticated } from "./multiAuth";
 import { rateLimitMiddleware } from "./drm";
 import {
   isElevenLabsConfigured,
   textToSpeech as elevenLabsTTS,
+  textToSpeechWithTimestamps as elevenLabsTTSWithTimestamps,
+  type CharacterAlignment,
   ELEVENLABS_DEFAULT_VOICES,
 } from "./replit_integrations/audio/elevenlabs";
 import { objectStorageClient } from "./replit_integrations/object_storage/objectStorage";
@@ -203,6 +211,65 @@ async function setJobStatus(
     .where(and(eq(narrationJobs.bookId, bookId), eq(narrationJobs.voiceId, voiceId)));
 }
 
+// Convert ElevenLabs character-level alignment into word timings. Times are in
+// seconds; `offsetSeconds` shifts a sub-chunk's local timeline onto the
+// concatenated chapter audio timeline.
+function wordsFromAlignment(a: CharacterAlignment, offsetSeconds: number): TranscriptWordTiming[] {
+  const chars = a.characters || [];
+  const starts = a.character_start_times_seconds || [];
+  const ends = a.character_end_times_seconds || [];
+  const words: TranscriptWordTiming[] = [];
+  let cur = "";
+  let curStart = -1;
+  let curEnd = -1;
+  const flush = () => {
+    const t = cur.trim();
+    if (t && curStart >= 0) {
+      words.push({ text: t, start: curStart + offsetSeconds, end: Math.max(curEnd, curStart) + offsetSeconds });
+    }
+    cur = "";
+    curStart = -1;
+    curEnd = -1;
+  };
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (/\s/.test(ch)) {
+      flush();
+      continue;
+    }
+    const s = Number.isFinite(starts[i]) ? starts[i] : curEnd >= 0 ? curEnd : 0;
+    const e = Number.isFinite(ends[i]) ? ends[i] : s;
+    if (curStart < 0) curStart = s;
+    curEnd = e;
+    cur += ch;
+  }
+  flush();
+  return words;
+}
+
+// Group flat word timings into sentence-level segments (terminal punctuation),
+// matching the shared `TranscriptSegment` read-along format.
+function groupWordsIntoSegments(words: TranscriptWordTiming[]): TranscriptSegment[] {
+  const segments: TranscriptSegment[] = [];
+  let bucket: TranscriptWordTiming[] = [];
+  const flush = () => {
+    if (!bucket.length) return;
+    segments.push({
+      start: bucket[0].start,
+      end: bucket[bucket.length - 1].end,
+      text: bucket.map((w) => w.text).join(" "),
+      words: bucket.map((w, i) => ({ ...w, index: i })),
+    });
+    bucket = [];
+  };
+  for (const w of words) {
+    bucket.push(w);
+    if (/[.!?]["')\]]?$/.test(w.text) && bucket.length >= 3) flush();
+  }
+  flush();
+  return segments;
+}
+
 async function generateChapter(
   baseDir: string,
   bucketName: string,
@@ -212,10 +279,35 @@ async function generateChapter(
 ): Promise<void> {
   const subChunks = splitIntoSubChunks(chapter.text);
   const audioBuffers: Buffer[] = [];
+  const allWords: TranscriptWordTiming[] = [];
+  let offsetSeconds = 0;
+  // Only persist timing if EVERY sub-chunk produced alignment — partial timing
+  // would make read-along stop mid-chapter, so we drop it entirely on any gap.
+  let timingComplete = true;
+
   for (const sub of subChunks) {
     if (!sub) continue;
-    const buf = await elevenLabsTTS(sub, voiceId);
-    audioBuffers.push(buf);
+    let audio: Buffer;
+    let alignment: CharacterAlignment | null = null;
+    try {
+      const r = await elevenLabsTTSWithTimestamps(sub, voiceId);
+      audio = r.audio;
+      alignment = r.alignment;
+    } catch (err) {
+      // Timestamped endpoint unavailable/failed: fall back to plain TTS so audio
+      // still generates, but this chapter will have no read-along timing.
+      console.warn(
+        `[Narration] Timestamped TTS unavailable for ${bookId} (${voiceId}); generating without timing.`,
+      );
+      audio = await elevenLabsTTS(sub, voiceId);
+    }
+    audioBuffers.push(audio);
+    if (alignment) {
+      for (const w of wordsFromAlignment(alignment, offsetSeconds)) allWords.push(w);
+    } else {
+      timingComplete = false;
+    }
+    offsetSeconds += audio.length / MP3_BYTES_PER_SECOND;
   }
   const combined = Buffer.concat(audioBuffers);
 
@@ -225,6 +317,11 @@ async function generateChapter(
 
   const audioUrl = narrationPublicUrl(bookId, voiceId, chapter.number);
   const durationSeconds = Math.max(1, Math.round(combined.length / MP3_BYTES_PER_SECOND));
+
+  // Per-chapter read-along timing, relative to THIS chapter's narration audio
+  // (each chapter is a separate audio file). Null when timing wasn't captured.
+  const timingJson: TranscriptSegment[] | null =
+    timingComplete && allWords.length > 0 ? groupWordsIntoSegments(allWords) : null;
 
   await db
     .insert(narrationAssets)
@@ -236,11 +333,11 @@ async function generateChapter(
       audioUrl,
       durationSeconds,
       charCount: chapter.text.length,
-      timingJson: null, // ElevenLabs TTS returns no timing marks; column reserved for future read-along
+      timingJson,
     })
     .onConflictDoUpdate({
       target: [narrationAssets.bookId, narrationAssets.voiceId, narrationAssets.chapterNumber],
-      set: { audioUrl, durationSeconds, charCount: chapter.text.length, title: chapter.title },
+      set: { audioUrl, durationSeconds, charCount: chapter.text.length, title: chapter.title, timingJson },
     });
 }
 

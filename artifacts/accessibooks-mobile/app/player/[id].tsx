@@ -3,13 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   type GestureResponderEvent,
+  type LayoutChangeEvent,
   PanResponder,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,7 +21,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BookCover } from "@/components/BookCover";
 import { useColors } from "@/hooks/useColors";
 import { useResponsive } from "@/hooks/useResponsive";
-import { fetchBook, fetchSettingsSummary, formatDuration } from "@/lib/api";
+import {
+  fetchBook,
+  fetchSettingsSummary,
+  fetchWordAlignment,
+  formatDuration,
+} from "@/lib/api";
 
 const DEFAULT_SKIP = 30;
 const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
@@ -111,6 +118,114 @@ export default function PlayerScreen() {
     }
   };
 
+  // ---- Read-along (karaoke) ----------------------------------------------
+  // Word- AND sentence-level timing, fetched only when a title actually has
+  // audio (read-along has nothing to sync to otherwise). The endpoint returns
+  // available:false for titles without timing, so the toggle stays hidden and
+  // we never fabricate timing.
+  const alignment = useQuery({
+    queryKey: ["word-alignment", id],
+    queryFn: () => fetchWordAlignment(id!),
+    enabled: !!id && !!audioUrl,
+    staleTime: 60 * 60 * 1000,
+  });
+  const words = alignment.data?.words ?? [];
+  const segments = alignment.data?.segments ?? [];
+  const readAlongAvailable =
+    !!audioUrl && !!alignment.data?.available && segments.length > 0;
+  // Word-level highlight only for exact per-word timing; "estimated" timing
+  // (words interpolated within a real sentence) drives sentence-level read-along
+  // only, so we never highlight individual words from fabricated positions.
+  const isExactTiming = alignment.data?.precision === "exact";
+
+  const [followAlong, setFollowAlong] = useState(false);
+  const [readAlongTimeMs, setReadAlongTimeMs] = useState(0);
+  const lastTickRef = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const segmentYRef = useRef<Record<number, number>>({});
+
+  // Accessibility prefs from the signed-in user's settings; safe defaults for
+  // guests. fontSize / dyslexia spacing / high contrast all flow into the panel.
+  const prefs = settings.data?.preferences;
+  const baseFontSize =
+    typeof prefs?.fontSize === "number" && prefs.fontSize > 0 ? prefs.fontSize : 16;
+  const dyslexiaFont = !!prefs?.dyslexiaFont;
+  const highContrast = !!prefs?.highContrast;
+  const readAlongFontSize = Math.max(15, Math.min(30, baseFontSize + 2));
+  // No OpenDyslexic on mobile — honor the dyslexia preference via the
+  // recommended wider letter/line spacing instead of swapping to a missing font.
+  const readAlongTextStyle = useMemo(
+    () => ({
+      fontSize: readAlongFontSize,
+      lineHeight: Math.round(readAlongFontSize * (dyslexiaFont ? 1.95 : 1.6)),
+      letterSpacing: dyslexiaFont ? 0.8 : 0,
+      fontFamily: "Inter_500Medium" as const,
+    }),
+    [readAlongFontSize, dyslexiaFont],
+  );
+
+  // Throttle playback time to ~4 Hz so highlight recompute/auto-scroll stay cheap.
+  useEffect(() => {
+    if (!followAlong) return;
+    const ms = (status?.currentTime ?? 0) * 1000;
+    if (Math.abs(ms - lastTickRef.current) >= 240) {
+      lastTickRef.current = ms;
+      setReadAlongTimeMs(ms);
+    }
+  }, [status?.currentTime, followAlong]);
+
+  // Largest word whose start time has been reached (binary search over startMs).
+  const activeWordIndex = useMemo(() => {
+    if (!followAlong || words.length === 0) return -1;
+    let lo = 0;
+    let hi = words.length - 1;
+    let res = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (words[mid].startMs <= readAlongTimeMs) {
+        res = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (res === -1) return -1;
+    if (readAlongTimeMs > words[res].endMs && res === words.length - 1) return -1;
+    return res;
+  }, [followAlong, words, readAlongTimeMs]);
+
+  const activeSegmentIndex =
+    activeWordIndex >= 0 ? words[activeWordIndex].segmentIndex : -1;
+
+  // Keep the active sentence in view as playback advances.
+  useEffect(() => {
+    if (!followAlong || activeSegmentIndex < 0) return;
+    const y = segmentYRef.current[activeSegmentIndex];
+    if (typeof y === "number") {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 72), animated: true });
+    }
+  }, [followAlong, activeSegmentIndex]);
+
+  const seekToMs = (ms: number) => {
+    if (!audioUrl) return;
+    haptic();
+    player.seekTo(ms / 1000);
+  };
+
+  const toggleFollowAlong = useCallback(() => {
+    haptic();
+    setFollowAlong((prev) => {
+      const next = !prev;
+      if (next) {
+        const ms = (status?.currentTime ?? 0) * 1000;
+        lastTickRef.current = ms;
+        setReadAlongTimeMs(ms);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.currentTime]);
+
   const total = status?.duration ?? book.data?.duration ?? 0;
   const livePosition = status?.currentTime ?? 0;
   const position = scrubPos !== null ? scrubPos : livePosition;
@@ -196,15 +311,109 @@ export default function PlayerScreen() {
           },
         ]}
       >
-      <View style={styles.coverWrap}>
-        <BookCover
-          uri={b.coverUrl ?? null}
-          title={b.title}
-          width={r.isLargeTablet ? 320 : r.isTablet ? 280 : 240}
-          height={r.isLargeTablet ? 480 : r.isTablet ? 420 : 360}
-          rounded={16}
-        />
-      </View>
+      {followAlong && readAlongAvailable ? (
+        <View
+          testID="read-along-panel"
+          style={[
+            styles.readAlongPanel,
+            { backgroundColor: colors.card, borderColor: colors.brandLine },
+          ]}
+        >
+          <ScrollView
+            ref={scrollRef}
+            style={styles.readAlongScroll}
+            contentContainerStyle={styles.readAlongContent}
+            showsVerticalScrollIndicator
+          >
+            {segments.map((seg) => {
+              const isActiveSeg = seg.segmentIndex === activeSegmentIndex;
+              const onLayout = (e: LayoutChangeEvent) => {
+                segmentYRef.current[seg.segmentIndex] = e.nativeEvent.layout.y;
+              };
+              // Active sentence with EXACT per-word timing: tokenize into tappable
+              // words and highlight the current word.
+              if (isActiveSeg && isExactTiming) {
+                const segWords = words.slice(
+                  seg.firstWordIndex,
+                  seg.firstWordIndex + seg.wordCount,
+                );
+                return (
+                  <View
+                    key={seg.segmentIndex}
+                    onLayout={onLayout}
+                    style={[styles.segmentRow, { backgroundColor: colors.brandCreamDeep }]}
+                  >
+                    <Text style={[readAlongTextStyle, { color: colors.brandInk }]}>
+                      {segWords.map((w) => {
+                        const isActiveWord = w.wordIndex === activeWordIndex;
+                        const activeStyle = highContrast
+                          ? { color: colors.brandCream, backgroundColor: colors.brandInk }
+                          : { color: "#ffffff", backgroundColor: colors.brandOrange };
+                        return (
+                          <Text
+                            key={w.wordIndex}
+                            onPress={() => seekToMs(w.startMs)}
+                            suppressHighlighting
+                            accessibilityRole="button"
+                            accessibilityLabel={`Jump to ${w.word}`}
+                            style={isActiveWord ? activeStyle : { color: colors.brandInk }}
+                          >
+                            {w.word + " "}
+                          </Text>
+                        );
+                      })}
+                    </Text>
+                  </View>
+                );
+              }
+              // Active sentence WITHOUT exact word timing: highlight the whole
+              // sentence (real segment timing) — no fabricated per-word highlight.
+              if (isActiveSeg) {
+                return (
+                  <View
+                    key={seg.segmentIndex}
+                    onLayout={onLayout}
+                    style={[styles.segmentRow, { backgroundColor: colors.brandCreamDeep }]}
+                  >
+                    <Text
+                      onPress={() => seekToMs(seg.startMs)}
+                      suppressHighlighting
+                      accessibilityRole="button"
+                      accessibilityLabel={`Jump to: ${seg.text}`}
+                      style={[readAlongTextStyle, { color: colors.brandInk }]}
+                    >
+                      {seg.text}
+                    </Text>
+                  </View>
+                );
+              }
+              return (
+                <View key={seg.segmentIndex} onLayout={onLayout} style={styles.segmentRow}>
+                  <Text
+                    onPress={() => seekToMs(seg.startMs)}
+                    suppressHighlighting
+                    accessibilityRole="button"
+                    accessibilityLabel={`Jump to: ${seg.text}`}
+                    style={[readAlongTextStyle, { color: colors.brandInkSoft }]}
+                  >
+                    {seg.text}
+                  </Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : (
+        <View style={styles.coverWrap}>
+          <BookCover
+            uri={b.coverUrl ?? null}
+            title={b.title}
+            width={r.isLargeTablet ? 320 : r.isTablet ? 280 : 240}
+            height={r.isLargeTablet ? 480 : r.isTablet ? 420 : 360}
+            rounded={16}
+          />
+        </View>
+      )}
 
       <View style={styles.titleBlock}>
         <Text
@@ -341,6 +550,37 @@ export default function PlayerScreen() {
       </View>
 
       <View style={styles.bottomRow}>
+        {readAlongAvailable ? (
+          <Pressable
+            testID="read-along-toggle"
+            onPress={toggleFollowAlong}
+            style={({ pressed }) => [
+              styles.readAlongToggle,
+              {
+                borderColor: followAlong ? colors.brandOrange : colors.brandInk,
+                backgroundColor: followAlong ? colors.brandOrange : "transparent",
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: followAlong }}
+            accessibilityLabel="Read along"
+          >
+            <Feather
+              name="align-left"
+              size={18}
+              color={followAlong ? "#ffffff" : colors.brandInk}
+            />
+            <Text
+              style={[
+                styles.readAlongToggleText,
+                { color: followAlong ? "#ffffff" : colors.brandInk },
+              ]}
+            >
+              Read along
+            </Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={cycleSpeed}
           style={({ pressed }) => [
@@ -487,6 +727,8 @@ const styles = StyleSheet.create({
   bottomRow: {
     flexDirection: "row",
     justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
   },
   speedBtn: {
     minWidth: 56,
@@ -501,5 +743,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_700Bold",
     fontVariant: ["tabular-nums"],
+  },
+  readAlongToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    borderWidth: 1.5,
+  },
+  readAlongToggleText: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+  },
+  readAlongPanel: {
+    flex: 1,
+    width: "100%",
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  readAlongScroll: {
+    flex: 1,
+  },
+  readAlongContent: {
+    padding: 16,
+  },
+  segmentRow: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 4,
   },
 });
