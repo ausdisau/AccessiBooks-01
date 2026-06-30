@@ -2647,3 +2647,131 @@ export const DEFAULT_ENTITLEMENT_MATRIX: Record<EntitlementFeatureKey, Record<Su
   unlimited_tts:            { free: false, plus: false, premium: true,  institutional: true,  admin: true },
   offline_downloads:        { free: false, plus: false, premium: true,  institutional: true,  admin: true },
 };
+
+// ============================================================
+// NDIS CLAIMABLE PLANS & INVOICING (Task #215)
+// Self-managed and plan-managed NDIS participants can generate
+// NDIS-compliant invoices for their AccessiBooks spend so a plan
+// manager or the NDIA can reimburse it.
+//
+// IMPORTANT: AccessiBooks / Australian Disability Ltd is NOT a
+// registered NDIS provider. These invoices support self-managed
+// and plan-managed claims only — claimability depends on the
+// participant's individual plan. This is surfaced to users.
+// ============================================================
+
+export const NDIS_MANAGEMENT_TYPES = [
+  "self_managed",
+  "plan_managed",
+  "agency_managed",
+] as const;
+export type NdisManagementType = typeof NDIS_MANAGEMENT_TYPES[number];
+
+export const NDIS_MANAGEMENT_TYPE_LABELS: Record<NdisManagementType, string> = {
+  self_managed: "Self-managed",
+  plan_managed: "Plan-managed",
+  agency_managed: "NDIA-managed (Agency)",
+};
+
+export const NDIS_INVOICE_STATUSES = ["issued", "sent", "cancelled"] as const;
+export type NdisInvoiceStatus = typeof NDIS_INVOICE_STATUSES[number];
+
+export const NDIS_INVOICE_STATUS_LABELS: Record<NdisInvoiceStatus, string> = {
+  issued: "Issued",
+  sent: "Sent",
+  cancelled: "Cancelled",
+};
+
+export const NDIS_CLAIM_STATUSES = ["unclaimed", "submitted", "paid", "rejected"] as const;
+export type NdisClaimStatus = typeof NDIS_CLAIM_STATUSES[number];
+
+export const NDIS_CLAIM_STATUS_LABELS: Record<NdisClaimStatus, string> = {
+  unclaimed: "Not yet claimed",
+  submitted: "Submitted",
+  paid: "Reimbursed",
+  rejected: "Rejected",
+};
+
+export const NDIS_GST_TREATMENTS = ["GST-free", "GST-inclusive"] as const;
+export type NdisGstTreatment = typeof NDIS_GST_TREATMENTS[number];
+
+/** Suggested NDIS support categories. The participant's plan manager / the
+ *  NDIA provides the exact support item number — these are guidance only. */
+export const NDIS_SUPPORT_CATEGORY_SUGGESTIONS = [
+  { value: "assistive_technology", label: "Assistive Technology" },
+  { value: "improved_daily_living", label: "Capacity Building – Improved Daily Living" },
+  { value: "improved_learning", label: "Capacity Building – Improved Learning" },
+  { value: "social_community", label: "Increased Social & Community Participation" },
+  { value: "core_consumables", label: "Core – Consumables" },
+] as const;
+
+// One NDIS participant profile per AccessiBooks account.
+export const ndisParticipants = pgTable("ndis_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  participantName: text("participant_name").notNull(),
+  ndisNumber: varchar("ndis_number", { length: 20 }).notNull(),
+  dateOfBirth: varchar("date_of_birth", { length: 10 }), // YYYY-MM-DD
+  managementType: varchar("management_type", { length: 30 }).notNull().default("self_managed"),
+  planManagerName: text("plan_manager_name"),
+  planManagerEmail: varchar("plan_manager_email", { length: 255 }),
+  planManagerCompany: text("plan_manager_company"),
+  planStartDate: varchar("plan_start_date", { length: 10 }),
+  planEndDate: varchar("plan_end_date", { length: 10 }),
+  contactEmail: varchar("contact_email", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("ux_ndis_participants_user").on(t.userId),
+]);
+
+export const insertNdisParticipantSchema = createInsertSchema(ndisParticipants).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertNdisParticipant = z.infer<typeof insertNdisParticipantSchema>;
+export type NdisParticipant = typeof ndisParticipants.$inferSelect;
+
+// An NDIS-compliant invoice. Participant + plan-manager details are SNAPSHOTTED
+// at issue time so a finalised invoice never changes if the profile is edited.
+export const ndisInvoices = pgTable("ndis_invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  invoiceNumber: varchar("invoice_number", { length: 40 }).notNull().unique(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Snapshot of participant details (immutability).
+  participantName: text("participant_name").notNull(),
+  ndisNumber: varchar("ndis_number", { length: 20 }).notNull(),
+  managementType: varchar("management_type", { length: 30 }).notNull(),
+  planManagerName: text("plan_manager_name"),
+  planManagerEmail: varchar("plan_manager_email", { length: 255 }),
+  // Line item.
+  supportItemNumber: varchar("support_item_number", { length: 60 }),
+  supportItemName: text("support_item_name").notNull(),
+  serviceDescription: text("service_description"),
+  quantity: integer("quantity").notNull().default(1),
+  unitPriceCents: integer("unit_price_cents").notNull(),
+  amountCents: integer("amount_cents").notNull(), // subtotal ex-GST
+  gstCents: integer("gst_cents").notNull().default(0),
+  gstTreatment: varchar("gst_treatment", { length: 20 }).notNull().default("GST-free"),
+  totalCents: integer("total_cents").notNull(), // amount + gst
+  currency: varchar("currency", { length: 3 }).notNull().default("AUD"),
+  serviceStartDate: varchar("service_start_date", { length: 10 }),
+  serviceEndDate: varchar("service_end_date", { length: 10 }),
+  status: varchar("status", { length: 20 }).notNull().default("issued"),
+  claimStatus: varchar("claim_status", { length: 20 }).notNull().default("unclaimed"),
+  sourceType: varchar("source_type", { length: 20 }).notNull().default("manual"), // subscription | purchase | manual
+  sourceTransactionId: varchar("source_transaction_id"),
+  notes: text("notes"),
+  issuedAt: timestamp("issued_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("idx_ndis_invoices_user").on(t.userId),
+  index("idx_ndis_invoices_claim_status").on(t.claimStatus),
+  index("idx_ndis_invoices_user_source").on(t.userId, t.sourceType, t.sourceTransactionId),
+  uniqueIndex("ux_ndis_invoices_number").on(t.invoiceNumber),
+]);
+
+export const insertNdisInvoiceSchema = createInsertSchema(ndisInvoices).omit({
+  id: true, issuedAt: true, updatedAt: true,
+});
+export type InsertNdisInvoice = z.infer<typeof insertNdisInvoiceSchema>;
+export type NdisInvoice = typeof ndisInvoices.$inferSelect;

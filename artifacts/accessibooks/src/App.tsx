@@ -104,6 +104,8 @@ const AccountSettingsPage = lazy(() => import('@/pages/account-settings').then(m
 const MyActivityPage = lazy(() => import('@/pages/my-activity'));
 const AdminAnalyticsPage = lazy(() => import('@/pages/admin-analytics'));
 const AdminEntitlementsPage = lazy(() => import('@/pages/admin-entitlements'));
+const NdisPage = lazy(() => import('@/pages/ndis'));
+const AdminNdisPage = lazy(() => import('@/pages/admin-ndis'));
 
 function LoadingSpinner() {
   return (
@@ -159,6 +161,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/referrals", label: "Referrals", icon: <Gift className="h-5 w-5" /> },
       { path: "/family", label: "Family", icon: <Heart className="h-5 w-5" /> },
       { path: "/enterprise", label: "Enterprise", icon: <Building2 className="h-5 w-5" /> },
+      { path: "/ndis", label: "NDIS Claims", icon: <HeartHandshake className="h-5 w-5" /> },
     ],
   },
   {
@@ -168,6 +171,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
       { path: "/health", label: "Health", icon: <Activity className="h-5 w-5" /> },
       { path: "/analytics", label: "Analytics", icon: <BarChart3 className="h-5 w-5" /> },
       { path: "/admin/entitlements", label: "Entitlements", icon: <Shield className="h-5 w-5" /> },
+      { path: "/admin/ndis", label: "NDIS Invoices", icon: <HeartHandshake className="h-5 w-5" /> },
     ],
   },
 ];
@@ -1933,6 +1937,20 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="admin-entitlements-panel" role="region" aria-label="Tier Entitlements" data-testid="panel-admin-entitlements">
                       <AdminEntitlementsPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/ndis">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="ndis-panel" role="region" aria-label="NDIS Claims and Invoicing" data-testid="panel-ndis">
+                      <NdisPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/admin/ndis">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="admin-ndis-panel" role="region" aria-label="NDIS Invoice Administration" data-testid="panel-admin-ndis">
+                      <AdminNdisPage />
                     </div>
                   </Suspense>
                 </Route>
