@@ -1,16 +1,16 @@
 ---
-name: api-server workflow restart times out
-description: Why restart_workflow times out for the AccessiBooks api-server and how to verify the server instead
+name: api-server workflow restart
+description: How restart_workflow behaves for the AccessiBooks api-server and how to verify the server.
 ---
 
-# api-server: restart_workflow times out; verify via single-call background boot
+# api-server: restart_workflow works with a 60s timeout
 
-`restart_workflow "artifacts/api-server: API Server"` reliably TIMES OUT even though the server boots fine. The dev command is `build && start`; `server.listen()` fires early and logs `Server listening`, but the listen callback then kicks off heavy background work (RuntimeRefresh ingesting ~1100 books + catalog seeders for librivox/gutenberg/openlibrary/internetarchive). That churn starves the workflow readiness probe, so the restart reports TIMED_OUT and tears the process back down ("finished").
+`restart_workflow "artifacts/api-server: API Server"` **succeeds when given `workflow_timeout: 60`** (observed multiple times). The dev command is `build && start`: esbuild build ~6s, then `server.listen()` fires and logs `Server listening port: 8080`. With 60s the readiness probe passes before the heavy post-listen background work (RuntimeRefresh ingesting ~1100 books + librivox/gutenberg/openlibrary/internetarchive seeders) can starve it.
 
-**Why:** the timeout is an environment/readiness-probe artifact of the slow startup ingestion, NOT a code error. Do not keep retrying restart — verify the server a different way.
+**Why:** earlier sessions reported reliable TIMED_OUT, but that was at the default 30s timeout; the slow startup ingestion needs more headroom. Give 60s rather than assuming it will fail.
 
-**How to apply (verifying backend changes without the workflow):**
-- The service port is 8080 (`artifact.toml` localPort 8080, paths `/api`,`/objects`). Build with `pnpm --filter @workspace/api-server run build` (esbuild → `dist/index.mjs`).
-- Background processes do NOT survive across separate bash tool calls — start, wait, curl, and kill must all be in ONE bash invocation.
-- Pattern: `NODE_ENV=development PORT=8080 node dist/index.mjs > /tmp/log 2>&1 &` → poll log for `Server listening` (≈5s) → `curl localhost:8080/api/...` → `kill`.
-- Pre-existing ignorable boot noise: express-rate-limit IPv6 `ValidationError` (auth.ts/multiAuth.ts), seedPlans fail, monthly allowance sweep "subscription_status does not exist", Auth0 grant-type warning.
+**How to apply (verifying backend changes):**
+- Preferred: `restart_workflow` with `workflow_timeout: 60`, then `refresh_all_logs` and `curl localhost:80/api/...` through the shared proxy.
+- The service port is 8080; the proxy routes `/api`,`/objects` to it. Build with `pnpm --filter @workspace/api-server run build` (esbuild → `dist/index.mjs`).
+- DB URL is workflow-injected (`CUSTOM_DATABASE_URL || DATABASE_URL`); it is NOT in the bash shell env, so a manual `node dist/index.mjs` from bash throws "DATABASE_URL required". Use the workflow, not a manual boot.
+- Pre-existing ignorable boot noise: express-rate-limit IPv6 `ValidationError` (auth.ts/multiAuth.ts), seedPlans fail, `bulletin_topics`/`subscription_status` seed errors, Auth0 grant-type warning.
