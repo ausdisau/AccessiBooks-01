@@ -6,6 +6,7 @@ import { accessibilityPreferences, bookTranscripts } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import { storage } from "./storage";
 import { EASY_ENGLISH_GUIDELINES } from "./easyEnglish";
+import { getAiAddonStatus, incrementAiAddonUsage, buildUpsellPayload } from "./aiAddons";
 
 const hasOpenAI = !!(
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY &&
@@ -330,6 +331,18 @@ export function registerComprehensionCompanionRoutes(app: Express): void {
         return;
       }
 
+      // Premium AI add-on quota. Authenticated users are metered against their
+      // monthly allowance (enforced server-side, returns a 402 upsell when
+      // exhausted). Anonymous guests fall back to the IP rate limit above so
+      // the feature stays usable as a taste before sign-in.
+      if (userId) {
+        const addonStatus = await getAiAddonStatus(userId, "comprehension_companion");
+        if (!addonStatus.allowed) {
+          res.status(402).json(buildUpsellPayload(addonStatus));
+          return;
+        }
+      }
+
       const body = (req.body ?? {}) as CompanionBody;
       const bookId = typeof body.bookId === "string" ? body.bookId.trim() : "";
       if (!bookId) {
@@ -377,6 +390,12 @@ export function registerComprehensionCompanionRoutes(app: Express): void {
       const prompt = buildPrompt(mode, meta, context, simplify, question);
       const history = mode === "ask" ? parseHistory(body.history) : [];
       const maxTokens = mode === "summary" ? 700 : 600;
+
+      // Consume one companion credit for authenticated users now that the
+      // request has passed validation and we are about to call the model.
+      if (userId && openai) {
+        await incrementAiAddonUsage(userId, "comprehension_companion");
+      }
 
       await streamCompletion(res, prompt, history, maxTokens);
     } catch (err) {

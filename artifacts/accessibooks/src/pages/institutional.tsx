@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,7 +16,8 @@ import { Separator } from "@/components/ui/separator";
 import {
   Building2, Users, BarChart3, GraduationCap, Mail, Loader2, CheckCircle,
   Briefcase, Target, BookOpen, Clock, Flame, Shield, UserMinus, UserPlus,
-  TrendingUp, Award, Headphones, ChevronRight, Eye,
+  TrendingUp, Award, Headphones, ChevronRight, Eye, CreditCard, Calendar,
+  AlertCircle, Sparkles, Lock,
 } from "lucide-react";
 
 interface OrgAccount {
@@ -27,6 +28,21 @@ interface OrgAccount {
   currentSeats: number;
   isActive: boolean;
   weeklyGoalMinutes: number;
+  status: string;
+  licenseType: "seat" | "site" | null;
+  planKey: string | null;
+  billingCycle: string | null;
+  periodEnd: string | null;
+}
+
+interface LicensePlan {
+  key: string;
+  name: string;
+  licenseType: "seat" | "site";
+  seats: number | null;
+  priceMonthlyCents: number;
+  priceYearlyCents: number;
+  description: string;
 }
 
 interface OrgMember {
@@ -255,6 +271,164 @@ function MemberDetailDrawer({ userId, open, onClose }: { userId: string | null; 
   );
 }
 
+function formatPrice(cents: number): string {
+  return `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
+function LicenseStatusBanner({ account }: { account: OrgAccount }) {
+  const renews = account.periodEnd ? new Date(account.periodEnd) : null;
+  const planLabel = account.planKey
+    ? account.planKey.charAt(0).toUpperCase() + account.planKey.slice(1)
+    : "Institutional";
+  const seatLabel = account.licenseType === "site"
+    ? "Unlimited seats"
+    : `${account.currentSeats} / ${account.maxSeats} seats`;
+  return (
+    <Card className="border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20">
+      <CardContent className="pt-4 pb-4 flex items-center gap-3 flex-wrap">
+        <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center flex-shrink-0">
+          <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-foreground flex items-center gap-2 flex-wrap">
+            {planLabel} licence active
+            <Badge variant="secondary" className="text-xs">{seatLabel}</Badge>
+          </p>
+          {renews && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+              <Calendar className="h-3 w-3" />
+              Renews {renews.toLocaleDateString()}
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LicenseActivation({ isAdmin }: { isAdmin: boolean }) {
+  const { toast } = useToast();
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+
+  const plansQuery = useQuery<{ plans: LicensePlan[] }>({
+    queryKey: ["/api/institutional/plans"],
+    queryFn: () =>
+      fetch("/api/institutional/plans", { credentials: "include" }).then((r) => {
+        if (!r.ok) throw new Error("Failed to load plans");
+        return r.json() as Promise<{ plans: LicensePlan[] }>;
+      }),
+    enabled: isAdmin,
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: async (planKey: string) => {
+      const res = await apiRequest("POST", "/api/institutional/checkout", { planKey, billingCycle });
+      return res.json() as Promise<{ checkoutUrl: string }>;
+    },
+    onSuccess: (data) => {
+      if (data?.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        setPendingKey(null);
+        toast({ title: "Couldn't start checkout", variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      setPendingKey(null);
+      toast({ title: "Couldn't start checkout", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (!isAdmin) {
+    return (
+      <Card className="border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20">
+        <CardContent className="pt-4 pb-4 flex items-center gap-3">
+          <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <p className="text-sm text-foreground">
+            This organisation's licence is not active yet. An admin needs to purchase a licence to unlock institutional access for members.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const plans = plansQuery.data?.plans ?? [];
+
+  return (
+    <Card className="border-primary/30">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" />
+          Activate your licence
+        </CardTitle>
+        <CardDescription>
+          Purchase a licence to activate seats and give every member institutional access. Pricing is set per plan — choose monthly or annual billing.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+          <button
+            type="button"
+            onClick={() => setBillingCycle("monthly")}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${billingCycle === "monthly" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"}`}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setBillingCycle("yearly")}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${billingCycle === "yearly" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"}`}
+          >
+            Annual <span className="text-emerald-600 dark:text-emerald-400">· save ~2 months</span>
+          </button>
+        </div>
+
+        {plansQuery.isLoading ? (
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56 w-full" />)}
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-3 gap-4">
+            {plans.map((plan) => {
+              const cents = billingCycle === "yearly" ? plan.priceYearlyCents : plan.priceMonthlyCents;
+              const busy = checkoutMutation.isPending && pendingKey === plan.key;
+              return (
+                <Card key={plan.key} className="flex flex-col bg-card">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{plan.name}</CardTitle>
+                    <p className="text-2xl font-bold text-foreground">
+                      {formatPrice(cents)}
+                      <span className="text-sm font-normal text-muted-foreground">/{billingCycle === "yearly" ? "yr" : "mo"}</span>
+                    </p>
+                    <Badge variant="secondary" className="w-fit">
+                      {plan.seats === null ? "Unlimited seats" : `${plan.seats} seats`}
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="flex flex-col flex-1 gap-3">
+                    <p className="text-sm text-muted-foreground flex-1">{plan.description}</p>
+                    <Button
+                      onClick={() => { setPendingKey(plan.key); checkoutMutation.mutate(plan.key); }}
+                      disabled={checkoutMutation.isPending}
+                      className="w-full"
+                    >
+                      {busy ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Redirecting…</>
+                      ) : (
+                        <><CreditCard className="h-4 w-4 mr-2" /> Choose {plan.name}</>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function AdminDashboard({ data }: { data: MembersResponse }) {
   const { toast } = useToast();
   const [inviteEmail, setInviteEmail] = useState("");
@@ -314,6 +488,14 @@ function AdminDashboard({ data }: { data: MembersResponse }) {
   });
 
   const seatUsedPct = account ? Math.round((account.currentSeats / account.maxSeats) * 100) : 0;
+  const licenseActive = !!account?.isActive && account?.status === "active";
+  const atCap = account?.licenseType !== "site" && (account?.currentSeats ?? 0) >= (account?.maxSeats ?? 0);
+  const canInvite = licenseActive && !atCap;
+  const inviteBlockedReason = !licenseActive
+    ? "Activate your licence to start inviting members."
+    : atCap
+      ? `All ${account?.maxSeats} seats are in use. Remove a member to free a seat, or upgrade your plan.`
+      : null;
 
   const openMemberDrawer = (userId: string) => {
     setSelectedMemberUserId(userId);
@@ -332,22 +514,34 @@ function AdminDashboard({ data }: { data: MembersResponse }) {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Badge variant="secondary" className="text-sm px-3 py-1">
-            {account?.currentSeats} / {account?.maxSeats} seats
+            {account?.licenseType === "site"
+              ? "Unlimited seats"
+              : `${account?.currentSeats} / ${account?.maxSeats} seats`}
           </Badge>
-          {account?.isActive && <Badge className="bg-emerald-600 text-white text-sm">Active</Badge>}
+          {licenseActive
+            ? <Badge className="bg-emerald-600 text-white text-sm">Active</Badge>
+            : <Badge variant="outline" className="text-sm border-amber-400 text-amber-700 dark:text-amber-400">Inactive</Badge>}
         </div>
       </div>
 
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-foreground">Seat Usage</span>
-            <span className="text-sm text-muted-foreground">{account?.currentSeats} / {account?.maxSeats}</span>
-          </div>
-          <Progress value={seatUsedPct} className="h-2" />
-          <p className="text-xs text-muted-foreground mt-1">{seatUsedPct}% of seats used</p>
-        </CardContent>
-      </Card>
+      {licenseActive
+        ? <LicenseStatusBanner account={account} />
+        : <LicenseActivation isAdmin={myRole === "admin"} />}
+
+      {licenseActive && account?.licenseType !== "site" && (
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-foreground">Seat Usage</span>
+              <span className="text-sm text-muted-foreground">{account?.currentSeats} / {account?.maxSeats}</span>
+            </div>
+            <Progress value={seatUsedPct} className="h-2" />
+            <p className="text-xs text-muted-foreground mt-1">
+              {seatUsedPct}% of seats used · removing a member frees a seat to reassign
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="members">
         <TabsList className="grid grid-cols-3 w-full max-w-sm">
@@ -369,7 +563,7 @@ function AdminDashboard({ data }: { data: MembersResponse }) {
                 <CardTitle className="text-base flex items-center gap-2">
                   <UserPlus className="h-4 w-4 text-primary" /> Invite Member by Email
                 </CardTitle>
-                <CardDescription>They must already have an AccessiBooks account.</CardDescription>
+                <CardDescription>They must already have an AccessiBooks account. Members inherit institutional access automatically.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex gap-2">
@@ -381,16 +575,22 @@ function AdminDashboard({ data }: { data: MembersResponse }) {
                       placeholder="member@school.edu"
                       type="email"
                       className="pl-10"
-                      onKeyDown={(e) => { if (e.key === "Enter" && inviteEmail) inviteMutation.mutate(); }}
+                      disabled={!canInvite}
+                      onKeyDown={(e) => { if (e.key === "Enter" && inviteEmail && canInvite) inviteMutation.mutate(); }}
                     />
                   </div>
                   <Button
                     onClick={() => inviteMutation.mutate()}
-                    disabled={inviteMutation.isPending || !inviteEmail}
+                    disabled={inviteMutation.isPending || !inviteEmail || !canInvite}
                   >
                     {inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
                   </Button>
                 </div>
+                {inviteBlockedReason && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                    <Lock className="h-3 w-3" /> {inviteBlockedReason}
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -398,6 +598,9 @@ function AdminDashboard({ data }: { data: MembersResponse }) {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Members ({members.length})</CardTitle>
+              {myRole === "admin" && (
+                <CardDescription>Remove a member to reclaim their seat — you can then reassign it by inviting someone new.</CardDescription>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               {members.length === 0 ? (
@@ -845,6 +1048,23 @@ function SignupForm() {
 
 export default function InstitutionalPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (checkout !== "success" && checkout !== "cancelled") return;
+    if (checkout === "success") {
+      toast({ title: "Licence activated!", description: "Your institutional licence is now active. Members have full access." });
+      queryClient.invalidateQueries({ queryKey: ["/api/institutional/members"] });
+    } else {
+      toast({ title: "Checkout cancelled", description: "No charge was made. You can try again anytime." });
+    }
+    params.delete("checkout");
+    const rest = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const membersQuery = useQuery<MembersResponse>({
     queryKey: ["/api/institutional/members"],

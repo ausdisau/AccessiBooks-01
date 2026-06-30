@@ -19,6 +19,7 @@ import { registerNarrationRoutes } from "../narration";
 import { registerNdisRoutes } from "../ndis";
 import { registerCommercialCreditsRoutes, fulfillCreditPack, fulfillBundle } from "../commercialCredits";
 import { registerGiftAndSponsorshipRoutes, fulfillGiftPaid, fulfillSponsorshipFunded } from "../giftsSponsorships";
+import { fulfillLicensePaid } from "../institutionalLicensing";
 import { registerPushNotificationRoutes } from "../pushNotifications";
 import { registerAdMediationRoutes } from "../adMediation";
 import { logAdImpression } from "../adImpressionLogger";
@@ -46,6 +47,8 @@ import { seedEntitlementConfigDefaults, loadEntitlementConfig } from "../entitle
 import { analyticsService } from "../analyticsService";
 import { registerChatRoutes } from "../replit_integrations/chat";
 import { registerComprehensionCompanionRoutes } from "../comprehensionCompanion";
+import { registerAiAddonRoutes } from "../aiAddons";
+import { registerTranslationRoutes } from "../translation";
 import {
   convertToEasyEnglish,
   getUserEasyEnglishStatus,
@@ -322,6 +325,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI comprehension companion (chapter recaps, plain-language summaries, grounded Q&A)
   registerComprehensionCompanionRoutes(app);
+
+  // Premium AI add-ons: usage/quota status + AI translation (Task #212)
+  registerAiAddonRoutes(app);
+  registerTranslationRoutes(app);
 
   // Analytics and monetization reporting dashboard routes
   registerAnalyticsRoutes(app);
@@ -2731,6 +2738,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             } catch (e) {
               console.error("[Sponsor] Failed to fund sponsorship:", e);
+              throw e;
+            }
+            handledBySpecialCase = true;
+          } else if (evtObj.mode === "payment" && evtObj.metadata?.type === "institutional_license" && userId) {
+            // Institutional / B2B licence (Task #216). fulfillLicensePaid is the
+            // idempotency gate: only a `pending` org row matching this session id
+            // flips to `active`, and it grants institutional entitlements to all
+            // current members on the SAME transaction so activation + inheritance
+            // commit or roll back together.
+            try {
+              const [alreadyProcessed] = await db
+                .select({ id: paymentTransactions.id })
+                .from(paymentTransactions)
+                .where(eq(paymentTransactions.providerTransactionId, evtObj.id))
+                .limit(1);
+              if (!alreadyProcessed) {
+                const orgId = evtObj.metadata?.institutionalId as string;
+                const planKey = evtObj.metadata?.planKey as string;
+                const billingCycle = evtObj.metadata?.billingCycle as string;
+                const amountCents = parseInt(String(evtObj.amount_total || 0));
+                const { activated } = await fulfillLicensePaid({
+                  orgId,
+                  sessionId: evtObj.id,
+                  planKey,
+                  billingCycle,
+                  amountCents,
+                });
+                await db.insert(paymentTransactions).values({
+                  userId,
+                  provider: "stripe",
+                  providerTransactionId: evtObj.id,
+                  type: "institutional_license",
+                  status: "completed",
+                  amountCents,
+                  currency: "USD",
+                  description: `Institutional licence (${planKey})`,
+                }).onConflictDoNothing();
+                console.log(`[Institutional] ${activated ? "Activated" : "Already active"} licence for org ${orgId} (buyer ${userId})`);
+              } else {
+                console.log(`[Institutional] Skipping duplicate institutional_license webhook for session ${evtObj.id}`);
+              }
+            } catch (e) {
+              // Money path: re-throw so Stripe retries. The conditional activation
+              // and the paymentTransactions de-dupe make re-delivery safe.
+              console.error("[Institutional] Failed to fulfill licence:", e);
               throw e;
             }
             handledBySpecialCase = true;

@@ -190,6 +190,26 @@ export function ComprehensionCompanionPanel({
           });
           return;
         }
+        if (response.status === 402) {
+          let upsellMsg =
+            "You've used your free Comprehension Companion allowance for this month. Upgrade to keep getting AI recaps, summaries, and answers.";
+          try {
+            const payload = await response.json();
+            if (payload?.message) upsellMsg = payload.message;
+          } catch {
+            /* keep default upsell copy */
+          }
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              role: "assistant",
+              content: upsellMsg,
+              isStreaming: false,
+            };
+            return updated;
+          });
+          return;
+        }
         if (!response.ok || !response.body) throw new Error("Request failed");
 
         const reader = response.body.getReader();

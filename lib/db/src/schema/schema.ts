@@ -1823,14 +1823,97 @@ export const institutionalAccounts = pgTable("institutional_accounts", {
   stripeSubscriptionId: text("stripe_subscription_id"),
   isActive: boolean("is_active").notNull().default(true),
   weeklyGoalMinutes: integer("weekly_goal_minutes").notNull().default(180),
+  // Task #216: institutional / B2B licensing lifecycle.
+  // status: 'active' default keeps pre-#216 orgs working; new self-serve orgs
+  // are created 'pending' and only flip to 'active' on paid webhook fulfilment.
+  status: text("status").notNull().default("active"),
+  // licenseType: 'seat' (capped by maxSeats) or 'site' (unlimited within org).
+  licenseType: text("license_type").notNull().default("seat"),
+  // planKey references LICENSE_PLANS (server-authoritative pricing).
+  planKey: text("plan_key"),
+  // stripeSessionId is the idempotency anchor for paid activation.
+  stripeSessionId: text("stripe_session_id"),
+  // periodEnd is the licence expiry; member entitlements inherit this expiry.
+  periodEnd: timestamp("period_end"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_institutional_active").on(table.isActive),
+  index("idx_institutional_status").on(table.status),
+  index("idx_institutional_session").on(table.stripeSessionId),
+  index("idx_institutional_subscription").on(table.stripeSubscriptionId),
 ]);
 
 export const insertInstitutionalAccountSchema = createInsertSchema(institutionalAccounts).omit({ id: true, currentSeats: true, createdAt: true });
 export type InsertInstitutionalAccount = z.infer<typeof insertInstitutionalAccountSchema>;
 export type InstitutionalAccount = typeof institutionalAccounts.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Task #216: Institutional / B2B licensing catalogue (server-authoritative).
+// The client only ever sends a planKey + billingCycle; the server looks up the
+// price and seat count here. Never trust client-supplied prices or seat counts.
+// ---------------------------------------------------------------------------
+
+export type LicenseType = "seat" | "site";
+export type LicenseBillingCycle = "monthly" | "yearly";
+
+export interface LicensePlan {
+  key: string;
+  name: string;
+  licenseType: LicenseType;
+  /** Seats included. null = site-wide (unlimited within the org). */
+  seats: number | null;
+  priceMonthlyCents: number;
+  priceYearlyCents: number;
+  description: string;
+}
+
+export const LICENSE_PLANS: Record<string, LicensePlan> = {
+  education: {
+    key: "education",
+    name: "Education",
+    licenseType: "seat",
+    seats: 50,
+    priceMonthlyCents: 9900,
+    priceYearlyCents: 99000,
+    description: "For schools and classrooms — up to 50 seats with full accessible catalogue access.",
+  },
+  enterprise: {
+    key: "enterprise",
+    name: "Enterprise",
+    licenseType: "seat",
+    seats: 200,
+    priceMonthlyCents: 29900,
+    priceYearlyCents: 299000,
+    description: "For libraries, disability services and aged care — up to 200 seats and aggregate reporting.",
+  },
+  site: {
+    key: "site",
+    name: "Site-wide",
+    licenseType: "site",
+    seats: null,
+    priceMonthlyCents: 99900,
+    priceYearlyCents: 999000,
+    description: "Unlimited seats across your whole organisation — ideal for large institutions.",
+  },
+};
+
+/** Look up a plan by key, or undefined if the key is unknown. */
+export function getLicensePlan(key: string | null | undefined): LicensePlan | undefined {
+  if (!key) return undefined;
+  return LICENSE_PLANS[key];
+}
+
+/** Server-authoritative price for a plan + cycle, or undefined if invalid. */
+export function getLicensePriceCents(
+  key: string | null | undefined,
+  cycle: string | null | undefined,
+): number | undefined {
+  const plan = getLicensePlan(key);
+  if (!plan) return undefined;
+  if (cycle === "yearly") return plan.priceYearlyCents;
+  if (cycle === "monthly") return plan.priceMonthlyCents;
+  return undefined;
+}
 
 export const institutionalMembers = pgTable("institutional_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1934,6 +2017,55 @@ export const easyEnglishUsage = pgTable("easy_english_usage", {
 export const insertEasyEnglishUsageSchema = createInsertSchema(easyEnglishUsage).omit({ id: true });
 export type InsertEasyEnglishUsage = z.infer<typeof insertEasyEnglishUsageSchema>;
 export type EasyEnglishUsage = typeof easyEnglishUsage.$inferSelect;
+
+// ============================================================
+// PREMIUM AI ADD-ONS (Task #212)
+// Packages the AI-powered features — on-demand narration, the
+// comprehension companion, and AI translation — as metered,
+// paywalled add-ons. Each feature has a per-tier MONTHLY quota:
+//   number  → finite monthly allowance for that tier
+//   0       → not available on that tier (pure upsell)
+//   null    → unlimited
+// Usage is tracked server-side in `ai_addon_usage` (one row per
+// user × feature × calendar month) and enforced on every AI route,
+// so limits cannot be bypassed by a modified client.
+// ============================================================
+
+export const AI_ADDON_FEATURES = [
+  { key: "ai_narration",            label: "AI Narration",           description: "Generate neural-voice audiobooks on demand for text titles." },
+  { key: "comprehension_companion", label: "Comprehension Companion", description: "AI recaps, plain-language summaries, and grounded Q&A about a book." },
+  { key: "ai_translation",          label: "AI Translation",          description: "Translate book text into your language at your reading level." },
+] as const;
+export type AiAddonFeatureKey = typeof AI_ADDON_FEATURES[number]["key"];
+
+/** Per-tier MONTHLY quota for each AI add-on.
+ *  null = unlimited, 0 = not available (upsell only), N = N uses / month. */
+export const AI_ADDON_QUOTAS: Record<AiAddonFeatureKey, Record<SubscriptionTier, number | null>> = {
+  ai_narration: {
+    free: 1, plus: 5, premium: null, institutional: null, admin: null,
+  },
+  comprehension_companion: {
+    free: 5, plus: 50, premium: null, institutional: null, admin: null,
+  },
+  ai_translation: {
+    free: 3, plus: 30, premium: null, institutional: null, admin: null,
+  },
+};
+
+export const aiAddonUsage = pgTable("ai_addon_usage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  feature: varchar("feature").notNull(), // AiAddonFeatureKey
+  yearMonth: varchar("year_month").notNull(), // e.g. "2026-06"
+  count: integer("count").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("ux_ai_addon_usage_user_feature_month").on(table.userId, table.feature, table.yearMonth),
+]);
+
+export const insertAiAddonUsageSchema = createInsertSchema(aiAddonUsage).omit({ id: true, updatedAt: true });
+export type InsertAiAddonUsage = z.infer<typeof insertAiAddonUsageSchema>;
+export type AiAddonUsage = typeof aiAddonUsage.$inferSelect;
 
 // ============================================================
 // ON-DEMAND AI NARRATION

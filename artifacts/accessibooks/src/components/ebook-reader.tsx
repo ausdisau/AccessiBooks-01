@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Book } from "@shared/schema";
 import { AINarrationPanel } from "@/components/ai-narration-panel";
 import { ComprehensionCompanionPanel } from "@/components/comprehension-companion-panel";
+import { TranslationPanel } from "@/components/translation-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -45,6 +46,7 @@ import {
   Shapes,
   Volume2,
   MessageCircleQuestion,
+  Languages,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/audio-context";
 import { EbookInterstitialAd, canShowEbookInterstitial } from "./EbookInterstitialAd";
@@ -352,6 +354,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [easyEnglishText, setEasyEnglishText] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showCompanion, setShowCompanion] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
@@ -1350,6 +1353,17 @@ function TextReader({ book, onBack }: EbookReaderProps) {
             >
               <MessageCircleQuestion className="h-4 w-4" />
             </Button>
+            <Button
+              variant={showTranslation ? "default" : "ghost"}
+              size="icon"
+              className={`h-8 w-8 ${showTranslation ? "bg-teal-600 text-white hover:bg-teal-700" : ""}`}
+              onClick={() => setShowTranslation((v) => !v)}
+              aria-label="AI translation"
+              aria-pressed={showTranslation}
+              title="AI Translation — translate this page at your reading level"
+            >
+              <Languages className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}>
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
             </Button>
@@ -1629,6 +1643,15 @@ function TextReader({ book, onBack }: EbookReaderProps) {
           page={currentPage}
           totalPages={totalPages}
           easyEnglish={easyEnglishMode}
+        />
+
+        <TranslationPanel
+          isOpen={showTranslation}
+          onClose={() => setShowTranslation(false)}
+          book={book}
+          pageText={pageContent}
+          currentPage={currentPage}
+          onUpgrade={() => { window.location.href = "/subscribe"; }}
         />
 
         {/* Visual Reader is hidden when the user has opted into Text-Only or
