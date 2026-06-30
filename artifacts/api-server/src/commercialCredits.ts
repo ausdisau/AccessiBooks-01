@@ -219,13 +219,13 @@ export async function grantCredits(args: GrantArgs): Promise<GrantResult> {
   });
 }
 
-// Grant a tier's monthly allowance, idempotent per billing period. Allowance
-// credits expire at period end (falling back to +30 days when unknown).
+// Grant a tier's monthly allowance, idempotent per CALENDAR MONTH so it issues
+// exactly once per month regardless of the subscription's billing cadence —
+// monthly OR annual. Allowance credits expire at the end of that calendar month.
 export async function grantMonthlyAllowance(args: {
   userId: string;
   tier: string;
-  periodStart?: Date | null;
-  periodEnd?: Date | null;
+  month?: Date | null;
 }): Promise<GrantResult> {
   const { userId, tier } = args;
   const amount = TIER_CREDIT_ALLOWANCE[tier] ?? 0;
@@ -233,18 +233,72 @@ export async function grantMonthlyAllowance(args: {
     const balance = await getBalance(userId).catch(() => 0);
     return { granted: false, duplicate: false, balance };
   }
-  const periodStart = args.periodStart ?? new Date();
-  const periodKey = periodStart.toISOString().slice(0, 10);
-  const expiresAt = args.periodEnd ?? new Date(periodStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const when = args.month ?? new Date();
+  const year = when.getUTCFullYear();
+  const monthIdx = when.getUTCMonth(); // 0-based
+  const monthKey = `${year}-${String(monthIdx + 1).padStart(2, "0")}`; // YYYY-MM
+  // Credits for a calendar month expire at the start of the next month (UTC).
+  const expiresAt = new Date(Date.UTC(year, monthIdx + 1, 1));
   return grantCredits({
     userId,
     amount,
     source: "subscription_allowance",
-    sourceId: periodKey,
-    idempotencyKey: `allowance:${userId}:${periodKey}`,
+    sourceId: monthKey,
+    idempotencyKey: `allowance:${userId}:${monthKey}`,
     expiresAt,
     description: `Monthly ${tier} credit allowance`,
   });
+}
+
+// Tiers that actually receive a monthly allowance (allowance > 0).
+const ALLOWANCE_TIERS = Object.keys(TIER_CREDIT_ALLOWANCE).filter(
+  (t) => (TIER_CREDIT_ALLOWANCE[t] ?? 0) > 0,
+);
+
+// Issue the CURRENT calendar month's allowance to every active paid subscriber.
+// This is what makes the allowance truly monthly even for annual plans, whose
+// Stripe invoice only fires once a year. Idempotent per user+month, so it is
+// safe to run on every boot and on a recurring interval.
+export async function issueMonthlyAllowancesForActiveSubscribers(): Promise<{ granted: number; scanned: number }> {
+  let granted = 0;
+  let scanned = 0;
+  if (ALLOWANCE_TIERS.length === 0) return { granted, scanned };
+  // Gate on columns guaranteed to exist on the live users table: a paid
+  // subscription_tier whose access window has not lapsed. (subscription_status
+  // is not a reliable column here — storage treats it as optional/may-be-absent.)
+  const { rows } = await pool.query(
+    `SELECT id, subscription_tier AS tier FROM users
+     WHERE subscription_tier = ANY($1)
+       AND (subscription_end_date IS NULL OR subscription_end_date > now())`,
+    [ALLOWANCE_TIERS],
+  );
+  for (const row of rows) {
+    scanned++;
+    try {
+      const result = await grantMonthlyAllowance({ userId: row.id, tier: row.tier });
+      if (result.granted) granted++;
+    } catch (err) {
+      console.warn(`[Credits] Monthly allowance grant failed for user ${row.id}:`, err);
+    }
+  }
+  return { granted, scanned };
+}
+
+// Start the recurring monthly-allowance sweep: shortly after boot, then every
+// 6 hours. The per-user+month idempotency key guarantees at most one grant per
+// subscriber per calendar month no matter how often this runs.
+export function startMonthlyAllowanceScheduler(): void {
+  const run = () => {
+    issueMonthlyAllowancesForActiveSubscribers()
+      .then(({ granted, scanned }) => {
+        if (granted > 0) {
+          console.log(`[Credits] Monthly allowance sweep granted ${granted}/${scanned} active subscribers`);
+        }
+      })
+      .catch((err) => console.warn("[Credits] Monthly allowance sweep failed:", err));
+  };
+  setTimeout(run, 20_000);
+  setInterval(run, 6 * 60 * 60 * 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -507,10 +561,10 @@ export function registerCommercialCreditsRoutes(app: Express): void {
           amountCents: pack.priceCents.toString(),
         },
       });
-      res.json({ url: session.url });
+      return res.json({ url: session.url });
     } catch (err: any) {
       req.log?.error?.({ err }, "[CommercialCredits] pack checkout failed");
-      res.status(500).json({ message: "Failed to start checkout" });
+      return res.status(500).json({ message: "Failed to start checkout" });
     }
   });
 
@@ -521,7 +575,7 @@ export function registerCommercialCreditsRoutes(app: Express): void {
       if (!parsed.success) return res.status(400).json({ message: "bookId is required" });
       const userId = getUserId(req)!;
       const result = await redeemTitle(userId, parsed.data.bookId);
-      res.json({ success: true, ...result });
+      return res.json({ success: true, ...result });
     } catch (err: any) {
       if (err instanceof InsufficientCreditsError) {
         return res.status(402).json({ message: "Not enough credits", balance: err.balance, required: err.required });
@@ -533,7 +587,7 @@ export function registerCommercialCreditsRoutes(app: Express): void {
         return res.status(404).json({ message: err.message });
       }
       req.log?.error?.({ err }, "[CommercialCredits] redeem failed");
-      res.status(500).json({ message: "Failed to redeem title" });
+      return res.status(500).json({ message: "Failed to redeem title" });
     }
   });
 
@@ -575,7 +629,8 @@ export function registerCommercialCreditsRoutes(app: Express): void {
   app.post("/api/bundles/:id/checkout", isAuthenticated, async (req: Request, res: Response) => {
     try {
       if (!stripe) return res.status(503).json({ message: "Payment system not configured" });
-      const bundleId = req.params.id;
+      const bundleId = String(req.params.id ?? "");
+      if (!bundleId) return res.status(400).json({ message: "bundleId is required" });
       const [bundle] = await db.select().from(commercialBundles).where(eq(commercialBundles.id, bundleId)).limit(1);
       if (!bundle || !bundle.isActive) return res.status(404).json({ message: "Bundle not found" });
 
@@ -621,10 +676,10 @@ export function registerCommercialCreditsRoutes(app: Express): void {
           amountCents: bundle.priceCents.toString(),
         },
       });
-      res.json({ url: session.url });
+      return res.json({ url: session.url });
     } catch (err: any) {
       req.log?.error?.({ err }, "[CommercialCredits] bundle checkout failed");
-      res.status(500).json({ message: "Failed to start checkout" });
+      return res.status(500).json({ message: "Failed to start checkout" });
     }
   });
 }

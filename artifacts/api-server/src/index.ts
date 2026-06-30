@@ -17,6 +17,7 @@ import {
   ensureCommercialCreditsSchema,
 } from "./db";
 import { seedPlans } from "./seed";
+import { startMonthlyAllowanceScheduler } from "./commercialCredits";
 import { startDailySpendResetCron } from "./auctionEngine";
 import { storage } from "./storage";
 import { setAutoResponseStorage, hydrateAutoResponseDedupeFromStorage } from "./agentMailer";
@@ -94,6 +95,7 @@ if (Number.isNaN(port) || port <= 0) {
       ensureCommercialCreditsSchema().catch((err: any) => logger.warn({ err }, "[CommercialCredits] Schema setup failed"));
       seedPlans().catch((err: any) => logger.warn({ err }, "[Seed] Plans seed failed"));
       startDailySpendResetCron();
+      startMonthlyAllowanceScheduler();
 
       // Runtime API ingestion
       setTimeout(async () => {

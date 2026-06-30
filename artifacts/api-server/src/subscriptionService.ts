@@ -433,23 +433,14 @@ export class StripeSubscriptionService implements ISubscriptionService {
       console.log(`[Billing] User ${user.id} payment succeeded — restored to active`);
     }
 
-    // Grant the per-tier monthly credit allowance (Task #213). Idempotent per
-    // billing period via the allowance idempotency key, so retried/duplicate
-    // invoice webhooks never double-grant.
+    // Grant the current calendar month's per-tier credit allowance. Idempotent
+    // per user+month, so retried/duplicate invoice webhooks never double-grant.
+    // This handles the month the invoice fires in; the periodic allowance sweep
+    // (startMonthlyAllowanceScheduler) covers months without an invoice — e.g.
+    // annual plans — so the allowance stays monthly regardless of billing cadence.
     try {
       const tier = (user as any).subscriptionTier || "free";
-      const line = obj.lines?.data?.[0];
-      const periodStart = obj.period_start
-        ? new Date(obj.period_start * 1000)
-        : line?.period?.start
-          ? new Date(line.period.start * 1000)
-          : new Date();
-      const periodEnd = obj.period_end
-        ? new Date(obj.period_end * 1000)
-        : line?.period?.end
-          ? new Date(line.period.end * 1000)
-          : null;
-      const result = await grantMonthlyAllowance({ userId: user.id, tier, periodStart, periodEnd });
+      const result = await grantMonthlyAllowance({ userId: user.id, tier });
       if (result.granted) {
         console.log(`[Credits] Granted monthly ${tier} allowance to ${user.id} (balance ${result.balance})`);
       }
