@@ -11,7 +11,7 @@
 
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import {
@@ -20,14 +20,24 @@ import {
   userActivityShares,
   users,
   listeningHistory,
+  dailyListeningLog,
+  progressGoals,
   OUTCOME_TAGS,
   ACTIVITY_EVENT_TYPES,
   OUTCOME_TAG_LABELS,
   ACTIVITY_EVENT_LABELS,
+  GOAL_METRICS,
+  GOAL_PERIODS,
+  GOAL_METRIC_LABELS,
+  GOAL_METRIC_UNITS,
+  GOAL_PERIOD_LABELS,
   type A11yProfile,
   type ActivityEventType,
   type OutcomeTag,
   type UserActivityEvent,
+  type GoalMetric,
+  type GoalPeriod,
+  type ProgressGoal,
 } from "@workspace/db";
 
 /**
@@ -170,6 +180,262 @@ function formatDuration(seconds: number): string {
   return `${h} hour${h === 1 ? "" : "s"} ${m} minute${m === 1 ? "" : "s"}`;
 }
 
+// ============================================================
+// Task #221 — progress goals: aggregation + reporting helpers.
+// Goal targets are tracked per UTC period (weeks anchored to
+// Monday, months to the 1st). Listening/books/active-days come
+// from the gamification daily_listening_log; transcript opens
+// from the opt-in activity events. Progress/report endpoints are
+// always gated by the Task #67 opt-in (+ token) before this runs.
+// ============================================================
+
+const WEEKLY_WINDOW = 8; // rolling weeks shown in-app
+const MONTHLY_WINDOW = 6; // rolling months shown in-app
+
+export interface GoalTrendPoint {
+  label: string;
+  actual: number;
+  target: number;
+  met: boolean;
+}
+
+export interface GoalProgress {
+  id: string;
+  metric: GoalMetric;
+  period: GoalPeriod;
+  target: number;
+  current: { label: string; actual: number; target: number; percent: number; met: boolean } | null;
+  trend: GoalTrendPoint[];
+  metPeriods: number;
+  totalPeriods: number;
+}
+
+interface PeriodBucket {
+  start: Date;
+  end: Date; // exclusive
+  label: string;
+}
+
+function utcDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function startOfPeriodUTC(d: Date, period: GoalPeriod): Date {
+  if (period === "month") {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  }
+  const base = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const sinceMonday = (base.getUTCDay() + 6) % 7; // Monday = 0
+  base.setUTCDate(base.getUTCDate() - sinceMonday);
+  return base;
+}
+
+function nextPeriodUTC(start: Date, period: GoalPeriod): Date {
+  if (period === "month") {
+    return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  }
+  const n = new Date(start);
+  n.setUTCDate(n.getUTCDate() + 7);
+  return n;
+}
+
+function periodLabel(start: Date, period: GoalPeriod): string {
+  if (period === "month") {
+    return start.toLocaleDateString("en-US", { year: "numeric", month: "long", timeZone: "UTC" });
+  }
+  return (
+    "Week of " + start.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+  );
+}
+
+// Rolling window ending at the period containing `to`. Includes the current
+// (possibly partial) period — used for the motivating in-app live view.
+function rollingPeriods(period: GoalPeriod, to: Date, count: number): PeriodBucket[] {
+  const buckets: PeriodBucket[] = [];
+  let cur = startOfPeriodUTC(to, period);
+  for (let i = 0; i < count; i++) {
+    buckets.unshift({ start: cur, end: nextPeriodUTC(cur, period), label: periodLabel(cur, period) });
+    cur = startOfPeriodUTC(new Date(cur.getTime() - 1), period); // step back one period
+  }
+  return buckets;
+}
+
+// Only periods that fall ENTIRELY within [from,to], capped to the most recent
+// `count`. Used for self/caregiver reports so a scoped share can't leak
+// activity outside the consented date range and partial edge periods aren't
+// judged against a target.
+function boundedPeriods(period: GoalPeriod, from: Date, to: Date, count: number): PeriodBucket[] {
+  const buckets: PeriodBucket[] = [];
+  let cur = startOfPeriodUTC(from, period);
+  if (cur.getTime() < from.getTime()) cur = nextPeriodUTC(cur, period);
+  let guard = 0;
+  while (guard++ < 600) {
+    const end = nextPeriodUTC(cur, period);
+    if (end.getTime() > to.getTime()) break;
+    buckets.push({ start: cur, end, label: periodLabel(cur, period) });
+    cur = end;
+  }
+  return buckets.length > count ? buckets.slice(buckets.length - count) : buckets;
+}
+
+/**
+ * Compute per-goal progress + trend. When `opts.from`/`opts.to` are provided
+ * (reports) only complete periods within that range are used; otherwise a
+ * rolling in-app window (8 weeks / 6 months) is used. One read per data source
+ * is shared across all goals, then bucketed in JS.
+ */
+async function computeGoalProgress(
+  userId: string,
+  goals: ProgressGoal[],
+  opts: { from?: Date; to?: Date } = {},
+): Promise<GoalProgress[]> {
+  if (!goals.length) return [];
+  const bounded = !!(opts.from && opts.to);
+  const to = opts.to ?? new Date();
+
+  const bucketsByGoal = new Map<string, PeriodBucket[]>();
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  let needLogs = false;
+  let needTranscript = false;
+
+  for (const g of goals) {
+    const period = g.period as GoalPeriod;
+    const count = period === "week" ? WEEKLY_WINDOW : MONTHLY_WINDOW;
+    const buckets = bounded
+      ? boundedPeriods(period, opts.from!, to, count)
+      : rollingPeriods(period, to, count);
+    bucketsByGoal.set(g.id, buckets);
+    for (const b of buckets) {
+      minStart = Math.min(minStart, b.start.getTime());
+      maxEnd = Math.max(maxEnd, b.end.getTime());
+    }
+    if (g.metric === "transcript_opens") needTranscript = true;
+    else needLogs = true;
+  }
+
+  let logRows: { date: string; minutesListened: number; booksCompleted: number }[] = [];
+  let transcriptEvents: { occurredAt: Date }[] = [];
+  if (isFinite(minStart)) {
+    const overallStart = new Date(minStart);
+    const overallEnd = new Date(maxEnd);
+    if (needLogs) {
+      logRows = await db
+        .select({
+          date: dailyListeningLog.date,
+          minutesListened: dailyListeningLog.minutesListened,
+          booksCompleted: dailyListeningLog.booksCompleted,
+        })
+        .from(dailyListeningLog)
+        .where(
+          and(
+            eq(dailyListeningLog.userId, userId),
+            gte(dailyListeningLog.date, utcDateStr(overallStart)),
+            lt(dailyListeningLog.date, utcDateStr(overallEnd)),
+          ),
+        );
+    }
+    if (needTranscript) {
+      transcriptEvents = await db
+        .select({ occurredAt: userActivityEvents.occurredAt })
+        .from(userActivityEvents)
+        .where(
+          and(
+            eq(userActivityEvents.userId, userId),
+            eq(userActivityEvents.eventType, "transcript_opened"),
+            gte(userActivityEvents.occurredAt, overallStart),
+            lt(userActivityEvents.occurredAt, overallEnd),
+          ),
+        );
+    }
+  }
+
+  const valueFor = (metric: GoalMetric, b: PeriodBucket): number => {
+    if (metric === "transcript_opens") {
+      return transcriptEvents.filter((e) => e.occurredAt >= b.start && e.occurredAt < b.end).length;
+    }
+    const sStr = utcDateStr(b.start);
+    const eStr = utcDateStr(b.end);
+    const inB = logRows.filter((r) => r.date >= sStr && r.date < eStr);
+    if (metric === "listening_minutes") return inB.reduce((a, r) => a + (r.minutesListened || 0), 0);
+    if (metric === "books_completed") return inB.reduce((a, r) => a + (r.booksCompleted || 0), 0);
+    // active_days: days with any listening or a completed book
+    return inB.filter((r) => (r.minutesListened || 0) > 0 || (r.booksCompleted || 0) > 0).length;
+  };
+
+  return goals.map((g) => {
+    const metric = g.metric as GoalMetric;
+    const buckets = bucketsByGoal.get(g.id) ?? [];
+    const trend: GoalTrendPoint[] = buckets.map((b) => {
+      const actual = valueFor(metric, b);
+      return { label: b.label, actual, target: g.target, met: actual >= g.target };
+    });
+    const last = trend[trend.length - 1];
+    const current = last
+      ? {
+          label: last.label,
+          actual: last.actual,
+          target: g.target,
+          percent: g.target > 0 ? Math.min(100, Math.round((last.actual / g.target) * 100)) : 0,
+          met: last.met,
+        }
+      : null;
+    return {
+      id: g.id,
+      metric,
+      period: g.period as GoalPeriod,
+      target: g.target,
+      current,
+      trend,
+      metPeriods: trend.filter((t) => t.met).length,
+      totalPeriods: trend.length,
+    };
+  });
+}
+
+function renderGoalsSectionHtml(goals: GoalProgress[]): string {
+  if (!goals.length) {
+    return `<h2>Goals &amp; progress</h2>
+  <p class="meta"><em>No goals have been set, or there isn't enough completed activity in this date range to show goal trends.</em></p>`;
+  }
+  const cards = goals
+    .map((g) => {
+      const metricLabel = GOAL_METRIC_LABELS[g.metric] ?? g.metric;
+      const unit = GOAL_METRIC_UNITS[g.metric] ?? "";
+      const periodWord = GOAL_PERIOD_LABELS[g.period] ?? g.period;
+      const periodNoun = g.period === "week" ? "weeks" : "months";
+      const header = `${escapeHtml(metricLabel)} — ${g.target} ${escapeHtml(unit)} ${escapeHtml(periodWord)}`;
+      if (!g.trend.length) {
+        return `<div class="goal-card">
+        <h3>${header}</h3>
+        <p class="meta"><em>Not enough completed ${periodNoun} in this date range to show a trend.</em></p>
+      </div>`;
+      }
+      const rows = g.trend
+        .map(
+          (t) => `<tr>
+          <th scope="row">${escapeHtml(t.label)}</th>
+          <td>${t.actual} ${escapeHtml(unit)}</td>
+          <td>${t.target} ${escapeHtml(unit)}</td>
+          <td>${t.met ? "✓ Met" : "Not met"}</td>
+        </tr>`,
+        )
+        .join("");
+      return `<div class="goal-card">
+      <h3>${header}</h3>
+      <p class="meta">Met target in <strong>${g.metPeriods} of ${g.totalPeriods}</strong> ${periodNoun}.</p>
+      <table>
+        <thead><tr><th scope="col">Period</th><th scope="col">Actual</th><th scope="col">Target</th><th scope="col">Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+    })
+    .join("");
+  return `<h2>Goals &amp; progress</h2>
+  <p class="meta">Progress toward goals set by the user or their caregiver, over complete weeks or months within this date range.</p>
+  ${cards}`;
+}
+
 export function renderActivityReportHtml(params: {
   displayName: string;
   from: Date;
@@ -178,8 +444,9 @@ export function renderActivityReportHtml(params: {
   audience: "self" | "caregiver";
   caregiverLabel?: string | null;
   progress?: BookProgress[];
+  goals?: GoalProgress[];
 }): string {
-  const { displayName, from, to, events, audience, caregiverLabel, progress = [] } = params;
+  const { displayName, from, to, events, audience, caregiverLabel, progress = [], goals = [] } = params;
   const s = summarize(events);
   const fmtDate = (d: Date) =>
     d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -246,7 +513,10 @@ export function renderActivityReportHtml(params: {
   .stat-value { font-size: 1.4rem; font-weight: 700; }
   .print-btn { margin: 1rem 0; padding: 0.5rem 1rem; border-radius: 6px;
                border: 1px solid #4f7cff; background: #4f7cff; color: white; cursor: pointer; }
-  @media print { .print-btn { display: none; } body { margin: 0; max-width: none; } }
+  .goal-card { border: 1px solid #ddd; border-radius: 6px; padding: 0.75rem 1rem; margin-top: 1rem; }
+  .goal-card h3 { margin: 0 0 0.25rem; font-size: 1.05rem; }
+  @media print { .print-btn { display: none; } body { margin: 0; max-width: none; }
+                 .goal-card { break-inside: avoid; } }
 </style>
 </head>
 <body>
@@ -289,6 +559,8 @@ export function renderActivityReportHtml(params: {
       <div class="stat-value">${s.totalEvents}</div>
     </div>
   </div>
+
+  ${renderGoalsSectionHtml(goals)}
 
   <h2>Outcome tags</h2>
   <table>
@@ -482,6 +754,11 @@ export function registerUserActivityRoutes(app: Express) {
         .where(
           and(eq(userActivityShares.userId, userId), sql`${userActivityShares.revokedAt} IS NULL`),
         );
+      // And soft-archive goals so stale targets don't reappear after a wipe.
+      await db
+        .update(progressGoals)
+        .set({ archivedAt: new Date() })
+        .where(and(eq(progressGoals.userId, userId), sql`${progressGoals.archivedAt} IS NULL`));
       res.json({ wiped: true });
     } catch (err) {
       console.error("[UserActivity] wipe error:", (err as Error).message);
@@ -561,6 +838,177 @@ export function registerUserActivityRoutes(app: Express) {
     }
   });
 
+  // ---------------- Progress goals (Task #221) ----------------
+  // Goal rows are plain config, so CRUD is auth-only (no opt-in needed). The
+  // progress endpoint and the shared reports stay opt-in/token gated because
+  // they read real activity.
+  const MAX_ACTIVE_GOALS = 10;
+
+  // Per metric/period sanity caps so a goal target stays meaningful and a
+  // typo can't request an unbounded aggregation window.
+  function targetLimit(metric: GoalMetric, period: GoalPeriod): number {
+    if (metric === "active_days") return period === "week" ? 7 : 31;
+    if (metric === "listening_minutes") return period === "week" ? 10080 : 44640;
+    return period === "week" ? 1000 : 4000; // books_completed, transcript_opens
+  }
+
+  function targetTooHighMessage(metric: GoalMetric, period: GoalPeriod): string {
+    return `Target is too high (max ${targetLimit(metric, period)} ${GOAL_METRIC_UNITS[metric]} ${GOAL_PERIOD_LABELS[period]}).`;
+  }
+
+  const createGoalSchema = z.object({
+    metric: z.enum(GOAL_METRICS),
+    period: z.enum(GOAL_PERIODS),
+    target: z.number().int().positive(),
+  });
+
+  const patchGoalSchema = z.object({
+    target: z.number().int().positive(),
+  });
+
+  app.get("/api/activity/goals", isAuthenticated, async (req, res) => {
+    const userId = userIdFrom(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    try {
+      const rows = await db
+        .select()
+        .from(progressGoals)
+        .where(and(eq(progressGoals.userId, userId), sql`${progressGoals.archivedAt} IS NULL`))
+        .orderBy(desc(progressGoals.createdAt));
+      res.json(rows);
+    } catch (err) {
+      console.error("[UserActivity] goals list error:", (err as Error).message);
+      res.status(500).json({ message: "Failed to load goals" });
+    }
+  });
+
+  // Live in-app progress (rolling 8 weeks / 6 months). Opt-in gated because it
+  // reads real activity, unlike goal CRUD.
+  app.get("/api/activity/goals/progress", isAuthenticated, async (req, res) => {
+    const userId = userIdFrom(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    if (!(await isOptedIn(userId))) {
+      return res.json({ optedIn: false, goals: [] });
+    }
+    try {
+      const goals = await db
+        .select()
+        .from(progressGoals)
+        .where(and(eq(progressGoals.userId, userId), sql`${progressGoals.archivedAt} IS NULL`))
+        .orderBy(desc(progressGoals.createdAt));
+      const progress = await computeGoalProgress(userId, goals);
+      res.json({ optedIn: true, goals: progress });
+    } catch (err) {
+      console.error("[UserActivity] goal progress error:", (err as Error).message);
+      res.status(500).json({ message: "Failed to compute goal progress" });
+    }
+  });
+
+  app.post("/api/activity/goals", isAuthenticated, async (req, res) => {
+    const userId = userIdFrom(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const parsed = createGoalSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid goal" });
+    const { metric, period, target } = parsed.data;
+    if (target > targetLimit(metric, period)) {
+      return res.status(400).json({ message: targetTooHighMessage(metric, period) });
+    }
+    try {
+      const active = await db
+        .select()
+        .from(progressGoals)
+        .where(and(eq(progressGoals.userId, userId), sql`${progressGoals.archivedAt} IS NULL`));
+      if (active.length >= MAX_ACTIVE_GOALS) {
+        return res
+          .status(400)
+          .json({ message: `You can track up to ${MAX_ACTIVE_GOALS} goals at a time.` });
+      }
+      if (active.some((g) => g.metric === metric && g.period === period)) {
+        return res
+          .status(409)
+          .json({ message: "You already have a goal for this measure and period." });
+      }
+      try {
+        const [row] = await db
+          .insert(progressGoals)
+          .values({ userId, metric, period, target })
+          .returning();
+        res.json(row);
+      } catch (insertErr) {
+        // Partial unique index (user_id, metric, period) WHERE archived_at IS
+        // NULL closes the race where two concurrent POSTs both pass the
+        // application-level duplicate pre-check above.
+        if ((insertErr as { code?: string }).code === "23505") {
+          return res
+            .status(409)
+            .json({ message: "You already have a goal for this measure and period." });
+        }
+        throw insertErr;
+      }
+    } catch (err) {
+      console.error("[UserActivity] goal create error:", (err as Error).message);
+      res.status(500).json({ message: "Failed to create goal" });
+    }
+  });
+
+  app.patch("/api/activity/goals/:id", isAuthenticated, async (req, res) => {
+    const userId = userIdFrom(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const parsed = patchGoalSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid goal update" });
+    try {
+      const [existing] = await db
+        .select()
+        .from(progressGoals)
+        .where(
+          and(
+            eq(progressGoals.id, req.params.id),
+            eq(progressGoals.userId, userId),
+            sql`${progressGoals.archivedAt} IS NULL`,
+          ),
+        )
+        .limit(1);
+      if (!existing) return res.status(404).json({ message: "Goal not found" });
+      const metric = existing.metric as GoalMetric;
+      const period = existing.period as GoalPeriod;
+      if (parsed.data.target > targetLimit(metric, period)) {
+        return res.status(400).json({ message: targetTooHighMessage(metric, period) });
+      }
+      const [row] = await db
+        .update(progressGoals)
+        .set({ target: parsed.data.target, updatedAt: new Date() })
+        .where(and(eq(progressGoals.id, req.params.id), eq(progressGoals.userId, userId)))
+        .returning();
+      res.json(row);
+    } catch (err) {
+      console.error("[UserActivity] goal update error:", (err as Error).message);
+      res.status(500).json({ message: "Failed to update goal" });
+    }
+  });
+
+  app.delete("/api/activity/goals/:id", isAuthenticated, async (req, res) => {
+    const userId = userIdFrom(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    try {
+      const [row] = await db
+        .update(progressGoals)
+        .set({ archivedAt: new Date() })
+        .where(
+          and(
+            eq(progressGoals.id, req.params.id),
+            eq(progressGoals.userId, userId),
+            sql`${progressGoals.archivedAt} IS NULL`,
+          ),
+        )
+        .returning();
+      if (!row) return res.status(404).json({ message: "Goal not found" });
+      res.json({ archived: true });
+    } catch (err) {
+      console.error("[UserActivity] goal delete error:", (err as Error).message);
+      res.status(500).json({ message: "Failed to delete goal" });
+    }
+  });
+
   // ---------------- Reports ----------------
   async function buildReport(userId: string, range: { from: Date; to: Date }) {
     const rows = await db
@@ -577,16 +1025,23 @@ export function registerUserActivityRoutes(app: Express) {
       .limit(2000);
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
 
-    // Per-book progress from the user's listening_history. We surface this
-    // alongside session counts so the report shows real completion state, not
-    // just visit counts. Progress is *not* date-bounded — coordinators
-    // typically want the most recent overall position per title.
+    // Per-book progress from the user's listening_history, BOUNDED to the
+    // report's date range by lastPlayedAt. Bounding is required so a scoped
+    // caregiver share can never reveal titles or positions the user played
+    // outside the consented window. Rows with a null lastPlayedAt cannot be
+    // date-placed and are therefore excluded from range-scoped reports.
     let progress: BookProgress[] = [];
     try {
       const histRows = await db
         .select()
         .from(listeningHistory)
-        .where(eq(listeningHistory.userId, userId))
+        .where(
+          and(
+            eq(listeningHistory.userId, userId),
+            gte(listeningHistory.lastPlayedAt, range.from),
+            lte(listeningHistory.lastPlayedAt, range.to),
+          ),
+        )
         .orderBy(desc(listeningHistory.lastPlayedAt))
         .limit(50);
       progress = histRows.map((h) => {
@@ -607,7 +1062,24 @@ export function registerUserActivityRoutes(app: Express) {
       console.error("[UserActivity] progress lookup failed:", (err as Error).message);
     }
 
-    return { events: rows, user: u, progress };
+    // Goal progress, BOUNDED to the report's date range (complete periods only)
+    // so a scoped caregiver share never reveals activity outside the consented
+    // window. Failure here must not break the rest of the report.
+    let goalProgress: GoalProgress[] = [];
+    try {
+      const goals = await db
+        .select()
+        .from(progressGoals)
+        .where(and(eq(progressGoals.userId, userId), sql`${progressGoals.archivedAt} IS NULL`))
+        .orderBy(desc(progressGoals.createdAt));
+      if (goals.length) {
+        goalProgress = await computeGoalProgress(userId, goals, { from: range.from, to: range.to });
+      }
+    } catch (err) {
+      console.error("[UserActivity] goal progress lookup failed:", (err as Error).message);
+    }
+
+    return { events: rows, user: u, progress, goalProgress };
   }
 
   app.get("/api/activity/report", isAuthenticated, async (req, res) => {
@@ -619,7 +1091,7 @@ export function registerUserActivityRoutes(app: Express) {
     const range = parseDateRange(req);
     if ("error" in range) return res.status(400).send(range.error);
     try {
-      const { events, progress } = await buildReport(userId, range);
+      const { events, progress, goalProgress } = await buildReport(userId, range);
       const html = renderActivityReportHtml({
         displayName: "AccessiBooks user",
         from: range.from,
@@ -627,6 +1099,7 @@ export function registerUserActivityRoutes(app: Express) {
         events,
         audience: "self",
         progress,
+        goals: goalProgress,
       });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
@@ -660,7 +1133,7 @@ export function registerUserActivityRoutes(app: Express) {
         from: share.rangeFrom ?? new Date(Date.now() - 30 * 86400 * 1000),
         to: share.rangeTo ?? new Date(),
       };
-      const { events, progress } = await buildReport(share.userId, range);
+      const { events, progress, goalProgress } = await buildReport(share.userId, range);
       const html = renderActivityReportHtml({
         displayName: "AccessiBooks user",
         from: range.from,
@@ -669,6 +1142,7 @@ export function registerUserActivityRoutes(app: Express) {
         audience: "caregiver",
         caregiverLabel: share.caregiverLabel,
         progress,
+        goals: goalProgress,
       });
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");

@@ -24,7 +24,7 @@ AccessiBooks is a fullstack accessible audiobooks and e-reading platform — aud
 
 ## Where things live
 
-- `artifacts/accessibooks/` — React/Vite frontend; all UI in `src/App.tsx` (large single-file component) and `src/components/`
+- `artifacts/accessibooks/` — React/Vite frontend; all UI in `src/App.tsx` (large single-file component) and `src/components/`. Caregiver/therapist progress-report UI (literacy/listening goals + progress) is in `src/pages/my-activity.tsx`
 - `artifacts/accessibooks-mobile/` — Expo (React Native) app. Hands-free voice mode in `lib/voice.tsx`; offline downloads in `lib/downloads.tsx`; local playback-progress persistence in `lib/progress.ts`; downloads management screen at `app/downloads.tsx`; mobile API client in `lib/api.ts`
 - `artifacts/api-server/src/` — Express server; `routes/routes.ts` is the main route file (6000+ lines); `voiceRoutes.ts` is the mobile voice STT endpoint (`POST /api/voice/transcribe`)
 - `artifacts/api-server/src/db.ts` — DB connection (node-postgres pool) + schema migration helpers
@@ -43,6 +43,7 @@ AccessiBooks is a fullstack accessible audiobooks and e-reading platform — aud
 - **Mobile player is a native modal**: `app/player/[id].tsx` is `presentation: "modal"`, so the global mic overlay rendered in `_layout.tsx` cannot cover it — the player renders its own in-screen mic/download controls. Any new always-on-top control must be rendered inside the modal screen, not just in `_layout`.
 - **Mobile progress is local-only (drift)**: there is no server progress-sync endpoint, so downloaded-title playback position is persisted on-device (AsyncStorage via `lib/progress.ts`). Do not assume a sync API exists.
 - **No chapter model (drift)**: there is no chapter data model, so voice "next/previous chapter" maps to skip-forward/back and "chapter N" gives honest "no chapters" feedback.
+- **Progress goals + consent-bounded reports**: `progress_goals` table (metrics: listening_minutes, books_completed, active_days, transcript_opens; periods: week/month) drives caregiver/therapist progress reports built on the #67 activity-sharing infra. Goal CRUD is auth-only (goals are config); progress aggregation + reports stay opt-in-gated. A partial unique index `(user_id, metric, period) WHERE archived_at IS NULL` enforces one active goal per measure/period. In a shared/scoped report EVERY section (goal trends AND per-book listening history) is date-bounded to the share range so a narrow share cannot leak out-of-range history — see `.agents/memory/consent-bounded-reports.md`. Aggregation in `artifacts/api-server/src/userActivity.ts` (`computeGoalProgress`, `buildReport`).
 
 ## Product
 
@@ -54,6 +55,7 @@ AccessiBooks provides:
 - Listening rooms (social co-listening), reading clubs, author profiles
 - Ad platform for publishers and advertisers
 - Accessibility features: switch access, screen reader optimizations, dyslexia mode
+- Caregiver/therapist progress reports: users set literacy/listening goals and share a consent-based, read-only, print-to-PDF progress report (goals + per-period trends bounded to the shared date range)
 
 ## User preferences
 

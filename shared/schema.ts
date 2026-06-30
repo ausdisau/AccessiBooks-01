@@ -2568,6 +2568,69 @@ export type InsertUserActivityShare = z.infer<typeof insertUserActivityShareSche
 export type UserActivityShare = typeof userActivityShares.$inferSelect;
 
 // ============================================================
+// PROGRESS GOALS (Task #221) — caregiver/therapist literacy &
+// listening goals. Multi-metric, weekly/monthly targets, built
+// on top of the Task #67 activity-sharing infra. Goal rows are
+// plain config (auth-only CRUD); progress aggregation and the
+// shared caregiver report stay gated by the #67 opt-in + token.
+// ============================================================
+
+export const GOAL_METRICS = [
+  "listening_minutes",
+  "books_completed",
+  "active_days",
+  "transcript_opens",
+] as const;
+export type GoalMetric = typeof GOAL_METRICS[number];
+
+export const GOAL_METRIC_LABELS: Record<GoalMetric, string> = {
+  listening_minutes: "Listening / reading time",
+  books_completed: "Books completed",
+  active_days: "Active days",
+  transcript_opens: "Transcript opens",
+};
+
+// Unit shown next to a target, e.g. "150 minutes".
+export const GOAL_METRIC_UNITS: Record<GoalMetric, string> = {
+  listening_minutes: "minutes",
+  books_completed: "books",
+  active_days: "days",
+  transcript_opens: "opens",
+};
+
+export const GOAL_PERIODS = ["week", "month"] as const;
+export type GoalPeriod = typeof GOAL_PERIODS[number];
+
+export const GOAL_PERIOD_LABELS: Record<GoalPeriod, string> = {
+  week: "per week",
+  month: "per month",
+};
+
+export const progressGoals = pgTable("progress_goals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  metric: varchar("metric", { length: 40 }).notNull(),
+  period: varchar("period", { length: 10 }).notNull(),
+  target: integer("target").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  archivedAt: timestamp("archived_at"),
+}, (t) => [
+  index("idx_progress_goals_user_active").on(t.userId, t.archivedAt),
+  // Partial unique index: at most one active goal per (user, metric, period).
+  // Archived rows are excluded so a re-created goal after delete is allowed.
+  uniqueIndex("uniq_progress_goals_active")
+    .on(t.userId, t.metric, t.period)
+    .where(sql`archived_at IS NULL`),
+]);
+
+export const insertProgressGoalSchema = createInsertSchema(progressGoals).omit({
+  id: true, createdAt: true, updatedAt: true, archivedAt: true,
+});
+export type InsertProgressGoal = z.infer<typeof insertProgressGoalSchema>;
+export type ProgressGoal = typeof progressGoals.$inferSelect;
+
+// ============================================================
 // ENTITLEMENT CONFIG (Task #70)
 // Server-stored (featureKey, tier, enabled) grid edited by admins.
 // The entitlement service consults this table first; if a feature

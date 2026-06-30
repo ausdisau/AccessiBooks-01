@@ -17,11 +17,16 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
   AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Activity, FileText, Share2, Trash2, ShieldCheck, Loader2 } from "lucide-react";
+import {
+  Activity, FileText, Share2, Trash2, ShieldCheck, Loader2,
+  Target, Plus, Pencil, Check, X,
+} from "lucide-react";
 import {
   OUTCOME_TAGS, OUTCOME_TAG_LABELS, ACTIVITY_EVENT_LABELS,
+  GOAL_METRICS, GOAL_METRIC_LABELS, GOAL_METRIC_UNITS,
+  GOAL_PERIODS, GOAL_PERIOD_LABELS,
   type OutcomeTag, type UserActivityEvent, type ActivityEventType,
-  type UserActivityShare,
+  type UserActivityShare, type GoalMetric, type GoalPeriod,
 } from "@shared/schema";
 
 interface StatusResp { enabled: boolean; enabledAt: string | null; }
@@ -39,6 +44,32 @@ interface EventsResp {
     byTag: Record<string, number>;
     perBook: Array<{ bookId: string; title: string | null; sessions: number; seconds: number }>;
   };
+}
+
+interface GoalTrendPoint { label: string; actual: number; target: number; met: boolean; }
+interface GoalProgressItem {
+  id: string;
+  metric: GoalMetric;
+  period: GoalPeriod;
+  target: number;
+  current: { label: string; actual: number; target: number; percent: number; met: boolean } | null;
+  trend: GoalTrendPoint[];
+  metPeriods: number;
+  totalPeriods: number;
+}
+interface GoalsProgressResp { optedIn: boolean; goals: GoalProgressItem[]; }
+
+/** Pull the server's JSON `message` out of apiRequest's `"<status>: <body>"` error. */
+function errMessage(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : "";
+  const body = raw.replace(/^\d+:\s*/, "");
+  try {
+    const j = JSON.parse(body);
+    if (j && typeof j.message === "string") return j.message;
+  } catch {
+    /* not JSON */
+  }
+  return body || fallback;
 }
 
 function formatDuration(s: number): string {
@@ -88,6 +119,11 @@ export default function MyActivityPage() {
     enabled: !!status.data?.enabled,
   });
 
+  const goalsProgress = useQuery<GoalsProgressResp>({
+    queryKey: ["/api/activity/goals/progress"],
+    enabled: !!status.data?.enabled,
+  });
+
   const optInMut = useMutation({
     mutationFn: (enabled: boolean) =>
       apiRequest("POST", "/api/activity/opt-in", { enabled }),
@@ -110,6 +146,8 @@ export default function MyActivityPage() {
       toast({ title: "All activity wiped" });
       queryClient.invalidateQueries({ queryKey: ["/api/activity/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/activity/shares"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activity/goals/progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activity/goals"] });
     },
     onError: () => toast({ title: "Failed to wipe activity", variant: "destructive" }),
   });
@@ -135,6 +173,42 @@ export default function MyActivityPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/activity/shares"] });
       toast({ title: "Share revoked" });
     },
+  });
+
+  const invalidateGoals = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/activity/goals/progress"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/activity/goals"] });
+  };
+
+  const createGoalMut = useMutation({
+    mutationFn: (body: { metric: GoalMetric; period: GoalPeriod; target: number }) =>
+      apiRequest("POST", "/api/activity/goals", body),
+    onSuccess: () => {
+      invalidateGoals();
+      toast({ title: "Goal added" });
+    },
+    onError: (err) => toast({ title: errMessage(err, "Could not add goal"), variant: "destructive" }),
+  });
+
+  const updateGoalMut = useMutation({
+    mutationFn: ({ id, target }: { id: string; target: number }) =>
+      apiRequest("PATCH", `/api/activity/goals/${id}`, { target }),
+    onSuccess: () => {
+      invalidateGoals();
+      toast({ title: "Goal updated" });
+    },
+    onError: (err) =>
+      toast({ title: errMessage(err, "Could not update goal"), variant: "destructive" }),
+  });
+
+  const deleteGoalMut = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/activity/goals/${id}`),
+    onSuccess: () => {
+      invalidateGoals();
+      toast({ title: "Goal removed" });
+    },
+    onError: (err) =>
+      toast({ title: errMessage(err, "Could not remove goal"), variant: "destructive" }),
   });
 
   if (status.isLoading) {
@@ -302,6 +376,45 @@ export default function MyActivityPage() {
             )}
           </section>
 
+          {/* Goals & progress */}
+          <section aria-labelledby="goals-heading" className="space-y-4">
+            <h2 id="goals-heading" className="text-lg font-semibold flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" />
+              Goals &amp; progress
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Set listening and reading goals for yourself or together with a caregiver. Progress
+              shows your most recent weeks and months and is included in shared reports.
+            </p>
+
+            <GoalAddForm
+              existing={goalsProgress.data?.goals ?? []}
+              onAdd={(body) => createGoalMut.mutate(body)}
+              pending={createGoalMut.isPending}
+            />
+
+            {goalsProgress.isLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : !goalsProgress.data?.goals.length ? (
+              <p className="text-sm text-muted-foreground" role="note">
+                No goals yet. Add one above to start tracking progress.
+              </p>
+            ) : (
+              <ul className="space-y-3" data-testid="list-goals">
+                {goalsProgress.data.goals.map((g) => (
+                  <GoalCard
+                    key={g.id}
+                    goal={g}
+                    onSave={(target) => updateGoalMut.mutate({ id: g.id, target })}
+                    onDelete={() => deleteGoalMut.mutate(g.id)}
+                    saving={updateGoalMut.isPending}
+                    deleting={deleteGoalMut.isPending}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+
           {/* Events list with tagging */}
           <section aria-labelledby="events-heading" className="space-y-3">
             <h2 id="events-heading" className="text-lg font-semibold">Recent activity</h2>
@@ -449,5 +562,215 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-2xl font-bold">{value}</div>
     </div>
+  );
+}
+
+function GoalAddForm({
+  existing,
+  onAdd,
+  pending,
+}: {
+  existing: GoalProgressItem[];
+  onAdd: (body: { metric: GoalMetric; period: GoalPeriod; target: number }) => void;
+  pending: boolean;
+}) {
+  const [metric, setMetric] = useState<GoalMetric>("listening_minutes");
+  const [period, setPeriod] = useState<GoalPeriod>("week");
+  const [target, setTarget] = useState("150");
+
+  const duplicate = existing.some((g) => g.metric === metric && g.period === period);
+  const targetNum = Number(target);
+  const valid = Number.isFinite(targetNum) && targetNum > 0 && !duplicate;
+
+  return (
+    <div className="rounded-lg border p-4 flex flex-wrap gap-3 items-end" data-testid="form-add-goal">
+      <div className="flex flex-col gap-1 min-w-[180px]">
+        <Label htmlFor="goal-metric" className="text-sm">Measure</Label>
+        <Select value={metric} onValueChange={(v) => setMetric(v as GoalMetric)}>
+          <SelectTrigger id="goal-metric" className="w-full" data-testid="select-goal-metric">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GOAL_METRICS.map((m) => (
+              <SelectItem key={m} value={m}>{GOAL_METRIC_LABELS[m]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1 min-w-[140px]">
+        <Label htmlFor="goal-period" className="text-sm">Period</Label>
+        <Select value={period} onValueChange={(v) => setPeriod(v as GoalPeriod)}>
+          <SelectTrigger id="goal-period" className="w-full" data-testid="select-goal-period">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GOAL_PERIODS.map((p) => (
+              <SelectItem key={p} value={p}>{GOAL_PERIOD_LABELS[p]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1 w-32">
+        <Label htmlFor="goal-target" className="text-sm">Target ({GOAL_METRIC_UNITS[metric]})</Label>
+        <Input
+          id="goal-target"
+          type="number"
+          min={1}
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          data-testid="input-goal-target"
+        />
+      </div>
+      <Button
+        onClick={() => valid && onAdd({ metric, period, target: targetNum })}
+        disabled={!valid || pending}
+        data-testid="button-add-goal"
+      >
+        {pending ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <Plus className="h-4 w-4 mr-2" />
+        )}
+        Add goal
+      </Button>
+      {duplicate && (
+        <p className="w-full text-xs text-amber-600" role="note">
+          You already have a {GOAL_METRIC_LABELS[metric].toLowerCase()} goal {GOAL_PERIOD_LABELS[period]}.
+          Edit it below instead.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function GoalCard({
+  goal,
+  onSave,
+  onDelete,
+  saving,
+  deleting,
+}: {
+  goal: GoalProgressItem;
+  onSave: (target: number) => void;
+  onDelete: () => void;
+  saving: boolean;
+  deleting: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(goal.target));
+  const unit = GOAL_METRIC_UNITS[goal.metric];
+  const periodLabel = GOAL_PERIOD_LABELS[goal.period];
+  const periodNoun = goal.period === "week" ? "weeks" : "months";
+  const current = goal.current;
+  const pct = current?.percent ?? 0;
+
+  const startEdit = () => {
+    setValue(String(goal.target));
+    setEditing(true);
+  };
+  const save = () => {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) onSave(n);
+    setEditing(false);
+  };
+
+  return (
+    <li className="rounded-lg border p-4 space-y-3" data-testid={`goal-${goal.id}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex-1 min-w-[180px]">
+          <div className="font-medium">{GOAL_METRIC_LABELS[goal.metric]}</div>
+          <div className="text-xs text-muted-foreground">
+            Target: {goal.target} {unit} {periodLabel}
+          </div>
+        </div>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <Label htmlFor={`goal-edit-${goal.id}`} className="sr-only">New target</Label>
+            <Input
+              id={`goal-edit-${goal.id}`}
+              type="number"
+              min={1}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className="w-24"
+              data-testid={`input-goal-edit-${goal.id}`}
+            />
+            <Button size="sm" onClick={save} disabled={saving} data-testid={`button-goal-save-${goal.id}`} aria-label="Save target">
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)} aria-label="Cancel edit">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={startEdit} data-testid={`button-goal-edit-${goal.id}`}>
+              <Pencil className="h-4 w-4 mr-1" /> Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onDelete}
+              disabled={deleting}
+              data-testid={`button-goal-delete-${goal.id}`}
+              aria-label="Remove goal"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">
+            {current ? `This ${goal.period}: ${current.actual} / ${goal.target} ${unit}` : "No data yet"}
+          </span>
+          {current?.met && <Badge variant="secondary">Met</Badge>}
+        </div>
+        <div
+          className="h-2 rounded-full bg-muted overflow-hidden"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+          aria-label={`Progress this ${goal.period}`}
+        >
+          <div
+            className={`h-full ${current?.met ? "bg-emerald-500" : "bg-primary"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+
+      {goal.trend.length > 0 && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">
+            Met target in {goal.metPeriods} of {goal.totalPeriods} {periodNoun}
+          </div>
+          <div className="flex items-end gap-1 h-16" data-testid={`goal-trend-${goal.id}`}>
+            {goal.trend.map((t, i) => {
+              const h = goal.target > 0 ? Math.min(100, Math.round((t.actual / goal.target) * 100)) : 0;
+              return (
+                <div
+                  key={i}
+                  className="flex-1 flex flex-col justify-end items-center"
+                  title={`${t.label}: ${t.actual} ${unit} (target ${t.target})`}
+                >
+                  <div
+                    className={`w-full rounded-t ${t.met ? "bg-emerald-500" : "bg-primary/40"}`}
+                    style={{ height: `${Math.max(4, h)}%` }}
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">
+                    {t.label}: {t.actual} {unit}, target {t.target}, {t.met ? "met" : "not met"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
