@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, type RefObject } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { getAuthToken } from "@/lib/authToken";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Headphones, Mic, CheckCircle, Loader2, AlertCircle, AlignLeft, Eye, EyeOff } from "lucide-react";
+import { Headphones, Mic, CheckCircle, Loader2, AlertCircle, AlignLeft, Eye, EyeOff, Crown } from "lucide-react";
 import type { TranscriptSegment } from "@shared/schema";
+import { useLocation } from "wouter";
+import { useAiAddons } from "@/hooks/use-ai-addons";
 
 interface NarrationVoice {
   id: string;
@@ -63,6 +65,8 @@ export function AINarrationPanel({ bookId, darkMode }: AINarrationPanelProps) {
   const [activeChapter, setActiveChapter] = useState<number | null>(null);
   const [followAlong, setFollowAlong] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [, navigate] = useLocation();
+  const { addonsByFeature, refetch: refetchAddons } = useAiAddons(isAuthenticated);
 
   const { data: voicesData } = useQuery<{ voices: NarrationVoice[]; configured: boolean }>({
     queryKey: ["/api/narration/voices"],
@@ -120,17 +124,56 @@ export function AINarrationPanel({ bookId, darkMode }: AINarrationPanelProps) {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/narration/${bookId}/generate`, { voiceId: selectedVoiceId });
+      // Use a controlled fetch (not apiRequest, which throws on any non-2xx) so we
+      // can read the 402 quota/upsell payload and surface it gracefully instead of
+      // an opaque error toast.
+      const token = getAuthToken();
+      const res = await fetch(`/api/narration/${bookId}/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ voiceId: selectedVoiceId }),
+        credentials: "include",
+      });
+      if (res.status === 402) {
+        const data = await res.json().catch(() => ({}));
+        throw Object.assign(new Error("quota_exhausted"), { paywall: true, data });
+      }
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(data?.message || "Failed to start narration.");
+      }
       return res.json();
     },
     onSuccess: () => {
       statusQuery.refetch();
+      refetchAddons();
       toast({ title: "Narration started", description: "We're generating your audiobook. This can take a few minutes for long books." });
     },
-    onError: (err: Error) => {
+    onError: (err: Error & { paywall?: boolean }) => {
+      if (err.paywall) {
+        // Allowance was already spent (possibly on another device): re-sync the
+        // quota so the panel shows the upgrade prompt rather than a red error.
+        refetchAddons();
+        return;
+      }
       toast({ title: "Couldn't start narration", description: err.message, variant: "destructive" });
     },
   });
+
+  const narrationAddon = addonsByFeature.ai_narration;
+  const quotaExhausted = !!narrationAddon && !narrationAddon.unlimited && !narrationAddon.allowed;
+  const allowanceLabel = narrationAddon
+    ? narrationAddon.unlimited
+      ? "Unlimited narration included in your plan."
+      : `${narrationAddon.remaining ?? 0} of ${narrationAddon.limit ?? 0} narration${(narrationAddon.limit ?? 0) === 1 ? "" : "s"} left this month.`
+    : null;
+  const upsellBody =
+    narrationAddon?.tier === "free"
+      ? "Your free plan includes a limited number of AI audiobooks each month. Upgrade to Plus or Premium to generate more."
+      : "You've reached your monthly narration limit. Upgrade to Premium for unlimited AI audiobooks.";
 
   const progressPct = status && status.totalChapters > 0
     ? Math.round((status.completedChapters / status.totalChapters) * 100)
@@ -196,19 +239,45 @@ export function AINarrationPanel({ bookId, darkMode }: AINarrationPanelProps) {
       ) : (
         <>
           {!isReady && !isGenerating && (
-            <Button
-              size="sm"
-              className="mt-3 h-8 text-xs"
-              onClick={() => generateMutation.mutate()}
-              disabled={generateMutation.isPending || !selectedVoiceId}
-              data-testid="button-generate-narration"
-            >
-              {generateMutation.isPending ? (
-                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Starting…</>
-              ) : (
-                <><Mic className="h-3.5 w-3.5 mr-1.5" /> Generate audiobook</>
-              )}
-            </Button>
+            quotaExhausted ? (
+              <div
+                className={`mt-3 rounded-md border p-3 ${darkMode ? "border-amber-500/40 bg-amber-500/10" : "border-amber-300 bg-amber-50"}`}
+                data-testid="narration-upsell"
+              >
+                <div className={`flex items-center gap-2 text-xs font-semibold ${darkMode ? "text-amber-200" : "text-amber-800"}`}>
+                  <Crown className="h-3.5 w-3.5" />
+                  You've used your narration allowance
+                </div>
+                <p className={`mt-1 text-xs ${darkMode ? "text-amber-200/80" : "text-amber-700"}`}>{upsellBody}</p>
+                <Button
+                  size="sm"
+                  className="mt-2 h-8 text-xs"
+                  onClick={() => navigate("/pricing")}
+                  data-testid="button-narration-upgrade"
+                >
+                  <Crown className="h-3.5 w-3.5 mr-1.5" /> View plans
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-3 space-y-1.5">
+                <Button
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => generateMutation.mutate()}
+                  disabled={generateMutation.isPending || !selectedVoiceId}
+                  data-testid="button-generate-narration"
+                >
+                  {generateMutation.isPending ? (
+                    <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Starting…</>
+                  ) : (
+                    <><Mic className="h-3.5 w-3.5 mr-1.5" /> Generate audiobook</>
+                  )}
+                </Button>
+                {allowanceLabel && (
+                  <p className={`text-xs ${mutedText}`} data-testid="narration-allowance">{allowanceLabel}</p>
+                )}
+              </div>
+            )
           )}
 
           {status?.status === "failed" && (

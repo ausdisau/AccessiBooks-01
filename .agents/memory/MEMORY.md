@@ -3,6 +3,7 @@
 - [api-server typecheck](api-server-typecheck.md) — tsc --noEmit never passes (~647 pre-existing errors); verify via workflow boot + curl, not tsc.
 - [Money fulfillment rules](money-fulfillment-rules.md) — Stripe webhook fulfillment must re-throw on failure (let Stripe retry); credit/ownership grants must be idempotent and claim ownership before debiting.
 - [dev DB schema drift](dev-db-schema-drift.md) — dev Postgres can lag schema.ts; route 500 with PG 42703 means add the missing column via psql, not a code bug.
+- [AI add-on quota gating](ai-addon-quota-gating.md) — paywalled AI features metered server-side in aiAddons.ts; frontend apiRequest throws on 402 (opaque) so paywall UIs need a controlled fetch.
 - [Public media ACL lifecycle](public-media-acl-lifecycle.md) — uploaded public media: object ACL public iff published; revoke on unpublish/archive/delete; trust storage metadata; sequence ACL/DB fail-closed.
 - [Event captions admin-gating](event-captions-admin-gating.md) — events are requireAdmin-created so host==admin; caption/finalize admin-gating is correct, not a gap. Clubs are creator-OR-admin.
 - [Consent-bounded reports](consent-bounded-reports.md) — every section of a scoped/shared activity report must be date-bounded to the share range, not just the newest metric.
