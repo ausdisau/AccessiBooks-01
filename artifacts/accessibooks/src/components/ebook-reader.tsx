@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Book } from "@shared/schema";
 import { AINarrationPanel } from "@/components/ai-narration-panel";
 import { ComprehensionCompanionPanel } from "@/components/comprehension-companion-panel";
+import { AuslanCompanionPanel, AuslanCompanionManager } from "@/components/auslan-companion";
 import { TranslationPanel } from "@/components/translation-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -355,6 +356,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
   const [showPaywall, setShowPaywall] = useState(false);
   const [showCompanion, setShowCompanion] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
+  const { user: authUser } = useAuth();
 
   const contentRef = useRef<HTMLDivElement>(null);
   const readerContainerRef = useRef<HTMLDivElement>(null);
@@ -1656,6 +1658,11 @@ function TextReader({ book, onBack }: EbookReaderProps) {
 
         <div className="mb-4">
           <AINarrationPanel bookId={book.id} darkMode={settings.theme === "dark"} />
+        </div>
+
+        <div className="mb-4 space-y-4">
+          <AuslanCompanionPanel bookId={book.id} />
+          {authUser?.role === "admin" && <AuslanCompanionManager bookId={book.id} />}
         </div>
 
         <ComprehensionCompanionPanel

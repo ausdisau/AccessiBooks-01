@@ -31,6 +31,7 @@ AccessiBooks is a fullstack accessible audiobooks and e-reading platform — aud
 - `artifacts/api-server/src/storage.ts` — Data access layer (ExternalAPIStorage class)
 - `lib/db/src/schema/schema.ts` — Drizzle ORM schema (source of truth for all DB tables)
 - `shared/` — Types shared between frontend and backend (`schema.ts`, `rewardConfig.ts`)
+- Auslan companions + live captions: API in `artifacts/api-server/src/auslanCompanions.ts` (companion CRUD + object-storage ACL lifecycle + `accessibility` browse filter helper) and `artifacts/api-server/src/eventTranscripts.ts` (shared transcript helper: get/append/finalize); event caption routes live in `engagement.ts`, club caption routes in `platformRoutes.ts`. Frontend: `artifacts/accessibooks/src/components/auslan-companion.tsx` (viewer + admin manager, surfaced in `pages/player.tsx` and `components/ebook-reader.tsx`), browse filter in `pages/library.tsx`, event captions UI in `pages/events.tsx`
 
 ## Architecture decisions
 
@@ -44,6 +45,8 @@ AccessiBooks is a fullstack accessible audiobooks and e-reading platform — aud
 - **Mobile progress is local-only (drift)**: there is no server progress-sync endpoint, so downloaded-title playback position is persisted on-device (AsyncStorage via `lib/progress.ts`). Do not assume a sync API exists.
 - **No chapter model (drift)**: there is no chapter data model, so voice "next/previous chapter" maps to skip-forward/back and "chapter N" gives honest "no chapters" feedback.
 - **Progress goals + consent-bounded reports**: `progress_goals` table (metrics: listening_minutes, books_completed, active_days, transcript_opens; periods: week/month) drives caregiver/therapist progress reports built on the #67 activity-sharing infra. Goal CRUD is auth-only (goals are config); progress aggregation + reports stay opt-in-gated. A partial unique index `(user_id, metric, period) WHERE archived_at IS NULL` enforces one active goal per measure/period. In a shared/scoped report EVERY section (goal trends AND per-book listening history) is date-bounded to the share range so a narrow share cannot leak out-of-range history — see `.agents/memory/consent-bounded-reports.md`. Aggregation in `artifacts/api-server/src/userActivity.ts` (`computeGoalProgress`, `buildReport`).
+- **Auslan companion ACL lifecycle**: companion videos are uploaded to object storage and the object ACL is kept in lockstep with publication status — public **only** when `status='published'`, private otherwise, and public read is revoked on unpublish/archive/delete. Create validates the path-encoded uploader and the **real** storage metadata (content-type allowlist + 500MB size cap), not client-declared values. ACL/DB writes are sequenced fail-closed (make-public after the DB commit, make-private before it) so a failure never leaves unpublished/deleted media publicly fetchable. See `.agents/memory/public-media-acl-lifecycle.md`.
+- **Event/club transcripts**: `POST /api/events` is `requireAdmin`, so event hosts are always admins — caption entry + finalize are admin-gated by design (no separate host role); reading-club captions are creator-OR-admin. One transcript per source (`eventTranscripts` unique on `(sourceType, sourceId)`); cue text is rendered as React text nodes, never HTML. See `.agents/memory/event-captions-admin-gating.md`.
 
 ## Product
 
@@ -56,6 +59,7 @@ AccessiBooks provides:
 - Ad platform for publishers and advertisers
 - Accessibility features: switch access, screen reader optimizations, dyslexia mode
 - Caregiver/therapist progress reports: users set literacy/listening goals and share a consent-based, read-only, print-to-PDF progress report (goals + per-period trends bounded to the shared date range)
+- Accessible live events & Auslan: human-entered live captions on author events and reading-club sessions, saved as a transcript; human-produced Auslan video companions linked to titles and surfaced in the reader/player; "Auslan / Captioned / Accessible" browse filter for discovery
 
 ## User preferences
 

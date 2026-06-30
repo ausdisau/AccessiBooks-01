@@ -37,6 +37,7 @@ import { registerLimitNotificationRoutes } from "../limitNotifications";
 import { processInboundAgentMailWebhook } from "../agentMailer";
 import { registerAccessibilityKernelRoutes } from "../accessibilityKernel";
 import { registerTranscriptRoutes, seedSampleTranscript } from "../transcripts";
+import { registerAuslanCompanionRoutes } from "../auslanCompanions";
 import { registerMoatScaffoldRoutes, ensureMoatMigrations } from "../moatScaffold";
 import {
   tryAgentDjRecommendations,
@@ -321,6 +322,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerTranscriptRoutes(app);
   seedSampleTranscript().catch(err => console.warn("[Transcripts] Failed to seed sample:", err.message));
 
+  // Auslan sign-language video companions (admin-managed) + browse-filter support
+  registerAuslanCompanionRoutes(app);
+
   // Moat scaffold routes (a11y metadata, reviews, institutional, recommendations, metrics)
   ensureMoatMigrations().catch(err => console.warn("[Moat] Migrations failed:", err.message));
   registerMoatScaffoldRoutes(app);
@@ -555,9 +559,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/books - Get books with optional pagination
   app.get("/api/books", async (req, res) => {
     try {
-      const { cursor, limit, source, contentType: ct, genre, search, readingLevel } = req.query;
+      const { cursor, limit, source, contentType: ct, genre, search, readingLevel, accessibility } = req.query;
       const pageLimit = Math.min(parseInt(limit as string) || 100, 500);
       const parsedReadingLevel = readingLevel ? parseInt(readingLevel as string) : undefined;
+      const accessibilityFilter = accessibility === "auslan" || accessibility === "captioned" || accessibility === "accessible"
+        ? accessibility
+        : undefined;
 
       const results = await storage.getBooksPaginated({
         cursor: cursor as string | undefined,
@@ -567,6 +574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         genre: genre as string | undefined,
         search: search as string | undefined,
         readingLevel: parsedReadingLevel && parsedReadingLevel >= 1 && parsedReadingLevel <= 4 ? parsedReadingLevel : undefined,
+        accessibility: accessibilityFilter,
       });
       res.json(results);
     } catch (error) {

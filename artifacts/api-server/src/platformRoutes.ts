@@ -9,6 +9,14 @@ import {
 } from "@workspace/db";
 import rateLimit from "express-rate-limit";
 import { isAuthenticated, requireAdmin } from "./multiAuth";
+import {
+  appendCaptionSegments,
+  finalizeEventTranscript,
+  getEventTranscript,
+  captionRateLimiter,
+  captionInputSchema,
+  CaptionError,
+} from "./eventTranscripts";
 
 export function createRateLimiter() {
   return rateLimit({
@@ -437,6 +445,77 @@ export function registerPlatformRoutes(app: Express) {
     } catch (error) {
       console.error("Error fetching club:", error);
       res.status(500).json({ message: "Failed to fetch club" });
+    }
+  });
+
+  // ── Reading-club captions / saved transcript ──
+
+  // Member, creator, or admin: view the live/saved transcript.
+  app.get("/api/clubs/:id/transcript", isAuthenticated, async (req: any, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      const clubId = req.params.id;
+      const [club] = await db.select().from(readingClubs).where(eq(readingClubs.id, clubId));
+      if (!club) return res.status(404).json({ message: "Club not found" });
+      const isAdminUser = req.user?.role === "admin";
+      const isCreator = club.creatorId === userId;
+      let isMember = isCreator;
+      if (!isMember) {
+        const [m] = await db
+          .select()
+          .from(readingClubMembers)
+          .where(and(eq(readingClubMembers.clubId, clubId), eq(readingClubMembers.userId, userId)));
+        isMember = !!m;
+      }
+      if (!isAdminUser && !isMember) return res.status(403).json({ message: "Join the club to view its transcript" });
+      const transcript = await getEventTranscript("reading_club", clubId);
+      res.json({ transcript });
+    } catch {
+      res.status(500).json({ message: "Failed to load transcript" });
+    }
+  });
+
+  // Creator or admin: append live caption cues (rate-limited + bounded).
+  app.post("/api/clubs/:id/captions", isAuthenticated, captionRateLimiter, async (req: any, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      const clubId = req.params.id;
+      const [club] = await db.select().from(readingClubs).where(eq(readingClubs.id, clubId));
+      if (!club) return res.status(404).json({ message: "Club not found" });
+      const isAdminUser = req.user?.role === "admin";
+      if (!isAdminUser && club.creatorId !== userId) {
+        return res.status(403).json({ message: "Only the club creator or an admin can post captions" });
+      }
+      const parsed = captionInputSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid captions", errors: parsed.error.flatten() });
+      const transcript = await appendCaptionSegments({
+        sourceType: "reading_club",
+        sourceId: clubId,
+        segments: parsed.data.segments,
+        createdByUserId: userId,
+      });
+      res.json({ transcript });
+    } catch (err: any) {
+      if (err instanceof CaptionError) return res.status(err.status).json({ message: err.message });
+      res.status(500).json({ message: "Failed to post captions" });
+    }
+  });
+
+  // Creator or admin: finalize (lock) the saved transcript.
+  app.post("/api/clubs/:id/transcript/finalize", isAuthenticated, async (req: any, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      const clubId = req.params.id;
+      const [club] = await db.select().from(readingClubs).where(eq(readingClubs.id, clubId));
+      if (!club) return res.status(404).json({ message: "Club not found" });
+      const isAdminUser = req.user?.role === "admin";
+      if (!isAdminUser && club.creatorId !== userId) {
+        return res.status(403).json({ message: "Only the club creator or an admin can finalize the transcript" });
+      }
+      const transcript = await finalizeEventTranscript("reading_club", clubId);
+      res.json({ transcript });
+    } catch {
+      res.status(500).json({ message: "Failed to finalize transcript" });
     }
   });
 

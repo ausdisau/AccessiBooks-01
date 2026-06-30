@@ -44,6 +44,7 @@ export interface BookQueryOptions {
   genre?: string;
   search?: string;
   readingLevel?: number;
+  accessibility?: "auslan" | "captioned" | "accessible";
 }
 
 function mapRowToBook(row: any): Book {
@@ -68,6 +69,7 @@ function mapRowToBook(row: any): Book {
     freeTierAvailable: row.free_tier_available ?? row.freeTierAvailable ?? true,
     adSupported: row.ad_supported ?? row.adSupported ?? true,
     transcriptAvailable: row.transcript_available ?? row.transcriptAvailable ?? false,
+    auslanAvailable: row.auslan_available ?? row.auslanAvailable ?? false,
     narrationType: row.narration_type ?? row.narrationType ?? null,
     pageCount: row.page_count ?? row.pageCount ?? null,
     searchVector: row.search_vector || row.searchVector || null,
@@ -1353,14 +1355,17 @@ export class ExternalAPIStorage implements IStorage {
   }
 
   async getBooksPaginated(options: BookQueryOptions): Promise<PaginatedResult<Book>> {
-    const { cursor, limit = 50, source, contentType, genre, search, readingLevel } = options;
+    const { cursor, limit = 50, source, contentType, genre, search, readingLevel, accessibility } = options;
 
     // If search is provided, use full-text search (then apply any remaining filters in-memory)
     if (search) {
-      // Over-fetch when readingLevel filter is active so we have enough matching results
-      const searchLimit = readingLevel ? limit * 20 : limit + 1;
+      // Over-fetch when a post-filter (readingLevel/accessibility) is active so we have enough matching results
+      const searchLimit = (readingLevel || accessibility) ? limit * 20 : limit + 1;
       const results = await this.searchBooksDB(search, searchLimit);
-      const filtered = readingLevel ? results.filter(b => b.readingLevel === readingLevel) : results;
+      let filtered = readingLevel ? results.filter(b => b.readingLevel === readingLevel) : results;
+      if (accessibility === "auslan") filtered = filtered.filter(b => b.auslanAvailable);
+      else if (accessibility === "captioned") filtered = filtered.filter(b => b.transcriptAvailable);
+      else if (accessibility === "accessible") filtered = filtered.filter(b => b.auslanAvailable || b.transcriptAvailable);
       const hasMore = filtered.length > limit;
       const data = hasMore ? filtered.slice(0, limit) : filtered;
       const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
@@ -1372,6 +1377,9 @@ export class ExternalAPIStorage implements IStorage {
       if (source) conditions.push(sql`source = ${source}`);
       if (contentType) conditions.push(sql`content_type = ${contentType}`);
       if (genre) conditions.push(sql`genre = ${genre}`);
+      if (accessibility === "auslan") conditions.push(sql`auslan_available = true`);
+      else if (accessibility === "captioned") conditions.push(sql`transcript_available = true`);
+      else if (accessibility === "accessible") conditions.push(sql`(auslan_available = true OR transcript_available = true)`);
       if (cursor) conditions.push(sql`id > ${cursor}`);
 
       const whereClause = conditions.length > 0

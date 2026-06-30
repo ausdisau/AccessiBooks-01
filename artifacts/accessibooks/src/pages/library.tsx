@@ -327,6 +327,7 @@ export function Library({ onSelectBook }: LibraryProps) {
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistWithCount | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [readingLevelFilter, setReadingLevelFilter] = useState<string>("all");
+  const [accessibilityFilter, setAccessibilityFilter] = useState<string>("all");
   const { user } = useAuth();
   const { isPremium, isPaid, upgradeToTier, tier } = useSubscription();
   const isFree = tier === "free";
@@ -403,6 +404,7 @@ export function Library({ onSelectBook }: LibraryProps) {
     if (selectedGenre) params.set("genre", selectedGenre);
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (readingLevelFilter !== "all") params.set("readingLevel", readingLevelFilter);
+    if (accessibilityFilter !== "all") params.set("accessibility", accessibilityFilter);
     return params.toString();
   };
 
@@ -414,7 +416,7 @@ export function Library({ onSelectBook }: LibraryProps) {
     isLoading,
     error,
   } = useInfiniteQuery<{ data: Book[]; nextCursor: string | null; hasMore: boolean; total?: number }>({
-    queryKey: ["/api/books", sourceFilter, selectedGenre, debouncedSearch, readingLevelFilter],
+    queryKey: ["/api/books", sourceFilter, selectedGenre, debouncedSearch, readingLevelFilter, accessibilityFilter],
     queryFn: async ({ pageParam }) => {
       const qs = buildQueryString();
       const cursorParam = pageParam ? `&cursor=${pageParam}` : "";
@@ -761,6 +763,17 @@ export function Library({ onSelectBook }: LibraryProps) {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto flex-wrap">
+            <Select value={accessibilityFilter} onValueChange={setAccessibilityFilter}>
+              <SelectTrigger className="w-full sm:w-44" data-testid="select-accessibility" aria-label="Filter by accessibility features">
+                <SelectValue placeholder="Accessibility" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Titles</SelectItem>
+                <SelectItem value="accessible">Accessible (any)</SelectItem>
+                <SelectItem value="auslan">Auslan available</SelectItem>
+                <SelectItem value="captioned">Captioned / transcript</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={readingLevelFilter} onValueChange={setReadingLevelFilter}>
               <SelectTrigger className="w-full sm:w-36" data-testid="select-reading-level" aria-label="Filter by reading level">
                 <GraduationCap className="h-3.5 w-3.5 mr-1 text-muted-foreground" aria-hidden="true" />

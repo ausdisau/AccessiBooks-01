@@ -14,6 +14,8 @@ import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 import { RewardedAdOffer } from "@/components/RewardedAdOffer";
 import { ActiveRewardBadge } from "@/components/ActiveRewardBadge";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { AuslanCompanionPanel, AuslanCompanionManager } from "@/components/auslan-companion";
 
 interface PlayerProps {
   book: Book | null;
@@ -31,6 +33,7 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
   const { profile } = usePreferencesKernel();
   const rewardedAdPreference = profile.rewardedAdPreference ?? "ask";
   const { toast } = useToast();
+  const { user } = useAuth();
   const [showRewardedAd, setShowRewardedAd] = useState(false);
   const [rewardedImpressionId, setRewardedImpressionId] = useState<string | null>(null);
   const [offerDismissed, setOfferDismissed] = useState(false);
@@ -232,7 +235,10 @@ export function Player({ book, onBackToLibrary, onViewAuthor }: PlayerProps) {
           )}
         
         <AudioPlayer book={book} />
-        
+
+        <AuslanCompanionPanel bookId={book.id} />
+        {user?.role === "admin" && <AuslanCompanionManager bookId={book.id} />}
+
         <BookReviews 
           bookId={book.id} 
           title={book.title} 
