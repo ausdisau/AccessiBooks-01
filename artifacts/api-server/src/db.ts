@@ -311,6 +311,44 @@ export async function ensureUserActivitySchema(): Promise<void> {
   }
 }
 
+export async function ensureNarrationSchema(): Promise<void> {
+  try {
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS narration_jobs (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        book_id varchar NOT NULL,
+        voice_id varchar NOT NULL,
+        status text NOT NULL DEFAULT 'queued',
+        total_chapters integer NOT NULL DEFAULT 0,
+        completed_chapters integer NOT NULL DEFAULT 0,
+        error text,
+        requested_by varchar,
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_narration_jobs_book_voice ON narration_jobs (book_id, voice_id)`);
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS narration_assets (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        book_id varchar NOT NULL,
+        voice_id varchar NOT NULL,
+        chapter_number integer NOT NULL,
+        title text,
+        audio_url text NOT NULL,
+        duration_seconds integer,
+        char_count integer,
+        timing_json jsonb,
+        created_at timestamp DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS idx_narration_assets_book_voice_chapter ON narration_assets (book_id, voice_id, chapter_number)`);
+    console.log("[Narration] Schema ensured (narration_jobs + narration_assets)");
+  } catch (error: any) {
+    console.warn("[Narration] Schema setup warning:", error.message);
+  }
+}
+
 export async function setupWordBankTable(): Promise<boolean> {
   try {
     await runSql(`

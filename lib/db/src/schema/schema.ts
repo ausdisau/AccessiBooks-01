@@ -1892,6 +1892,54 @@ export type InsertEasyEnglishUsage = z.infer<typeof insertEasyEnglishUsageSchema
 export type EasyEnglishUsage = typeof easyEnglishUsage.$inferSelect;
 
 // ============================================================
+// ON-DEMAND AI NARRATION
+// Generates neural-voice audiobooks on demand for text-only titles.
+// Assets are cached and keyed by (bookId, voiceId) so a given title +
+// voice is only ever synthesized once and reused across all users.
+// ============================================================
+
+export const NARRATION_JOB_STATUSES = ["queued", "processing", "completed", "failed"] as const;
+export type NarrationJobStatus = typeof NARRATION_JOB_STATUSES[number];
+
+export const narrationJobs = pgTable("narration_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull(),
+  voiceId: varchar("voice_id").notNull(),
+  status: text("status").notNull().default("queued"), // queued | processing | completed | failed
+  totalChapters: integer("total_chapters").notNull().default(0),
+  completedChapters: integer("completed_chapters").notNull().default(0),
+  error: text("error"),
+  requestedBy: varchar("requested_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("idx_narration_jobs_book_voice").on(table.bookId, table.voiceId),
+]);
+
+export const insertNarrationJobSchema = createInsertSchema(narrationJobs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertNarrationJob = z.infer<typeof insertNarrationJobSchema>;
+export type NarrationJob = typeof narrationJobs.$inferSelect;
+
+export const narrationAssets = pgTable("narration_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull(),
+  voiceId: varchar("voice_id").notNull(),
+  chapterNumber: integer("chapter_number").notNull(),
+  title: text("title"),
+  audioUrl: text("audio_url").notNull(),
+  durationSeconds: integer("duration_seconds"),
+  charCount: integer("char_count"),
+  timingJson: jsonb("timing_json"), // optional word/character timing marks if returned by the TTS engine
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("idx_narration_assets_book_voice_chapter").on(table.bookId, table.voiceId, table.chapterNumber),
+]);
+
+export const insertNarrationAssetSchema = createInsertSchema(narrationAssets).omit({ id: true, createdAt: true });
+export type InsertNarrationAsset = z.infer<typeof insertNarrationAssetSchema>;
+export type NarrationAsset = typeof narrationAssets.$inferSelect;
+
+// ============================================================
 // AD BIDDING PLATFORM — NEW TABLES
 // (adCampaigns & adImpressions already defined above for audio ads)
 // ============================================================
