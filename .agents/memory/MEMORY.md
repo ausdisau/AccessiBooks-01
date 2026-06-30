@@ -1,0 +1,1 @@
+- [api-server typecheck](api-server-typecheck.md) — tsc --noEmit never passes (~647 pre-existing errors); verify via workflow boot + curl, not tsc.

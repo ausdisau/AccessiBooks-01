@@ -15,6 +15,7 @@ import { registerRevenueRoutes, seedVoicePacks } from "../revenueRoutes";
 import { registerLoanRoutes, startLoanExpirationJob } from "../loanSystem";
 import { registerPlatformRoutes } from "../platformRoutes";
 import { registerPodcastRoutes } from "../podcastIngestion";
+import { registerNarrationRoutes } from "../narration";
 import { registerPushNotificationRoutes } from "../pushNotifications";
 import { registerAdMediationRoutes } from "../adMediation";
 import { logAdImpression } from "../adImpressionLogger";
@@ -200,6 +201,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Podcast ingestion routes (RSS feeds, episodes)
   registerPodcastRoutes(app);
+
+  // On-demand AI narration (chapter-based neural-voice audiobooks for text titles)
+  registerNarrationRoutes(app);
 
   // Push notification routes (subscribe, preferences, history)
   registerPushNotificationRoutes(app);
