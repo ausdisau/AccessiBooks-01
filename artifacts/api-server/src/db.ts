@@ -461,6 +461,53 @@ export async function ensureCommercialCreditsSchema(): Promise<void> {
   }
 }
 
+// Task #214: gift & sponsorship schema. Adds the money-correctness columns the
+// original gift_cards table lacked (stripe_session_id + paid_at for webhook
+// gating, pack_id + credit_amount for #213 credit gifts) and creates the new
+// subscription_sponsorships pool table. Idempotent — safe to run on every boot.
+export async function ensureGiftSponsorSchema(): Promise<void> {
+  try {
+    // gift_cards already exists; add the new nullable columns in place.
+    await runSql(`ALTER TABLE gift_cards ADD COLUMN IF NOT EXISTS stripe_session_id varchar`);
+    await runSql(`ALTER TABLE gift_cards ADD COLUMN IF NOT EXISTS paid_at timestamp`);
+    await runSql(`ALTER TABLE gift_cards ADD COLUMN IF NOT EXISTS pack_id varchar`);
+    await runSql(`ALTER TABLE gift_cards ADD COLUMN IF NOT EXISTS credit_amount integer`);
+    // A Stripe session funds exactly one gift card; this index is the webhook's
+    // idempotency anchor for the pending -> active flip.
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_gift_cards_stripe_session ON gift_cards (stripe_session_id)`);
+
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS subscription_sponsorships (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        sponsor_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind varchar(16) NOT NULL,
+        tier varchar(16),
+        term_months integer,
+        credit_amount integer,
+        pack_id varchar,
+        amount_cents integer NOT NULL,
+        currency varchar(3) NOT NULL DEFAULT 'USD',
+        message text,
+        status varchar(16) NOT NULL DEFAULT 'pending',
+        stripe_session_id varchar,
+        claimed_by_user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        claimed_at timestamp,
+        funded_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_sub_sponsorships_status ON subscription_sponsorships (status)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_sub_sponsorships_sponsor ON subscription_sponsorships (sponsor_user_id)`);
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_sub_sponsorships_stripe_session ON subscription_sponsorships (stripe_session_id)`);
+    // DB-enforced: a user may hold at most one CLAIMED sponsorship. claimSponsorship
+    // relies on this partial unique index to make the per-user cap race-proof.
+    await runSql(`CREATE UNIQUE INDEX IF NOT EXISTS ux_sub_sponsorships_one_claim_per_user ON subscription_sponsorships (claimed_by_user_id) WHERE status = 'claimed'`);
+    console.log("[GiftSponsor] Schema ensured (gift_cards columns + subscription_sponsorships)");
+  } catch (error: any) {
+    console.warn("[GiftSponsor] Schema setup warning:", error.message);
+  }
+}
+
 export async function seedCommercialBundles(): Promise<void> {
   try {
     const titleById = new Map(schema.COMMERCIAL_TITLES.map((t) => [t.bookId, t]));

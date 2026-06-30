@@ -15,6 +15,7 @@ import {
   ensureNarrationSchema,
   ensureNdisSchema,
   ensureCommercialCreditsSchema,
+  ensureGiftSponsorSchema,
 } from "./db";
 import { seedPlans } from "./seed";
 import { startMonthlyAllowanceScheduler } from "./commercialCredits";
@@ -93,6 +94,7 @@ if (Number.isNaN(port) || port <= 0) {
       ensureNarrationSchema().catch((err: any) => logger.warn({ err }, "[Narration] Schema setup failed"));
       ensureNdisSchema().catch((err: any) => logger.warn({ err }, "[NDIS] Schema setup failed"));
       ensureCommercialCreditsSchema().catch((err: any) => logger.warn({ err }, "[CommercialCredits] Schema setup failed"));
+      ensureGiftSponsorSchema().catch((err: any) => logger.warn({ err }, "[GiftSponsor] Schema setup failed"));
       seedPlans().catch((err: any) => logger.warn({ err }, "[Seed] Plans seed failed"));
       startDailySpendResetCron();
       startMonthlyAllowanceScheduler();

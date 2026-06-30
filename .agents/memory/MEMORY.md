@@ -1,2 +1,1 @@
-- [api-server typecheck](api-server-typecheck.md) — full `tsc` on api-server has hundreds of pre-existing errors; verify changes via boot+curl, not typecheck.
-- [Money fulfillment rules](money-fulfillment-rules.md) — Stripe webhook fulfillment must re-throw on failure (let Stripe retry); credit/ownership grants must be idempotent and claim ownership before debiting.
+- [api-server workflow restart times out](api-server-workflow-restart.md) — restart_workflow always TIMES_OUT (slow startup ingestion starves readiness probe); verify by background-booting dist/index.mjs on PORT=8080 + curl, all in one bash call.

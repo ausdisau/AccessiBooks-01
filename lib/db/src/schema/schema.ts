@@ -1279,15 +1279,59 @@ export const giftCards = pgTable("gift_cards", {
   createdAt: timestamp("created_at").defaultNow(),
   redeemedBy: varchar("redeemed_by").references(() => users.id),
   redeemedAt: timestamp("redeemed_at"),
+  // Task #214: money-correct gifting. The card starts life as `pending` at
+  // checkout and only becomes redeemable (`active`) once the Stripe webhook
+  // confirms payment for this session. creditAmount/packId carry #213
+  // title-credit gifts (granted via the credits ledger, not legacy store credit).
+  stripeSessionId: varchar("stripe_session_id"),
+  paidAt: timestamp("paid_at"),
+  packId: varchar("pack_id"),
+  creditAmount: integer("credit_amount"),
 }, (table) => [
   index("idx_gift_cards_code").on(table.code),
   index("idx_gift_cards_from").on(table.fromUserId),
   index("idx_gift_cards_status").on(table.status),
+  uniqueIndex("ux_gift_cards_stripe_session").on(table.stripeSessionId),
 ]);
 
 export const insertGiftCardSchema = createInsertSchema(giftCards).omit({ id: true, createdAt: true, redeemedAt: true });
 export type InsertGiftCard = z.infer<typeof insertGiftCardSchema>;
 export type GiftCard = typeof giftCards.$inferSelect;
+
+// Task #214: subscription/credit SPONSORSHIPS. A supporter funds a benefit into
+// a shared pool; an eligible (free-tier) user later CLAIMS it. Distinct from the
+// advertising `sponsoredQueues` table. Lifecycle: pending -> funded (webhook
+// confirms payment) -> claimed (an eligible user claims it). The partial unique
+// index on claimed_by_user_id enforces one claimed sponsorship per user.
+export const subscriptionSponsorships = pgTable("subscription_sponsorships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sponsorUserId: varchar("sponsor_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 16 }).notNull(), // 'subscription' | 'credits'
+  tier: varchar("tier", { length: 16 }),
+  termMonths: integer("term_months"),
+  creditAmount: integer("credit_amount"),
+  packId: varchar("pack_id"),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  message: text("message"),
+  status: varchar("status", { length: 16 }).notNull().default("pending"), // pending|funded|claimed|cancelled
+  stripeSessionId: varchar("stripe_session_id"),
+  claimedByUserId: varchar("claimed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  claimedAt: timestamp("claimed_at"),
+  fundedAt: timestamp("funded_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_sub_sponsorships_status").on(table.status),
+  index("idx_sub_sponsorships_sponsor").on(table.sponsorUserId),
+  uniqueIndex("ux_sub_sponsorships_stripe_session").on(table.stripeSessionId),
+  uniqueIndex("ux_sub_sponsorships_one_claim_per_user")
+    .on(table.claimedByUserId)
+    .where(sql`status = 'claimed'`),
+]);
+
+export const insertSubscriptionSponsorshipSchema = createInsertSchema(subscriptionSponsorships).omit({ id: true, createdAt: true });
+export type InsertSubscriptionSponsorship = z.infer<typeof insertSubscriptionSponsorshipSchema>;
+export type SubscriptionSponsorship = typeof subscriptionSponsorships.$inferSelect;
 
 export const enterpriseAccounts = pgTable("enterprise_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -2812,6 +2856,8 @@ export const CREDIT_GRANT_SOURCES = [
   "subscription_allowance",
   "promo",
   "adjustment",
+  "gift",
+  "sponsorship",
 ] as const;
 export type CreditGrantSource = (typeof CREDIT_GRANT_SOURCES)[number];
 
