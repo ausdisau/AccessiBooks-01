@@ -14,6 +14,7 @@ import {
   ensureAutoResponseLogSchema,
   ensureNarrationSchema,
   ensureNdisSchema,
+  ensureCommercialCreditsSchema,
 } from "./db";
 import { seedPlans } from "./seed";
 import { startDailySpendResetCron } from "./auctionEngine";
@@ -90,6 +91,7 @@ if (Number.isNaN(port) || port <= 0) {
       ensureUserActivitySchema().catch((err: any) => logger.warn({ err }, "[UserActivity] Schema setup failed"));
       ensureNarrationSchema().catch((err: any) => logger.warn({ err }, "[Narration] Schema setup failed"));
       ensureNdisSchema().catch((err: any) => logger.warn({ err }, "[NDIS] Schema setup failed"));
+      ensureCommercialCreditsSchema().catch((err: any) => logger.warn({ err }, "[CommercialCredits] Schema setup failed"));
       seedPlans().catch((err: any) => logger.warn({ err }, "[Seed] Plans seed failed"));
       startDailySpendResetCron();
 

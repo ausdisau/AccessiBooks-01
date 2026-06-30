@@ -1,12 +1,15 @@
 import { useState, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ChevronRight, Search, ExternalLink, Headphones, Star, Music, PlayCircle, Clock, DollarSign, BookOpen, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, ExternalLink, Headphones, Star, Music, PlayCircle, Clock, DollarSign, BookOpen, Download, Coins, Sparkles, Check, Gift, Loader2, History } from "lucide-react";
 import { SiSpotify, SiSoundcloud, SiGoogleplay } from "react-icons/si";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface SpotifyAudiobook {
   id: string;
@@ -1274,9 +1277,383 @@ function GooglePlayEbooksSection() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// AccessiBooks Credits — commercial catalog storefront (Task #213)
+// ---------------------------------------------------------------------------
+
+interface CreditPack {
+  id: string;
+  name: string;
+  credits: number;
+  priceCents: number;
+  badge: string | null;
+}
+
+interface CommercialTitle {
+  bookId: string;
+  title: string;
+  author: string;
+  coverUrl?: string;
+  contentType: string;
+  creditCost: number;
+  owned: boolean;
+}
+
+interface CommercialBundle {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  coverImage: string | null;
+  priceCents: number;
+  originalPriceCents: number;
+  items: { bookId: string; title: string; author: string; coverUrl?: string }[];
+  ownedCount: number;
+  fullyOwned: boolean;
+}
+
+interface CreditBalance {
+  balance: number;
+  tier: string;
+  monthlyAllowance: number;
+}
+
+interface LedgerEntry {
+  id: string;
+  type: string;
+  amount: number;
+  balanceAfter: number;
+  bookId: string | null;
+  bundleId: string | null;
+  source: string | null;
+  description: string | null;
+  createdAt: string;
+}
+
+const fmtPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+function parseErrorMessage(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const match = raw.match(/\{.*\}$/);
+  if (match) {
+    try {
+      const body = JSON.parse(match[0]);
+      if (body?.message) return body.message as string;
+    } catch {
+      /* ignore */
+    }
+  }
+  return fallback;
+}
+
+function CreditsStorefrontSection() {
+  const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [checkoutPackId, setCheckoutPackId] = useState<string | null>(null);
+  const [checkoutBundleId, setCheckoutBundleId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const { data: packsData } = useQuery<{ packs: CreditPack[] }>({
+    queryKey: ["/api/credits/packs"],
+    retry: false,
+  });
+  const { data: titlesData, isLoading: titlesLoading } = useQuery<{ titles: CommercialTitle[]; titleCreditCost: number }>({
+    queryKey: ["/api/commercial/titles"],
+    retry: false,
+  });
+  const { data: bundlesData } = useQuery<{ bundles: CommercialBundle[] }>({
+    queryKey: ["/api/bundles"],
+    retry: false,
+  });
+  const { data: balanceData } = useQuery<CreditBalance>({
+    queryKey: ["/api/credits/balance"],
+    retry: false,
+    enabled: isAuthenticated,
+  });
+  const { data: historyData } = useQuery<{ history: LedgerEntry[] }>({
+    queryKey: ["/api/credits/history"],
+    retry: false,
+    enabled: isAuthenticated && showHistory,
+  });
+
+  const packs = packsData?.packs ?? [];
+  const titles = titlesData?.titles ?? [];
+  const bundles = bundlesData?.bundles ?? [];
+  const balance = balanceData?.balance ?? 0;
+
+  const requireSignIn = () => {
+    toast({
+      title: "Sign in required",
+      description: "Please sign in to buy credits and redeem titles.",
+      variant: "destructive",
+    });
+  };
+
+  const buyPack = useMutation({
+    mutationFn: async (packId: string) => {
+      const res = await apiRequest("POST", "/api/credits/checkout", { packId });
+      return (await res.json()) as { url: string };
+    },
+    onMutate: (packId: string) => setCheckoutPackId(packId),
+    onSuccess: (data) => {
+      if (data.url) window.location.href = data.url;
+    },
+    onError: (err) => {
+      setCheckoutPackId(null);
+      toast({ title: "Checkout failed", description: parseErrorMessage(err, "Could not start checkout."), variant: "destructive" });
+    },
+  });
+
+  const buyBundle = useMutation({
+    mutationFn: async (bundleId: string) => {
+      const res = await apiRequest("POST", `/api/bundles/${bundleId}/checkout`, {});
+      return (await res.json()) as { url: string };
+    },
+    onMutate: (bundleId: string) => setCheckoutBundleId(bundleId),
+    onSuccess: (data) => {
+      if (data.url) window.location.href = data.url;
+    },
+    onError: (err) => {
+      setCheckoutBundleId(null);
+      toast({ title: "Checkout failed", description: parseErrorMessage(err, "Could not start checkout."), variant: "destructive" });
+    },
+  });
+
+  const redeem = useMutation({
+    mutationFn: async (bookId: string) => {
+      const res = await apiRequest("POST", "/api/credits/redeem", { bookId });
+      return (await res.json()) as { balance: number; cost: number };
+    },
+    onMutate: (bookId: string) => setRedeemingId(bookId),
+    onSuccess: (data) => {
+      toast({ title: "Title unlocked!", description: `It's yours forever. ${data.balance} credit${data.balance === 1 ? "" : "s"} left.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/commercial/titles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credits/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credits/history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bundles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+    },
+    onError: (err) => {
+      toast({ title: "Couldn't redeem", description: parseErrorMessage(err, "Check your credit balance and try again."), variant: "destructive" });
+    },
+    onSettled: () => setRedeemingId(null),
+  });
+
+  return (
+    <section className="space-y-6" data-testid="section-credits-storefront">
+      {/* Header + balance */}
+      <div className="flex flex-col gap-4 rounded-xl border bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-amber-500/15 p-2.5 text-amber-600 dark:text-amber-400">
+            <Coins className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">AccessiBooks Credits</h2>
+            <p className="text-sm text-muted-foreground max-w-prose">
+              Spend 1 credit to own a premium title forever. Buy a pack (credits never expire) or get
+              monthly credits with Plus &amp; Premium.
+            </p>
+          </div>
+        </div>
+        {isAuthenticated ? (
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="text-right">
+              <div className="flex items-center gap-1.5 text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-credit-balance">
+                <Coins className="h-5 w-5" />
+                {balance}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {balanceData?.monthlyAllowance ? `+${balanceData.monthlyAllowance}/mo on ${balanceData.tier}` : "credits available"}
+              </div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setShowHistory((s) => !s)} data-testid="button-toggle-history">
+              <History className="h-4 w-4 mr-1.5" />
+              History
+            </Button>
+          </div>
+        ) : (
+          <Badge variant="secondary" className="shrink-0">Sign in to see your balance</Badge>
+        )}
+      </div>
+
+      {/* History */}
+      {isAuthenticated && showHistory && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold mb-2">Credit history</h3>
+            {(historyData?.history?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">No credit activity yet.</p>
+            ) : (
+              <ul className="divide-y text-sm">
+                {historyData!.history.map((e) => (
+                  <li key={e.id} className="flex items-center justify-between py-2" data-testid={`row-ledger-${e.id}`}>
+                    <span className="text-muted-foreground">{e.description || e.type}</span>
+                    <span className={e.amount >= 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-foreground font-medium"}>
+                      {e.amount >= 0 ? `+${e.amount}` : e.amount}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Credit packs */}
+      <div>
+        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-amber-500" /> Buy credits
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {packs.map((pack) => (
+            <Card key={pack.id} className="relative overflow-hidden" data-testid={`card-pack-${pack.id}`}>
+              {pack.badge && (
+                <Badge className="absolute right-3 top-3 bg-amber-500 hover:bg-amber-500">{pack.badge}</Badge>
+              )}
+              <CardContent className="p-5 flex flex-col gap-3">
+                <div>
+                  <div className="text-sm text-muted-foreground">{pack.name}</div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-3xl font-bold">{pack.credits}</span>
+                    <span className="text-sm text-muted-foreground">credits</span>
+                  </div>
+                </div>
+                <div className="text-lg font-semibold">{fmtPrice(pack.priceCents)}</div>
+                <Button
+                  className="w-full"
+                  disabled={buyPack.isPending && checkoutPackId === pack.id}
+                  onClick={() => (isAuthenticated ? buyPack.mutate(pack.id) : requireSignIn())}
+                  data-testid={`button-buy-pack-${pack.id}`}
+                >
+                  {buyPack.isPending && checkoutPackId === pack.id ? (
+                    <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Redirecting…</>
+                  ) : (
+                    <>Buy {fmtPrice(pack.priceCents)}</>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Bundles */}
+      {bundles.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <Gift className="h-5 w-5 text-orange-500" /> Bundles
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {bundles.map((bundle) => {
+              const saving = bundle.originalPriceCents - bundle.priceCents;
+              return (
+                <Card key={bundle.id} className="flex flex-col" data-testid={`card-bundle-${bundle.slug}`}>
+                  <CardContent className="p-5 flex flex-col gap-3 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-semibold leading-tight">{bundle.title}</h4>
+                      {bundle.fullyOwned && <Badge variant="secondary"><Check className="h-3 w-3 mr-1" />Owned</Badge>}
+                    </div>
+                    {bundle.description && <p className="text-sm text-muted-foreground flex-1">{bundle.description}</p>}
+                    <ul className="text-xs text-muted-foreground space-y-0.5">
+                      {bundle.items.map((it) => (
+                        <li key={it.bookId} className="truncate">• {it.title}</li>
+                      ))}
+                    </ul>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xl font-bold">{fmtPrice(bundle.priceCents)}</span>
+                      {saving > 0 && (
+                        <span className="text-sm text-muted-foreground line-through">{fmtPrice(bundle.originalPriceCents)}</span>
+                      )}
+                      {saving > 0 && <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400">Save {fmtPrice(saving)}</Badge>}
+                    </div>
+                    <Button
+                      variant={bundle.fullyOwned ? "secondary" : "default"}
+                      className="w-full"
+                      disabled={bundle.fullyOwned || (buyBundle.isPending && checkoutBundleId === bundle.id)}
+                      onClick={() => (isAuthenticated ? buyBundle.mutate(bundle.id) : requireSignIn())}
+                      data-testid={`button-buy-bundle-${bundle.slug}`}
+                    >
+                      {bundle.fullyOwned ? (
+                        "You own this bundle"
+                      ) : buyBundle.isPending && checkoutBundleId === bundle.id ? (
+                        <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Redirecting…</>
+                      ) : (
+                        <>Buy bundle</>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Premium titles */}
+      <div>
+        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          <BookOpen className="h-5 w-5 text-primary" /> Premium titles
+        </h3>
+        {titlesLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-64 w-full rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            {titles.map((t) => {
+              const isRedeeming = redeemingId === t.bookId && redeem.isPending;
+              return (
+                <Card key={t.bookId} className="flex flex-col overflow-hidden" data-testid={`card-title-${t.bookId}`}>
+                  <div className="aspect-[2/3] bg-muted overflow-hidden">
+                    {t.coverUrl ? (
+                      <img src={t.coverUrl} alt={t.title} className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center"><BookOpen className="h-8 w-8 text-muted-foreground" /></div>
+                    )}
+                  </div>
+                  <CardContent className="p-3 flex flex-col gap-2 flex-1">
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold leading-tight line-clamp-2">{t.title}</div>
+                      <div className="text-xs text-muted-foreground line-clamp-1">{t.author}</div>
+                    </div>
+                    {t.owned ? (
+                      <Badge variant="secondary" className="w-full justify-center py-1" data-testid={`badge-owned-${t.bookId}`}>
+                        <Check className="h-3.5 w-3.5 mr-1" /> Owned
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        disabled={isRedeeming}
+                        onClick={() => (isAuthenticated ? redeem.mutate(t.bookId) : requireSignIn())}
+                        data-testid={`button-redeem-${t.bookId}`}
+                      >
+                        {isRedeeming ? (
+                          <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> …</>
+                        ) : (
+                          <><Coins className="h-3.5 w-3.5 mr-1" /> {t.creditCost} credit{t.creditCost === 1 ? "" : "s"}</>
+                        )}
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function CommercialAudiobooks() {
   return (
     <div className="space-y-8">
+      <CreditsStorefrontSection />
       <NordicApisSection />
       <GooglePlayEbooksSection />
       <GooglePlaySection />

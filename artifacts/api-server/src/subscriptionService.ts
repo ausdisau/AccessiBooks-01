@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { storage } from "./storage";
 import { recordTransaction } from "./billing";
+import { grantMonthlyAllowance } from "./commercialCredits";
 import {
   PLUS_PRICE_MONTHLY,
   PLUS_PRICE_YEARLY,
@@ -430,6 +431,30 @@ export class StripeSubscriptionService implements ISubscriptionService {
         subscriptionStatus: "active",
       });
       console.log(`[Billing] User ${user.id} payment succeeded — restored to active`);
+    }
+
+    // Grant the per-tier monthly credit allowance (Task #213). Idempotent per
+    // billing period via the allowance idempotency key, so retried/duplicate
+    // invoice webhooks never double-grant.
+    try {
+      const tier = (user as any).subscriptionTier || "free";
+      const line = obj.lines?.data?.[0];
+      const periodStart = obj.period_start
+        ? new Date(obj.period_start * 1000)
+        : line?.period?.start
+          ? new Date(line.period.start * 1000)
+          : new Date();
+      const periodEnd = obj.period_end
+        ? new Date(obj.period_end * 1000)
+        : line?.period?.end
+          ? new Date(line.period.end * 1000)
+          : null;
+      const result = await grantMonthlyAllowance({ userId: user.id, tier, periodStart, periodEnd });
+      if (result.granted) {
+        console.log(`[Credits] Granted monthly ${tier} allowance to ${user.id} (balance ${result.balance})`);
+      }
+    } catch (err) {
+      console.warn(`[Credits] Failed to grant monthly allowance for user ${user.id}:`, err);
     }
 
     console.log(`[Billing] Payment succeeded for invoice ${obj.id}`);
