@@ -1,0 +1,55 @@
+You are working on the AccessiBooks Replit app.
+
+Task:
+Resolve the production sign-up database schema warning.
+
+Context:
+A recent change added or now depends on a database column required for sign-up. The change summary warned that if the published app uses a separate database from the current development database, that same column must be added there too before sign-up will work in production.
+
+Stay focused on this database/sign-up issue only. Do not work on unrelated accessibility, search, admin, WebSocket, UI, or catalogue tasks.
+
+Please do the following:
+
+1. Identify the exact column
+- Inspect recent migrations, schema files, auth/user models, and sign-up code.
+- Find the exact new column name.
+- Find the exact table it belongs to.
+- Find the code path where sign-up depends on it.
+- Explain what error would happen if the column is missing.
+
+2. Check migration status
+- Confirm whether a migration exists for this column.
+- Confirm whether the migration is committed and included in the deployment path.
+- Confirm whether local/dev database schema matches the current code.
+
+3. Check production database configuration
+- Determine whether the published Replit app uses the same database as the current environment or a separate production database.
+- Inspect relevant environment variables, deployment config, DATABASE_URL usage, Replit database settings, Neon/Supabase/Postgres config, or equivalent.
+- Do not print secrets or full database URLs.
+
+4. Make the production-safe fix
+- If a migration exists but has not been applied to the published app database, apply it using the project’s established migration command.
+- If no migration exists, create one using the project’s established migration tooling.
+- The migration must be backward-safe where practical:
+  - avoid destructive changes
+  - use nullable/default values if needed
+  - backfill existing rows if required
+  - only add NOT NULL after safe backfill, if necessary
+- Do not manually edit production data unless required and clearly justified.
+
+5. Verify sign-up
+- Run the most specific available checks.
+- Verify the schema contains the required column.
+- Verify sign-up no longer fails because of the missing column.
+- If end-to-end sign-up cannot be tested safely, document the exact reason and provide the closest safe verification.
+
+6. Final response
+Report:
+- exact table and column added/required
+- files changed
+- migration file created or reused
+- command used to apply migration
+- whether dev and production databases are separate
+- verification results
+- any remaining manual deployment step
+- any unrelated validation failures, clearly separated
