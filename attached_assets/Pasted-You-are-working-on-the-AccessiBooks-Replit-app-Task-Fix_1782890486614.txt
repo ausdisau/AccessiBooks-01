@@ -1,0 +1,87 @@
+You are working on the AccessiBooks Replit app.
+
+Task:
+Fix the WebSocket security vulnerability in helper.js.
+
+Important:
+Do not work on unrelated accessibility, admin, search, docs, legal pages, or catalogue features unless they are directly required to fix the WebSocket vulnerability. This task is security-focused and should stay narrow.
+
+First, inspect:
+- helper.js
+- any file that imports or calls helper.js
+- any WebSocket client setup
+- any WebSocket server / upgrade handling
+- any proxy, dev-server, HMR, realtime, or helper code that constructs WebSocket URLs
+- any authentication/session logic used by WebSocket connections
+
+Look specifically for these vulnerability patterns:
+
+1. Unsafe WebSocket URL construction
+- User-controlled host, protocol, path, or query parameters used to build a WebSocket URL.
+- Allowing arbitrary remote WebSocket endpoints.
+- Using ws:// in production instead of wss://.
+- Falling back to insecure protocols when location.protocol is https:.
+
+2. Authentication and token leakage
+- Access tokens, API keys, session tokens, or secrets passed in WebSocket query strings.
+- WebSocket connections accepted without checking an authenticated session.
+- Missing or weak authorization checks after connection.
+
+3. Missing Origin / Host validation
+- WebSocket server accepts upgrades from arbitrary origins.
+- Origin checking is absent, wildcarded, or only enforced client-side.
+- Host or forwarded headers are trusted without validation.
+
+4. Unvalidated message handling
+- Incoming WebSocket messages are JSON.parsed without schema validation.
+- Message types are trusted without allowlisting.
+- Client or server executes commands based on untrusted message payloads.
+- Prototype pollution risks or unsafe object merging.
+
+5. Denial-of-service risks
+- No max message size.
+- No rate limiting or throttling.
+- Reconnect loops without exponential backoff.
+- Missing close/error cleanup.
+- Unbounded listeners, timers, queues, or message buffers.
+
+6. Cross-site WebSocket hijacking risks
+- Cookie-authenticated WebSocket endpoints without strict Origin validation.
+- SameSite assumptions that do not protect WebSocket upgrades.
+- Sensitive data sent immediately after connection before verifying authorization.
+
+Implement a secure fix appropriate to the existing architecture.
+
+Client-side requirements:
+- In production, only connect to trusted same-origin or explicitly configured trusted WebSocket endpoints.
+- Use wss:// whenever the page is served over https:.
+- Do not allow arbitrary user-controlled WebSocket hosts.
+- Do not put long-lived secrets or access tokens in the WebSocket URL.
+- Add safe reconnect behaviour with backoff and cleanup if helper.js owns reconnect logic.
+- Add clear error handling without leaking secrets to logs.
+
+Server-side requirements, if the app has a WebSocket server:
+- Validate Origin during upgrade.
+- Validate authenticated session or a short-lived one-time connection ticket.
+- Enforce authorization before subscribing the socket to private data.
+- Validate all incoming messages with an allowlist/schema.
+- Add max message size and basic abuse protections where practical.
+- Close unauthorised or malformed connections with appropriate close codes.
+- Avoid logging tokens, cookies, or full query strings.
+
+Testing / verification:
+- Add or update tests where the project has an established test pattern.
+- At minimum, manually verify:
+  - secure WebSocket URL is generated in production-like configuration.
+  - arbitrary external WebSocket URL injection is blocked.
+  - ws:// is not used from an https page.
+  - unauthenticated WebSocket access is rejected if server-side WebSockets exist.
+  - malformed messages are rejected safely.
+  - no secrets appear in WebSocket URLs or logs.
+
+Before finishing:
+- Show the exact files changed.
+- Explain the original vulnerability you found.
+- Explain the security fix.
+- List commands/checks run and their results.
+- If full typecheck still fails because of unrelated pre-existing errors, identify the unrelated files and run the most specific available checks for the files you changed.

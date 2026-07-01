@@ -20,6 +20,19 @@ interface QueueRoomState {
 
 const activeQueues = new Map<string, QueueRoomState>();
 
+// Coerce an untrusted playback payload down to exactly the known fields with
+// sane bounds, so arbitrary/oversized properties (or a JSON "__proto__" key)
+// can't be merged into shared queue state and rebroadcast to every listener.
+function sanitizePlayback(input: any): QueuePlaybackState {
+  const num = (v: any, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+  return {
+    currentTime: Math.max(0, num(input?.currentTime, 0)),
+    isPlaying: input?.isPlaying === true,
+    playbackRate: Math.min(4, Math.max(0.25, num(input?.playbackRate, 1))),
+    updatedAt: Date.now(),
+  };
+}
+
 function broadcastToQueue(queueId: string, message: any, excludeClientId?: string) {
   const room = activeQueues.get(queueId);
   if (!room) return;
@@ -464,10 +477,7 @@ export function handleQueueWSMessage(
       const roomState = activeQueues.get(queueId);
       if (!roomState) return;
 
-      roomState.playback = {
-        ...msg.playback,
-        updatedAt: Date.now(),
-      };
+      roomState.playback = sanitizePlayback(msg.playback);
 
       broadcastToQueue(queueId, {
         type: "queue_playback_sync",
