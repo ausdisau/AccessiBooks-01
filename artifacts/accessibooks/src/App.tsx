@@ -50,6 +50,7 @@ import { ShareButton } from "@/components/share-button";
 import { NotificationCenter } from "@/components/notification-center";
 import { Footer } from "@/components/footer";
 import { BrandLandingPage } from "@/pages/landing";
+import { BrandHeader, BrandFooter } from "@/components/brand";
 import HandsFreeSignIn from "@/pages/hands-free-sign-in";
 import { useCuratedPlaylists } from "@/hooks/use-playlists";
 import { useSubscription } from "@/hooks/use-subscription";
@@ -1142,6 +1143,36 @@ function PublicCommunitySection({ onJoin }: { onJoin: () => void }) {
         </div>
       </div>
     </section>
+  );
+}
+
+// Public marketing shell — wraps pages that must be reachable without auth
+// (e.g. /pricing, /trust, /institutional) with the brand header and footer.
+function PublicPageShell({ children }: { children: React.ReactNode }) {
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const navItems = [
+    { label: "Pricing", href: "/pricing" },
+    { label: "For institutions", href: "/institutional" },
+    { label: "Trust & safety", href: "/trust" },
+  ];
+
+  return (
+    <>
+      <BrandHeader
+        navItems={navItems}
+        onSignIn={() => { setIsRegistering(false); setLoginOpen(true); }}
+        onSignUp={() => { setIsRegistering(true); setLoginOpen(true); }}
+      />
+      <main id="main-content">{children}</main>
+      <BrandFooter />
+      <LoginModal
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        isRegistering={isRegistering}
+        setIsRegistering={setIsRegistering}
+      />
+    </>
   );
 }
 
@@ -2466,6 +2497,27 @@ function App() {
             </Route>
             <Route path="/sign-in">
               <HandsFreeSignIn />
+            </Route>
+            <Route path="/pricing">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <PublicPageShell>
+                  <PricingPage />
+                </PublicPageShell>
+              </Suspense>
+            </Route>
+            <Route path="/trust">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <PublicPageShell>
+                  <TrustPage />
+                </PublicPageShell>
+              </Suspense>
+            </Route>
+            <Route path="/institutional">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <PublicPageShell>
+                  <InstitutionalPage />
+                </PublicPageShell>
+              </Suspense>
             </Route>
             <Route>
               {isAuthenticated ? (

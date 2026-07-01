@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { Info, Crown, Zap, Building2, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -54,6 +55,37 @@ const INSTITUTIONAL_FEATURES = [
 export function PricingPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const prev = document.title;
+    document.title = "Pricing — AccessiBooks";
+    const setMeta = (sel: string, attr: string, val: string) => {
+      let el = document.head.querySelector<HTMLMetaElement>(sel);
+      const existed = !!el;
+      if (!el) { el = document.createElement("meta"); el.setAttribute(attr.split("=")[0], attr.split("=")[1]); document.head.appendChild(el); }
+      const old = el.getAttribute("content") ?? "";
+      el.setAttribute("content", val);
+      return { el, existed, old };
+    };
+    const metas = [
+      setMeta('meta[name="description"]', "name=description", "Compare free, Plus, and Premium plans on AccessiBooks — the accessibility-first audiobook and ebook platform from Australian Disability Ltd."),
+      setMeta('meta[property="og:title"]', "property=og:title", "Pricing — AccessiBooks"),
+      setMeta('meta[property="og:description"]', "property=og:description", "Choose the AccessiBooks plan that fits your needs. Free access to our curated catalog, or unlock everything with Premium — ad-free, offline, and full catalog."),
+      setMeta('meta[property="og:url"]', "property=og:url", "https://accessibooks.org/pricing"),
+      setMeta('meta[name="twitter:title"]', "name=twitter:title", "Pricing — AccessiBooks"),
+      setMeta('meta[name="twitter:description"]', "name=twitter:description", "Free, Plus, and Premium plans. AccessiBooks — accessible audiobooks and ebooks for everyone."),
+    ];
+    // canonical needs special handling as a <link> not <meta>
+    let canonicalEl = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    const prevCanonical = canonicalEl?.getAttribute("href") ?? "";
+    if (!canonicalEl) { canonicalEl = document.createElement("link"); canonicalEl.setAttribute("rel", "canonical"); document.head.appendChild(canonicalEl); }
+    canonicalEl.setAttribute("href", "https://accessibooks.org/pricing");
+    return () => {
+      document.title = prev;
+      for (const { el, existed, old } of metas) { if (existed) el.setAttribute("content", old); else el.remove(); }
+      if (canonicalEl) canonicalEl.setAttribute("href", prevCanonical);
+    };
+  }, []);
 
   const handleUpgradeClick = (planName: string) => {
     toast({

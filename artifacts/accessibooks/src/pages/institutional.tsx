@@ -1051,6 +1051,36 @@ export default function InstitutionalPage() {
   const { toast } = useToast();
 
   useEffect(() => {
+    const prev = document.title;
+    document.title = "For Institutions — AccessiBooks";
+    const setMeta = (sel: string, attr: string, val: string) => {
+      let el = document.head.querySelector<HTMLMetaElement>(sel);
+      const existed = !!el;
+      if (!el) { el = document.createElement("meta"); el.setAttribute(attr.split("=")[0], attr.split("=")[1]); document.head.appendChild(el); }
+      const old = el.getAttribute("content") ?? "";
+      el.setAttribute("content", val);
+      return { el, existed, old };
+    };
+    const metas = [
+      setMeta('meta[name="description"]', "name=description", "AccessiBooks for schools, libraries, and organisations — accessible audiobooks and ebooks with centralised billing, analytics, and dedicated support from Australian Disability Ltd."),
+      setMeta('meta[property="og:title"]', "property=og:title", "For Institutions — AccessiBooks"),
+      setMeta('meta[property="og:description"]', "property=og:description", "Empower your school, library, or organisation with AccessiBooks institutional plans. Full catalog access, ad-free for all members, and a dedicated accessibility dashboard."),
+      setMeta('meta[property="og:url"]', "property=og:url", "https://accessibooks.org/institutional"),
+      setMeta('meta[name="twitter:title"]', "name=twitter:title", "For Institutions — AccessiBooks"),
+      setMeta('meta[name="twitter:description"]', "name=twitter:description", "Institutional plans for schools, libraries, and organisations. Accessible audiobooks and ebooks for every reader."),
+    ];
+    let canonicalEl = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    const prevCanonical = canonicalEl?.getAttribute("href") ?? "";
+    if (!canonicalEl) { canonicalEl = document.createElement("link"); canonicalEl.setAttribute("rel", "canonical"); document.head.appendChild(canonicalEl); }
+    canonicalEl.setAttribute("href", "https://accessibooks.org/institutional");
+    return () => {
+      document.title = prev;
+      for (const { el, existed, old } of metas) { if (existed) el.setAttribute("content", old); else el.remove(); }
+      if (canonicalEl) canonicalEl.setAttribute("href", prevCanonical);
+    };
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get("checkout");
     if (checkout !== "success" && checkout !== "cancelled") return;

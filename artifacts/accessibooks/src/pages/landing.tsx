@@ -161,11 +161,11 @@ export function BrandLandingPage({
     setOrCreate("og:title", "AccessiBooks — Audiobooks & ebooks designed for everyone", "property");
     setOrCreate("og:description", description, "property");
     setOrCreate("og:type", "website", "property");
-    setOrCreate("og:image", brandArt, "property");
+    setOrCreate("og:image", "/opengraph.jpg", "property");
     setOrCreate("twitter:card", "summary_large_image");
     setOrCreate("twitter:title", "AccessiBooks");
     setOrCreate("twitter:description", description);
-    setOrCreate("twitter:image", brandArt);
+    setOrCreate("twitter:image", "/opengraph.jpg");
 
     return () => {
       document.title = previousTitle;

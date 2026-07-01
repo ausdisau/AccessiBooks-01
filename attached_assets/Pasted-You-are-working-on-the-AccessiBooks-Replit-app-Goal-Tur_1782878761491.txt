@@ -1,0 +1,292 @@
+You are working on the AccessiBooks Replit app.
+
+Goal:
+Turn AccessiBooks from a general audiobook prototype into a more accessibility-first audiobook platform. Make focused, production-minded improvements without rewriting the whole app.
+
+Context:
+AccessiBooks is intended to be a “Spotify for audiobooks” focused especially on disabled users. The product should prioritise transcripts, screen-reader support, keyboard navigation, adjustable playback, dyslexia-friendly modes, high-contrast themes, accessibility metadata, quality catalogue search, and secure content management.
+
+Please inspect the existing codebase first, then implement the changes below in small, safe steps.
+
+Important constraints:
+- Preserve the existing stack and project structure where possible.
+- Do not remove existing features.
+- Do not replace the whole UI.
+- Use TypeScript properly.
+- Keep changes accessible, maintainable, and testable.
+- Prefer incremental migrations and backward-compatible schema changes.
+- Add comments only where they explain non-obvious logic.
+- After making changes, run available checks/builds and fix any issues.
+
+Tasks:
+
+1. Harden admin authorization
+
+Find the existing admin middleware/routes.
+
+Problem:
+Admin access must fail closed. If ADMIN_EMAILS is missing, empty, or malformed, production must not allow any authenticated user to become admin.
+
+Implement:
+- A robust admin email parser.
+- Server-side admin checks that deny access unless the signed-in user email exactly matches a configured admin email.
+- In production, missing ADMIN_EMAILS should deny all admin access and log a clear server warning.
+- In development, allow an explicit safe fallback only if it already exists or is clearly configured.
+- Hide admin navigation/buttons from non-admin users in the UI, but keep server-side checks as the real authority.
+- Add or update tests where practical.
+
+Acceptance criteria:
+- Non-admin users cannot access admin endpoints.
+- Missing ADMIN_EMAILS does not grant access.
+- Admin UI is not shown to non-admin users.
+- Server responses use appropriate 401/403 statuses.
+
+2. Fix admin delete consistency
+
+Find admin book/audio deletion logic.
+
+Problem:
+If cloud/local audio storage is deleted before the database row and the database delete fails, the catalogue can contain broken records.
+
+Implement:
+- Safer deletion flow.
+- Prefer database status update first, for example active → pending_delete.
+- Then delete the storage object.
+- Then delete or mark the DB record as deleted.
+- If storage deletion fails, preserve enough state for retry or admin visibility.
+- Avoid leaving records that point to missing audio.
+
+Acceptance criteria:
+- A failed storage delete does not silently corrupt the catalogue.
+- A failed DB operation does not delete the only copy of the audio first.
+- Logs are clear but do not expose secrets.
+
+3. Add transcript data model
+
+Create first-class transcript support.
+
+Implement database/schema support for:
+- Book transcript metadata.
+- Transcript language.
+- Transcript format, such as plain text, WebVTT, JSON segments, or SRT.
+- Transcript source, such as uploaded, generated, imported, or manual.
+- Quality status, such as missing, pending, draft, reviewed, published.
+- Segment data with start time, end time, text, optional speaker, optional confidence, and optional chapter id.
+
+Suggested model:
+- book_transcripts:
+  - id
+  - bookId
+  - language
+  - format
+  - plainText
+  - segmentsJson
+  - source
+  - qualityStatus
+  - createdAt
+  - updatedAt
+
+If the project uses Drizzle, add the schema and migration in the established project style.
+
+Acceptance criteria:
+- The app can store transcript data per book.
+- A book can report whether it has a transcript.
+- Types are exported and usable by frontend and backend.
+- Existing books continue to work.
+
+4. Add accessibility metadata model
+
+Add catalogue-level accessibility metadata so users can find books that meet their needs.
+
+Implement fields or a related table for:
+- hasTranscript
+- hasInteractiveTranscript
+- hasStructuredChapters
+- hasCaptions
+- hasAudioDescription
+- plainLanguageAvailable
+- dyslexiaFriendlyTextAvailable
+- ebookAvailable
+- brailleAvailable
+- largePrintAvailable
+- narrationType, such as human, synthetic, mixed, unknown
+- audioQualityStatus
+- metadataQualityStatus
+- accessibilityTags
+- readingLevel
+- rightsRegion or regionAvailability
+
+Use a practical schema that fits the existing app.
+
+Acceptance criteria:
+- Book detail responses include accessibility metadata.
+- Search/filter APIs can filter by at least:
+  - hasTranscript
+  - language
+  - narrationType
+  - duration range if duration exists
+  - accessibilityTags
+- Missing metadata is handled gracefully.
+
+5. Improve upload/ingestion workflow
+
+Find the admin upload/create book workflow.
+
+Problem:
+Uploaded content should not publish with empty narrator, description, duration, language, transcript status, or rights/source metadata.
+
+Implement:
+- Required metadata fields for publishing:
+  - title
+  - author
+  - language
+  - source or rights status
+  - audio file URL/path
+- Strongly recommended fields:
+  - narrator
+  - description
+  - duration
+  - cover image
+  - genre
+  - transcript status
+  - accessibility metadata
+- Add a draft/published status if not already present.
+- Uploaded books with incomplete metadata should remain draft/unpublished until required fields are complete.
+- Extract audio duration automatically if feasible in this environment; otherwise provide a clear placeholder workflow and validation.
+
+Acceptance criteria:
+- Admin can save draft records.
+- Incomplete records are not shown as public published catalogue items.
+- Public catalogue only shows published/valid items.
+- Validation messages are clear and accessible.
+
+6. Build transcript UI on book detail/player
+
+Add an accessible transcript experience.
+
+Implement:
+- On each book detail or player page, show a Transcript section.
+- If transcript exists:
+  - render readable transcript text.
+  - if segments exist, show time-coded transcript rows.
+  - clicking a segment should seek the audio to that timestamp if the player is available.
+  - highlight the currently playing segment if feasible.
+- If no transcript exists:
+  - show a clear, non-blaming message such as “Transcript not available yet.”
+- Ensure transcript area is keyboard accessible.
+- Use buttons/links with accessible names.
+- Do not rely on colour alone for active segment state.
+
+Acceptance criteria:
+- Keyboard users can open, navigate, and use the transcript.
+- Screen readers get meaningful labels and state.
+- Transcript works without breaking playback.
+- Missing transcript state is graceful.
+
+7. Add dedicated search page and filters
+
+Create or improve a search/discovery page.
+
+Implement:
+- Global search input.
+- Results list with accessible book cards.
+- Filters for:
+  - transcript available
+  - interactive transcript available
+  - language
+  - narration type
+  - genre
+  - duration
+  - accessibility tags
+- Ensure filters are keyboard accessible and labelled.
+- Show active filters clearly.
+- Add empty states and loading states.
+
+Acceptance criteria:
+- Users can search by title, author, narrator, and description where available.
+- Users can filter for books with transcripts.
+- Results announce loading and empty states accessibly.
+- URL state for search/filter parameters is preferred if practical.
+
+8. Add public accessibility, privacy, terms, and copyright/licensing pages
+
+Create static app pages/routes for:
+- Accessibility Statement
+- Privacy Policy
+- Terms of Use
+- Copyright and Licensing
+
+Content can be concise placeholder copy, but it should be specific to AccessiBooks and easy to update.
+
+Accessibility Statement should mention:
+- keyboard navigation
+- screen-reader support
+- transcripts
+- adjustable playback
+- visual customisation
+- contact/support path for accessibility issues
+
+Acceptance criteria:
+- Pages are linked from the footer or accessible navigation.
+- Pages have semantic headings.
+- Pages are available without requiring login.
+- Copy does not overclaim features that are not yet implemented. Use “planned” where needed.
+
+9. Improve no-JavaScript and SEO fallback
+
+The current app should expose meaningful information even if JavaScript fails or crawlers only read index.html.
+
+Implement:
+- Update index.html metadata:
+  - meaningful title
+  - description
+  - Open Graph tags
+  - accessible app description
+- Add a no-script fallback message explaining what AccessiBooks is and that JavaScript is required for the interactive player.
+- Include links or plain text for support/accessibility contact if available.
+
+Acceptance criteria:
+- index.html contains meaningful static description.
+- no-script users see useful information instead of a blank app.
+- Metadata reflects AccessiBooks as an accessible audiobook platform.
+
+10. Accessibility quality pass
+
+Review affected UI components.
+
+Implement:
+- Ensure visible focus indicators.
+- Ensure buttons have accessible names.
+- Ensure icon-only controls have aria-labels.
+- Ensure playback controls are keyboard usable.
+- Ensure skip link points to main content.
+- Ensure headings are logical.
+- Ensure colour is not the only indicator.
+- Honour reduced-motion preference where animations exist.
+- Avoid disruptive auto-focus.
+
+Acceptance criteria:
+- Basic keyboard navigation works through main flows.
+- Automated lint/build checks pass.
+- No obvious unlabeled controls in new UI.
+- New transcript and search UI are usable without a mouse.
+
+11. Developer notes and changelog
+
+Add a short implementation note, for example in README or a new docs file, covering:
+- Transcript data model.
+- Accessibility metadata.
+- Admin security assumptions.
+- How to configure ADMIN_EMAILS.
+- How to create/publish a book safely.
+- Known limitations and next steps.
+
+Final response:
+When done, summarise:
+- Files changed.
+- Database/schema changes.
+- New routes/components.
+- Security changes.
+- Accessibility improvements.
+- Any commands run and their results.
+- Any incomplete items or manual follow-up needed.
