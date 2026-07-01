@@ -5596,35 +5596,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /sitemap.xml - XML sitemap for search engines
+  // GET /sitemap.xml - Sitemap index pointing to per-section sitemaps
   app.get("/sitemap.xml", async (req, res) => {
     try {
-      const host = req.headers.host || "localhost";
+      const host = req.headers.host || "accessibooks.org";
       const baseUrl = `https://${host}`;
-      const sitemapBooks = await storage.getBooksPaginated({ limit: 1000 });
+      const now = new Date().toISOString().split("T")[0];
 
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>${escapeHtml(baseUrl)}/</loc>
-    <priority>1.0</priority>
-  </url>`;
-
-      for (const book of sitemapBooks.data) {
-        xml += `
-  <url>
-    <loc>${escapeHtml(baseUrl)}/book/${encodeURIComponent(book.id)}</loc>
-    <priority>0.8</priority>
-  </url>`;
-      }
-
-      xml += `
-</urlset>`;
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>${escapeHtml(baseUrl)}/sitemap-static.xml</loc>
+    <lastmod>${now}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${escapeHtml(baseUrl)}/sitemap-books.xml</loc>
+    <lastmod>${now}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${escapeHtml(baseUrl)}/sitemap-authors.xml</loc>
+    <lastmod>${now}</lastmod>
+  </sitemap>
+</sitemapindex>`;
 
       res.setHeader("Content-Type", "application/xml; charset=utf-8");
       res.send(xml);
     } catch (error) {
-      console.error("Error generating sitemap:", error);
+      req.log ? req.log.error({ error }, "Error generating sitemap index") : console.error("Error generating sitemap index:", error);
+      res.status(500).send("Internal server error");
+    }
+  });
+
+  // GET /sitemap-static.xml - Static/marketing pages sitemap
+  app.get("/sitemap-static.xml", async (req, res) => {
+    try {
+      const host = req.headers.host || "accessibooks.org";
+      const baseUrl = `https://${host}`;
+
+      const staticPages = [
+        { path: "/", priority: "1.0", changefreq: "daily" },
+        { path: "/library", priority: "0.9", changefreq: "daily" },
+        { path: "/search", priority: "0.8", changefreq: "daily" },
+        { path: "/pricing", priority: "0.8", changefreq: "weekly" },
+        { path: "/about", priority: "0.7", changefreq: "monthly" },
+        { path: "/support", priority: "0.7", changefreq: "monthly" },
+        { path: "/clubs", priority: "0.7", changefreq: "daily" },
+        { path: "/events", priority: "0.7", changefreq: "daily" },
+        { path: "/challenges", priority: "0.6", changefreq: "weekly" },
+        { path: "/leaderboard", priority: "0.6", changefreq: "daily" },
+      ];
+
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+
+      for (const page of staticPages) {
+        xml += `
+  <url>
+    <loc>${escapeHtml(baseUrl)}${page.path}</loc>
+    <changefreq>${page.changefreq}</changefreq>
+    <priority>${page.priority}</priority>
+  </url>`;
+      }
+
+      xml += `\n</urlset>`;
+
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.send(xml);
+    } catch (error) {
+      req.log ? req.log.error({ error }, "Error generating static sitemap") : console.error("Error generating static sitemap:", error);
+      res.status(500).send("Internal server error");
+    }
+  });
+
+  // GET /sitemap-books.xml - Full book catalog sitemap (all book IDs via single DB query)
+  app.get("/sitemap-books.xml", async (req, res) => {
+    try {
+      const host = req.headers.host || "accessibooks.org";
+      const baseUrl = `https://${host}`;
+
+      const rows = await db.select({ id: books.id }).from(books);
+
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+
+      for (const row of rows) {
+        xml += `
+  <url>
+    <loc>${escapeHtml(baseUrl)}/book/${encodeURIComponent(row.id)}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+      }
+
+      xml += `\n</urlset>`;
+
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(xml);
+    } catch (error) {
+      req.log ? req.log.error({ error }, "Error generating books sitemap") : console.error("Error generating books sitemap:", error);
+      res.status(500).send("Internal server error");
+    }
+  });
+
+  // GET /sitemap-authors.xml - Author pages sitemap
+  app.get("/sitemap-authors.xml", async (req, res) => {
+    try {
+      const host = req.headers.host || "accessibooks.org";
+      const baseUrl = `https://${host}`;
+
+      const rows = await db
+        .selectDistinct({ author: books.author })
+        .from(books)
+        .where(sql`author IS NOT NULL AND author != '' AND author != 'Unknown Author'`);
+
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
+
+      for (const row of rows) {
+        if (row.author) {
+          xml += `
+  <url>
+    <loc>${escapeHtml(baseUrl)}/author/${encodeURIComponent(row.author)}</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>`;
+        }
+      }
+
+      xml += `\n</urlset>`;
+
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(xml);
+    } catch (error) {
+      req.log ? req.log.error({ error }, "Error generating authors sitemap") : console.error("Error generating authors sitemap:", error);
       res.status(500).send("Internal server error");
     }
   });
