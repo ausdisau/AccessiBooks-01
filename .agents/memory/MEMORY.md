@@ -9,4 +9,5 @@
 - [Consent-bounded reports](consent-bounded-reports.md) — every section of a scoped/shared activity report must be date-bounded to the share range, not just the newest metric.
 - [Mobile voice + offline](mobile-voice-offline.md) — player is a native modal (global overlays can't cover it); voice STT is paid→auth-gated; mobile progress/downloads are local-only.
 - [Read-along timing](read-along-timing.md) — /word-alignment precision exact|estimated|none; gate per-WORD UI on "exact" only; narration timing is per-chapter (manifest), do NOT fold into book_transcripts.
+- [Post-merge drizzle push hang](post-merge-drizzle-push.md) — new-table create/rename prompt hangs post-merge (stdin closed); --force won't answer it; feed a FINITE `\r` burst (infinite `yes` floods introspection & hangs).
 - [Narration test strategy](narration-test-strategy.md) — dev has a live ELEVENLABS key so a real narration e2e costs money; test offline (jsdom component + route mocks); jsdom react-query polling needs focusManager.setFocused(true).
