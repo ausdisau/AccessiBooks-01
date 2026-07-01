@@ -147,7 +147,7 @@ async function handleWithOpenAI(
   let toolResultBooks: BookSummary[] | null = null;
 
   const firstStream = await openai!.chat.completions.create({
-    model: "gpt-4.1",
+    model: "gpt-5",
     messages: chatMessages,
     tools: [SEARCH_BOOKS_TOOL],
     tool_choice: "auto",
@@ -208,7 +208,7 @@ async function handleWithOpenAI(
     };
 
     const secondStream = await openai!.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-5",
       messages: [...chatMessages, assistantToolCallMessage, toolResultMessage],
       stream: true,
       max_completion_tokens: 4096,

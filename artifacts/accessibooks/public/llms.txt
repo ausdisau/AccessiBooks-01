@@ -1,0 +1,38 @@
+# AccessiBooks
+
+> AccessiBooks is an accessible audiobooks and e-reading platform from Australian Disability Ltd, providing 3,000+ audiobooks, ebooks, and magazines designed for people with disabilities.
+
+## Key Sections
+
+- Homepage / entry point: https://accessibooks.org/
+- Browse catalog (audiobooks, ebooks, magazines): https://accessibooks.org/library
+- Search: https://accessibooks.org/search
+- Pricing & subscription plans (Free, Plus, Premium): https://accessibooks.org/pricing
+- About AccessiBooks and accessibility mission: https://accessibooks.org/about
+- Support & contact: https://accessibooks.org/support
+
+## Content
+
+- Individual book pages: https://accessibooks.org/book/{id}
+- Author pages: https://accessibooks.org/author/{name}
+- Reading clubs: https://accessibooks.org/clubs
+- Live author events: https://accessibooks.org/events
+
+## Accessibility Features
+
+AccessiBooks is purpose-built for users with disabilities. Key features include:
+- Easy English simplified reading mode
+- Adjustable fonts, contrast, and dyslexia mode
+- Switch access and screen reader optimisations
+- Auslan (Australian Sign Language) video companions on select titles
+- Live captions and saved transcripts for author events and reading clubs
+- Text-to-speech narration for ebooks
+- Caregiver and therapist progress reports (literacy and listening goals)
+
+## Content Sources
+
+Titles are sourced from LibriVox (public domain audiobooks), Project Gutenberg, Internet Archive, Open Library, and iTunes. The catalog spans fiction, non-fiction, children's, and educational titles.
+
+## Subscriptions
+
+Three tiers: Free (limited access), Plus (expanded catalog), and Premium (full catalog + exclusive features). Subscriptions managed via Stripe.

@@ -224,7 +224,7 @@ export function registerTranslationRoutes(app: Express): void {
         const systemPrompt = `You are an expert literary translator for an accessible reading app. Translate the user's text into ${lang.name}. ${levelInstruction} Return ONLY the translated text — no notes, no preamble, no quotation marks.`;
 
         const completion = await openai.chat.completions.create({
-          model: "gpt-4.1",
+          model: "gpt-5",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: sourceText },

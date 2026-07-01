@@ -269,7 +269,7 @@ export function registerCoachRoutes(app: Express): void {
         : text;
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1",
+        model: "gpt-5",
         messages: [
           { role: "system", content: system },
           { role: "user", content: userPrompt },
@@ -346,7 +346,7 @@ export function registerCoachRoutes(app: Express): void {
       ];
 
       const firstStream = await openai.chat.completions.create({
-        model: "gpt-4.1",
+        model: "gpt-5",
         messages: chatMessages,
         tools: [SEARCH_BOOKS_TOOL],
         tool_choice: "auto",
@@ -390,7 +390,7 @@ export function registerCoachRoutes(app: Express): void {
         sendSSE(res, { bookResults });
 
         const secondStream = await openai.chat.completions.create({
-          model: "gpt-4.1",
+          model: "gpt-5",
           messages: [
             ...chatMessages,
             {
