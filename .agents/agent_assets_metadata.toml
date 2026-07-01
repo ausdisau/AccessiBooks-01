@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "ucXlQHzIOAy8ojjH79XE9"
 uri = "file://artifacts/accessibooks-mobile/assets/images/icon.png"
 type = "image"
 title = "accessibooks icon"
+
+[[outputs]]
+id = "s9StlliYhhPAneahi9_U3"
+uri = "file://audible-teardown-and-seo-geo-roadmap.md"
+type = "text"
+title = "Audible AU Teardown & SEO/GEO Roadmap"
