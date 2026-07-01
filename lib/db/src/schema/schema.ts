@@ -33,8 +33,11 @@ export const books = pgTable("books", {
   pageCount: integer("page_count"), // For ebooks and magazines
   searchVector: text("search_vector"), // Cached lowercase search text for fast filtering
   readingLevel: integer("reading_level"), // 1=Very Easy, 2=Easy, 3=Moderate, 4=Advanced (FK grade estimate)
+  status: text("status").notNull().default("published"), // "draft" | "published" — publish gate. Existing/seeded rows default to published; only incomplete new uploads stay draft. Public catalog queries filter status = 'published'.
+  accessibilityTags: text("accessibility_tags").array(), // Search/browse facet, e.g. ["captioned","audio-described","dyslexia-friendly","easy-read","auslan"] (display hint only — NOT an access gate)
 }, (table) => [
   index("idx_books_title").on(table.title),
+  index("idx_books_status").on(table.status),
   index("idx_books_author").on(table.author),
   index("idx_books_genre").on(table.genre),
   index("idx_books_source").on(table.source),
@@ -1785,14 +1788,18 @@ export const bookTranscripts = pgTable("book_transcripts", {
   chapterIndex: integer("chapter_index").notNull().default(0),
   segments: jsonb("segments").$type<TranscriptSegment[]>().notNull().default(sql`'[]'::jsonb`),
   language: text("language").notNull().default("en"),
-  source: text("source").notNull().default("manual"),
+  format: text("format").notNull().default("segments"), // "segments" | "plain" | "vtt" | "srt" — how the transcript payload is authored
+  plainText: text("plain_text"), // Optional full plain-text rendering (for plain-text/imported transcripts and no-JS/SEO fallback)
+  source: text("source").notNull().default("manual"), // "uploaded" | "generated" | "imported" | "manual"
+  qualityStatus: text("quality_status").notNull().default("draft"), // "missing" | "pending" | "draft" | "reviewed" | "published"
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_transcripts_book").on(table.bookId),
   index("idx_transcripts_book_chapter").on(table.bookId, table.chapterIndex),
 ]);
 
-export const insertBookTranscriptSchema = createInsertSchema(bookTranscripts).omit({ id: true, createdAt: true });
+export const insertBookTranscriptSchema = createInsertSchema(bookTranscripts).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertBookTranscript = z.infer<typeof insertBookTranscriptSchema>;
 export type BookTranscript = typeof bookTranscripts.$inferSelect;
 
@@ -1800,10 +1807,23 @@ export const accessibilityMetadata = pgTable("accessibility_metadata", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   bookId: varchar("book_id").notNull().references(() => books.id, { onDelete: "cascade" }).unique(),
   hasTranscript: boolean("has_transcript").notNull().default(false),
+  hasInteractiveTranscript: boolean("has_interactive_transcript").notNull().default(false),
+  hasStructuredChapters: boolean("has_structured_chapters").notNull().default(false),
+  hasCaptions: boolean("has_captions").notNull().default(false),
+  hasAudioDescription: boolean("has_audio_description").notNull().default(false),
+  plainLanguageAvailable: boolean("plain_language_available").notNull().default(false),
+  dyslexiaFriendlyTextAvailable: boolean("dyslexia_friendly_text_available").notNull().default(false),
+  ebookAvailable: boolean("ebook_available").notNull().default(false),
+  brailleAvailable: boolean("braille_available").notNull().default(false),
+  largePrintAvailable: boolean("large_print_available").notNull().default(false),
   hasDyslexiaFont: boolean("has_dyslexia_font").notNull().default(false),
   hasLargeText: boolean("has_large_text").notNull().default(false),
+  narrationType: text("narration_type"), // "human" | "synthetic" | "mixed" | "unknown"
+  audioQualityStatus: text("audio_quality_status"), // "missing" | "pending" | "reviewed" | "published"
+  metadataQualityStatus: text("metadata_quality_status"), // completeness of catalogue metadata
   readingLevel: text("reading_level"),
   contentWarnings: text("content_warnings").array(),
+  regionAvailability: text("region_availability").array(), // rights/region codes where available (empty/null = unrestricted)
   accessibilityScore: integer("accessibility_score").default(0),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [

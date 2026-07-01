@@ -39,6 +39,15 @@ const defaultColumns: FooterColumn[] = [
       { label: "Donate", href: "https://www.australiandisability.org.au/donate" },
     ],
   },
+  {
+    title: "Legal",
+    links: [
+      { label: "Accessibility", href: "/accessibility" },
+      { label: "Privacy", href: "/privacy" },
+      { label: "Terms of use", href: "/terms" },
+      { label: "Copyright & licensing", href: "/copyright" },
+    ],
+  },
 ];
 
 export function BrandFooter({ columns = defaultColumns }: BrandFooterProps) {

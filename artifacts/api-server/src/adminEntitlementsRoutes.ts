@@ -7,7 +7,7 @@
  *                                  requests see the change immediately.
  */
 
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express } from "express";
 import { z } from "zod";
 import {
   ENTITLEMENT_FEATURES,
@@ -19,17 +19,7 @@ import {
   getEntitlementConfigGrid,
   saveEntitlementConfigGrid,
 } from "./entitlementConfig";
-
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const user = (req as any).user;
-  if (!(req as any).isAuthenticated?.() || !user) {
-    return res.status(401).json({ message: "Not authenticated" });
-  }
-  if (user.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  next();
-}
+import { requireAdmin } from "./multiAuth";
 
 const saveBodySchema = z.object({
   rows: z.array(z.object({

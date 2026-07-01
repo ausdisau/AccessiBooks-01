@@ -12,7 +12,7 @@ import {
   dailyListeningLog, accessibilityPreferences, listeningHistory,
   type A11yProfile,
 } from "@workspace/db";
-import { isAuthenticated } from "./multiAuth";
+import { isAuthenticated, isAdminUser } from "./multiAuth";
 import { analyticsService } from "./analyticsService";
 import {
   appendCaptionSegments,
@@ -56,7 +56,7 @@ function isPaidTier(tier: string | null | undefined) {
 }
 
 function isAdmin(req: Request) {
-  return reqUser(req)?.role === "admin";
+  return isAdminUser(reqUser(req));
 }
 
 function requireAdmin(req: Request, res: Response, next: () => void) {
