@@ -3848,7 +3848,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const bookContext = typeof bookTitle === "string" && bookTitle.trim() ? ` for the book "${bookTitle.trim()}"` : "";
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "user",
@@ -6335,7 +6335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { openai } = await import("./replit_integrations/image/client");
       const excerpt = chapterText.slice(0, 1500);
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -6378,7 +6378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { openai } = await import("./replit_integrations/image/client");
       const excerpt = chapterText.slice(0, 1000);
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -6419,7 +6419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { openai } = await import("./replit_integrations/image/client");
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -6463,7 +6463,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { openai } = await import("./replit_integrations/image/client");
       const excerpt = chapterText.slice(0, 2000);
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -6507,7 +6507,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
       ];
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         messages: visionMessages,
         max_tokens: 120,
       });
@@ -6659,7 +6659,7 @@ ${navEntries}
     try {
       const { openai } = await import("./replit_integrations/image/client");
       const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -6785,7 +6785,7 @@ ${navEntries}
           try {
             const { openai } = await import("./replit_integrations/image/client");
             const completion = await openai.chat.completions.create({
-              model: "gpt-4.1-mini",
+              model: "gpt-5-mini",
               messages: [
                 {
                   role: "system",

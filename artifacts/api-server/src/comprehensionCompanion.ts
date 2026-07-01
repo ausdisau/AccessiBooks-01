@@ -267,7 +267,7 @@ async function streamCompletion(
 
   try {
     const stream = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-5",
       messages,
       stream: true,
       max_completion_tokens: maxTokens,
