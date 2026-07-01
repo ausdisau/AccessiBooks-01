@@ -1,12 +1,6 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import { analyticsService } from "./analyticsService";
-
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const user = (req as any).user;
-  if (!user) return res.status(401).json({ message: "Not authenticated" });
-  if (user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
-  next();
-}
+import { requireAdmin } from "./multiAuth";
 
 function parseDateRange(req: Request): { from: Date; to: Date } {
   const now = new Date();

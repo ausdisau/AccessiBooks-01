@@ -23,7 +23,7 @@ import {
   TIER_PRICING,
   type NdisInvoice,
 } from "@workspace/db";
-import { isAuthenticated } from "./multiAuth";
+import { isAuthenticated, isAdminUser } from "./multiAuth";
 import { storage } from "./storage";
 import { renderInvoicePdf, type InvoiceProvider } from "./ndisPdf";
 import { sendViaResend, isResendConfigured } from "./resendMailer";
@@ -116,7 +116,7 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction): Pr
       return;
     }
     const u = await storage.getUser(userId);
-    if (!u || (u.role !== "admin" && u.subscriptionTier !== "admin")) {
+    if (!u || (!isAdminUser(u) && u.subscriptionTier !== "admin")) {
       res.status(403).json({ message: "Admin access required" });
       return;
     }

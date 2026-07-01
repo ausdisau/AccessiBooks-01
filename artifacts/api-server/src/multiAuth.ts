@@ -18,6 +18,7 @@ import bcrypt from "bcryptjs";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import rateLimit from "express-rate-limit";
+import { logger } from "./lib/logger";
 import type { Express, Request, RequestHandler, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { users } from "@workspace/db";
@@ -751,15 +752,63 @@ export const isAuthenticatedOrM2M = async (
 type Tier = "free" | "plus" | "premium";
 
 /**
- * Middleware: requires the authenticated user to have the "admin" role.
+ * Parse the ADMIN_EMAILS env var into a normalized allow-list.
+ *
+ * Accepts comma / semicolon / whitespace separated values. Each entry is
+ * trimmed and lower-cased; anything that does not look like an email (no "@"
+ * or "." or too short) is discarded so a malformed value can never match a
+ * blank or partial identity. Returns [] when unset/empty/malformed — the
+ * allow-list fails closed and grants nothing on its own.
+ */
+export function parseAdminEmails(raw: string | undefined | null): string[] {
+  if (!raw || typeof raw !== "string") return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(/[,;\s]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter((e) => e.length > 3 && e.includes("@") && e.includes("."))
+    )
+  );
+}
+
+const ADMIN_EMAILS: string[] = parseAdminEmails(process.env.ADMIN_EMAILS);
+
+if (process.env.NODE_ENV === "production" && ADMIN_EMAILS.length === 0) {
+  // Fail closed: with no configured allow-list, email-based admin is disabled
+  // and only users explicitly assigned role="admin" remain admins.
+  logger.warn(
+    "[auth] ADMIN_EMAILS is not configured in production; email-based admin access is disabled (only users with role='admin' are admins)."
+  );
+}
+
+/**
+ * Single source of truth for "is this user an admin?".
+ *
+ * A user is an admin if they carry the DB role "admin" OR their account email
+ * exactly matches an entry in the ADMIN_EMAILS allow-list. A missing/empty/
+ * malformed ADMIN_EMAILS grants nothing on its own (fail closed) — it never
+ * elevates an arbitrary authenticated user.
+ */
+export function isAdminUser(
+  user: { role?: string | null; email?: string | null } | undefined | null
+): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  const email = typeof user.email === "string" ? user.email.trim().toLowerCase() : "";
+  return email.length > 0 && ADMIN_EMAILS.includes(email);
+}
+
+/**
+ * Middleware: requires the authenticated user to be an admin (see isAdminUser).
  * Must be composed after isAuthenticated (or isLocalAuthenticated).
- * Returns 403 if the user is authenticated but not an admin.
+ * Returns 401 if unauthenticated, 403 if authenticated but not an admin.
  */
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.isAuthenticated() || !req.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  if (req.user.role !== "admin") {
+  if (!isAdminUser(req.user)) {
     return res.status(403).json({ message: "Admin access required" });
   }
   return next();

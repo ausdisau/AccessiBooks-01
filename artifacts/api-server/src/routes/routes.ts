@@ -667,7 +667,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/admin/books/:id", isAuthenticated, requireAdmin, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { readingLevel, description, genre, title, author, narrator, coverImage, audioUrl, contentUrl, isPremium } = req.body;
+      const { readingLevel, description, genre, title, author, narrator, coverImage, audioUrl, contentUrl, isPremium, status, accessibilityTags } = req.body;
 
       const updates: Record<string, any> = {};
       if (title !== undefined) updates.title = title;
@@ -689,6 +689,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           updates.readingLevel = null;
         }
+      }
+
+      if (accessibilityTags !== undefined) {
+        if (
+          accessibilityTags !== null &&
+          (!Array.isArray(accessibilityTags) || accessibilityTags.some((t: any) => typeof t !== "string"))
+        ) {
+          return res.status(400).json({ message: "accessibilityTags must be an array of strings or null" });
+        }
+        updates.accessibilityTags = accessibilityTags;
+      }
+
+      if (status !== undefined) {
+        if (status !== "draft" && status !== "published") {
+          return res.status(400).json({ message: "status must be 'draft' or 'published'" });
+        }
+        if (status === "published") {
+          // Only allow publishing a book whose (merged) metadata is complete.
+          const current = await storage.getBook(id);
+          if (!current) return res.status(404).json({ message: "Book not found" });
+          const mergedTitle = updates.title ?? current.title;
+          const mergedAuthor = updates.author ?? current.author;
+          const mergedContentType = current.contentType;
+          const mergedAudioUrl = updates.audioUrl ?? current.audioUrl;
+          const mergedContentUrl = updates.contentUrl ?? current.contentUrl;
+          const mergedDuration = current.duration;
+          const missing: string[] = [];
+          if (!mergedTitle || !String(mergedTitle).trim()) missing.push("title");
+          if (!mergedAuthor || !String(mergedAuthor).trim()) missing.push("author");
+          const validTypes = ["audiobook", "ebook", "magazine"];
+          if (!mergedContentType || !validTypes.includes(mergedContentType)) {
+            missing.push("contentType");
+          } else if (mergedContentType === "audiobook") {
+            if (!mergedAudioUrl) missing.push("audioUrl");
+            if (!mergedDuration || mergedDuration <= 0) missing.push("duration");
+          } else {
+            if (!mergedContentUrl) missing.push("contentUrl");
+          }
+          if (missing.length > 0) {
+            return res.status(400).json({ message: "Cannot publish: incomplete book metadata", missing });
+          }
+        }
+        updates.status = status;
       }
 
       const updated = await storage.updateBook(id, updates, {
@@ -741,6 +784,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const wantContentType = typeof contentType === "string" && contentType ? contentType : null;
       const wantLanguage = typeof language === "string" && language ? language.toLowerCase() : null;
 
+      // Accessibility tag facet filter (e.g. captioned, audio-described, dyslexia-friendly).
+      // Accepts a comma-separated string or repeated query params; all requested tags must match.
+      const rawTags = req.query.accessibilityTags;
+      const wantTags: string[] =
+        typeof rawTags === "string" && rawTags.trim()
+          ? rawTags.split(",").map((s) => s.trim()).filter(Boolean)
+          : Array.isArray(rawTags)
+            ? (rawTags.filter((t) => typeof t === "string") as string[])
+            : [];
+
       const classifyChapter = (durationSec: number, ct: string | null | undefined) => {
         if (ct !== "audiobook") return null;
         if (!durationSec || durationSec <= 0) return null;
@@ -760,6 +813,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (wantChapter) {
             const cls = classifyChapter(b.duration ?? 0, b.contentType);
             if (cls !== wantChapter) return false;
+          }
+          if (wantTags.length > 0) {
+            const tags: string[] = Array.isArray(b.accessibilityTags) ? b.accessibilityTags : [];
+            if (!wantTags.every((t) => tags.includes(t))) return false;
           }
           return true;
         });
@@ -874,7 +931,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Book not found" });
       }
       
-      res.json(book);
+      const isAdmin =
+        typeof req.isAuthenticated === "function" &&
+        req.isAuthenticated() &&
+        (req.user as any)?.role === "admin";
+      if (book.status && book.status !== "published" && !isAdmin) {
+        return res.status(404).json({ message: "Book not found" });
+      }
+
+      const accessibilityMetadata = await (storage as any).getBookAccessibilityMetadata(id);
+      res.json({ ...book, accessibilityMetadata });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch book" });
     }

@@ -108,6 +108,11 @@ const AdminAnalyticsPage = lazy(() => import('@/pages/admin-analytics'));
 const AdminEntitlementsPage = lazy(() => import('@/pages/admin-entitlements'));
 const NdisPage = lazy(() => import('@/pages/ndis'));
 const AdminNdisPage = lazy(() => import('@/pages/admin-ndis'));
+const SearchPage = lazy(() => import('@/pages/search'));
+const AccessibilityStatementPage = lazy(() => import('@/pages/legal').then(m => ({ default: m.AccessibilityStatementPage })));
+const PrivacyPolicyPage = lazy(() => import('@/pages/legal').then(m => ({ default: m.PrivacyPolicyPage })));
+const TermsOfUsePage = lazy(() => import('@/pages/legal').then(m => ({ default: m.TermsOfUsePage })));
+const CopyrightLicensingPage = lazy(() => import('@/pages/legal').then(m => ({ default: m.CopyrightLicensingPage })));
 
 function LoadingSpinner() {
   return (
@@ -125,6 +130,7 @@ const sidebarNavGroups: { label: string; items: { path: string; label: string; i
     label: "Browse",
     items: [
       { path: "/", label: "Library", icon: <BookIcon className="h-5 w-5" /> },
+      { path: "/search", label: "Search", icon: <Search className="h-5 w-5" /> },
       { path: "/player", label: "Player", icon: <Play className="h-5 w-5" /> },
       { path: "/loans", label: "Loans", icon: <LibraryBig className="h-5 w-5" /> },
       { path: "/downloads", label: "Downloads", icon: <DownloadIcon className="h-5 w-5" /> },
@@ -427,6 +433,11 @@ function AppSidebar({ mode, onCloseDrawer }: {
   const [location] = useLocation();
   const { user } = useAuth();
   const tier = ((user as any)?.subscriptionTier ?? "free") as "free" | "plus" | "premium";
+  const isAdmin = (user as any)?.role === "admin";
+  // Hide admin navigation from non-admins (server-side checks remain the real authority).
+  const visibleNavGroups = isAdmin
+    ? sidebarNavGroups
+    : sidebarNavGroups.filter((g) => g.label !== "Admin");
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/" || location === "";
@@ -445,7 +456,7 @@ function AppSidebar({ mode, onCloseDrawer }: {
           <span className="text-lg font-bold tracking-tight">AccessiBooks</span>
         </Link>
       </div>
-      {sidebarNavGroups.map((group) => (
+      {visibleNavGroups.map((group) => (
         <div key={group.label} className="mb-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 px-3 mb-2">
             {group.label}
@@ -482,7 +493,7 @@ function AppSidebar({ mode, onCloseDrawer }: {
       <Link href="/" className="mb-6 group">
         <AccessiBooksLogo className="h-8 w-8 group-hover:text-primary transition-colors" showText={false} />
       </Link>
-      {sidebarNavGroups.map((group) => (
+      {visibleNavGroups.map((group) => (
         <div key={group.label} className="mb-2 w-full flex flex-col items-center">
           {group.items.map((item) => (
             <Link
@@ -1144,6 +1155,37 @@ function PublicCommunitySection({ onJoin }: { onJoin: () => void }) {
       </div>
     </section>
   );
+}
+
+// Client-side admin route guard. Renders children only for admins; shows an
+// accessible "access required" notice otherwise. Server-side checks remain the
+// real authority — this only improves UX for non-admins.
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const isAdmin = (user as any)?.role === "admin";
+  if (isLoading) return <LoadingSpinner />;
+  if (!isAdmin) {
+    return (
+      <div
+        role="region"
+        aria-label="Admin access required"
+        className="mx-auto max-w-lg px-6 py-16 text-center"
+      >
+        <h1 className="text-2xl font-bold mb-3">Admin access required</h1>
+        <p className="text-muted-foreground mb-6">
+          You don't have permission to view this page. If you think this is a mistake,
+          please contact support.
+        </p>
+        <Link
+          href="/"
+          className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+        >
+          Back to Library
+        </Link>
+      </div>
+    );
+  }
+  return <>{children}</>;
 }
 
 // Public marketing shell — wraps pages that must be reachable without auth
@@ -1955,38 +1997,48 @@ function MainApp() {
                 </Route>
                 <Route path="/moderation">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="moderation-panel" role="region" aria-label="Moderation" data-testid="panel-moderation">
-                      <AdminModerationPage />
-                    </div>
+                    <AdminOnly>
+                      <div id="moderation-panel" role="region" aria-label="Moderation" data-testid="panel-moderation">
+                        <AdminModerationPage />
+                      </div>
+                    </AdminOnly>
                   </Suspense>
                 </Route>
                 <Route path="/admin/revenue">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="admin-revenue-panel" role="region" aria-label="Admin Revenue" data-testid="panel-admin-revenue">
-                      <AdminRevenuePage />
-                    </div>
+                    <AdminOnly>
+                      <div id="admin-revenue-panel" role="region" aria-label="Admin Revenue" data-testid="panel-admin-revenue">
+                        <AdminRevenuePage />
+                      </div>
+                    </AdminOnly>
                   </Suspense>
                 </Route>
                 <Route path="/health">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="health-panel" role="region" aria-label="Admin Health" data-testid="panel-health" className="space-y-8">
-                      <AdminHealthDashboard />
-                      <ChurnDashboard />
-                    </div>
+                    <AdminOnly>
+                      <div id="health-panel" role="region" aria-label="Admin Health" data-testid="panel-health" className="space-y-8">
+                        <AdminHealthDashboard />
+                        <ChurnDashboard />
+                      </div>
+                    </AdminOnly>
                   </Suspense>
                 </Route>
                 <Route path="/analytics">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="analytics-panel" role="region" aria-label="Analytics Dashboard" data-testid="panel-analytics">
-                      <AdminAnalyticsPage />
-                    </div>
+                    <AdminOnly>
+                      <div id="analytics-panel" role="region" aria-label="Analytics Dashboard" data-testid="panel-analytics">
+                        <AdminAnalyticsPage />
+                      </div>
+                    </AdminOnly>
                   </Suspense>
                 </Route>
                 <Route path="/admin/entitlements">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="admin-entitlements-panel" role="region" aria-label="Tier Entitlements" data-testid="panel-admin-entitlements">
-                      <AdminEntitlementsPage />
-                    </div>
+                    <AdminOnly>
+                      <div id="admin-entitlements-panel" role="region" aria-label="Tier Entitlements" data-testid="panel-admin-entitlements">
+                        <AdminEntitlementsPage />
+                      </div>
+                    </AdminOnly>
                   </Suspense>
                 </Route>
                 <Route path="/ndis">
@@ -1998,9 +2050,11 @@ function MainApp() {
                 </Route>
                 <Route path="/admin/ndis">
                   <Suspense fallback={<LoadingSpinner />}>
-                    <div id="admin-ndis-panel" role="region" aria-label="NDIS Invoice Administration" data-testid="panel-admin-ndis">
-                      <AdminNdisPage />
-                    </div>
+                    <AdminOnly>
+                      <div id="admin-ndis-panel" role="region" aria-label="NDIS Invoice Administration" data-testid="panel-admin-ndis">
+                        <AdminNdisPage />
+                      </div>
+                    </AdminOnly>
                   </Suspense>
                 </Route>
                 <Route path="/trust">
@@ -2028,6 +2082,13 @@ function MainApp() {
                   <Suspense fallback={<LoadingSpinner />}>
                     <div id="accessible-picks-panel" role="region" aria-label="Accessible Picks" data-testid="panel-accessible-picks">
                       <AccessiblePicksPage />
+                    </div>
+                  </Suspense>
+                </Route>
+                <Route path="/search">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <div id="search-panel" role="region" aria-label="Search">
+                      <SearchPage onSelectBook={handleSelectBook} />
                     </div>
                   </Suspense>
                 </Route>
@@ -2516,6 +2577,34 @@ function App() {
               <Suspense fallback={<div className="min-h-screen" />}>
                 <PublicPageShell>
                   <InstitutionalPage />
+                </PublicPageShell>
+              </Suspense>
+            </Route>
+            <Route path="/accessibility">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <PublicPageShell>
+                  <AccessibilityStatementPage />
+                </PublicPageShell>
+              </Suspense>
+            </Route>
+            <Route path="/privacy">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <PublicPageShell>
+                  <PrivacyPolicyPage />
+                </PublicPageShell>
+              </Suspense>
+            </Route>
+            <Route path="/terms">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <PublicPageShell>
+                  <TermsOfUsePage />
+                </PublicPageShell>
+              </Suspense>
+            </Route>
+            <Route path="/copyright">
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <PublicPageShell>
+                  <CopyrightLicensingPage />
                 </PublicPageShell>
               </Suspense>
             </Route>

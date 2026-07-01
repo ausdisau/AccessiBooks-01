@@ -74,6 +74,8 @@ function mapRowToBook(row: any): Book {
     pageCount: row.page_count ?? row.pageCount ?? null,
     searchVector: row.search_vector || row.searchVector || null,
     readingLevel: row.reading_level ?? row.readingLevel ?? computeReadingLevel(row.description, row.genre),
+    status: row.status ?? "published",
+    accessibilityTags: row.accessibility_tags ?? row.accessibilityTags ?? null,
   };
 }
 
@@ -1001,7 +1003,7 @@ export class ExternalAPIStorage implements IStorage {
 
     sampleBooks.forEach(book => {
       const id = randomUUID();
-      this.fallbackBooks.set(id, { ...book, id, searchVector: null, readingLevel: computeReadingLevel(book.description || null, book.genre || null) });
+      this.fallbackBooks.set(id, { ...book, id, searchVector: null, status: "published", accessibilityTags: null, readingLevel: computeReadingLevel(book.description || null, book.genre || null) });
     });
   }
 
@@ -1011,7 +1013,7 @@ export class ExternalAPIStorage implements IStorage {
     
     try {
       const rows = await db.execute(
-        sql`SELECT * FROM books ORDER BY title ASC LIMIT 500`
+        sql`SELECT * FROM books WHERE status = 'published' ORDER BY title ASC LIMIT 500`
       );
       const allRows = (rows as any).rows || rows;
       if (!Array.isArray(allRows)) return Array.from(this.fallbackBooks.values());
@@ -1030,7 +1032,7 @@ export class ExternalAPIStorage implements IStorage {
 
   async getBookCount(filters?: { source?: string; contentType?: string; genre?: string }): Promise<number> {
     try {
-      const conditions: any[] = [];
+      const conditions: any[] = [sql`status = 'published'`];
       if (filters?.source) conditions.push(sql`source = ${filters.source}`);
       if (filters?.contentType) conditions.push(sql`content_type = ${filters.contentType}`);
       if (filters?.genre) conditions.push(sql`genre ILIKE ${'%' + filters.genre + '%'}`);
@@ -1050,7 +1052,7 @@ export class ExternalAPIStorage implements IStorage {
   async getRandomBooks(count: number = 10): Promise<Book[]> {
     try {
       const rows = await db.execute(
-        sql`SELECT * FROM books ORDER BY RANDOM() LIMIT ${count}`
+        sql`SELECT * FROM books WHERE status = 'published' ORDER BY RANDOM() LIMIT ${count}`
       );
       const allRows = (rows as any).rows || rows;
       if (!Array.isArray(allRows) || allRows.length === 0) return [];
@@ -1068,7 +1070,7 @@ export class ExternalAPIStorage implements IStorage {
       if (totalCount === 0) return null;
       const offset = daysSinceEpoch % totalCount;
       const rows = await db.execute(
-        sql`SELECT * FROM books ORDER BY id ASC LIMIT 1 OFFSET ${offset}`
+        sql`SELECT * FROM books WHERE status = 'published' ORDER BY id ASC LIMIT 1 OFFSET ${offset}`
       );
       const allRows = (rows as any).rows || rows;
       if (!Array.isArray(allRows) || allRows.length === 0) return null;
@@ -1341,6 +1343,8 @@ export class ExternalAPIStorage implements IStorage {
       if (updates.audioUrl !== undefined) setClauses.push(sql`audio_url = ${updates.audioUrl}`);
       if (updates.contentUrl !== undefined) setClauses.push(sql`content_url = ${updates.contentUrl}`);
       if (updates.isPremium !== undefined) setClauses.push(sql`is_premium = ${updates.isPremium}`);
+      if (updates.status !== undefined) setClauses.push(sql`status = ${updates.status}`);
+      if (updates.accessibilityTags !== undefined) setClauses.push(sql`accessibility_tags = ${updates.accessibilityTags}`);
       if (newReadingLevel !== undefined) setClauses.push(sql`reading_level = ${newReadingLevel}`);
 
       if (setClauses.length > 0) {
@@ -1351,6 +1355,24 @@ export class ExternalAPIStorage implements IStorage {
     } catch (err) {
       console.warn('[updateBook] DB update failed:', err);
       return await this.getBook(id);
+    }
+  }
+
+  async getBookAccessibilityMetadata(bookId: string): Promise<Record<string, any> | null> {
+    try {
+      const result = await db.execute(
+        sql`SELECT * FROM accessibility_metadata WHERE book_id = ${bookId} LIMIT 1`
+      );
+      const rows = (result as any).rows || result;
+      if (!Array.isArray(rows) || rows.length === 0) return null;
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(rows[0] as Record<string, any>)) {
+        const camel = k.replace(/_([a-z])/g, (_m, c) => c.toUpperCase());
+        out[camel] = v;
+      }
+      return out;
+    } catch {
+      return null;
     }
   }
 
@@ -1373,7 +1395,7 @@ export class ExternalAPIStorage implements IStorage {
     }
 
     try {
-      const conditions: any[] = [];
+      const conditions: any[] = [sql`status = 'published'`];
       if (source) conditions.push(sql`source = ${source}`);
       if (contentType) conditions.push(sql`content_type = ${contentType}`);
       if (genre) conditions.push(sql`genre = ${genre}`);
@@ -1529,7 +1551,7 @@ export class ExternalAPIStorage implements IStorage {
       const results = await db.execute(
         sql`SELECT *, ts_rank(search_tsv, to_tsquery('english', ${tsQuery})) AS rank
             FROM books
-            WHERE search_tsv @@ to_tsquery('english', ${tsQuery})
+            WHERE search_tsv @@ to_tsquery('english', ${tsQuery}) AND status = 'published'
             ORDER BY rank DESC
             LIMIT ${limit}`
       );
