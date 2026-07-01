@@ -9,6 +9,12 @@ import { eq, desc, and, asc } from "drizzle-orm";
 import { isAuthenticated, getSessionMiddleware } from "./multiAuth";
 import { handleQueueWSMessage, handleQueueWSLeave } from "./streamingQueue";
 import type { SubscriptionTier } from "@workspace/db";
+import { logger } from "./lib/logger";
+
+// Hard cap on a single inbound WebSocket frame. These sockets only ever carry
+// small control/chat JSON, so a tight bound stops a single connection from
+// forcing the server to buffer huge payloads (ws defaults to 100 MiB).
+const WS_MAX_PAYLOAD = 64 * 1024;
 
 const TIER_ROOM_LIMITS: Record<string, { canCreate: boolean; maxListeners: number; coHost: boolean }> = {
   free: { canCreate: false, maxListeners: 0, coHost: false },
@@ -115,14 +121,107 @@ function authenticateWS(request: IncomingMessage): Promise<any> {
   });
 }
 
+// Coerce an untrusted playback payload down to exactly the known fields with
+// sane bounds. Prevents arbitrary/oversized properties (or a JSON "__proto__"
+// key) from being merged into shared room state and rebroadcast to everyone.
+function sanitizePlayback(input: any): PlaybackState {
+  const num = (v: any, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+  return {
+    currentTime: Math.max(0, num(input?.currentTime, 0)),
+    isPlaying: input?.isPlaying === true,
+    playbackRate: Math.min(4, Math.max(0.25, num(input?.playbackRate, 1))),
+    updatedAt: Date.now(),
+  };
+}
+
+// Hostnames allowed to open a WebSocket handshake against this server, built
+// from the same trusted-origin sources the rest of the app already uses so it
+// works across dev previews and the production domain without hardcoding.
+const ALLOWED_WS_ORIGIN_HOSTS: ReadonlySet<string> = (() => {
+  const hosts = new Set<string>();
+  const addHost = (raw?: string | null) => {
+    if (!raw) return;
+    const v = raw.trim().toLowerCase();
+    if (v) hosts.add(v);
+  };
+  for (const h of (process.env.REPLIT_DOMAINS || "").split(",")) addHost(h);
+  addHost(process.env.REPLIT_DEV_DOMAIN);
+  for (const u of [process.env.APP_URL, process.env.ALLOWED_ORIGIN]) {
+    if (!u) continue;
+    try {
+      addHost(new URL(u).hostname);
+    } catch {
+      addHost(u);
+    }
+  }
+  if (process.env.NODE_ENV !== "production") {
+    addHost("localhost");
+    addHost("127.0.0.1");
+  }
+  return hosts;
+})();
+
+// Cross-Site WebSocket Hijacking (CSWSH) guard. These endpoints authenticate
+// purely from the session cookie, which browsers attach automatically on
+// cross-origin WS handshakes — so without an Origin check any website could
+// open an authenticated socket as the visiting victim. Returns true only when
+// the Origin is a trusted host.
+function isAllowedWsOrigin(origin: string, hostHeader?: string): boolean {
+  let originHost: string;
+  try {
+    originHost = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return false; // unparseable Origin — reject
+  }
+  if (ALLOWED_WS_ORIGIN_HOSTS.has(originHost)) return true;
+  // Same-origin: Origin host matches the Host the handshake targeted. Safe
+  // against CSWSH because the browser sets Host to the connection target (our
+  // server), not the attacker's page, and Origin cannot be spoofed by script.
+  if (hostHeader) {
+    const hostOnly = hostHeader.split(":")[0].trim().toLowerCase();
+    if (hostOnly && hostOnly === originHost) return true;
+  }
+  // Non-production preview conveniences only — never applied in production.
+  if (process.env.NODE_ENV !== "production") {
+    if (
+      originHost === "localhost" ||
+      originHost === "127.0.0.1" ||
+      /\.(replit\.dev|repl\.co|replit\.app)$/.test(originHost)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function setupListeningPartyWS(server: Server) {
-  const wss = new WebSocketServer({ noServer: true });
-  const queueWss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD });
+  const queueWss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD });
 
   server.on("upgrade", async (request: IncomingMessage, socket, head) => {
     const isParty = request.url?.startsWith("/ws/listening-party");
     const isQueue = request.url?.startsWith("/ws/streaming-queue");
     if (!isParty && !isQueue) return;
+
+    // Reject browser-driven cross-site handshakes before doing any auth work.
+    // Browsers always send Origin for WS handshakes; a missing Origin implies a
+    // non-browser client, which still has to pass session auth below.
+    const originHeader = request.headers.origin;
+    if (originHeader && !isAllowedWsOrigin(originHeader, request.headers.host)) {
+      let originHost = originHeader;
+      try {
+        originHost = new URL(originHeader).host;
+      } catch {
+        /* keep raw value for the log line */
+      }
+      logger.warn(
+        { originHost, path: request.url?.split("?")[0] },
+        "[WS] Rejected upgrade: disallowed Origin",
+      );
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+      return;
+    }
 
     try {
       const user = await authenticateWS(request);
@@ -277,10 +376,7 @@ export function setupListeningPartyWS(server: Server) {
               return;
             }
 
-            roomState.playback = {
-              ...msg.playback,
-              updatedAt: Date.now(),
-            };
+            roomState.playback = sanitizePlayback(msg.playback);
 
             broadcastToRoom(currentRoomId, {
               type: "playback_sync",
