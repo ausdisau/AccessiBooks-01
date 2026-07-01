@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,36 @@ const FEATURES = [
 ];
 
 export default function TrustPage() {
+  useEffect(() => {
+    const prev = document.title;
+    document.title = "Trust & Safety — AccessiBooks";
+    const setMeta = (sel: string, attr: string, val: string) => {
+      let el = document.head.querySelector<HTMLMetaElement>(sel);
+      const existed = !!el;
+      if (!el) { el = document.createElement("meta"); el.setAttribute(attr.split("=")[0], attr.split("=")[1]); document.head.appendChild(el); }
+      const old = el.getAttribute("content") ?? "";
+      el.setAttribute("content", val);
+      return { el, existed, old };
+    };
+    const metas = [
+      setMeta('meta[name="description"]', "name=description", "How AccessiBooks protects your privacy, meets WCAG 2.1 AA accessibility standards, and earns your trust — built by Australian Disability Ltd."),
+      setMeta('meta[property="og:title"]', "property=og:title", "Trust & Safety — AccessiBooks"),
+      setMeta('meta[property="og:description"]', "property=og:description", "AccessiBooks is built on accessibility, privacy, and community trust. WCAG 2.1 AA compliant, GDPR ready, with open accessibility scores for every title."),
+      setMeta('meta[property="og:url"]', "property=og:url", "https://accessibooks.org/trust"),
+      setMeta('meta[name="twitter:title"]', "name=twitter:title", "Trust & Safety — AccessiBooks"),
+      setMeta('meta[name="twitter:description"]', "name=twitter:description", "Accessibility, privacy, and community trust at the heart of AccessiBooks."),
+    ];
+    let canonicalEl = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    const prevCanonical = canonicalEl?.getAttribute("href") ?? "";
+    if (!canonicalEl) { canonicalEl = document.createElement("link"); canonicalEl.setAttribute("rel", "canonical"); document.head.appendChild(canonicalEl); }
+    canonicalEl.setAttribute("href", "https://accessibooks.org/trust");
+    return () => {
+      document.title = prev;
+      for (const { el, existed, old } of metas) { if (existed) el.setAttribute("content", old); else el.remove(); }
+      if (canonicalEl) canonicalEl.setAttribute("href", prevCanonical);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16 operator-shell">
