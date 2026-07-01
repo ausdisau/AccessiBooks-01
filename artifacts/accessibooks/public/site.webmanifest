@@ -1,0 +1,16 @@
+{
+  "name": "AccessiBooks - Accessible Audiobooks for Everyone",
+  "short_name": "AccessiBooks",
+  "description": "Stream thousands of free and premium audiobooks and ebooks with full accessibility support.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#FF3C00",
+  "icons": [
+    { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}
