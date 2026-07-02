@@ -890,7 +890,10 @@ ${faqHtml(faqs)}`;
   app.get("/author/:name", async (req, res) => {
     try {
       const origin = originFor(req);
-      const decodedName = decodeURIComponent(req.params.name);
+      // Express 5 already percent-decodes route params (and 400s malformed
+      // sequences itself) — decoding again corrupts/throws on names that
+      // legitimately contain "%".
+      const decodedName = req.params.name;
       const path = `/author/${encodeURIComponent(decodedName)}`;
 
       // Cached as rendered HTML; unknown authors return null (never cached) so
