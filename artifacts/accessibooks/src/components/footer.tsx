@@ -58,6 +58,43 @@ export function Footer() {
     </ul>
   );
 
+  const browseLinks = (
+    <ul className="space-y-2 text-sm">
+      <li>
+        <a href="/accessible" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+          <Accessibility className="h-3.5 w-3.5" />
+          Accessible Collections
+        </a>
+      </li>
+      <li>
+        <a href="/accessible/auslan" className="text-muted-foreground hover:text-foreground transition-colors">
+          Auslan Titles
+        </a>
+      </li>
+      <li>
+        <a href="/accessible/with-transcripts" className="text-muted-foreground hover:text-foreground transition-colors">
+          Titles with Transcripts
+        </a>
+      </li>
+      <li>
+        <a href="/accessible/dyslexia-friendly" className="text-muted-foreground hover:text-foreground transition-colors">
+          Dyslexia-Friendly
+        </a>
+      </li>
+      <li>
+        <a href="/collections" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+          <BookOpen className="h-3.5 w-3.5" />
+          Browse by Genre
+        </a>
+      </li>
+      <li>
+        <a href="/collections/free-audiobooks" className="text-muted-foreground hover:text-foreground transition-colors">
+          Free Audiobooks
+        </a>
+      </li>
+    </ul>
+  );
+
   const supportLinks = (
     <ul className="space-y-2 text-sm">
       <li>
@@ -92,7 +129,7 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
 
         {/* Desktop multi-column grid */}
-        <div className="hidden md:grid md:grid-cols-4 gap-8">
+        <div className="hidden md:grid md:grid-cols-5 gap-8">
           <div className="md:col-span-1">
             <div className="flex items-center gap-2 mb-3">
               <Headphones className="h-6 w-6 text-primary" />
@@ -106,6 +143,11 @@ export function Footer() {
           <div>
             <h3 className="font-semibold mb-3 text-sm uppercase tracking-wider text-muted-foreground">Explore</h3>
             {exploreLinks}
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-3 text-sm uppercase tracking-wider text-muted-foreground">Browse</h3>
+            {browseLinks}
           </div>
 
           <div>
@@ -154,6 +196,9 @@ export function Footer() {
           <div className="border-t border-border">
             <AccordionSection title="Explore">
               {exploreLinks}
+            </AccordionSection>
+            <AccordionSection title="Browse">
+              {browseLinks}
             </AccordionSection>
             <AccordionSection title="Support">
               {supportLinks}

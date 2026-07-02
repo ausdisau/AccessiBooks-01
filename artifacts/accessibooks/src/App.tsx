@@ -1506,6 +1506,33 @@ function MainApp() {
     navigate(`/author/${encodeURIComponent(authorName)}`);
   }, [navigate]);
 
+  // Deep links from server-rendered SEO pages: /book/:id and /author/:name
+  // link into the app via /?book=<id> and /?author=<name>.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const deepBookId = params.get("book");
+    const deepAuthor = params.get("author");
+    if (!deepBookId && !deepAuthor) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if (deepBookId) {
+      (async () => {
+        try {
+          const res = await fetch(`/api/books/${encodeURIComponent(deepBookId)}`);
+          if (res.ok) {
+            const book: Book = await res.json();
+            handleSelectBook(book);
+          }
+        } catch {
+          // Book fetch failed — stay on the library view.
+        }
+      })();
+    } else if (deepAuthor) {
+      navigate(`/author/${encodeURIComponent(deepAuthor)}`);
+    }
+    // Mount-only: handlers are stable callbacks and the query is consumed once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleViewFeed = useCallback(() => {
     navigate("/feed");
   }, [navigate]);

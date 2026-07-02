@@ -18,6 +18,23 @@
 - Reading clubs: https://accessibooks.org/clubs
 - Live author events: https://accessibooks.org/events
 
+## Browse Collections
+
+Server-rendered, crawler-friendly collection pages with real catalogue data:
+
+- Accessible collections hub: https://accessibooks.org/accessible
+- Auslan video companion titles: https://accessibooks.org/accessible/auslan
+- Titles with transcripts: https://accessibooks.org/accessible/with-transcripts
+- Dyslexia-friendly titles: https://accessibooks.org/accessible/dyslexia-friendly
+- Easy Read titles: https://accessibooks.org/accessible/easy-read
+- Captioned titles: https://accessibooks.org/accessible/captioned
+- Audio-described titles: https://accessibooks.org/accessible/audio-described
+- Human-narrated audiobooks: https://accessibooks.org/accessible/human-narrated
+- Reading-level collections: https://accessibooks.org/accessible/very-easy-reading (also easy-reading, moderate-reading, advanced-reading)
+- Browse by genre: https://accessibooks.org/collections
+- Free audiobooks: https://accessibooks.org/collections/free-audiobooks
+- Sitemap index: https://accessibooks.org/sitemap.xml
+
 ## Accessibility Features
 
 AccessiBooks is purpose-built for users with disabilities. Key features include:

@@ -10,6 +10,50 @@
       "destination": "https://YOUR-API-HOST.example.com/api/:path*"
     },
     {
+      "source": "/book/:path*",
+      "destination": "https://YOUR-API-HOST.example.com/book/:path*"
+    },
+    {
+      "source": "/author/:path*",
+      "destination": "https://YOUR-API-HOST.example.com/author/:path*"
+    },
+    {
+      "source": "/accessible",
+      "destination": "https://YOUR-API-HOST.example.com/accessible"
+    },
+    {
+      "source": "/accessible/:path*",
+      "destination": "https://YOUR-API-HOST.example.com/accessible/:path*"
+    },
+    {
+      "source": "/collections",
+      "destination": "https://YOUR-API-HOST.example.com/collections"
+    },
+    {
+      "source": "/collections/:path*",
+      "destination": "https://YOUR-API-HOST.example.com/collections/:path*"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "https://YOUR-API-HOST.example.com/sitemap.xml"
+    },
+    {
+      "source": "/sitemap-static.xml",
+      "destination": "https://YOUR-API-HOST.example.com/sitemap-static.xml"
+    },
+    {
+      "source": "/sitemap-books.xml",
+      "destination": "https://YOUR-API-HOST.example.com/sitemap-books.xml"
+    },
+    {
+      "source": "/sitemap-authors.xml",
+      "destination": "https://YOUR-API-HOST.example.com/sitemap-authors.xml"
+    },
+    {
+      "source": "/sitemap-collections.xml",
+      "destination": "https://YOUR-API-HOST.example.com/sitemap-collections.xml"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
