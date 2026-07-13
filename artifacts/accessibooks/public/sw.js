@@ -22,8 +22,8 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: payload.body || "You have a new notification",
-    icon: payload.icon || "/assets/icons/icon-192.png",
-    badge: payload.badge || "/assets/icons/badge-72.png",
+    icon: payload.icon || "/icon-192.png",
+    badge: payload.badge || "/icon-192.png",
     tag: payload.tag || "accessibooks-notification",
     renotify: true,
     data: {
