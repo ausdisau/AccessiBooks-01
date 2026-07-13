@@ -5,18 +5,20 @@
 ## Key Sections
 
 - Homepage / entry point: https://accessibooks.org/
-- Browse catalog (audiobooks, ebooks, magazines): https://accessibooks.org/library
-- Search: https://accessibooks.org/search
 - Pricing & subscription plans (Free, Plus, Premium): https://accessibooks.org/pricing
-- About AccessiBooks and accessibility mission: https://accessibooks.org/about
-- Support & contact: https://accessibooks.org/support
+- Accessibility statement and supported features: https://accessibooks.org/accessibility
+- Trust, safety, and content standards: https://accessibooks.org/trust
+- Institutional & organisational access: https://accessibooks.org/institutional
+- Privacy policy: https://accessibooks.org/privacy
+- Terms of use: https://accessibooks.org/terms
+- Copyright & licensing: https://accessibooks.org/copyright
 
 ## Content
 
+Server-rendered, crawler-friendly pages with real catalogue data:
+
 - Individual book pages: https://accessibooks.org/book/{id}
 - Author pages: https://accessibooks.org/author/{name}
-- Reading clubs: https://accessibooks.org/clubs
-- Live author events: https://accessibooks.org/events
 
 ## Browse Collections
 

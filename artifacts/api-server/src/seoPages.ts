@@ -319,7 +319,6 @@ function renderPage(opts: PageOptions): string {
     <div class="inner">
       <a class="brand" href="/">${SITE_NAME}</a>
       <nav aria-label="Main">
-        <a href="/library">Library</a>
         <a href="/collections">Collections</a>
         <a href="/accessible">Accessibility</a>
         <a href="/pricing">Pricing</a>
@@ -638,7 +637,7 @@ function hubPageHtml(opts: {
 
   const bodyHtml = `<h1>${escapeHtml(heading)}</h1>
 <p class="lead">${escapeHtml(answer)} ${SITE_NAME} currently lists ${count} ${count === 1 ? "title" : "titles"} in this collection.</p>
-<p><a class="cta" href="/library">Browse the full library</a></p>
+<p><a class="cta" href="/collections">Browse all collections</a></p>
 <section aria-labelledby="titles-heading">
   <h2 id="titles-heading">${count > shown ? `Featured titles (${shown} of ${count})` : "Titles in this collection"}</h2>
   ${shown === 0 ? "<p>No titles are listed in this collection yet. Check back soon — the catalogue grows regularly.</p>" : `<ul class="book-grid">\n  ${rows.map(bookCardHtml).join("\n  ")}\n  </ul>`}
@@ -730,7 +729,7 @@ export function registerSeoPageRoutes(app: Express): void {
       const [book] = await db.select().from(books).where(eq(books.id, id)).limit(1);
 
       if (!book || book.status !== "published") {
-        return sendHtml(res, notFoundPage(origin, "Book", "/library", "Browse the library"), {
+        return sendHtml(res, notFoundPage(origin, "Book", "/collections", "Browse collections"), {
           status: 404,
           noCache: true,
         });
@@ -823,7 +822,7 @@ export function registerSeoPageRoutes(app: Express): void {
 
       const crumbs: Crumb[] = [
         { name: "Home", path: "/" },
-        { name: "Library", path: "/library" },
+        { name: "Collections", path: "/collections" },
         { name: book.title, path: `/book/${encodeURIComponent(book.id)}` },
       ];
 
@@ -947,7 +946,7 @@ ${faqHtml(faqs)}`;
 
       const crumbs: Crumb[] = [
         { name: "Home", path: "/" },
-        { name: "Library", path: "/library" },
+        { name: "Collections", path: "/collections" },
         { name: decodedName, path },
       ];
 
@@ -993,7 +992,7 @@ ${faqHtml(faqs)}`;
       });
 
       if (html === null) {
-        return sendHtml(res, notFoundPage(origin, "Author", "/library", "Browse the library"), {
+        return sendHtml(res, notFoundPage(origin, "Author", "/collections", "Browse collections"), {
           status: 404,
           noCache: true,
         });
@@ -1276,17 +1275,21 @@ ${faqHtml(faqs)}`;
   app.get("/sitemap-static.xml", async (req, res) => {
     try {
       const baseUrl = originFor(req);
+      // Only canonical, publicly reachable pages: the SPA's top-level
+      // anonymous routes (App.tsx) plus the homepage. Routes that only exist
+      // behind auth or the guest catch-all (/library, /search, /clubs, ...)
+      // must NOT be advertised — crawlers would land on the app shell.
+      // Server-rendered /accessible + /collections hubs are covered by
+      // sitemap-collections.xml.
       const staticPages: SitemapEntry[] = [
         { loc: `${baseUrl}/`, priority: "1.0", changefreq: "daily" },
-        { loc: `${baseUrl}/library`, priority: "0.9", changefreq: "daily" },
-        { loc: `${baseUrl}/search`, priority: "0.8", changefreq: "daily" },
         { loc: `${baseUrl}/pricing`, priority: "0.8", changefreq: "weekly" },
-        { loc: `${baseUrl}/about`, priority: "0.7", changefreq: "monthly" },
-        { loc: `${baseUrl}/support`, priority: "0.7", changefreq: "monthly" },
-        { loc: `${baseUrl}/clubs`, priority: "0.7", changefreq: "daily" },
-        { loc: `${baseUrl}/events`, priority: "0.7", changefreq: "daily" },
-        { loc: `${baseUrl}/challenges`, priority: "0.6", changefreq: "weekly" },
-        { loc: `${baseUrl}/leaderboard`, priority: "0.6", changefreq: "daily" },
+        { loc: `${baseUrl}/trust`, priority: "0.6", changefreq: "monthly" },
+        { loc: `${baseUrl}/institutional`, priority: "0.6", changefreq: "monthly" },
+        { loc: `${baseUrl}/accessibility`, priority: "0.7", changefreq: "monthly" },
+        { loc: `${baseUrl}/privacy`, priority: "0.4", changefreq: "monthly" },
+        { loc: `${baseUrl}/terms`, priority: "0.4", changefreq: "monthly" },
+        { loc: `${baseUrl}/copyright`, priority: "0.4", changefreq: "monthly" },
       ];
       sendXml(res, urlsetXml(staticPages), 3600);
     } catch (error) {
