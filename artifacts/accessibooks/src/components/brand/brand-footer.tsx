@@ -1,5 +1,5 @@
 import { BrandWordmark } from "./brand-wordmark";
-import adLogo from "@assets/Original_on_Transparent_1778563296837.png";
+import adLogo from "@/assets/ad-logo-360.webp";
 
 interface FooterLink {
   label: string;
@@ -74,8 +74,12 @@ export function BrandFooter({ columns = defaultColumns }: BrandFooterProps) {
             >
               <img
                 src={adLogo}
+                width={360}
+                height={208}
                 alt=""
                 className="h-12 w-auto bg-white rounded-md p-1.5"
+                loading="lazy"
+                decoding="async"
               />
               <span
                 className="text-xs uppercase tracking-[0.18em] font-semibold"

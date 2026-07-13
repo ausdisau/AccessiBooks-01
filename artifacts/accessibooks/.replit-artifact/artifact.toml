@@ -23,6 +23,34 @@ publicDir = "artifacts/accessibooks/dist/public"
 serve = "static"
 
 [[services.production.rewrites]]
+from = "/pricing"
+to = "/pricing/index.html"
+
+[[services.production.rewrites]]
+from = "/trust"
+to = "/trust/index.html"
+
+[[services.production.rewrites]]
+from = "/institutional"
+to = "/institutional/index.html"
+
+[[services.production.rewrites]]
+from = "/accessibility"
+to = "/accessibility/index.html"
+
+[[services.production.rewrites]]
+from = "/privacy"
+to = "/privacy/index.html"
+
+[[services.production.rewrites]]
+from = "/terms"
+to = "/terms/index.html"
+
+[[services.production.rewrites]]
+from = "/copyright"
+to = "/copyright/index.html"
+
+[[services.production.rewrites]]
 from = "/*"
 to = "/index.html"
 
