@@ -31,7 +31,8 @@ import {
 } from "@/components/brand";
 import { SeeTheProductSection } from "@/components/landing/see-the-product";
 
-import brandArt from "@assets/AccessiBooksV3_1776746168818.png";
+import brandArt from "@/assets/brand-hero-1024.webp";
+import brandArtSmall from "@/assets/brand-hero-640.webp";
 
 interface BrandLandingPageProps {
   onOpenLogin: () => void;
@@ -240,6 +241,10 @@ export function BrandLandingPage({
                 >
                   <img
                     src={brandArt}
+                    srcSet={`${brandArtSmall} 640w, ${brandArt} 1024w`}
+                    sizes="(min-width: 768px) 50vw, 100vw"
+                    width={1024}
+                    height={1024}
                     alt=""
                     className="block w-full h-auto"
                     loading="eager"
