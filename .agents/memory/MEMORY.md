@@ -13,4 +13,5 @@
 - [WebSocket security](websocket-security.md) — cookie-auth WS upgrade MUST validate Origin (CSWSH) before auth + bound maxPayload; /ws is NOT proxied so test at api-server :8080 directly.
 - [Post-merge drizzle push hang](post-merge-drizzle-push.md) — new-table create/rename prompt hangs post-merge (stdin closed); --force won't answer it; feed a FINITE `\r` burst (infinite `yes` floods introspection & hangs).
 - [Narration test strategy](narration-test-strategy.md) — dev has a live ELEVENLABS key so a real narration e2e costs money; test offline (jsdom component + route mocks); jsdom react-query polling needs focusManager.setFocused(true).
+- [Admin routes unreachable](admin-routes-unreachable.md) — role='admin' diverts to the ad-platform shell before the main router, so /analytics etc. can't be browser-tested; verify admin UI via offline jsdom tests.
 - [Seeder-inflated catalog](seeder-inflated-catalog.md) — books has 1M+ auto-seeded rows and grows on boot; btree on author/genre FAILS (>2.7KB values) → use hash indexes; cap any catalogue enumeration.
