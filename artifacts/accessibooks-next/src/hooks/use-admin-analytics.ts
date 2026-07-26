@@ -6,7 +6,31 @@ function buildUrl(base: string, from: string, to: string) {
   return `${base}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
 }
 
-export function useSubscriptionAnalytics(from: string, to: string) {
+/**
+ * Given the current window, returns the equivalent prior window of the same
+ * length, ending exactly where the current window starts.
+ */
+export function getPreviousWindow(from: string, to: string): { from: string; to: string } {
+  const fromMs = new Date(from).getTime();
+  const toMs = new Date(to).getTime();
+  const lengthMs = Math.max(0, toMs - fromMs);
+  return {
+    from: new Date(fromMs - lengthMs).toISOString(),
+    to: new Date(fromMs).toISOString(),
+  };
+}
+
+/**
+ * Relative change of `current` vs `previous`, as a fraction (0.25 = +25%).
+ * Returns null when there is no meaningful baseline (previous is 0/undefined).
+ */
+export function computeDelta(current: number | undefined, previous: number | undefined): number | null {
+  if (previous === undefined || current === undefined) return null;
+  if (previous === 0) return null;
+  return (current - previous) / previous;
+}
+
+export function useSubscriptionAnalytics(from: string, to: string, options?: { enabled?: boolean }) {
   return useQuery<{
     totalFree: number;
     totalPlus: number;
@@ -23,10 +47,11 @@ export function useSubscriptionAnalytics(from: string, to: string) {
       return res.json();
     },
     staleTime: STALE_TIME,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useAdAnalytics(from: string, to: string) {
+export function useAdAnalytics(from: string, to: string, options?: { enabled?: boolean }) {
   return useQuery<{
     impressionsServed: number;
     completionRate: number;
@@ -42,10 +67,11 @@ export function useAdAnalytics(from: string, to: string) {
       return res.json();
     },
     staleTime: STALE_TIME,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useListeningAnalytics(from: string, to: string) {
+export function useListeningAnalytics(from: string, to: string, options?: { enabled?: boolean }) {
   return useQuery<{
     totalMinutesByTier: Record<string, number>;
     totalMinutes: number;
@@ -60,10 +86,11 @@ export function useListeningAnalytics(from: string, to: string) {
       return res.json();
     },
     staleTime: STALE_TIME,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useFunnelAnalytics(from: string, to: string) {
+export function useFunnelAnalytics(from: string, to: string, options?: { enabled?: boolean }) {
   return useQuery<{
     funnel: Array<{ step: string; count: number; dropoffRate: number }>;
     signupToUpgradeRate: number;
@@ -77,6 +104,7 @@ export function useFunnelAnalytics(from: string, to: string) {
       return res.json();
     },
     staleTime: STALE_TIME,
+    enabled: options?.enabled ?? true,
   });
 }
 

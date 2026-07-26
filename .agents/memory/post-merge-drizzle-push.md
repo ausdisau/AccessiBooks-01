@@ -34,3 +34,6 @@ so each prompt accepts its default highlighted option ("create table"):
 `printf` pipe supplies drizzle's stdin, so the mechanism is identical). A healthy
 run is ~20s. Timeout is set in `.replit` `[postMerge]`; bumped to 180000ms as a
 buffer, but a synced no-op finishes far under that.
+
+## Timeout under parallel-agent load
+The default 180s post-merge timeout is NOT enough when many task agents run concurrently: `pnpm install --frozen-lockfile` alone took ~2m50s and a full run (install + drizzle push) ~9min under load. Timeout is set to 600000ms in `.replit` — do not "optimize" it back down; a timed-out setup leaves merges unreconciled.

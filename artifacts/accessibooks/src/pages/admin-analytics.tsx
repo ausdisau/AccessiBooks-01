@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,12 +19,16 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import type { DateRange as DayPickerRange } from "react-day-picker";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   useSubscriptionAnalytics,
   useAdAnalytics,
   useListeningAnalytics,
   useFunnelAnalytics,
   useAccessibilityAnalytics,
+  getPreviousWindow,
+  computeDelta,
 } from "@/hooks/use-admin-analytics";
 import { queryClient } from "@/lib/queryClient";
 
@@ -50,7 +54,41 @@ function formatPct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
 
-function StatCard({ title, value, sub, icon }: { title: string; value: string | number; sub?: string; icon?: React.ReactNode }) {
+function DeltaBadge({ delta, invert = false }: { delta: number | null | undefined; invert?: boolean }) {
+  if (delta === undefined) return null;
+  if (delta === null) {
+    return (
+      <span
+        className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+        title="No data in the previous period to compare against"
+        data-testid="delta-badge"
+      >
+        vs prev: —
+      </span>
+    );
+  }
+  const pct = delta * 100;
+  const rounded = Math.abs(pct) >= 100 ? pct.toFixed(0) : pct.toFixed(1);
+  const isFlat = Math.abs(pct) < 0.05;
+  const isGood = invert ? delta < 0 : delta > 0;
+  const color = isFlat
+    ? "text-muted-foreground"
+    : isGood
+      ? "text-green-600 dark:text-green-400"
+      : "text-red-600 dark:text-red-400";
+  const sign = pct > 0 ? "+" : "";
+  return (
+    <span
+      className={`text-[10px] font-bold uppercase tracking-wider ${color}`}
+      aria-label={`${sign}${rounded}% versus previous period`}
+      data-testid="delta-badge"
+    >
+      {isFlat ? "±0%" : `${sign}${rounded}%`} vs prev
+    </span>
+  );
+}
+
+function StatCard({ title, value, sub, icon, delta, invertDelta }: { title: string; value: string | number; sub?: string; icon?: React.ReactNode; delta?: number | null; invertDelta?: boolean }) {
   return (
     <Card className="dark:bg-card">
       <CardHeader className="pb-2">
@@ -61,7 +99,10 @@ function StatCard({ title, value, sub, icon }: { title: string; value: string | 
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
-        {sub && <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tight">{sub}</p>}
+        <div className="flex items-center gap-2 mt-1">
+          {sub && <p className="text-[10px] text-muted-foreground uppercase tracking-tight">{sub}</p>}
+          <DeltaBadge delta={delta} invert={invertDelta} />
+        </div>
       </CardContent>
     </Card>
   );
@@ -81,8 +122,19 @@ function StatCardSkeleton() {
   );
 }
 
-function SubscriptionsTab({ from, to }: { from: string; to: string }) {
+interface TabProps {
+  from: string;
+  to: string;
+  compare: boolean;
+  prevFrom: string;
+  prevTo: string;
+}
+
+function SubscriptionsTab({ from, to, compare, prevFrom, prevTo }: TabProps) {
   const { data, isLoading } = useSubscriptionAnalytics(from, to);
+  const { data: prev } = useSubscriptionAnalytics(prevFrom, prevTo, { enabled: compare });
+  const d = (cur: number | undefined, prevVal: number | undefined) =>
+    compare ? computeDelta(cur, prevVal) : undefined;
 
   const total = (data?.totalFree ?? 0) + (data?.totalPlus ?? 0) + (data?.totalPremium ?? 0);
   const freeWidth = total > 0 ? Math.round(((data?.totalFree ?? 0) / total) * 100) : 0;
@@ -96,13 +148,13 @@ function SubscriptionsTab({ from, to }: { from: string; to: string }) {
           Array.from({ length: 7 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <StatCard title="Free Users" value={data?.totalFree ?? 0} sub="current count" icon={<Users className="h-4 w-4" />} />
-            <StatCard title="Plus Users" value={data?.totalPlus ?? 0} sub="current count" icon={<Users className="h-4 w-4" />} />
-            <StatCard title="Premium Users" value={data?.totalPremium ?? 0} sub="current count" icon={<Users className="h-4 w-4" />} />
-            <StatCard title="New Signups" value={data?.newSignupsThisPeriod ?? 0} sub="this period" icon={<TrendingUp className="h-4 w-4" />} />
-            <StatCard title="Upgrades" value={data?.upgradesThisPeriod ?? 0} sub="this period" icon={<TrendingUp className="h-4 w-4" />} />
-            <StatCard title="Cancellations" value={data?.cancellationsThisPeriod ?? 0} sub="this period" icon={<TrendingUp className="h-4 w-4" />} />
-            <StatCard title="Est. MRR" value={formatCents(data?.estimatedMRRCents ?? 0)} sub="this period" icon={<DollarSign className="h-4 w-4" />} />
+            <StatCard title="Free Users" value={data?.totalFree ?? 0} sub="current count" icon={<Users className="h-4 w-4" />} delta={d(data?.totalFree, prev?.totalFree)} />
+            <StatCard title="Plus Users" value={data?.totalPlus ?? 0} sub="current count" icon={<Users className="h-4 w-4" />} delta={d(data?.totalPlus, prev?.totalPlus)} />
+            <StatCard title="Premium Users" value={data?.totalPremium ?? 0} sub="current count" icon={<Users className="h-4 w-4" />} delta={d(data?.totalPremium, prev?.totalPremium)} />
+            <StatCard title="New Signups" value={data?.newSignupsThisPeriod ?? 0} sub="this period" icon={<TrendingUp className="h-4 w-4" />} delta={d(data?.newSignupsThisPeriod, prev?.newSignupsThisPeriod)} />
+            <StatCard title="Upgrades" value={data?.upgradesThisPeriod ?? 0} sub="this period" icon={<TrendingUp className="h-4 w-4" />} delta={d(data?.upgradesThisPeriod, prev?.upgradesThisPeriod)} />
+            <StatCard title="Cancellations" value={data?.cancellationsThisPeriod ?? 0} sub="this period" icon={<TrendingUp className="h-4 w-4" />} delta={d(data?.cancellationsThisPeriod, prev?.cancellationsThisPeriod)} invertDelta />
+            <StatCard title="Est. MRR" value={formatCents(data?.estimatedMRRCents ?? 0)} sub="this period" icon={<DollarSign className="h-4 w-4" />} delta={d(data?.estimatedMRRCents, prev?.estimatedMRRCents)} />
           </>
         )}
       </div>
@@ -155,8 +207,11 @@ function SubscriptionsTab({ from, to }: { from: string; to: string }) {
   );
 }
 
-function AdsTab({ from, to }: { from: string; to: string }) {
+function AdsTab({ from, to, compare, prevFrom, prevTo }: TabProps) {
   const { data, isLoading } = useAdAnalytics(from, to);
+  const { data: prev } = useAdAnalytics(prevFrom, prevTo, { enabled: compare });
+  const d = (cur: number | undefined, prevVal: number | undefined) =>
+    compare ? computeDelta(cur, prevVal) : undefined;
 
   return (
     <div className="space-y-6">
@@ -165,11 +220,11 @@ function AdsTab({ from, to }: { from: string; to: string }) {
           Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <StatCard title="Impressions Served" value={(data?.impressionsServed ?? 0).toLocaleString()} sub="audio ad requests" icon={<BarChart3 className="h-4 w-4" />} />
-            <StatCard title="Completion Rate" value={formatPct(data?.completionRate ?? 0)} sub="of impressions" icon={<TrendingUp className="h-4 w-4" />} />
-            <StatCard title="Click Rate" value={formatPct(data?.clickRate ?? 0)} sub="of impressions" icon={<TrendingUp className="h-4 w-4" />} />
-            <StatCard title="Rewarded Completions" value={(data?.rewardedCompletions ?? 0).toLocaleString()} sub="rewarded ad completes" icon={<BarChart3 className="h-4 w-4" />} />
-            <StatCard title="Est. Ad Revenue" value={formatCents(data?.estimatedAdRevenueCents ?? 0)} sub="from impressions" icon={<DollarSign className="h-4 w-4" />} />
+            <StatCard title="Impressions Served" value={(data?.impressionsServed ?? 0).toLocaleString()} sub="audio ad requests" icon={<BarChart3 className="h-4 w-4" />} delta={d(data?.impressionsServed, prev?.impressionsServed)} />
+            <StatCard title="Completion Rate" value={formatPct(data?.completionRate ?? 0)} sub="of impressions" icon={<TrendingUp className="h-4 w-4" />} delta={d(data?.completionRate, prev?.completionRate)} />
+            <StatCard title="Click Rate" value={formatPct(data?.clickRate ?? 0)} sub="of impressions" icon={<TrendingUp className="h-4 w-4" />} delta={d(data?.clickRate, prev?.clickRate)} />
+            <StatCard title="Rewarded Completions" value={(data?.rewardedCompletions ?? 0).toLocaleString()} sub="rewarded ad completes" icon={<BarChart3 className="h-4 w-4" />} delta={d(data?.rewardedCompletions, prev?.rewardedCompletions)} />
+            <StatCard title="Est. Ad Revenue" value={formatCents(data?.estimatedAdRevenueCents ?? 0)} sub="from impressions" icon={<DollarSign className="h-4 w-4" />} delta={d(data?.estimatedAdRevenueCents, prev?.estimatedAdRevenueCents)} />
             <Card className="dark:bg-card">
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
@@ -179,9 +234,12 @@ function AdsTab({ from, to }: { from: string; to: string }) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatPct(data?.fillRate ?? 0)}</div>
-                <Badge variant="outline" className="mt-1 text-[10px] h-5 px-1.5 uppercase font-bold tracking-wider">
-                  {data && data.fillRate > 0.8 ? "Good" : data && data.fillRate > 0.5 ? "Fair" : "Low"}
-                </Badge>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 uppercase font-bold tracking-wider">
+                    {data && data.fillRate > 0.8 ? "Good" : data && data.fillRate > 0.5 ? "Fair" : "Low"}
+                  </Badge>
+                  <DeltaBadge delta={d(data?.fillRate, prev?.fillRate)} />
+                </div>
               </CardContent>
             </Card>
           </>
@@ -191,8 +249,11 @@ function AdsTab({ from, to }: { from: string; to: string }) {
   );
 }
 
-function ListeningTab({ from, to }: { from: string; to: string }) {
+function ListeningTab({ from, to, compare, prevFrom, prevTo }: TabProps) {
   const { data, isLoading } = useListeningAnalytics(from, to);
+  const { data: prev } = useListeningAnalytics(prevFrom, prevTo, { enabled: compare });
+  const d = (cur: number | undefined, prevVal: number | undefined) =>
+    compare ? computeDelta(cur, prevVal) : undefined;
 
   return (
     <div className="space-y-6">
@@ -201,9 +262,9 @@ function ListeningTab({ from, to }: { from: string; to: string }) {
           Array.from({ length: 3 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <StatCard title="Total Minutes" value={(data?.totalMinutes ?? 0).toLocaleString()} sub="all tiers" icon={<Headphones className="h-4 w-4" />} />
-            <StatCard title="Total Sessions" value={(data?.totalSessions ?? 0).toLocaleString()} sub="from events" icon={<BarChart3 className="h-4 w-4" />} />
-            <StatCard title="Avg Session" value={`${data?.averageSessionMinutes ?? 0} min`} sub="per session" icon={<Headphones className="h-4 w-4" />} />
+            <StatCard title="Total Minutes" value={(data?.totalMinutes ?? 0).toLocaleString()} sub="all tiers" icon={<Headphones className="h-4 w-4" />} delta={d(data?.totalMinutes, prev?.totalMinutes)} />
+            <StatCard title="Total Sessions" value={(data?.totalSessions ?? 0).toLocaleString()} sub="from events" icon={<BarChart3 className="h-4 w-4" />} delta={d(data?.totalSessions, prev?.totalSessions)} />
+            <StatCard title="Avg Session" value={`${data?.averageSessionMinutes ?? 0} min`} sub="per session" icon={<Headphones className="h-4 w-4" />} delta={d(data?.averageSessionMinutes, prev?.averageSessionMinutes)} />
           </>
         )}
       </div>
@@ -279,8 +340,12 @@ function ListeningTab({ from, to }: { from: string; to: string }) {
   );
 }
 
-function FunnelTab({ from, to }: { from: string; to: string }) {
+function FunnelTab({ from, to, compare, prevFrom, prevTo }: TabProps) {
   const { data, isLoading } = useFunnelAnalytics(from, to);
+  const { data: prev } = useFunnelAnalytics(prevFrom, prevTo, { enabled: compare });
+  const d = (cur: number | undefined, prevVal: number | undefined) =>
+    compare ? computeDelta(cur, prevVal) : undefined;
+  const prevStepCount = (step: string) => prev?.funnel?.find(s => s.step === step)?.count;
 
   const maxCount = Math.max(...(data?.funnel?.map(s => s.count) ?? [1]), 1);
 
@@ -306,7 +371,10 @@ function FunnelTab({ from, to }: { from: string; to: string }) {
               <div key={step.step} role="listitem" className="space-y-1">
                 <div className="flex items-center justify-between text-xs font-medium uppercase tracking-tight">
                   <span>{step.step}</span>
-                  <span className="text-muted-foreground">{step.count.toLocaleString()}</span>
+                  <span className="flex items-center gap-2">
+                    <DeltaBadge delta={d(step.count, prevStepCount(step.step))} />
+                    <span className="text-muted-foreground">{step.count.toLocaleString()}</span>
+                  </span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div
@@ -331,10 +399,12 @@ function FunnelTab({ from, to }: { from: string; to: string }) {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Signup → Upgrade</p>
             <p className="font-bold text-xl">{formatPct(data?.signupToUpgradeRate ?? 0)}</p>
+            <DeltaBadge delta={d(data?.signupToUpgradeRate, prev?.signupToUpgradeRate)} />
           </div>
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Upgrade Retention</p>
             <p className="font-bold text-xl">{formatPct(data?.upgradeToRetainRate ?? 0)}</p>
+            <DeltaBadge delta={d(data?.upgradeToRetainRate, prev?.upgradeToRetainRate)} />
           </div>
         </div>
       </CardContent>
@@ -508,21 +578,22 @@ export default function AdminAnalyticsPage() {
   const [customRange, setCustomRange] = useState<DayPickerRange | undefined>();
   const [pickerSelection, setPickerSelection] = useState<DayPickerRange | undefined>();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [compare, setCompare] = useState(false);
 
-  let from: string;
-  let to: string;
-  if (range === "custom" && customRange?.from && customRange?.to) {
-    const fromDate = new Date(customRange.from);
-    fromDate.setHours(0, 0, 0, 0);
-    const toDate = new Date(customRange.to);
-    toDate.setHours(23, 59, 59, 999);
-    from = fromDate.toISOString();
-    to = toDate.toISOString();
-  } else {
-    const r = getDateRange(range === "custom" ? "30d" : range);
-    from = r.from;
-    to = r.to;
-  }
+  // Memoize the window so unrelated re-renders (e.g. toggling compare) don't
+  // regenerate `new Date()` and churn the react-query keys.
+  const { from, to } = useMemo(() => {
+    if (range === "custom" && customRange?.from && customRange?.to) {
+      const fromDate = new Date(customRange.from);
+      fromDate.setHours(0, 0, 0, 0);
+      const toDate = new Date(customRange.to);
+      toDate.setHours(23, 59, 59, 999);
+      return { from: fromDate.toISOString(), to: toDate.toISOString() };
+    }
+    return getDateRange(range === "custom" ? "30d" : range);
+  }, [range, customRange]);
+
+  const { from: prevFrom, to: prevTo } = getPreviousWindow(from, to);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/analytics"] });
@@ -631,6 +702,19 @@ export default function AdminAnalyticsPage() {
             </PopoverContent>
           </Popover>
 
+          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5">
+            <Switch
+              id="compare-toggle"
+              checked={compare}
+              onCheckedChange={setCompare}
+              data-testid="compare-toggle"
+              aria-label="Compare to previous period"
+            />
+            <Label htmlFor="compare-toggle" className="text-sm font-medium cursor-pointer whitespace-nowrap">
+              Compare to previous period
+            </Label>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -673,19 +757,19 @@ export default function AdminAnalyticsPage() {
         </TabsList>
 
         <TabsContent value="subscriptions" className="mt-6">
-          <SubscriptionsTab from={from} to={to} />
+          <SubscriptionsTab from={from} to={to} compare={compare} prevFrom={prevFrom} prevTo={prevTo} />
         </TabsContent>
 
         <TabsContent value="ads" className="mt-6">
-          <AdsTab from={from} to={to} />
+          <AdsTab from={from} to={to} compare={compare} prevFrom={prevFrom} prevTo={prevTo} />
         </TabsContent>
 
         <TabsContent value="listening" className="mt-6">
-          <ListeningTab from={from} to={to} />
+          <ListeningTab from={from} to={to} compare={compare} prevFrom={prevFrom} prevTo={prevTo} />
         </TabsContent>
 
         <TabsContent value="funnel" className="mt-6">
-          <FunnelTab from={from} to={to} />
+          <FunnelTab from={from} to={to} compare={compare} prevFrom={prevFrom} prevTo={prevTo} />
         </TabsContent>
 
         <TabsContent value="engagement" className="mt-6">

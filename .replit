@@ -52,7 +52,7 @@ expertMode = true
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 180000
+timeoutMs = 600000
 
 [[ports]]
 localPort = 5000
@@ -90,3 +90,6 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_T3WRRMwr1rtU41l3Ucy4Ww_Hp
 
 [nix]
 channel = "stable-25_05"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-add43f96-0adc-49be-9106-323544801a1a"

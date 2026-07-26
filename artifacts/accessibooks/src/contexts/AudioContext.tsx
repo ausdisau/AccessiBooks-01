@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { audioAdService, type AdResponse } from "@/services/audio-ad-service";
 import { useQuery } from "@tanstack/react-query";
 import { usePlaybackAdHooks } from "@/hooks/use-playback-ad-hooks";
+import { toast } from "@/hooks/use-toast";
 import { usePreferencesKernel } from "@/hooks/use-preferences-kernel";
 import { computeStreamQuality, appendStreamQualityParams } from "@/contexts/stream-quality";
 import {
@@ -586,6 +587,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         if (!autoAdvanceChaptersRef.current) {
           const audio = audioRef.current;
           const newChapterStart = chapters[newIndex]?.startTime ?? null;
+          const wasPlaying = !!audio && !audio.paused;
           if (audio && !audio.paused) {
             audio.pause();
             setIsPlaying(false);
@@ -593,6 +595,23 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           if (audio && newChapterStart !== null) {
             audio.currentTime = newChapterStart;
             setCurrentTime(newChapterStart);
+          }
+          // Cue the pause so users know playback is waiting on them — vital
+          // for screen-reader and low-vision users who may not notice the
+          // position bar stop. The toast system renders inside an aria-live
+          // region, so this is announced automatically. Only fire when the
+          // pause actually happened (wasPlaying — a manual seek while already
+          // paused is not a chapter-end pause). This branch only runs when
+          // playback crossed INTO an existing next chapter, so no cue can
+          // appear at the very end of the book — that path goes through the
+          // audio `ended` event instead.
+          const nextChapter = chapters[newIndex];
+          if (wasPlaying && nextChapter) {
+            toast({
+              title: "Chapter ended",
+              description: `Press Play to continue with “${nextChapter.title}”.`,
+              duration: 8000,
+            });
           }
         }
 
