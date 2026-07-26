@@ -44,7 +44,7 @@ interface OnboardingFlowProps {
   onComplete: () => void;
 }
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 const A11Y_ONBOARDING_PROFILES = [
   {
@@ -108,17 +108,6 @@ const A11Y_ONBOARDING_PROFILES = [
     } as Partial<AccessibilitySettings>,
   },
   {
-    id: "calm-mode",
-    name: "Calm Mode",
-    icon: Heart,
-    description: "No streaks, no leaderboards, no upgrade nudges — just listening",
-    settings: {
-      pauseAnimations: true,
-      // Marker only — calmMode + streakPaused are set on the server profile
-      // explicitly when this preset is selected (see handleNext below).
-    } as Partial<AccessibilitySettings>,
-  },
-  {
     id: "none-selected",
     name: "None / I'll configure later",
     icon: Settings2,
@@ -176,6 +165,9 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
   const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>([]);
   const [listeningHabit, setListeningHabit] = useState<string>("");
   const [selectedA11yProfile, setSelectedA11yProfile] = useState<string | null>(null);
+  // Dedicated Calm Mode step — an explicit choice, independent of the
+  // accessibility profile above (a Vision Impaired user can ALSO go calm).
+  const [calmModeChoice, setCalmModeChoice] = useState<"yes" | "no" | null>(null);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -243,27 +235,44 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
     localStorage.setItem("onboarding-completed", "true");
     localStorage.setItem("accessibooks_onboarding_done", "true");
 
-    // Apply selected accessibility profile to localStorage immediately
-    // "none-selected" means user explicitly chose to configure later — skip applying
+    // Collect local a11y settings and the server-side profile patch from BOTH
+    // the accessibility-profile step and the dedicated Calm Mode step, then
+    // commit once. "none-selected" means user explicitly chose to configure
+    // later — skip applying that profile.
+    const localPatch: Partial<AccessibilitySettings> = {};
+    const serverPatch: Record<string, unknown> = {};
+    let activeProfileId: string | null = null;
     if (selectedA11yProfile && selectedA11yProfile !== "none-selected") {
       const profile = A11Y_ONBOARDING_PROFILES.find((p) => p.id === selectedA11yProfile);
       if (profile && Object.keys(profile.settings).length > 0) {
-        const current = localStorageService.getSettings();
-        const merged = { ...current, ...profile.settings, activeProfile: selectedA11yProfile };
-        localStorageService.saveSettings(merged);
-        // Build the server-side a11y patch. For Calm Mode, also set streakPaused
-        // so streak counters do not advance for at least 7 days.
-        const serverPatch: Record<string, unknown> = { ...profile.settings };
-        if (selectedA11yProfile === "calm-mode") {
-          serverPatch.calmMode = true;
-          serverPatch.streakPaused = true;
-          serverPatch.streakPausedAt = new Date().toISOString().slice(0, 10);
-        }
-        try {
-          await apiRequest("PUT", "/api/a11y/preferences", { profile: serverPatch });
-        } catch {
-          // non-critical — settings are in localStorage
-        }
+        Object.assign(localPatch, profile.settings);
+        Object.assign(serverPatch, profile.settings);
+        activeProfileId = selectedA11yProfile;
+      }
+    }
+    if (calmModeChoice === "yes") {
+      // Calm Mode: no streaks, no nudges, no animations. streakPaused freezes
+      // the streak counter (server auto-resumes after 7 days) and
+      // pauseAnimations is the local visual counterpart.
+      localPatch.pauseAnimations = true;
+      serverPatch.calmMode = true;
+      serverPatch.streakPaused = true;
+      serverPatch.streakPausedAt = new Date().toISOString().slice(0, 10);
+    }
+    if (Object.keys(localPatch).length > 0) {
+      const current = localStorageService.getSettings();
+      const merged = activeProfileId
+        ? { ...current, ...localPatch, activeProfile: activeProfileId }
+        : { ...current, ...localPatch };
+      localStorageService.saveSettings(merged);
+      applyA11ySettings(merged);
+    }
+    if (Object.keys(serverPatch).length > 0) {
+      try {
+        await apiRequest("PUT", "/api/a11y/preferences", { profile: serverPatch });
+        await queryClient.invalidateQueries({ queryKey: ["/api/a11y/preferences"] });
+      } catch {
+        // non-critical — settings are in localStorage
       }
     }
 
@@ -287,6 +296,7 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
     setSelectedContentTypes([]);
     setListeningHabit("");
     setSelectedA11yProfile(null);
+    setCalmModeChoice(null);
   };
 
   const canProceed = () => {
@@ -296,8 +306,9 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
       case 3: return selectedContentTypes.length >= 1;
       case 4: return listeningHabit !== "";
       case 5: return true; // accessibility step — always skippable
-      case 6: return true;
+      case 6: return true; // calm mode step — choice buttons advance directly
       case 7: return true;
+      case 8: return true;
       default: return false;
     }
   };
@@ -379,6 +390,15 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
             />
           )}
           {step === 6 && (
+            <CalmModeStep
+              onChoose={(choice) => {
+                setCalmModeChoice(choice);
+                handleNext();
+              }}
+              onBack={handleBack}
+            />
+          )}
+          {step === 7 && (
             <RecommendationsStep
               books={recommendedBooks()}
               genres={selectedGenres}
@@ -386,8 +406,9 @@ export function OnboardingFlow({ open, onOpenChange, onComplete }: OnboardingFlo
               onBack={handleBack}
             />
           )}
-          {step === 7 && (
+          {step === 8 && (
             <DoneStep
+              calmMode={calmModeChoice === "yes"}
               genres={selectedGenres}
               contentTypes={selectedContentTypes}
               habit={listeningHabit}
@@ -660,6 +681,7 @@ function AccessibilityStep({
             <button
               key={profile.id}
               onClick={() => onSelect(isSelected ? null : profile.id)}
+              aria-pressed={isSelected}
               className={`w-full flex items-center gap-3 rounded-xl border-2 p-3 transition-all duration-150 text-left ${
                 isSelected
                   ? "border-primary bg-primary/10 dark:bg-primary/20"
@@ -697,6 +719,66 @@ function AccessibilityStep({
         <Button className="flex-1" onClick={onNext}>
           {selected ? "Apply & Continue" : "Skip for Now"}
           <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CalmModeStep({
+  onChoose,
+  onBack,
+}: {
+  onChoose: (choice: "yes" | "no") => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="space-y-6 w-full max-w-md">
+      <div className="text-center space-y-2">
+        <div className="mx-auto w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center mb-2">
+          <Heart className="h-6 w-6 text-rose-500 dark:text-rose-400" aria-hidden="true" />
+        </div>
+        <h2 className="text-2xl font-serif font-bold text-foreground">
+          Start in Calm Mode?
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
+          Calm Mode turns off streaks, leaderboards, upgrade nudges, and
+          animations — just you and your books. You can change this anytime in
+          Settings.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <Button
+          size="lg"
+          className="w-full h-12 text-base font-bold"
+          onClick={() => onChoose("yes")}
+          data-testid="button-calm-mode-yes"
+        >
+          <Heart className="mr-2 h-5 w-5" aria-hidden="true" />
+          Yes, calm me down
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="w-full h-12 text-base font-semibold"
+          onClick={() => onChoose("no")}
+          data-testid="button-calm-mode-no"
+        >
+          No thanks
+        </Button>
+      </div>
+
+      <div className="flex justify-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          className="text-muted-foreground"
+          data-testid="button-calm-mode-back"
+        >
+          <ChevronLeft className="mr-1 h-4 w-4" />
+          Back
         </Button>
       </div>
     </div>
@@ -778,6 +860,7 @@ function RecommendationsStep({
 }
 
 function DoneStep({
+  calmMode,
   genres,
   contentTypes,
   habit,
@@ -785,6 +868,7 @@ function DoneStep({
   onComplete,
   onBack,
 }: {
+  calmMode: boolean;
   genres: string[];
   contentTypes: string[];
   habit: string;
@@ -845,6 +929,18 @@ function DoneStep({
             <div>
               <p className="text-xs font-semibold text-primary">Accessibility</p>
               <p className="text-xs text-muted-foreground dark:text-gray-400">{a11yProfileLabel} profile applied</p>
+            </div>
+          </div>
+        )}
+
+        {calmMode && (
+          <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/50 p-3 flex items-center gap-2">
+            <Heart className="h-4 w-4 text-rose-500 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">Calm Mode on</p>
+              <p className="text-xs text-muted-foreground dark:text-gray-400">
+                No streaks, nudges, or animations — change anytime in Settings
+              </p>
             </div>
           </div>
         )}

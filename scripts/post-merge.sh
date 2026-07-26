@@ -1,7 +1,10 @@
 #!/bin/bash
 set -e
 
-pnpm install --frozen-lockfile
+# --prefer-offline: resolve from the local store when possible — merges often
+# change no deps, and the machine is frequently under heavy parallel-agent load
+# where network-bound resolution pushed install past the old timeout.
+pnpm install --frozen-lockfile --prefer-offline
 
 # drizzle-kit push becomes interactive when it detects a new table: it asks a
 # create-vs-rename SELECT prompt whose default (highlighted) option is
