@@ -28,6 +28,19 @@ interface PendingAd {
   createdAt: Date | null;
 }
 
+interface PendingCommunityAnnotation {
+  id: string;
+  bookId: string;
+  bookTitle: string | null;
+  page: number;
+  text: string;
+  note: string;
+  status: string;
+  contributorId: string;
+  contributorName: string | null;
+  createdAt: string | null;
+}
+
 interface PlatformUser {
   id: string;
   email: string | null;
@@ -101,6 +114,11 @@ export default function AdminPlatformDashboard() {
     queryKey: ["/api/ad/admin/payouts"],
   });
 
+  const { data: pendingAnnotations = [], refetch: refetchAnnotations } = useQuery<PendingCommunityAnnotation[]>({
+    queryKey: ["/api/admin/community-annotations", "pending"],
+    queryFn: () => fetch("/api/admin/community-annotations?status=pending", { credentials: "include" }).then(r => r.json()),
+  });
+
   const { data: analytics, isLoading: analyticsLoading, refetch: refetchAnalytics } = useQuery<{
     totals: { gmvCents: number; platformRevenueCents: number; totalImpressions: number; totalClicks: number };
     daily: Array<{ date: string; auctions: number; filled: number; gmvCents: number }>;
@@ -133,6 +151,16 @@ export default function AdminPlatformDashboard() {
       toast({ title: "Payout updated" });
     },
     onError: () => toast({ title: "Failed to update payout", variant: "destructive" }),
+  });
+
+  const reviewAnnotationMutation = useMutation({
+    mutationFn: ({ id, action, reviewNote }: { id: string; action: "approve" | "reject"; reviewNote?: string }) =>
+      apiRequest("PATCH", `/api/admin/community-annotations/${id}/review`, { action, reviewNote }),
+    onSuccess: () => {
+      refetchAnnotations();
+      toast({ title: "Annotation reviewed" });
+    },
+    onError: () => toast({ title: "Review failed", variant: "destructive" }),
   });
 
   const logoutMutation = useMutation({
@@ -361,6 +389,9 @@ export default function AdminPlatformDashboard() {
                   <span className="ml-2 px-1.5 py-0.5 bg-violet-500/20 text-violet-400 rounded text-xs">{pendingPayouts.length}</span>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="annotations" className="data-[state=active]:bg-white/10 data-[state=active]:text-white text-white/50">
+                Annotations{pendingAnnotations.length > 0 ? ` (${pendingAnnotations.length})` : ""}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="pending">
@@ -410,6 +441,61 @@ export default function AdminPlatformDashboard() {
                             }}
                             disabled={reviewAdMutation.isPending}
                             className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
+                          >
+                            <XCircle className="h-4 w-4" /> Reject
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="annotations">
+              {pendingAnnotations.length === 0 ? (
+                <Card className="bg-white/5 border-white/10">
+                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                    <CheckCircle className="h-10 w-10 text-green-400/40 mb-3" />
+                    <p className="text-white/40 text-sm">All caught up! No community annotations awaiting review.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {pendingAnnotations.map((ann) => (
+                    <Card key={ann.id} className="bg-white/5 border-white/10" data-testid={`admin-annotation-${ann.id}`}>
+                      <CardContent className="p-5">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-medium">{ann.bookTitle ?? ann.bookId}</span>
+                          <StatusBadge status={ann.status} />
+                          <span className="text-xs text-white/30">Page {ann.page}</span>
+                        </div>
+                        <p className="text-sm text-white/70 italic mb-1">"{ann.text.slice(0, 200)}{ann.text.length > 200 ? "..." : ""}"</p>
+                        <p className="text-sm text-white/50 mb-2">{ann.note}</p>
+                        <div className="flex flex-wrap gap-3 text-xs text-white/30">
+                          <span>Contributor: {ann.contributorName || ann.contributorId}</span>
+                          {ann.createdAt && <span>Submitted {new Date(ann.createdAt).toLocaleDateString()}</span>}
+                        </div>
+                        <div className="flex gap-3 mt-4">
+                          <Button
+                            size="sm"
+                            onClick={() => reviewAnnotationMutation.mutate({ id: ann.id, action: "approve" })}
+                            disabled={reviewAnnotationMutation.isPending}
+                            className="bg-green-600 hover:bg-green-500 text-white gap-2"
+                            data-testid={`approve-annotation-${ann.id}`}
+                          >
+                            <CheckCircle className="h-4 w-4" /> Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const reason = window.prompt("Rejection reason (optional):");
+                              if (reason !== null) reviewAnnotationMutation.mutate({ id: ann.id, action: "reject", reviewNote: reason || undefined });
+                            }}
+                            disabled={reviewAnnotationMutation.isPending}
+                            className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-2"
+                            data-testid={`reject-annotation-${ann.id}`}
                           >
                             <XCircle className="h-4 w-4" /> Reject
                           </Button>

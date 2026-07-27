@@ -1280,6 +1280,45 @@ export const insertAnnotationSyncSchema = createInsertSchema(annotationSync).omi
 export type InsertAnnotationSync = z.infer<typeof insertAnnotationSyncSchema>;
 export type AnnotationSyncRecord = typeof annotationSync.$inferSelect;
 
+// Community annotations (Task #121) — reader-contributed highlights + notes
+// that go through moderation before appearing for every reader. Personal
+// annotations stay in annotation_sync / localStorage; only community ones
+// live here. status: pending -> approved | rejected.
+export const COMMUNITY_ANNOTATION_STATUSES = ["pending", "approved", "rejected"] as const;
+export type CommunityAnnotationStatus = typeof COMMUNITY_ANNOTATION_STATUSES[number];
+
+export const communityAnnotations = pgTable("community_annotations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookId: varchar("book_id").notNull(), // no FK: catalog rows are seeded/refreshed and may be replaced
+  contributorId: varchar("contributor_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  contributorName: text("contributor_name"), // display-name snapshot at submission time
+  page: integer("page").notNull(),
+  startOffset: integer("start_offset").notNull(),
+  endOffset: integer("end_offset").notNull(),
+  text: text("text").notNull(), // the highlighted passage
+  note: text("note").notNull(), // the contributed explanation shown to readers
+  status: text("status").notNull().default("pending"), // pending | approved | rejected
+  reviewedBy: varchar("reviewed_by"), // admin user id who made the decision
+  reviewNote: text("review_note"), // optional moderator note (e.g. rejection reason)
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_community_annotations_book_status").on(table.bookId, table.status),
+  index("idx_community_annotations_status").on(table.status),
+  index("idx_community_annotations_contributor").on(table.contributorId),
+]);
+
+export const insertCommunityAnnotationSchema = createInsertSchema(communityAnnotations).omit({
+  id: true,
+  status: true,
+  reviewedBy: true,
+  reviewNote: true,
+  approvedAt: true,
+  createdAt: true,
+});
+export type InsertCommunityAnnotation = z.infer<typeof insertCommunityAnnotationSchema>;
+export type CommunityAnnotation = typeof communityAnnotations.$inferSelect;
+
 export const giftCards = pgTable("gift_cards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: varchar("code").notNull().unique(),

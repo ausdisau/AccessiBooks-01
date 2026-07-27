@@ -18,3 +18,5 @@
 - [Mirrored frontend components](mirrored-frontend-components.md) — accessibooks-next mirrors accessibooks components byte-identically (no shared pkg); edit once, cp across, diff to confirm.
 - [Heavy-load installs](heavy-load-installs.md) — pnpm add under load: run detached (nohup+log, poll); platform installer can drop mid-install; orphaned installs may hold the store lock.
 - [Schema change rebuild](schema-change-rebuild.md) — after editing lib/db schema, run `npx tsc -b` in lib/db to refresh dist .d.ts (project references) or api-server tsc reports missing exports; create dev-DB tables via psql, not drizzle push.
+- [Public display names](public-display-names.md) — names persisted AND served publicly must never derive from email; null → neutral label in UI.
+- [Per-user cap concurrency](per-user-cap-concurrency.md) — count-then-insert caps race; serialize via pg_advisory_xact_lock(hashtext('scope:'+userId)) in a tx.

@@ -16,6 +16,7 @@ import {
   ensureNarrationBackfill,
   ensureNdisSchema,
   ensureCommercialCreditsSchema,
+  ensureCommunityAnnotationsSchema,
   ensureGiftSponsorSchema,
 } from "./db";
 import { seedPlans } from "./seed";
@@ -97,6 +98,7 @@ if (Number.isNaN(port) || port <= 0) {
       ensureNdisSchema().catch((err: any) => logger.warn({ err }, "[NDIS] Schema setup failed"));
       ensureCommercialCreditsSchema().catch((err: any) => logger.warn({ err }, "[CommercialCredits] Schema setup failed"));
       ensureGiftSponsorSchema().catch((err: any) => logger.warn({ err }, "[GiftSponsor] Schema setup failed"));
+      ensureCommunityAnnotationsSchema().catch((err: any) => logger.warn({ err }, "[CommunityAnnotations] Schema setup failed"));
       seedPlans().catch((err: any) => logger.warn({ err }, "[Seed] Plans seed failed"));
       startDailySpendResetCron();
       startMonthlyAllowanceScheduler();
