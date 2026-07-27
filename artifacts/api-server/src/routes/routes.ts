@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "../storage";
 import { db } from "../db";
 import { z } from "zod";
-import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns, accessibilityPreferences } from "@workspace/db";
+import { referrals, userPreferences, userXp, userAchievements, listeningHistory, users, reviews, books, userSubmissions, streakFreezes, expiringRewards, dailyListeningLog, contentAnalytics, giftCards, battlePasses, battlePassMilestones, battlePassPurchases, notificationLog, activityFeed, readingClubs, readingClubMembers, familyAccounts, familyMembers, contentReports, advertiserWallets, paymentTransactions, adCampaigns, accessibilityPreferences, accountLinkAudits } from "@workspace/db";
 import { eq, desc, sql, count, sum, and, gt, gte } from "drizzle-orm";
 import { setupMultiAuth, isAuthenticated, requireAdmin, requireTier } from "../multiAuth";
 import {
@@ -5624,6 +5624,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching approved submissions:", error);
       res.status(500).json({ message: "Failed to fetch community content" });
+    }
+  });
+
+  // Account-link audit log — admin only. Shows automatic legacy → managed
+  // Google sign-in account links (and refused local-password links).
+  app.get("/api/admin/account-link-audits", isAuthenticated, requireAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "100"), 10) || 100, 1), 500);
+      const rows = await db
+        .select()
+        .from(accountLinkAudits)
+        .orderBy(desc(accountLinkAudits.createdAt))
+        .limit(limit);
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching account link audits:", error);
+      res.status(500).json({ message: "Failed to fetch account link audits" });
     }
   });
 

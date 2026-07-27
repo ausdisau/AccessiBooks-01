@@ -24,6 +24,7 @@ import { storage } from "./storage";
 import { users } from "@workspace/db";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import { resolveGoogleUser } from "./googleAccountLinking";
 import { isAuth0Usable, markAuth0Unusable } from "./auth0Health";
 import { makeAuth0CallbackHandler } from "./auth0CallbackHandler";
 import {
@@ -152,6 +153,7 @@ interface ReplitOidcClaims {
   picture?: string | null;
   idp?: string | null;
   identity_provider?: string | null;
+  email_verified?: boolean | null;
 }
 
 // Identity-provider claim values that Replit OIDC reports for a Google upstream.
@@ -221,20 +223,25 @@ async function ensureGoogleOidcStrategy(hostname: string) {
           new Error(`Replit OIDC returned non-Google identity provider: ${idp}`),
         );
       }
-      const sub = String(claims.sub);
-      const user = await storage.upsertUser({
-        // Keep the legacy `google-` prefix so existing accounts that signed in
-        // via the old self-managed Google OAuth strategy continue to resolve
-        // to the same row. New users get the prefix on first login.
-        id: sub.startsWith("google-") ? sub : `google-${sub}`,
+      // Resolve the account: exact id → linked providerId → verified-email
+      // auto-link (with hijack safeguards) → new account. See
+      // googleAccountLinking.ts for the full policy; docs/auth.md documents it.
+      const result = await resolveGoogleUser({
+        sub: String(claims.sub),
         email: claims.email ?? null,
+        emailVerified: claims.email_verified === true,
         firstName: claims.first_name ?? claims.given_name ?? null,
         lastName: claims.last_name ?? claims.family_name ?? null,
         profileImageUrl: claims.profile_image_url ?? claims.picture ?? null,
-        authProvider: "google",
-        providerId: sub,
       });
-      verified(null, user);
+      if (result.status === "denied_local_password") {
+        // Deterministic denial: the email belongs to a local-password account,
+        // which must not be auto-linked (and cannot be duplicated — email is
+        // unique). Passport reports this as an authentication failure with an
+        // info reason the callback route surfaces to the login UI.
+        return verified(null, false, { reason: "password_account_exists" });
+      }
+      verified(null, result.user);
     } catch (err) {
       verified(err as Error);
     }
@@ -577,12 +584,20 @@ export function setupMultiAuth(app: Express) {
       }
       try {
         const strategyName = await ensureGoogleOidcStrategy(req.hostname);
-        passport.authenticate(strategyName, (err: any, user: any) => {
+        passport.authenticate(strategyName, (err: any, user: any, info: any) => {
           if (err) {
             console.error("[Auth] Replit OIDC verify failed:", err);
             return res.redirect("/?auth=failed");
           }
-          if (!user) return res.redirect("/?auth=failed");
+          if (!user) {
+            // Controlled denials (e.g. the email belongs to a local-password
+            // account that must not be auto-linked) carry a reason the login
+            // UI can present: "sign in with your password instead".
+            const reason = typeof info?.reason === "string" ? info.reason : null;
+            return res.redirect(
+              reason ? `/?auth=failed&reason=${encodeURIComponent(reason)}` : "/?auth=failed",
+            );
+          }
           req.login(user, (loginErr) => {
             if (loginErr) {
               console.error("[Auth] Replit OIDC session login failed:", loginErr);

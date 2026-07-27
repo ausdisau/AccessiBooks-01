@@ -17,3 +17,4 @@
 - [Seeder-inflated catalog](seeder-inflated-catalog.md) — books has 1M+ auto-seeded rows and grows on boot; btree on author/genre FAILS (>2.7KB values) → use hash indexes; cap any catalogue enumeration.
 - [Mirrored frontend components](mirrored-frontend-components.md) — accessibooks-next mirrors accessibooks components byte-identically (no shared pkg); edit once, cp across, diff to confirm.
 - [Heavy-load installs](heavy-load-installs.md) — pnpm add under load: run detached (nohup+log, poll); platform installer can drop mid-install; orphaned installs may hold the store lock.
+- [Schema change rebuild](schema-change-rebuild.md) — after editing lib/db schema, run `npx tsc -b` in lib/db to refresh dist .d.ts (project references) or api-server tsc reports missing exports; create dev-DB tables via psql, not drizzle push.

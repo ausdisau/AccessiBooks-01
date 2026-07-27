@@ -17,3 +17,5 @@ nohup pnpm --filter <pkg> add <deps> > /tmp/install.log 2>&1 & IPID=$!
 Also observed: the platform package installer callback can fail with "SERVER unexpectedly disconnected" under the same load, and it reboots all workflows as a side effect (restart what you need afterwards). Verify success by `grep` of the dependency in the target `package.json`, not by the tool's exit status.
 
 **How to apply:** Any dependency add/remove while multiple task agents run. Budget one polling round; if the log shows lock waiting, just wait — do not spawn competing installs.
+
+**Polling trap:** `pgrep -f <pattern>` inside a poll loop SELF-MATCHES the polling shell (the `bash -c` cmdline contains the pattern) — "still alive" false positives wasted several rounds twice. Poll a done-marker file written by the detached job (`sh -c 'cmd; echo EXIT=$? > /tmp/x.done'`) instead of process greps.
