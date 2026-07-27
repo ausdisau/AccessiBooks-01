@@ -16,7 +16,8 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { notificationLog, TIER_PRICING, users } from "@workspace/db";
+import crypto from "node:crypto";
+import { emailPreferences, notificationLog, TIER_PRICING, users } from "@workspace/db";
 import { isAuthenticated } from "./multiAuth";
 import { storage } from "./storage";
 import { sendEmail, isEmailConfigured } from "./mailer";
@@ -59,6 +60,7 @@ function buildEmail(opts: {
   firstName: string | null;
   limitType: LimitType;
   pricingUrl: string;
+  unsubscribeUrl: string;
 }) {
   const c = COPY[opts.limitType];
   const greeting = opts.firstName ? `Hi ${opts.firstName},` : "Hi there,";
@@ -77,7 +79,10 @@ Upgrade in one click: ${opts.pricingUrl}
 
 If you'd rather stay on the free plan, no problem — you can always upgrade later from Settings → Plan.
 
-— The AccessiBooks team`;
+— The AccessiBooks team
+
+Don't want these emails? Unsubscribe in one click: ${opts.unsubscribeUrl}
+You can turn them back on anytime in Settings → Notifications.`;
 
   const html = `<!doctype html><html><body style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px">
   <p>${greeting}</p>
@@ -92,6 +97,7 @@ If you'd rather stay on the free plan, no problem — you can always upgrade lat
   </p>
   <p style="color:#666;font-size:13px;line-height:1.5">If you'd rather stay on the free plan, no problem — you can always upgrade later from Settings → Plan.</p>
   <p style="color:#888;font-size:12px;margin-top:24px">— The AccessiBooks team</p>
+  <p style="color:#888;font-size:12px;margin-top:8px"><a href="${opts.unsubscribeUrl}" style="color:#888">Unsubscribe from limit-reached emails</a> — you can turn them back on anytime in Settings → Notifications.</p>
 </body></html>`;
 
   return { subject: c.subject, text, html };
@@ -109,6 +115,61 @@ function getBaseUrl(req: Request): string {
   const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
   const host = req.get("host") || "accessibooks.app";
   return `${proto}://${host}`;
+}
+
+const UNSUB_PURPOSE = "limit_hit_emails";
+
+// Per-boot fallback only — tokens signed with it break on restart, but they
+// are never forgeable. SESSION_SECRET is always set in real environments.
+const fallbackSecret = crypto.randomBytes(32).toString("hex");
+let warnedNoSecret = false;
+
+function unsubSecret(): string {
+  const s = process.env.SESSION_SECRET;
+  if (s) return s;
+  if (!warnedNoSecret) {
+    warnedNoSecret = true;
+    console.warn("[LimitNotif] SESSION_SECRET not set — unsubscribe links will not survive restarts");
+  }
+  return fallbackSecret;
+}
+
+/** Signed one-click unsubscribe token: base64url("purpose:userId") + HMAC. */
+export function buildUnsubscribeToken(userId: string): string {
+  const payload = Buffer.from(`${UNSUB_PURPOSE}:${userId}`).toString("base64url");
+  const sig = crypto.createHmac("sha256", unsubSecret()).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+/** Returns the userId if the token is valid, else null. Constant-time compare. */
+export function verifyUnsubscribeToken(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const expected = crypto.createHmac("sha256", unsubSecret()).update(parts[0]).digest();
+  let given: Buffer;
+  try {
+    given = Buffer.from(parts[1], "base64url");
+  } catch {
+    return null;
+  }
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+  const decoded = Buffer.from(parts[0], "base64url").toString("utf8");
+  const prefix = `${UNSUB_PURPOSE}:`;
+  if (!decoded.startsWith(prefix)) return null;
+  return decoded.slice(prefix.length) || null;
+}
+
+/** Minimal, self-contained page for the unsubscribe flow (no app JS needed). */
+function unsubPage(title: string, message: string, extraHtml = ""): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — AccessiBooks</title></head>
+<body style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:48px 24px">
+  <main>
+    <h1 style="font-size:22px;margin-bottom:8px">${title}</h1>
+    <p style="color:#444;line-height:1.6">${message}</p>
+    ${extraHtml}
+    <p style="margin-top:24px"><a href="/" style="color:#7c3aed">Back to AccessiBooks</a></p>
+  </main>
+</body></html>`;
 }
 
 export function registerLimitNotificationRoutes(app: Express) {
@@ -143,6 +204,23 @@ export function registerLimitNotificationRoutes(app: Express) {
         return res.json({ sent: false, reason: "paid_tier" });
       }
 
+      // Respect the user's opt-out before any dedup/send work. Fail closed:
+      // if preferences can't be read we skip the email rather than risk
+      // mailing someone who opted out.
+      try {
+        const [pref] = await db
+          .select({ limitHitEmails: emailPreferences.limitHitEmails })
+          .from(emailPreferences)
+          .where(eq(emailPreferences.userId, userId))
+          .limit(1);
+        if (pref && !pref.limitHitEmails) {
+          return res.json({ sent: false, reason: "user_opted_out" });
+        }
+      } catch (err) {
+        console.error("[LimitNotif] preference lookup failed:", err);
+        return res.status(503).json({ message: "Preferences unavailable" });
+      }
+
       // 24h dedup per (userId, limitType). Use DB-side NOW() so the cutoff
       // is consistent across app/DB clock skew rather than app-process time.
       const type = notifType(limitType);
@@ -169,11 +247,13 @@ export function registerLimitNotificationRoutes(app: Express) {
       }
 
       const pricingUrl = `${getBaseUrl(req)}/pricing?utm_source=email&utm_medium=limit_hit&utm_campaign=${limitType}`;
+      const unsubscribeUrl = `${getBaseUrl(req)}/api/notifications/unsubscribe?token=${encodeURIComponent(buildUnsubscribeToken(userId))}`;
       const email = buildEmail({
         to: user.email,
         firstName: user.firstName ?? null,
         limitType,
         pricingUrl,
+        unsubscribeUrl,
       });
 
       // Prefer SMTP (mailer.ts) when configured; if it isn't or the send
@@ -216,4 +296,91 @@ export function registerLimitNotificationRoutes(app: Express) {
       return res.json({ sent: true, limitType });
     },
   );
+
+  // One-click unsubscribe from the email footer. Deliberately unauthenticated:
+  // the signed token both identifies and authorizes the user (they may open
+  // the link on a device where they aren't signed in). Idempotent; supports
+  // `resubscribe=1` so the confirmation page offers an instant undo.
+  app.get("/api/notifications/unsubscribe", async (req: Request, res: Response) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    const userId = token ? verifyUnsubscribeToken(token) : null;
+    if (!userId) {
+      return res
+        .status(400)
+        .type("html")
+        .send(unsubPage("Link not valid", "This unsubscribe link is invalid or incomplete. You can manage email preferences anytime in Settings → Notifications."));
+    }
+    const resubscribe = req.query.resubscribe === "1";
+    const value = resubscribe;
+    try {
+      await db
+        .insert(emailPreferences)
+        .values({ userId, limitHitEmails: value })
+        .onConflictDoUpdate({
+          target: emailPreferences.userId,
+          set: { limitHitEmails: value, updatedAt: sql`now()` },
+        });
+    } catch (err) {
+      console.error("[LimitNotif] unsubscribe update failed:", err);
+      return res
+        .status(400)
+        .type("html")
+        .send(unsubPage("Link no longer valid", "We couldn't update your email preferences — this account may no longer exist."));
+    }
+    if (resubscribe) {
+      return res
+        .type("html")
+        .send(unsubPage("You're resubscribed", "You'll get an email with upgrade options when you hit a free-plan limit (at most one per day per limit)."));
+    }
+    const undoUrl = `/api/notifications/unsubscribe?token=${encodeURIComponent(token)}&resubscribe=1`;
+    return res
+      .type("html")
+      .send(
+        unsubPage(
+          "You're unsubscribed",
+          "You won't get any more limit-reached upgrade emails. You can turn them back on anytime in Settings → Notifications.",
+          `<p style="margin-top:16px"><a href="${undoUrl}" style="color:#7c3aed">Undo — keep sending me these</a></p>`,
+        ),
+      );
+  });
+
+  // Authed preference API backing the Settings → Notifications toggle.
+  app.get("/api/notifications/email-preferences", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const [pref] = await db
+        .select({ limitHitEmails: emailPreferences.limitHitEmails })
+        .from(emailPreferences)
+        .where(eq(emailPreferences.userId, userId))
+        .limit(1);
+      return res.json({ limitHitEmails: pref ? pref.limitHitEmails : true });
+    } catch (err) {
+      console.error("[LimitNotif] preference fetch failed:", err);
+      return res.status(503).json({ message: "Preferences unavailable" });
+    }
+  });
+
+  const putPrefsSchema = z.object({ limitHitEmails: z.boolean() });
+  app.put("/api/notifications/email-preferences", isAuthenticated, async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const parsed = putPrefsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "limitHitEmails must be a boolean" });
+    }
+    try {
+      await db
+        .insert(emailPreferences)
+        .values({ userId, limitHitEmails: parsed.data.limitHitEmails })
+        .onConflictDoUpdate({
+          target: emailPreferences.userId,
+          set: { limitHitEmails: parsed.data.limitHitEmails, updatedAt: sql`now()` },
+        });
+      return res.json({ limitHitEmails: parsed.data.limitHitEmails });
+    } catch (err) {
+      console.error("[LimitNotif] preference update failed:", err);
+      return res.status(503).json({ message: "Preferences unavailable" });
+    }
+  });
 }

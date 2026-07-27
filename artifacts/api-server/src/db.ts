@@ -662,3 +662,18 @@ export async function ensureCommunityAnnotationsSchema(): Promise<void> {
     console.warn("[CommunityAnnotations] Schema setup warning:", error.message);
   }
 }
+
+export async function ensureEmailPreferencesSchema(): Promise<void> {
+  try {
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS email_preferences (
+        user_id varchar PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        limit_hit_emails boolean NOT NULL DEFAULT true,
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    console.log("[EmailPreferences] Schema ensured (email_preferences)");
+  } catch (error: any) {
+    console.warn("[EmailPreferences] Schema setup warning:", error.message);
+  }
+}

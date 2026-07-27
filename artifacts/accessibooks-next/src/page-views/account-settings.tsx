@@ -36,6 +36,7 @@ import {
   Smartphone,
   Users,
   Zap,
+  Bell,
 } from "lucide-react";
 import { Link } from "@/lib/wouter-compat";
 import type { A11yProfile } from "@shared/schema";
@@ -189,6 +190,28 @@ export function AccountSettingsPage() {
     },
   });
 
+  const { data: emailPrefs, isLoading: emailPrefsLoading } = useQuery<{ limitHitEmails: boolean }>({
+    queryKey: ["/api/notifications/email-preferences"],
+  });
+
+  const emailPrefsMutation = useMutation({
+    mutationFn: (limitHitEmails: boolean) =>
+      apiRequest("PUT", "/api/notifications/email-preferences", { limitHitEmails }),
+    onSuccess: (_res, limitHitEmails) => {
+      queryClient.setQueryData(["/api/notifications/email-preferences"], { limitHitEmails });
+      toast({
+        title: limitHitEmails
+          ? "Limit-reached emails turned on"
+          : "You won't get limit-reached emails anymore",
+        duration: 2000,
+      });
+    },
+    onError: () => {
+      toast({ title: "Failed to save notification setting", variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/email-preferences"] });
+    },
+  });
+
   const tier = (summary?.user?.subscriptionTier || "free") as "free" | "plus" | "premium";
   const isFree = tier === "free";
   const tierFeatures = TIER_FEATURE_ITEMS[tier] || TIER_FEATURE_ITEMS.free;
@@ -219,6 +242,7 @@ export function AccountSettingsPage() {
               { id: "ads", label: "Ad Preferences", icon: Zap },
               { id: "listening", label: "Listening Defaults", icon: Volume2 },
               { id: "focus", label: "Focus & Distraction", icon: Eye },
+              { id: "notifications", label: "Notifications", icon: Bell },
               { id: "a11y", label: "Accessibility", icon: Accessibility },
               { id: "devices", label: "Devices", icon: Smartphone },
               { id: "billing", label: "Billing & History", icon: CreditCard },
@@ -432,6 +456,32 @@ export function AccountSettingsPage() {
                   />
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* Notifications */}
+          <section id="section-notifications" aria-labelledby="section-notifications-heading" className="scroll-mt-20">
+            <div className="mb-6">
+              <h2 id="section-notifications-heading" className="text-xl font-serif font-bold">Notifications</h2>
+              <p className="text-sm text-muted-foreground mt-1">Choose which emails you receive from AccessiBooks.</p>
+            </div>
+
+            <div className="rounded-xl border bg-card p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="limit-hit-emails" className="text-base font-medium">Limit-reached upgrade emails</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Email me upgrade options when I hit a free-plan limit (at most one per day per limit).
+                  </p>
+                </div>
+                <Switch
+                  id="limit-hit-emails"
+                  data-testid="switch-limit-hit-emails"
+                  checked={emailPrefs ? emailPrefs.limitHitEmails : true}
+                  disabled={emailPrefsLoading || emailPrefsMutation.isPending}
+                  onCheckedChange={(v) => emailPrefsMutation.mutate(v)}
+                />
+              </div>
             </div>
           </section>
 
