@@ -633,3 +633,32 @@ export async function ensureNarrationBackfill(): Promise<void> {
     console.warn("[NarrationBackfill] warning:", error.message);
   }
 }
+
+export async function ensureCommunityAnnotationsSchema(): Promise<void> {
+  try {
+    await runSql(`
+      CREATE TABLE IF NOT EXISTS community_annotations (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        book_id varchar NOT NULL,
+        contributor_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        contributor_name text,
+        page integer NOT NULL,
+        start_offset integer NOT NULL,
+        end_offset integer NOT NULL,
+        text text NOT NULL,
+        note text NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        reviewed_by varchar,
+        review_note text,
+        approved_at timestamp,
+        created_at timestamp DEFAULT now()
+      )
+    `);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_community_annotations_book_status ON community_annotations (book_id, status)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_community_annotations_status ON community_annotations (status)`);
+    await runSql(`CREATE INDEX IF NOT EXISTS idx_community_annotations_contributor ON community_annotations (contributor_id)`);
+    console.log("[CommunityAnnotations] Schema ensured (community_annotations)");
+  } catch (error: any) {
+    console.warn("[CommunityAnnotations] Schema setup warning:", error.message);
+  }
+}

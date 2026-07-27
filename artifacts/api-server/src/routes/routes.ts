@@ -19,6 +19,7 @@ import { getUncachableSpotifyClient, isSpotifyConnected } from "../spotifyClient
 import { getSeederStatus, getSeederMetrics, startSeeding, stopSeeding, resetSeeder, resetAndRestartExpandedSources, getSeededBookCount } from "../catalogSeeder";
 import { registerSelfPublishingRoutes } from "../selfPublishing";
 import { registerRevenueRoutes, seedVoicePacks } from "../revenueRoutes";
+import { registerCommunityAnnotationRoutes } from "../communityAnnotations";
 import { registerLoanRoutes, startLoanExpirationJob } from "../loanSystem";
 import { registerPlatformRoutes } from "../platformRoutes";
 import { registerPodcastRoutes } from "../podcastIngestion";
@@ -287,6 +288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Revenue expansion routes (voice packs, annotations, gifts, enterprise, sponsorships)
   registerRevenueRoutes(app);
+  registerCommunityAnnotationRoutes(app);
   seedVoicePacks().catch(err => console.warn("[Revenue] Failed to seed voice packs:", err.message));
 
   // Loan-return system (borrow, return, waitlist, downloads with expiry)

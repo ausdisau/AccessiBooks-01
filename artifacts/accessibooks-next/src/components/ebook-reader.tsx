@@ -45,6 +45,7 @@ import {
   Music2,
   Shapes,
   Volume2,
+  Users,
 } from "lucide-react";
 import { useAudioContext } from "@/contexts/audio-context";
 import { EbookInterstitialAd, canShowEbookInterstitial } from "./EbookInterstitialAd";
@@ -831,6 +832,19 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     } catch {}
   };
 
+  // Approved community annotations (Task #121). Fetched for every reader
+  // (guests included) and merged into the display lists below - but never
+  // into the personal save/sync path.
+  const { data: communityAnnotations = [] } = useQuery<Annotation[]>({
+    queryKey: ["/api/books", book.id, "community-annotations"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allAnnotations = useMemo(
+    () => [...annotations, ...communityAnnotations],
+    [annotations, communityAnnotations],
+  );
+
   const saveAnnotations = useCallback((anns: Annotation[]) => {
     setAnnotations(anns);
     localStorage.setItem(`ebook-annotations-${book.id}`, JSON.stringify(anns));
@@ -1107,6 +1121,47 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     toast({ title: "Highlight saved" });
   };
 
+  // Share a personal annotation with the community (Task #121). It goes into
+  // a moderation queue and only appears for other readers once approved.
+  const shareAnnotationMutation = useMutation({
+    mutationFn: async (ann: Annotation) => {
+      const res = await apiRequest("POST", `/api/books/${book.id}/community-annotations`, {
+        page: ann.page,
+        startOffset: ann.startOffset,
+        endOffset: ann.endOffset,
+        text: ann.text,
+        note: ann.note,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Shared with the community",
+        description: "A moderator will review your annotation before it appears for everyone.",
+      });
+    },
+    onError: (err: unknown) => {
+      const raw = err instanceof Error ? err.message : String(err);
+      toast({
+        title: "Could not share annotation",
+        description: raw.replace(/^\d+:\s*/, ""),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const shareWithCommunity = (ann: Annotation) => {
+    if (!authUser) {
+      toast({
+        title: "Sign in to share annotations",
+        description: "Community contributions need an account so moderators can attribute them.",
+        variant: "destructive",
+      });
+      return;
+    }
+    shareAnnotationMutation.mutate(ann);
+  };
+
   const removeAnnotation = (id: string) => {
     saveAnnotations(annotations.filter(a => a.id !== id));
     toast({ title: "Highlight removed" });
@@ -1171,7 +1226,7 @@ function TextReader({ book, onBack }: EbookReaderProps) {
     }
   };
 
-  const currentPageAnnotations = annotations.filter(a => a.page === currentPage);
+  const currentPageAnnotations = allAnnotations.filter(a => a.page === currentPage);
 
   const themeStyles = {
     light: { bg: "bg-amber-50", text: "text-gray-800", headerBg: "bg-white border-gray-200", cardBg: "bg-white", mutedText: "text-gray-600", inputBg: "bg-white border-gray-300 text-gray-800" },
@@ -1277,11 +1332,11 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                   </>
                 )}
 
-                {annotations.length > 0 && (
+                {allAnnotations.length > 0 && (
                   <>
                     <Separator className="my-3" />
                     <p className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider ${theme.mutedText}`}>Highlights</p>
-                    {annotations.map(ann => {
+                    {allAnnotations.map(ann => {
                       const isCommunity = ann.source === "community";
                       return (
                         <button
@@ -1975,9 +2030,23 @@ function TextReader({ book, onBack }: EbookReaderProps) {
                     {ann.note && <p className={`text-xs mt-0.5 ${theme.mutedText}`}>{ann.note}</p>}
                   </div>
                   {!isCommunity && (
-                    <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => removeAnnotation(ann.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        title="Share with the community - a moderator reviews it before it appears for everyone"
+                        aria-label="Share this annotation with the community"
+                        data-testid={`annotation-share-${ann.id}`}
+                        disabled={shareAnnotationMutation.isPending}
+                        onClick={() => shareWithCommunity(ann)}
+                      >
+                        <Users className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAnnotation(ann.id)} aria-label="Delete highlight">
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               );
