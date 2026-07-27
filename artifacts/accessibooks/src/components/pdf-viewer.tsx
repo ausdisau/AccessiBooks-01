@@ -186,8 +186,8 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-      <header className="sticky top-0 z-10 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-10 bg-card border-b border-border">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <Button variant="ghost" onClick={onBack} aria-label="Back to library">
             <ChevronLeft className="h-5 w-5 mr-1" />
@@ -205,7 +205,7 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
               </Button>
             </div>
             
-            <span className="text-sm text-gray-600 dark:text-gray-300">
+            <span className="text-sm text-muted-foreground">
               Page {currentPage} of {numPages || "..."}
             </span>
           </div>
@@ -252,7 +252,7 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
           </Document>
         </div>
 
-        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white dark:bg-gray-800 rounded-full shadow-lg px-4 py-2 flex items-center gap-4">
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-card border border-border rounded-full shadow-lg px-4 py-2 flex items-center gap-4">
           <Button 
             variant="ghost" 
             size="icon"
@@ -273,7 +273,7 @@ export function PdfViewer({ book, onBack }: PdfViewerProps) {
               max={numPages}
               aria-label="Current page"
             />
-            <span className="text-sm text-gray-500">/ {numPages}</span>
+            <span className="text-sm text-muted-foreground">/ {numPages}</span>
           </div>
           
           <Button 
