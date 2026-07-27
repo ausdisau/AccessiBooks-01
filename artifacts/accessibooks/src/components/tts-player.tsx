@@ -338,11 +338,11 @@ export function TTSPlayer({
   const elevenlabsVoices = useMemo(() => voiceList?.elevenlabs || [], [voiceList]);
 
   return (
-    <div className={`border rounded-lg p-3 ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-muted/30 border-border"}`}>
+    <div className={"border rounded-lg p-3 bg-muted/30 border-border"}>
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => setExpanded(!expanded)}
-          className={`flex items-center gap-2 text-sm font-medium ${darkMode ? "text-gray-200" : "text-foreground"}`}
+          className={"flex items-center gap-2 text-sm font-medium text-foreground"}
         >
           <Headphones className="h-4 w-4 text-primary" />
           Listen to this page
@@ -371,7 +371,7 @@ export function TTSPlayer({
       {expanded && (
         <div className="space-y-3">
           {currentVoiceLocked && (
-            <div className={`flex items-center justify-between rounded-md px-3 py-2 text-xs ${darkMode ? "bg-yellow-900/30 text-yellow-300" : "bg-yellow-50 text-yellow-800 border border-yellow-200"}`}>
+            <div className={"flex items-center justify-between rounded-md px-3 py-2 text-xs border bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-900/50"}>
               <div className="flex items-center gap-1.5">
                 <Lock className="h-3 w-3" />
                 <span>Unlock with a Voice Pack</span>
@@ -445,7 +445,7 @@ export function TTSPlayer({
               />
             </div>
 
-            <span className={`text-xs tabular-nums min-w-[70px] text-right ${darkMode ? "text-gray-400" : "text-muted-foreground"}`}>
+            <span className={"text-xs tabular-nums min-w-[70px] text-right text-muted-foreground"}>
               {formatTime(progress)} / {formatTime(duration)}
             </span>
           </div>
@@ -570,7 +570,7 @@ export function TTSPlayer({
                 aria-label="Volume"
               />
 
-              <label className={`flex items-center gap-1.5 text-xs ${darkMode ? "text-gray-400" : "text-muted-foreground"}`}>
+              <label className={"flex items-center gap-1.5 text-xs text-muted-foreground"}>
                 <input
                   type="checkbox"
                   checked={autoAdvance}

@@ -298,8 +298,8 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
   }
 
   return (
-    <div className={`min-h-screen transition-colors ${settings.darkMode ? "bg-gray-900" : "bg-amber-50"}`}>
-      <header className={`sticky top-0 z-10 border-b ${settings.darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
+    <div className={"min-h-screen transition-colors bg-background"}>
+      <header className={"sticky top-0 z-10 border-b border-border bg-card"}>
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <Button variant="ghost" onClick={onBack} aria-label="Back to library">
             <ChevronLeft className="h-5 w-5 mr-1" />
@@ -307,7 +307,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
           </Button>
           
           <div className="flex items-center gap-2 text-sm">
-            <span className={settings.darkMode ? "text-gray-300" : "text-gray-600"}>
+            <span className="text-muted-foreground">
               {progress}% complete
             </span>
           </div>
@@ -328,7 +328,7 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
                     <button
                       key={index}
                       onClick={() => requestChapterNav(item.href)}
-                      className="block w-full text-left px-3 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
+                      className="block w-full text-left px-3 py-2 rounded hover:bg-accent hover:text-accent-foreground text-sm"
                     >
                       {item.label}
                     </button>
@@ -467,9 +467,9 @@ export function EpubViewer({ book, onBack }: EpubViewerProps) {
         </Button>
       </main>
 
-      <footer className={`fixed bottom-0 left-0 right-0 px-4 py-2 ${settings.darkMode ? "bg-gray-800" : "bg-white"}`}>
+      <footer className={"fixed bottom-0 left-0 right-0 px-4 py-2 border-t border-border bg-card"}>
         <div className="max-w-4xl mx-auto">
-          <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div className="h-1 bg-muted rounded-full overflow-hidden">
             <div 
               className="h-full bg-primary transition-all"
               style={{ width: `${progress}%` }}
