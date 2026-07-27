@@ -1,10 +1,11 @@
 import type { Express, Request, Response } from "express";
 import express from "express";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, isNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   narrationJobs,
   narrationAssets,
+  books,
   type NarrationAsset,
   type TranscriptSegment,
   type TranscriptWordTiming,
@@ -238,6 +239,17 @@ async function runNarrationJob(bookId: string, voiceId: string, userId: string, 
     }
 
     await setJobStatus(bookId, voiceId, { status: "completed", completedChapters: completed });
+
+    // The book now carries AI-generated narration tracks - record the catalogue
+    // provenance hint unless already labelled (never overwrite "human").
+    try {
+      await db
+        .update(books)
+        .set({ narrationType: "ai" })
+        .where(and(eq(books.id, bookId), isNull(books.narrationType)));
+    } catch (err) {
+      console.warn("[Narration] narration_type tag failed for " + bookId, err instanceof Error ? err.message : err);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[Narration] Job failed for ${bookId} (${voiceId}):`, message);
