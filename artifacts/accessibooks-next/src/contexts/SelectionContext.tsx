@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -70,6 +71,28 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
   );
 
   const handleBackToLibrary = useCallback(() => router.push("/"), [router]);
+
+  // Admin analytics top-title rows (and any other in-app surface) can request
+  // opening a book's detail view by id via this event.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const bookId = (e as CustomEvent<{ bookId?: string }>).detail?.bookId;
+      if (!bookId) return;
+      (async () => {
+        try {
+          const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`);
+          if (res.ok) {
+            const book: Book = await res.json();
+            handleSelectBook(book);
+          }
+        } catch {
+          // Book fetch failed — stay on the current view.
+        }
+      })();
+    };
+    document.addEventListener("accessibooks:open-book", handler);
+    return () => document.removeEventListener("accessibooks:open-book", handler);
+  }, [handleSelectBook]);
 
   const handleExpandPlayer = useCallback(() => {
     if (currentBook) {

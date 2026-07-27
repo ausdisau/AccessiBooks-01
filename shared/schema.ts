@@ -2842,3 +2842,17 @@ export const insertAccountLinkAuditSchema = createInsertSchema(accountLinkAudits
 });
 export type InsertAccountLinkAudit = z.infer<typeof insertAccountLinkAuditSchema>;
 export type AccountLinkAudit = typeof accountLinkAudits.$inferSelect;
+
+// Per-user email opt-outs (limit-reached upgrade emails). A missing row means
+// all defaults apply (opted in) — rows are created lazily on first change.
+export const emailPreferences = pgTable("email_preferences", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  limitHitEmails: boolean("limit_hit_emails").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEmailPreferencesSchema = createInsertSchema(emailPreferences).omit({
+  updatedAt: true,
+});
+export type InsertEmailPreferences = z.infer<typeof insertEmailPreferencesSchema>;
+export type EmailPreferences = typeof emailPreferences.$inferSelect;

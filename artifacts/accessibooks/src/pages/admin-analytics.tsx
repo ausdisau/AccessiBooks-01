@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -319,14 +319,41 @@ function ListeningTab({ from, to, compare, prevFrom, prevTo }: TabProps) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {titles.map(t => (
-                          <TableRow key={`${tier}-${t.titleId}`}>
-                            <TableCell className="font-medium">
-                              {t.title ?? <span className="text-muted-foreground font-mono text-xs">{t.titleId.slice(0, 8)}…</span>}
-                            </TableCell>
-                            <TableCell className="text-right">{t.plays.toLocaleString()}</TableCell>
-                          </TableRow>
-                        ))}
+                        {titles.map(t => {
+                          const resolvable = t.title != null;
+                          const openBook = () => {
+                            if (!resolvable) return;
+                            document.dispatchEvent(
+                              new CustomEvent("accessibooks:open-book", { detail: { bookId: t.titleId } })
+                            );
+                          };
+                          return (
+                            <TableRow
+                              key={`${tier}-${t.titleId}`}
+                              data-testid={`top-title-row-${tier}-${t.titleId}`}
+                              {...(resolvable
+                                ? {
+                                    role: "button" as const,
+                                    tabIndex: 0,
+                                    "aria-label": `Open details for ${t.title}`,
+                                    className: "cursor-pointer hover:bg-muted/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
+                                    onClick: openBook,
+                                    onKeyDown: (e: KeyboardEvent) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        openBook();
+                                      }
+                                    },
+                                  }
+                                : {})}
+                            >
+                              <TableCell className="font-medium">
+                                {t.title ?? <span className="text-muted-foreground font-mono text-xs">{t.titleId.slice(0, 8)}…</span>}
+                              </TableCell>
+                              <TableCell className="text-right">{t.plays.toLocaleString()}</TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   )}
