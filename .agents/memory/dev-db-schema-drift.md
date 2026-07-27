@@ -31,3 +31,7 @@ Don't use the SUPABASE_* URLs for dev migrations.
 When the drifted select is wrapped in try/catch (e.g. profile/opt-in lookups that `return null` on error), missing columns do NOT produce a visible 42703 — the route takes the "no data / not permitted" branch instead. Observed: `accessibility_preferences` lacked 12 columns that schema.ts had (reduce_distraction … updated_at), so `getProfile()` always caught and every opt-in gated route (activity report shares) returned 404 "no longer available" with zero errors logged.
 
 **Rule:** when a permission/opt-in/ownership check fails inexplicably in dev, diff `information_schema.columns` against the drizzle table definition before debugging the logic. Fix with a single `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` matching schema.ts defaults/NOT NULL.
+
+## Indexes drift too (July 2026)
+Schema.ts-declared indexes may not exist in the dev DB either (drizzle push never ran here — it hangs; see post-merge-drizzle-push). `idx_books_source` is declared but absent on the 1.16M-row books table. Check `pg_indexes` before writing any query that assumes an index.
+**How to apply:** for boot-time ensure/backfill UPDATEs over big tables, create a small PARTIAL index in the ensure function itself (e.g. `ON books(source) WHERE narration_type IS NULL AND content_type='audiobook'`) — first run builds it over only the candidate rows, and re-runs become near-free as the indexed set shrinks to zero. Keeps every-boot idempotent backfills O(untagged) instead of O(table).

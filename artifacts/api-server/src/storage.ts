@@ -590,6 +590,7 @@ function transformiTunesAudiobook(itunes: iTunesAudiobook): Book {
     genre: itunes.primaryGenreName || null,
     publishedYear: publishedYear,
     source: "itunes",
+    narrationType: "human",
     sourceId: itunes.collectionId.toString(),
     totalTime: totalTime,
     language: "en", // iTunes API doesn't always provide language info
@@ -646,6 +647,7 @@ function transformInternetArchiveDoc(doc: InternetArchiveDoc): Book {
     genre: subject || null,
     publishedYear: doc.year || (doc.date ? parseInt(doc.date.split('-')[0]) : null),
     source: "internet-archive",
+    narrationType: contentType === "audiobook" ? "human" : null,
     sourceId: doc.identifier,
     totalTime: "0:00:00",
     language: language,
@@ -687,6 +689,7 @@ function transformLibriVoxBook(libriVoxBook: LibriVoxBook): Book {
     genre: libriVoxGenre,
     publishedYear: libriVoxBook.copyright_year ? parseInt(libriVoxBook.copyright_year) : null,
     source: "librivox",
+    narrationType: "human",
     sourceId: libriVoxBook.id,
     totalTime: libriVoxBook.totaltime,
     language: libriVoxBook.language || "English",

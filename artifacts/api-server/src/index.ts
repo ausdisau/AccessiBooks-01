@@ -13,6 +13,7 @@ import {
   ensureUserActivitySchema,
   ensureAutoResponseLogSchema,
   ensureNarrationSchema,
+  ensureNarrationBackfill,
   ensureNdisSchema,
   ensureCommercialCreditsSchema,
   ensureGiftSponsorSchema,
@@ -92,6 +93,7 @@ if (Number.isNaN(port) || port <= 0) {
       ensureEntitlementSchema().catch((err: any) => logger.warn({ err }, "[Entitlements] Schema setup failed"));
       ensureUserActivitySchema().catch((err: any) => logger.warn({ err }, "[UserActivity] Schema setup failed"));
       ensureNarrationSchema().catch((err: any) => logger.warn({ err }, "[Narration] Schema setup failed"));
+      ensureNarrationBackfill().catch((err: any) => logger.warn({ err }, "[NarrationBackfill] Narration backfill failed"));
       ensureNdisSchema().catch((err: any) => logger.warn({ err }, "[NDIS] Schema setup failed"));
       ensureCommercialCreditsSchema().catch((err: any) => logger.warn({ err }, "[CommercialCredits] Schema setup failed"));
       ensureGiftSponsorSchema().catch((err: any) => logger.warn({ err }, "[GiftSponsor] Schema setup failed"));

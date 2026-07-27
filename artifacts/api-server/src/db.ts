@@ -592,3 +592,44 @@ export async function setupWordBankTable(): Promise<boolean> {
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Narration provenance backfill (catalogue-wide, idempotent).
+//
+// Tags books.narration_type where the source clearly indicates provenance:
+//   - human: LibriVox & LoyalBooks (volunteer narrators), iTunes (commercial
+//     narrated audiobooks), podcasts & BBC (human-produced audio), Spoken
+//     Wikipedia (volunteer readers), Internet Archive audio items.
+//   - ai: any book with generated ElevenLabs narration assets.
+// Ebooks and ambiguous sources stay NULL (unlabelled) - accuracy beats
+// coverage for listeners who can only tolerate one narration style.
+//
+// Runs at every boot: the partial index keeps re-runs O(untagged audiobooks),
+// which ingest-time tagging keeps near zero. A fresh production deploy
+// self-heals without manual SQL.
+// ---------------------------------------------------------------------------
+export async function ensureNarrationBackfill(): Promise<void> {
+  try {
+    // Order-independent: ensure the prerequisites this function relies on.
+    await runSql(`ALTER TABLE books ADD COLUMN IF NOT EXISTS narration_type text`);
+    await runSql(
+      `CREATE INDEX IF NOT EXISTS idx_books_narration_backfill ON books (source) WHERE narration_type IS NULL AND content_type = 'audiobook'`
+    );
+    await runSql(`
+      UPDATE books SET narration_type = 'human'
+      WHERE narration_type IS NULL
+        AND content_type = 'audiobook'
+        AND source IN ('librivox','loyalbooks','itunes','podcast','bbc','wikipedia','internet_archive','internet-archive','internetarchive')
+    `);
+    // Last on purpose: narration_assets may not exist yet on a fresh DB; the
+    // catch below lets the human backfill stand and the next boot heal this.
+    await runSql(`
+      UPDATE books SET narration_type = 'ai'
+      WHERE narration_type IS NULL
+        AND id IN (SELECT book_id FROM narration_assets)
+    `);
+    console.log("[NarrationBackfill] narration_type ensured (human sources + AI narration assets)");
+  } catch (error: any) {
+    console.warn("[NarrationBackfill] warning:", error.message);
+  }
+}
