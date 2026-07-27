@@ -1494,6 +1494,33 @@ function MainApp() {
   const handleBackToLibrary = useCallback(() => {
     navigate("/");
   }, [navigate]);
+
+  // Admin analytics top-title rows (and any other in-app surface) can request
+  // opening a book's detail view by id via this event.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const bookId = (e as CustomEvent<{ bookId?: string }>).detail?.bookId;
+      if (!bookId) return;
+      const cached = (queryClient.getQueryData<{ data: Book[] }>(["/api/books"])?.data ?? []).find(b => b.id === bookId);
+      if (cached) {
+        handleSelectBook(cached);
+        return;
+      }
+      (async () => {
+        try {
+          const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`);
+          if (res.ok) {
+            const book: Book = await res.json();
+            handleSelectBook(book);
+          }
+        } catch {
+          // Book fetch failed — stay on the current view.
+        }
+      })();
+    };
+    document.addEventListener("accessibooks:open-book", handler);
+    return () => document.removeEventListener("accessibooks:open-book", handler);
+  }, [handleSelectBook]);
   
   const handleExpandPlayer = useCallback(() => {
     if (currentBook) {
