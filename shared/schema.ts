@@ -2777,3 +2777,29 @@ export const DEFAULT_ENTITLEMENT_MATRIX: Record<EntitlementFeatureKey, Record<Su
   unlimited_tts:            { free: false, plus: false, premium: true,  institutional: true,  admin: true },
   offline_downloads:        { free: false, plus: false, premium: true,  institutional: true,  admin: true },
 };
+
+// Audit log of automatic account-link events performed during sign-in.
+// Records when a legacy Google-OAuth account is matched to the new
+// Replit-managed OIDC identity by verified email (or when a link was
+// refused because the matching account is a local-password account).
+// Admin-visible via GET /api/admin/account-link-audits.
+export const accountLinkAudits = pgTable("account_link_audits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider").notNull(), // e.g. "google"
+  providerSub: varchar("provider_sub").notNull(), // OIDC subject that was linked
+  email: varchar("email"), // verified email the match was made on
+  previousAuthProvider: varchar("previous_auth_provider"), // authProvider before linking
+  outcome: varchar("outcome").notNull(), // "linked" | "skipped_local_password"
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_account_link_audits_user").on(table.userId),
+  index("idx_account_link_audits_created").on(table.createdAt),
+]);
+
+export const insertAccountLinkAuditSchema = createInsertSchema(accountLinkAudits).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAccountLinkAudit = z.infer<typeof insertAccountLinkAuditSchema>;
+export type AccountLinkAudit = typeof accountLinkAudits.$inferSelect;
