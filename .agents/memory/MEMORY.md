@@ -2,7 +2,7 @@
 - [Dual schema sync](dual-schema-sync.md) — api-server uses lib/db schema; frontend uses a SEPARATE duplicate shared/schema.ts. A table change must be mirrored in BOTH or types drift silently.
 - [api-server typecheck](api-server-typecheck.md) — tsc --noEmit never passes (~647 pre-existing errors); verify via workflow boot + curl, not tsc.
 - [Money fulfillment rules](money-fulfillment-rules.md) — Stripe webhook fulfillment must re-throw on failure (let Stripe retry); credit/ownership grants must be idempotent and claim ownership before debiting.
-- [dev DB schema drift](dev-db-schema-drift.md) — dev Postgres can lag schema.ts; route 500 with PG 42703 means add the missing column via psql, not a code bug.
+- [dev DB schema drift](dev-db-schema-drift.md) — dev Postgres can lag schema.ts; PG 42703 surfaces as route 500s OR silent 404/"not opted in" when the select is catch-wrapped; fix via psql ALTER.
 - [DB topology & publish flow](db-topology-and-publish.md) — app uses DATABASE_URL=Replit-managed PG (helium), NOT the SUPABASE_* secrets (red herring); dev/prod SEPARATE; fix prod schema drift by RE-PUBLISHING, never manual prod DDL.
 - [AI add-on quota gating](ai-addon-quota-gating.md) — paywalled AI features metered server-side in aiAddons.ts; frontend apiRequest throws on 402 (opaque) so paywall UIs need a controlled fetch.
 - [Public media ACL lifecycle](public-media-acl-lifecycle.md) — uploaded public media: object ACL public iff published; revoke on unpublish/archive/delete; trust storage metadata; sequence ACL/DB fail-closed.
@@ -16,3 +16,4 @@
 - [Admin routes unreachable](admin-routes-unreachable.md) — role='admin' diverts to the ad-platform shell before the main router, so /analytics etc. can't be browser-tested; verify admin UI via offline jsdom tests.
 - [Seeder-inflated catalog](seeder-inflated-catalog.md) — books has 1M+ auto-seeded rows and grows on boot; btree on author/genre FAILS (>2.7KB values) → use hash indexes; cap any catalogue enumeration.
 - [Mirrored frontend components](mirrored-frontend-components.md) — accessibooks-next mirrors accessibooks components byte-identically (no shared pkg); edit once, cp across, diff to confirm.
+- [Heavy-load installs](heavy-load-installs.md) — pnpm add under load: run detached (nohup+log, poll); platform installer can drop mid-install; orphaned installs may hold the store lock.

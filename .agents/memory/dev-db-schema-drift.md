@@ -25,3 +25,9 @@ are a DIFFERENT database (not the dev server's): `SUPABASE_DB_URL`/`POOLER_URL`
 are unreachable from this sandbox and `SUPABASE_DATABASE_URL` has no `postgres://`
 scheme so psql misparses it (connects to helium with the host as the dbname).
 Don't use the SUPABASE_* URLs for dev migrations.
+
+## Drift can be SILENT, not just 500s (July 2026)
+
+When the drifted select is wrapped in try/catch (e.g. profile/opt-in lookups that `return null` on error), missing columns do NOT produce a visible 42703 — the route takes the "no data / not permitted" branch instead. Observed: `accessibility_preferences` lacked 12 columns that schema.ts had (reduce_distraction … updated_at), so `getProfile()` always caught and every opt-in gated route (activity report shares) returned 404 "no longer available" with zero errors logged.
+
+**Rule:** when a permission/opt-in/ownership check fails inexplicably in dev, diff `information_schema.columns` against the drizzle table definition before debugging the logic. Fix with a single `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` matching schema.ts defaults/NOT NULL.

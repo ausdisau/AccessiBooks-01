@@ -55,6 +55,10 @@ export interface BookProgress {
   lastPlayedAt: Date | null;
 }
 import { isAuthenticated } from "./multiAuth";
+// NOTE: intentional circular import — activityReportPdf imports summarize/formatDuration
+// back from this file. Safe because only hoisted function declarations cross the boundary
+// and they run at request time. Do NOT add top-level value initialization that crosses it.
+import { renderActivityReportPdf } from "./activityReportPdf";
 
 function userIdFrom(req: Request): string | null {
   const u = (req as any).user;
@@ -128,7 +132,40 @@ function parseDateRange(req: Request): { from: Date; to: Date } | { error: strin
   return { from, to };
 }
 
-function summarize(events: UserActivityEvent[]) {
+// ---- Task #116: ?format=pdf support for report endpoints ----
+
+function reportFormat(req: Request): { format: "html" | "pdf" } | { error: string } {
+  const raw = req.query.format;
+  if (raw === undefined) return { format: "html" };
+  if (raw === "html" || raw === "pdf") return { format: raw };
+  return { error: "Unsupported format. Use format=html or format=pdf." };
+}
+
+/** Same URL the client requested, with format=pdf — used for the in-report download link. */
+function pdfHrefFor(req: Request): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(req.query)) {
+    if (k !== "format" && typeof v === "string") qs.set(k, v);
+  }
+  qs.set("format", "pdf");
+  return `${req.originalUrl.split("?")[0]}?${qs.toString()}`;
+}
+
+function setReportCacheHeaders(res: Response): void {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+}
+
+function sendReportPdf(res: Response, pdf: Buffer, range: { from: Date; to: Date }): void {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="accessibooks-activity-report-${utcDateStr(range.from)}_${utcDateStr(range.to)}.pdf"`,
+  );
+  res.send(pdf);
+}
+
+export function summarize(events: UserActivityEvent[]) {
   const byType: Record<string, number> = {};
   const byTag: Record<string, number> = {};
   const byBook: Record<string, { title: string | null; sessions: number; seconds: number }> = {};
@@ -171,7 +208,7 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number): string {
   if (seconds <= 0) return "0 minutes";
   const h = Math.floor(seconds / 3600);
   const m = Math.round((seconds % 3600) / 60);
@@ -445,8 +482,10 @@ export function renderActivityReportHtml(params: {
   caregiverLabel?: string | null;
   progress?: BookProgress[];
   goals?: GoalProgress[];
+  /** When set, the HTML report shows a one-click "Download PDF" link (Task #116). */
+  pdfHref?: string;
 }): string {
-  const { displayName, from, to, events, audience, caregiverLabel, progress = [], goals = [] } = params;
+  const { displayName, from, to, events, audience, caregiverLabel, progress = [], goals = [], pdfHref } = params;
   const s = summarize(events);
   const fmtDate = (d: Date) =>
     d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
@@ -523,6 +562,7 @@ export function renderActivityReportHtml(params: {
   <button class="print-btn" type="button" onclick="window.print()" aria-label="Print or save as PDF">
     Print / Save as PDF
   </button>
+  ${pdfHref ? `<a class="print-btn" style="display:inline-block;text-decoration:none;margin-left:0.5rem" href="${escapeHtml(pdfHref)}" download aria-label="Download this report as a PDF file">Download PDF</a>` : ""}
   <h1>My Activity Report</h1>
   <p class="meta">
     <strong>${escapeHtml(displayName)}</strong> &middot;
@@ -1090,21 +1130,27 @@ export function registerUserActivityRoutes(app: Express) {
     }
     const range = parseDateRange(req);
     if ("error" in range) return res.status(400).send(range.error);
+    const format = reportFormat(req);
+    if ("error" in format) return res.status(400).send(format.error);
     try {
       const { events, progress, goalProgress } = await buildReport(userId, range);
-      const html = renderActivityReportHtml({
+      const reportParams = {
         displayName: "AccessiBooks user",
         from: range.from,
         to: range.to,
         events,
-        audience: "self",
+        audience: "self" as const,
         progress,
         goals: goalProgress,
-      });
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-      res.setHeader("Pragma", "no-cache");
-      res.send(html);
+      };
+      setReportCacheHeaders(res);
+      if (format.format === "pdf") {
+        const pdf = await renderActivityReportPdf(reportParams);
+        sendReportPdf(res, pdf, range);
+      } else {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.send(renderActivityReportHtml({ ...reportParams, pdfHref: pdfHrefFor(req) }));
+      }
     } catch (err) {
       console.error("[UserActivity] report error:", (err as Error).message);
       res.status(500).send("Failed to render report");
@@ -1133,21 +1179,27 @@ export function registerUserActivityRoutes(app: Express) {
         from: share.rangeFrom ?? new Date(Date.now() - 30 * 86400 * 1000),
         to: share.rangeTo ?? new Date(),
       };
+      const format = reportFormat(req);
+      if ("error" in format) return res.status(400).send(format.error);
       const { events, progress, goalProgress } = await buildReport(share.userId, range);
-      const html = renderActivityReportHtml({
+      const reportParams = {
         displayName: "AccessiBooks user",
         from: range.from,
         to: range.to,
         events,
-        audience: "caregiver",
+        audience: "caregiver" as const,
         caregiverLabel: share.caregiverLabel,
         progress,
         goals: goalProgress,
-      });
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-      res.setHeader("Pragma", "no-cache");
-      res.send(html);
+      };
+      setReportCacheHeaders(res);
+      if (format.format === "pdf") {
+        const pdf = await renderActivityReportPdf(reportParams);
+        sendReportPdf(res, pdf, range);
+      } else {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.send(renderActivityReportHtml({ ...reportParams, pdfHref: pdfHrefFor(req) }));
+      }
     } catch (err) {
       console.error("[UserActivity] caregiver report error:", (err as Error).message);
       res.status(500).send("Failed to render report");
