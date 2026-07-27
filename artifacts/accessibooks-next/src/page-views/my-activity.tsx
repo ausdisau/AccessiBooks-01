@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
   AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Activity, FileText, Share2, Trash2, ShieldCheck, Loader2 } from "lucide-react";
+import { Activity, FileText, Share2, Trash2, ShieldCheck, Loader2, Download } from "lucide-react";
 import {
   OUTCOME_TAGS, OUTCOME_TAG_LABELS, ACTIVITY_EVENT_LABELS,
   type OutcomeTag, type UserActivityEvent, type ActivityEventType,
@@ -278,6 +278,12 @@ export default function MyActivityPage() {
                 <a href={reportUrl} target="_blank" rel="noopener noreferrer" data-testid="link-report">
                   <FileText className="h-4 w-4 mr-2" />
                   Generate report
+                </a>
+              </Button>
+              <Button asChild variant="outline">
+                <a href={`${reportUrl}&format=pdf`} download data-testid="link-report-pdf">
+                  <Download className="h-4 w-4 mr-2" />
+                  Download PDF
                 </a>
               </Button>
             </div>
