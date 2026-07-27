@@ -134,19 +134,28 @@ export const analyticsService = {
       const averageSessionMinutes = Math.round(avgSecs / 60 * 10) / 10;
 
       const topTitleRows = await db.execute(
-        sql`SELECT COALESCE(u.subscription_tier, 'free') AS subscription_tier,
-                   pe.metadata->>'titleId' AS title_id,
-                   b.title AS title,
-                   COUNT(*) AS plays
-            FROM product_events pe
-            JOIN users u ON pe.metadata->>'userId' = u.id
-            LEFT JOIN books b ON b.id = pe.metadata->>'titleId'
-            WHERE pe.event_type = 'playback_session_started'
-              AND pe.occurred_at >= ${from}
-              AND pe.occurred_at <= ${to}
-              AND pe.metadata->>'titleId' IS NOT NULL
-            GROUP BY COALESCE(u.subscription_tier, 'free'), title_id, b.title
-            ORDER BY subscription_tier ASC, plays DESC, title_id ASC`
+        sql`SELECT subscription_tier, title_id, title, plays
+            FROM (
+              SELECT COALESCE(u.subscription_tier, 'free') AS subscription_tier,
+                     pe.metadata->>'titleId' AS title_id,
+                     b.title AS title,
+                     COUNT(*) AS plays,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY COALESCE(u.subscription_tier, 'free')
+                       ORDER BY COUNT(*) DESC, pe.metadata->>'titleId' ASC
+                     ) AS rank
+              FROM product_events pe
+              JOIN users u ON pe.metadata->>'userId' = u.id
+              LEFT JOIN books b ON b.id = pe.metadata->>'titleId'
+              WHERE pe.event_type = 'playback_session_started'
+                AND pe.occurred_at >= ${from}
+                AND pe.occurred_at <= ${to}
+                AND pe.metadata->>'titleId' IS NOT NULL
+              GROUP BY COALESCE(u.subscription_tier, 'free'), title_id, b.title
+            ) ranked
+            WHERE rank <= 5
+            ORDER BY subscription_tier ASC, plays DESC, title_id ASC
+            LIMIT 200`
       );
 
       const topTitlesByTier: Record<string, Array<{ titleId: string; title: string | null; plays: number }>> = { free: [], plus: [], premium: [] };
