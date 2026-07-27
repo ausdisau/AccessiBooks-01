@@ -3,10 +3,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { localStorageService } from "@/lib/storage";
+import { applyThemeFont, loadThemeFont } from "@/lib/themeFont";
 
 interface A11yProfile {
   fontSize: number;
   fontFamily: string;
+  themeFont?: string;
   highContrast: boolean;
   reducedMotion: boolean;
   screenReaderHints: boolean;
@@ -36,6 +38,7 @@ interface A11yPreset {
 const DEFAULT_PROFILE: A11yProfile = {
   fontSize: 16,
   fontFamily: "system",
+  themeFont: "system",
   highContrast: false,
   reducedMotion: false,
   screenReaderHints: true,
@@ -72,6 +75,7 @@ function profileFromLocalStorage(): A11yProfile {
     // Persist rewardedAdPreference locally so users who set "never" are not
     // briefly served an ad on first frame before server prefs hydrate.
     rewardedAdPreference: settings.rewardedAdPreference ?? DEFAULT_PROFILE.rewardedAdPreference,
+    themeFont: settings.themeFont ?? DEFAULT_PROFILE.themeFont,
   };
 }
 
@@ -89,6 +93,7 @@ function syncToLocalStorage(profile: A11yProfile) {
     captionPosition: profile.captionPosition,
     karaokeFollowAlong: profile.karaokeFollowAlong,
     rewardedAdPreference: profile.rewardedAdPreference,
+    themeFont: profile.themeFont,
   });
 }
 
@@ -179,6 +184,10 @@ export function usePreferencesKernel() {
     document.documentElement.style.setProperty("--a11y-font-size", `${fontPct}%`);
     document.documentElement.style.setProperty("--a11y-line-spacing", `${profile.lineSpacing}`);
     document.documentElement.style.setProperty("--a11y-letter-spacing", `${profile.letterSpacing}px`);
+    // Theme font: apply the family immediately (font-display: swap paints it
+    // once ready) and lazily fetch only the active family's CSS chunk.
+    applyThemeFont(profile.themeFont);
+    void loadThemeFont(profile.themeFont);
   }, [profile]);
 
   return {

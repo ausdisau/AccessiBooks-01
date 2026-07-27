@@ -1638,3 +1638,10 @@ footer,
   animation: none !important;
   transition: opacity 0.12s linear !important;
 }
+
+/* Theme font picker (preferences kernel): when a vendor family is active the
+   loader sets --theme-font on <html> and adds this class. The dyslexia-font
+   override (`.dyslexia-font *`) still takes precedence on every element. */
+html.theme-font-active body {
+  font-family: var(--theme-font);
+}

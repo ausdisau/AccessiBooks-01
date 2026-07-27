@@ -1,4 +1,5 @@
 import { usePreferencesKernel, DEFAULT_PROFILE } from "@/hooks/use-preferences-kernel";
+import { THEME_FONTS, loadThemeFont } from "@/lib/themeFont";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Dialog,
@@ -138,6 +139,35 @@ export function PreferencesKernel({
                     <SelectItem value="sans-serif">Sans-serif</SelectItem>
                     <SelectItem value="monospace">Monospace</SelectItem>
                     <SelectItem value="OpenDyslexic">OpenDyslexic</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label className="dark:text-gray-300">Theme Font</Label>
+                <Select
+                  value={profile.themeFont ?? "system"}
+                  onValueChange={(v) => {
+                    void loadThemeFont(v);
+                    updateProfile({ themeFont: v });
+                  }}
+                >
+                  <SelectTrigger className="w-40" data-testid="select-theme-font">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="system">System default</SelectItem>
+                    {THEME_FONTS.map((font) => (
+                      <SelectItem
+                        key={font.slug}
+                        value={font.slug}
+                        style={{ fontFamily: font.family }}
+                        onPointerEnter={() => void loadThemeFont(font.slug)}
+                        onFocus={() => void loadThemeFont(font.slug)}
+                      >
+                        {font.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

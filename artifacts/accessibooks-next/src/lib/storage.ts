@@ -111,6 +111,7 @@ export interface AccessibilitySettings {
   largerCursor: boolean;
   readingMask: boolean;
   activeProfile: string | null;
+  themeFont?: string;
   wordSpacing?: number;
   colorVisionMode?: ColorVisionMode;
   captionsOn?: boolean;
