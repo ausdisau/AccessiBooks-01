@@ -10,6 +10,10 @@ import {
   DEFAULT_A11Y_PROFILE,
   eventRsvps,
   liveEvents,
+  battlePasses,
+  battlePassMilestones,
+  battlePassPurchases,
+  notificationLog,
   type A11yProfile,
   type NotificationType,
 } from "@workspace/db";
@@ -432,6 +436,106 @@ export async function checkEventReminders(): Promise<number> {
   return sent;
 }
 
+// Battle pass season ending — remind users with reached-but-unclaimed rewards
+// before the season resets and those rewards are lost (Task #246).
+export async function checkBattlePassSeasonEnding(): Promise<number> {
+  let sent = 0;
+  try {
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const endingSeasons = await db.select().from(battlePasses)
+      .where(and(
+        eq(battlePasses.isActive, true),
+        gte(battlePasses.endDate, now),
+        lte(battlePasses.endDate, windowEnd),
+      ));
+
+    for (const season of endingSeasons) {
+      const milestones = await db.select().from(battlePassMilestones)
+        .where(eq(battlePassMilestones.battlePassId, season.id));
+      if (milestones.length === 0) continue;
+
+      const daysLeft = Math.max(0, Math.ceil(
+        (new Date(season.endDate).getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+      ));
+      // Season-scoped URL doubles as the send-once dedupe key in notificationLog.
+      const reminderUrl = `/stats?bpSeason=${season.id}`;
+
+      const participants = await db.select().from(battlePassPurchases)
+        .where(eq(battlePassPurchases.battlePassId, season.id));
+
+      for (const p of participants) {
+        let claimed: string[] = [];
+        try {
+          const parsed = JSON.parse(p.claimedMilestones);
+          if (Array.isArray(parsed)) claimed = parsed;
+        } catch { /* treat as none claimed */ }
+
+        // Only count rewards the user can actually claim right now:
+        // reached tiers, not yet claimed, and premium ones only if unlocked.
+        const unclaimed = milestones.filter((m) =>
+          p.xpEarned >= m.xpRequired &&
+          !claimed.includes(m.id) &&
+          (!m.isPremium || p.isPremium),
+        ).length;
+        if (unclaimed === 0) continue;
+
+        // Send at most one reminder per user per season.
+        const [already] = await db.select({ id: notificationLog.id })
+          .from(notificationLog)
+          .where(and(
+            eq(notificationLog.userId, p.userId),
+            eq(notificationLog.url, reminderUrl),
+          ))
+          .limit(1);
+        if (already) continue;
+
+        if (!(await shouldSendForUser(p.userId, "system"))) {
+          await trackTrigger(p.userId, "bp_season_ending", "system", "skipped", "guardrail",
+            { seasonId: season.id, daysLeft, unclaimed });
+          continue;
+        }
+
+        const payload = getNotificationPayload("bp_season_ending", {
+          seasonName: season.seasonName,
+          daysLeft,
+          unclaimed,
+          url: reminderUrl,
+        });
+        const result = await sendNotificationToUser(p.userId, payload);
+        sent += result.sent;
+        // sendNotificationToUser only writes the in-app notificationLog row
+        // when VAPID is configured. Guarantee the in-app reminder exists —
+        // it is the fallback delivery channel AND the dedupe marker, so a
+        // user is only ever marked "reminded" once the reminder is actually
+        // visible in their in-app notification inbox.
+        const [logged] = await db.select({ id: notificationLog.id })
+          .from(notificationLog)
+          .where(and(
+            eq(notificationLog.userId, p.userId),
+            eq(notificationLog.url, reminderUrl),
+          ))
+          .limit(1);
+        if (!logged) {
+          await db.insert(notificationLog).values({
+            userId: p.userId,
+            type: payload.type,
+            title: payload.title,
+            body: payload.body,
+            url: reminderUrl,
+          });
+        }
+        await trackTrigger(p.userId, "bp_season_ending", "system",
+          "sent", result.sent > 0 ? undefined : "in_app_only",
+          { seasonId: season.id, daysLeft, unclaimed, pushSent: result.sent });
+      }
+    }
+  } catch (err) {
+    console.error("Battle pass season-end check failed:", err);
+  }
+  return sent;
+}
+
 // Weekly recap: Sunday digest preview
 export async function checkWeeklyRecap(): Promise<number> {
   let sent = 0;
@@ -490,6 +594,7 @@ export async function checkWeeklyRecap(): Promise<number> {
 }
 
 let streakInterval: ReturnType<typeof setInterval> | null = null;
+let bpSeasonEndingInterval: ReturnType<typeof setInterval> | null = null;
 let goalInterval: ReturnType<typeof setInterval> | null = null;
 let reEngageInterval: ReturnType<typeof setInterval> | null = null;
 let eventReminderInterval: ReturnType<typeof setInterval> | null = null;
@@ -633,6 +738,15 @@ export function startNotificationScheduler(): void {
     }
   }, 60 * 60 * 1000);
 
+  // Battle pass season-end reminders — hourly check, fires only at noon
+  bpSeasonEndingInterval = setInterval(async () => {
+    const hour = new Date().getHours();
+    if (hour === 12) {
+      const sent = await checkBattlePassSeasonEnding();
+      if (sent > 0) console.log(`[Notifications] Sent ${sent} battle pass season-end reminders`);
+    }
+  }, 60 * 60 * 1000);
+
   // Win-back — once a day at 11am
   winBackInterval = setInterval(async () => {
     const hour = new Date().getHours();
@@ -662,6 +776,8 @@ export function stopNotificationScheduler(): void {
   if (weeklyRecapInterval) clearInterval(weeklyRecapInterval);
   if (winBackInterval) clearInterval(winBackInterval);
   if (friendDigestInterval) clearInterval(friendDigestInterval);
+  if (bpSeasonEndingInterval) clearInterval(bpSeasonEndingInterval);
+  bpSeasonEndingInterval = null;
   friendDigestInterval = null;
   streakInterval = null;
   goalInterval = null;

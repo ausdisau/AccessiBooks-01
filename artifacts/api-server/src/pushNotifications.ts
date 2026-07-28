@@ -147,6 +147,19 @@ const NOTIFICATION_TEMPLATES: Record<string, (data?: Record<string, string | num
     url: "/hub",
     tag: "win-back",
   }),
+  // Battle pass season ending with reached-but-unclaimed rewards (Task #246).
+  // Uses the "system" type so existing subscriptions (whose enabledTypes
+  // defaults include "system") receive it without a schema/array migration.
+  bp_season_ending: (data) => ({
+    type: "system",
+    title: "Battle Pass season ending soon ⏳",
+    body: `${data?.seasonName ?? "The current season"} ends ${
+      Number(data?.daysLeft) <= 0 ? "today" : Number(data?.daysLeft) === 1 ? "tomorrow" : `in ${data?.daysLeft} days`
+    } — you have ${data?.unclaimed ?? "unclaimed"} reward${Number(data?.unclaimed) === 1 ? "" : "s"} ready to claim. Claim them before they're gone!`,
+    icon: "/icon-192.png",
+    url: (data?.url as string) ?? "/stats",
+    tag: "bp-season-ending",
+  }),
   weekly_recap: (data) => ({
     type: "weekly_recap",
     title: "Your week in books 📊",

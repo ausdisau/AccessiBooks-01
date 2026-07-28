@@ -316,6 +316,21 @@ export function BattlePassComponent() {
 
   const priceLabel = `$${(season.priceCents / 100).toFixed(2)}`;
 
+  // Reached-but-unclaimed rewards the user could claim right now (premium
+  // milestones only count when the premium track is unlocked). These are
+  // lost when the season resets, so surface urgency before the end date.
+  const unclaimedClaimable = progress
+    ? milestones.filter(
+        (m) =>
+          currentXp >= m.xpRequired &&
+          !claimedMilestones.includes(m.id) &&
+          (!m.isPremium || premiumUnlocked),
+      ).length
+    : 0;
+  const seasonEndingSoon = daysLeft <= 7;
+  const daysLeftLabel =
+    daysLeft === 0 ? "Ends today" : daysLeft === 1 ? "1 day left" : `${daysLeft} days left`;
+
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
       {/* Season header */}
@@ -332,9 +347,14 @@ export function BattlePassComponent() {
               </div>
             </div>
             <div className="text-right shrink-0">
-              <div className="flex items-center gap-1 text-sm text-muted-foreground justify-end">
+              <div
+                data-testid="text-days-left"
+                className={`flex items-center gap-1 text-sm justify-end font-medium ${
+                  seasonEndingSoon ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                }`}
+              >
                 <Clock className="h-4 w-4" />
-                {daysLeft} days left
+                {daysLeftLabel}
               </div>
               {premiumUnlocked ? (
                 <Badge className="mt-1 bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0">
@@ -368,6 +388,38 @@ export function BattlePassComponent() {
             <p className="text-sm text-muted-foreground">Sign in to start earning rewards this season.</p>
           )}
         </div>
+
+        {/* Unclaimed rewards reminder — rewards are lost when the season resets */}
+        {unclaimedClaimable > 0 && (
+          <div
+            role="status"
+            data-testid="banner-unclaimed-rewards"
+            className={`px-4 sm:px-6 py-3 border-b flex items-start gap-3 ${
+              seasonEndingSoon
+                ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
+                : "bg-muted/50"
+            }`}
+          >
+            <Gift
+              className={`h-5 w-5 mt-0.5 shrink-0 ${
+                seasonEndingSoon ? "text-amber-600 dark:text-amber-400" : "text-primary"
+              }`}
+            />
+            <p className="text-sm">
+              <span className="font-semibold">
+                You have {unclaimedClaimable} unclaimed reward{unclaimedClaimable === 1 ? "" : "s"}
+              </span>{" "}
+              {seasonEndingSoon ? (
+                <>
+                  — the season {daysLeft === 0 ? "ends today" : daysLeft === 1 ? "ends tomorrow" : `ends in ${daysLeft} days`}.
+                  Unclaimed rewards are lost when the season resets, so claim them below before it's too late.
+                </>
+              ) : (
+                <>waiting below. Claim them any time before the season ends.</>
+              )}
+            </p>
+          </div>
+        )}
 
         {/* Premium unlock CTA */}
         {user && !premiumUnlocked && (
