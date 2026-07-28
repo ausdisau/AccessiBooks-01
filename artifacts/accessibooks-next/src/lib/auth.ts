@@ -33,6 +33,7 @@ import { db } from "./serverDb";
 import { users } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { verifyMagicToken } from "./magicLink";
+import { logger, safeError } from "./logger";
 
 const ACCESS_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days, mirrors lib/jwt.ts
 
@@ -42,8 +43,8 @@ function getJwtSecret(): string {
   if (process.env.NODE_ENV === "production") {
     throw new Error("JWT_SECRET (or SESSION_SECRET) must be set in production");
   }
-  console.warn(
-    "[WARN] JWT_SECRET/SESSION_SECRET not set — using insecure default. Set this before deploying.",
+  logger.warn(
+    "JWT_SECRET/SESSION_SECRET not set — using insecure default. Set this before deploying.",
   );
   return "development-jwt-secret-change-in-production";
 }
@@ -268,7 +269,33 @@ export const authConfig: NextAuthConfig = {
   secret: getJwtSecret(),
   trustHost: true,
   providers,
-  pages: { signIn: "/" },
+  // Custom error page: renders generic messaging and never echoes the
+  // provider error code/details NextAuth puts in the query string.
+  // Auth.js builds these URLs from the site origin without applying Next's
+  // basePath, so prepend it explicitly (empty in production on Vercel).
+  pages: {
+    signIn: `${process.env.BASE_PATH && process.env.BASE_PATH !== "/" ? process.env.BASE_PATH.replace(/\/$/, "") : ""}/` ,
+    error: `${process.env.BASE_PATH && process.env.BASE_PATH !== "/" ? process.env.BASE_PATH.replace(/\/$/, "") : ""}/auth/error`,
+  },
+  // Route Auth.js logging through pino (same logger config as the Express
+  // api-server) instead of the default console logger. Errors are reduced to
+  // name+message in production — Auth.js error causes can embed provider
+  // response bodies, callback URLs, and tokens, so they must not hit prod
+  // logs verbatim.
+  logger: {
+    error(error: Error) {
+      logger.error({ err: safeError(error) }, "[next-auth] %s", error.name);
+    },
+    warn(code) {
+      logger.warn("[next-auth] %s", code);
+    },
+    debug(message, metadata) {
+      // Debug metadata can include full request/response payloads; only
+      // emitted when NextAuth debug is enabled, and gated behind pino's
+      // debug level (off by default in production).
+      logger.debug({ metadata }, "[next-auth] %s", message);
+    },
+  },
   callbacks: {
     async signIn({ user, account, profile }) {
       // For OAuth flows, upsert the user into our DB and rewrite the user.id

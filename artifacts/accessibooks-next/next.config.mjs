@@ -10,6 +10,9 @@ const basePath = process.env.BASE_PATH && process.env.BASE_PATH !== "/"
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // pino uses worker threads / dynamic requires that break when bundled by
+  // Next's server compiler — keep it (and its dev transport) external.
+  serverExternalPackages: ["pino", "pino-pretty"],
   basePath,
   trailingSlash: true,
   images: { unoptimized: true },

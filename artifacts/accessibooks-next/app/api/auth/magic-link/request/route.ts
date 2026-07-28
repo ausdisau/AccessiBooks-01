@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createMagicToken } from "@/lib/magicLink";
 import { checkRateLimit, clientIp, rateLimitResponse } from "@/lib/rateLimit";
+import { logger, safeError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
   const token = createMagicToken(email);
   const configuredAppUrl = process.env.APP_URL?.replace(/\/$/, "");
   if (!configuredAppUrl && process.env.NODE_ENV === "production") {
-    console.error(
+    logger.error(
       "[MagicLink] APP_URL is not set in production — cannot build safe magic-link URL",
     );
     return NextResponse.json(
@@ -88,20 +89,21 @@ export async function POST(request: Request) {
 
   const masked = maskEmail(email);
   if (process.env.NODE_ENV === "development") {
-    console.log(`[MagicLink] Generated link for ${masked}: ${link}`);
+    logger.info(`[MagicLink] Generated link for ${masked}: ${link}`);
   } else {
-    console.log(`[MagicLink] Generated link for ${masked}`);
+    // Never log the link (it embeds the sign-in token) outside development.
+    logger.info(`[MagicLink] Generated link for ${masked}`);
   }
 
   if (!isResendConfigured()) {
     if (process.env.NODE_ENV === "production") {
-      console.error("[MagicLink] No email service configured in production!");
+      logger.error("[MagicLink] No email service configured in production!");
       return NextResponse.json(
         { message: "Email delivery unavailable. Contact support." },
         { status: 503 },
       );
     }
-    console.warn(
+    logger.warn(
       "[MagicLink] RESEND_API_KEY not set. Returning devLink for development.",
     );
     return NextResponse.json({
@@ -126,14 +128,19 @@ export async function POST(request: Request) {
 <p style="color:#888;font-size:12px">If you didn't request this link, you can safely ignore this email.</p>`,
     });
     if (result.error) {
-      console.error(`[MagicLink] Resend error for ${masked}:`, result.error);
+      logger.error(
+        {
+          err: { name: result.error.name, message: result.error.message },
+        },
+        `[MagicLink] Resend error for ${masked}`,
+      );
       return NextResponse.json(
         { message: "Failed to send magic link. Please try again shortly." },
         { status: 503 },
       );
     }
   } catch (err) {
-    console.error(`[MagicLink] Send threw for ${masked}:`, err);
+    logger.error({ err: safeError(err) }, `[MagicLink] Send threw for ${masked}`);
     return NextResponse.json(
       { message: "Failed to send magic link. Please try again shortly." },
       { status: 503 },

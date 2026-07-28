@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { checkRateLimit, clientIp, rateLimitResponse } from "@/lib/rateLimit";
+import { logger, safeError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
   try {
     await signIn("credentials", { email, password, redirect: false });
   } catch (err) {
-    console.error("[Login] signIn failed:", err);
+    logger.error({ err: safeError(err) }, "[Login] signIn failed");
     return NextResponse.json({ message: "Login failed" }, { status: 500 });
   }
 

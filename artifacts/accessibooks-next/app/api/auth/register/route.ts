@@ -13,6 +13,7 @@ import { db } from "@/lib/serverDb";
 import { users } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { checkRateLimit, clientIp, rateLimitResponse } from "@/lib/rateLimit";
+import { logger, safeError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
   try {
     await signIn("credentials", { email, password, redirect: false });
   } catch (err) {
-    console.error("[Register] signIn after register failed:", err);
+    logger.error({ err: safeError(err) }, "[Register] signIn after register failed");
   }
 
   const token = jwt.sign(

@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { signIn } from "@/lib/auth";
 import { verifyMagicToken } from "@/lib/magicLink";
+import { logger, safeError } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
     // React client (see src/lib/authToken.ts → consumeTokenFromUrlHash).
     await signIn("magic-link", { token, redirect: false });
   } catch (err) {
-    console.error("[MagicLink] signIn failed:", err);
+    logger.error({ err: safeError(err) }, "[MagicLink] signIn failed");
     return NextResponse.redirect(`${url.origin}${base}/?magic=error`);
   }
   return NextResponse.redirect(
